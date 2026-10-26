@@ -1,50 +1,122 @@
-import type { PendingAudioAction } from "@/kag/runtime.js";
+import type { AudioChannel, AudioEvent, AudioSnapshot } from "@/kag/events.js";
+import type { AudioPlayer, AudioSettings } from "./types.js";
 
-export class AudioManager {
+export class WebAudioPlayer implements AudioPlayer {
   private bgmAudio: HTMLAudioElement | null = null;
   private currentBgm: string | null = null;
-  private seAudio: HTMLAudioElement | null = null;
-  private currentSe: string | null = null;
+  private seAudios = new Map<AudioChannel, HTMLAudioElement>();
+  private settings: AudioSettings = {
+    master: 1,
+    bgm: 0.6,
+    se: 0.5,
+    voice: 0.8,
+    muted: false,
+  };
 
-  constructor(
-    private bgmVolume = 0.6,
-    private seVolume = 0.5,
-  ) {}
-
-  setBgmVolume(volume: number) {
-    this.bgmVolume = volume;
-    if (this.bgmAudio) this.bgmAudio.volume = volume;
+  async unlock(): Promise<void> {
+    // L'élément Audio du navigateur se débloque via un geste utilisateur.
+    // Cette méthode est un no-op explicite ; le premier play() après un clic utilisateur suffit.
   }
 
-  setSeVolume(volume: number) {
-    this.seVolume = volume;
-    if (this.seAudio) this.seAudio.volume = volume;
+  apply(event: AudioEvent, _opts: { instant: boolean }): void {
+    const volume = this.computeVolume(event.channel);
+    switch (event.kind) {
+      case "play": {
+        if (event.channel === "bgm") {
+          this.playBgm(event.storage, event.loop, event.volume * volume);
+        } else if (event.channel.startsWith("se:")) {
+          this.playSe(event.channel, event.storage, event.loop, event.volume * volume);
+        }
+        break;
+      }
+      case "stop": {
+        if (event.channel === "bgm") {
+          this.stopBgm(event.fadeOut ?? 0);
+        } else if (event.channel === "allSe") {
+          this.stopAllSe(event.fadeOut ?? 0);
+        } else if ((event.channel as AudioChannel).startsWith("se:")) {
+          this.stopSe(event.channel as AudioChannel, event.fadeOut ?? 0);
+        }
+        break;
+      }
+      case "fade": {
+        if (event.channel === "bgm") {
+          this.fadeBgm(event.time, event.volume * volume);
+        } else if (event.channel.startsWith("se:")) {
+          this.fadeSe(event.channel, event.time, event.volume * volume);
+        }
+        break;
+      }
+    }
   }
 
-  getBgmVolume() {
-    return this.bgmVolume;
+  async waitFor(channel: AudioChannel, _signal: AbortSignal): Promise<void> {
+    // Pour l'instant, résout immédiatement.
+    // À implémenter : attendre la fin du son non bouclé.
+    if (channel === "bgm" || this.seAudios.has(channel)) return;
   }
 
-  getSeVolume() {
-    return this.seVolume;
+  restore(_snapshot: AudioSnapshot): void {
+    // TODO : restaurer l'état audio depuis une sauvegarde.
+    this.stopAll();
   }
 
-  getCurrentBgm() {
-    return this.currentBgm;
+  stopAll(fadeOut = 0): void {
+    this.stopBgm(fadeOut);
+    this.stopAllSe(fadeOut);
   }
 
-  getCurrentSe() {
-    return this.currentSe;
+  setSettings(settings: Readonly<AudioSettings>): void {
+    this.settings = { ...settings };
+    if (this.bgmAudio) {
+      this.bgmAudio.volume = this.settings.bgm * this.settings.master;
+    }
+    for (const [channel, audio] of this.seAudios) {
+      if (channel.startsWith("se:")) {
+        audio.volume = this.settings.se * this.settings.master;
+      }
+    }
   }
 
-  playBgm(storage: string, resolve: (s: string) => string) {
-    if (this.currentBgm === storage) return;
+  suspend(): void {
+    if (this.bgmAudio) this.bgmAudio.pause();
+    for (const audio of this.seAudios.values()) {
+      audio.pause();
+    }
+  }
+
+  resume(): void {
+    if (this.bgmAudio) this.bgmAudio.play().catch(() => {});
+    for (const audio of this.seAudios.values()) {
+      audio.play().catch(() => {});
+    }
+  }
+
+  dispose(): void {
+    this.stopAll();
+    this.seAudios.clear();
+  }
+
+  private computeVolume(channel: AudioChannel | "allSe"): number {
+    if (this.settings.muted) return 0;
+    const master = this.settings.master;
+    if (channel === "bgm") return master * this.settings.bgm;
+    if (channel === "allSe" || channel.startsWith("se:")) return master * this.settings.se;
+    if (channel === "voice") return master * this.settings.voice;
+    return master;
+  }
+
+  private resolveUrl(storage: string): string {
+    return `/assets/${storage}`;
+  }
+
+  private playBgm(storage: string, loop: boolean, volume: number) {
+    if (this.currentBgm === storage && this.bgmAudio) return;
     this.currentBgm = storage;
-    const url = resolve(storage);
     this.stopBgm();
-    this.bgmAudio = new Audio(url);
-    this.bgmAudio.loop = true;
-    this.bgmAudio.volume = this.bgmVolume;
+    this.bgmAudio = new Audio(this.resolveUrl(storage));
+    this.bgmAudio.loop = loop;
+    this.bgmAudio.volume = volume;
     this.bgmAudio.onerror = () => {
       console.warn(`BGM introuvable: ${storage}`);
       this.bgmAudio = null;
@@ -55,7 +127,7 @@ export class AudioManager {
     });
   }
 
-  stopBgm(fadeTime = 0) {
+  private stopBgm(fadeTime = 0) {
     if (!this.bgmAudio) return;
     if (fadeTime > 0) {
       const audio = this.bgmAudio;
@@ -83,28 +155,45 @@ export class AudioManager {
     }
   }
 
-  playSe(storage: string, resolve: (s: string) => string) {
-    const url = resolve(storage);
-    if (this.seAudio) {
-      this.seAudio.pause();
-    }
-    this.currentSe = storage;
-    this.seAudio = new Audio(url);
-    this.seAudio.volume = this.seVolume;
-    this.seAudio.onerror = () => {
-      console.warn(`SE introuvable: ${storage}`);
-      this.seAudio = null;
-      this.currentSe = null;
+  private fadeBgm(time: number, targetVolume: number) {
+    if (!this.bgmAudio) return;
+    const startVolume = this.bgmAudio.volume;
+    const startTime = performance.now();
+    const fade = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / time, 1);
+      if (this.bgmAudio) {
+        this.bgmAudio.volume = startVolume + (targetVolume - startVolume) * progress;
+      }
+      if (progress < 1) {
+        requestAnimationFrame(fade);
+      }
     };
-    this.seAudio.play().catch(() => {
+    requestAnimationFrame(fade);
+  }
+
+  private playSe(channel: AudioChannel, storage: string, loop: boolean, volume: number) {
+    this.stopSe(channel, 0);
+    const audio = new Audio(this.resolveUrl(storage));
+    audio.loop = loop;
+    audio.volume = volume;
+    audio.onerror = () => {
+      console.warn(`SE introuvable: ${storage}`);
+      this.seAudios.delete(channel);
+    };
+    audio.onended = () => {
+      if (!loop) this.seAudios.delete(channel);
+    };
+    this.seAudios.set(channel, audio);
+    audio.play().catch(() => {
       console.warn(`SE play failed: ${storage}`);
     });
   }
 
-  stopSe(fadeTime = 0) {
-    if (!this.seAudio) return;
+  private stopSe(channel: AudioChannel, fadeTime = 0) {
+    const audio = this.seAudios.get(channel);
+    if (!audio) return;
     if (fadeTime > 0) {
-      const audio = this.seAudio;
       const startVolume = audio.volume;
       const startTime = performance.now();
       const fade = () => {
@@ -115,58 +204,35 @@ export class AudioManager {
           requestAnimationFrame(fade);
         } else {
           audio.pause();
-          if (this.seAudio === audio) {
-            this.seAudio = null;
-            this.currentSe = null;
-          }
+          this.seAudios.delete(channel);
         }
       };
       requestAnimationFrame(fade);
     } else {
-      this.seAudio.pause();
-      this.seAudio = null;
-      this.currentSe = null;
+      audio.pause();
+      this.seAudios.delete(channel);
     }
   }
 
-  fadeSe(time: number, targetVolume: number) {
-    if (!this.seAudio) return;
-    const startVolume = this.seAudio.volume;
+  private stopAllSe(fadeTime = 0) {
+    for (const channel of Array.from(this.seAudios.keys())) {
+      this.stopSe(channel, fadeTime);
+    }
+  }
+
+  private fadeSe(channel: AudioChannel, time: number, targetVolume: number) {
+    const audio = this.seAudios.get(channel);
+    if (!audio) return;
+    const startVolume = audio.volume;
     const startTime = performance.now();
     const fade = () => {
       const elapsed = performance.now() - startTime;
       const progress = Math.min(elapsed / time, 1);
-      if (this.seAudio) {
-        this.seAudio.volume = startVolume + (targetVolume - startVolume) * progress;
-      }
+      audio.volume = startVolume + (targetVolume - startVolume) * progress;
       if (progress < 1) {
         requestAnimationFrame(fade);
       }
     };
     requestAnimationFrame(fade);
-  }
-
-  handleAudioAction(action: PendingAudioAction, resolveBgm: (s: string) => string, resolveSe: (s: string) => string) {
-    switch (action.action) {
-      case "stopBgm":
-        this.stopBgm();
-        break;
-      case "fadeBgm":
-        this.stopBgm(action.time);
-        break;
-      case "stopSe":
-        this.stopSe(action.time ?? 0);
-        break;
-      case "fadeSe":
-        if (!action.storage || action.storage === this.currentSe) {
-          this.fadeSe(action.time, action.volume / 100);
-        }
-        break;
-    }
-  }
-
-  reset() {
-    this.stopBgm();
-    this.stopSe();
   }
 }
