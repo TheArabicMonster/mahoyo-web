@@ -17,7 +17,7 @@ Barre de progression globale (mise à jour manuelle).
 | E4 — Pipeline d'assets | Conversion WebP/OGG, outils Python | 0 % | ⚪ Non commencé |
 | E5 — UI/UX | Thème, accessibilité, PWA | 15 % | ⚪ Non commencé |
 | E6 — QA & optimisation | Tests, perfs, mobile | 30 % | 🟡 En cours |
-| E7 — Projet réel | Architecture propre, refactor | 80 % | 🟡 En cours (phase 0 : consolidation des contrats presque terminée) |
+| E7 — Projet réel | Architecture propre, refactor | 85 % | 🟡 En cours (contrats figés `contracts-v1`, prêt pour agents parallèles) |
 
 ## Légende
 
