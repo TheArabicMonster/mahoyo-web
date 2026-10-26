@@ -1,0 +1,622 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", serif;
+}
+
+/* ── Game viewport ── */
+
+/* Le jeu Mahoyo est en 1024×576. On utilise un viewport centré
+   qui préserve l'aspect ratio et scale pour remplir l'écran. */
+
+#game {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#viewport {
+  position: relative;
+  width: 1024px;
+  height: 576px;
+  overflow: hidden;
+  /* Scale pour remplir l'écran */
+  transform-origin: center center;
+}
+
+#viewport.shaking {
+  animation: shake var(--shake-interval, 40ms) infinite;
+}
+
+@keyframes shake {
+  0% { transform: translate(0, 0) scale(var(--viewport-scale, 1)); }
+  25% { transform: translate(var(--shake-h, 2px), var(--shake-v, -2px)) scale(var(--viewport-scale, 1)); }
+  50% { transform: translate(calc(var(--shake-h, 2px) * -1), var(--shake-v, 2px)) scale(var(--viewport-scale, 1)); }
+  75% { transform: translate(var(--shake-h, 2px), calc(var(--shake-v, 2px) * -1)) scale(var(--viewport-scale, 1)); }
+  100% { transform: translate(0, 0) scale(var(--viewport-scale, 1)); }
+}
+
+/* ── Background ── */
+
+#background,
+#background-next {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+#background {
+  z-index: 0;
+  transition: opacity var(--bg-transition-duration, 0ms) ease;
+}
+
+#background-next {
+  z-index: 1;
+  opacity: 0;
+  transition: opacity var(--bg-transition-duration, 0ms) ease;
+}
+
+#background-next.active {
+  opacity: 1;
+}
+
+/* ── Menu ── */
+
+#menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0a0a0a, #1a1a2e);
+  color: #fff;
+  z-index: 100;
+  padding: 2rem;
+}
+
+#menu-actions {
+  margin-bottom: 1rem;
+}
+
+#menu h1 {
+  font-size: 2.5rem;
+  font-weight: 300;
+  letter-spacing: 0.2em;
+  margin: 0 0 0.5rem;
+}
+
+#menu p {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 2rem;
+}
+
+#script-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 400px;
+  width: 100%;
+}
+
+#settings {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  max-width: 400px;
+  width: 100%;
+}
+
+#settings h3 {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: center;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.setting-row label {
+  flex: 0 0 110px;
+}
+
+.setting-row input[type="range"] {
+  flex: 1;
+  accent-color: rgba(255, 255, 255, 0.6);
+}
+
+.setting-row span {
+  flex: 0 0 60px;
+  text-align: right;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.script-btn {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1.25rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.script-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.script-btn .script-name {
+  font-weight: 500;
+}
+
+.script-btn .script-info {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Flowchart ── */
+
+#flowchart {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #0a0a0a, #1a1a2e);
+  color: #fff;
+  z-index: 100;
+}
+
+#flowchart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#flowchart-header h2 {
+  margin: 0;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+}
+
+#flowchart-canvas {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  background: radial-gradient(circle at center, #1a1a2e 0%, #0a0a0a 100%);
+}
+
+#flowchart-lines {
+  position: absolute;
+  inset: 0;
+  width: 1024px;
+  height: 700px;
+  pointer-events: none;
+}
+
+.flowchart-line {
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 2;
+}
+
+#flowchart-nodes {
+  position: absolute;
+  inset: 0;
+  width: 1024px;
+  height: 700px;
+}
+
+.flowchart-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 160px;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.85rem;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.flowchart-node:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
+}
+
+.flowchart-node.locked {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.flowchart-node.unlocked {
+  border-color: rgba(100, 200, 255, 0.5);
+}
+
+.flowchart-node.completed {
+  border-color: rgba(100, 255, 150, 0.6);
+  background: rgba(100, 255, 150, 0.1);
+}
+
+/* ── Pause menu ── */
+
+#pause-menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 50;
+}
+
+#pause-panel {
+  width: 90%;
+  max-width: 720px;
+  max-height: 90%;
+  overflow-y: auto;
+  background: linear-gradient(135deg, #1a1a2e, #0a0a0a);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 1.5rem;
+  color: #fff;
+}
+
+#pause-panel h2 {
+  margin: 0 0 1rem;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+#pause-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.5rem;
+}
+
+.pause-tab {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: color 0.15s;
+}
+
+.pause-tab.active,
+.pause-tab:hover {
+  color: #fff;
+}
+
+.pause-tab.active {
+  border-bottom: 2px solid rgba(255, 255, 255, 0.6);
+}
+
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.save-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+  overflow: hidden;
+}
+
+.save-slot:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.save-slot:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.save-slot .slot-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.save-slot .slot-num {
+  position: relative;
+  z-index: 1;
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.save-slot .slot-info {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.save-slot .slot-text {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+#pause-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+#pause-actions .ui-btn {
+  flex: 1;
+}
+
+/* ── Game area ── */
+
+#toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 20;
+  display: flex;
+  gap: 6px;
+}
+
+.ui-btn {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ui-btn:hover {
+  background: rgba(0, 0, 0, 0.7);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+#layers {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.sprite {
+  position: absolute;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center bottom;
+}
+
+.sprite-missing {
+  background: rgba(100, 100, 100, 0.25);
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.45);
+  min-width: 120px;
+  min-height: 80px;
+}
+
+.sprite-missing::after {
+  content: "?";
+  font-size: 1.5rem;
+  opacity: 0.5;
+}
+
+/* ── Textbox ── */
+
+#staffroll {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  z-index: 20;
+  pointer-events: none;
+}
+
+#staffroll-content {
+  position: absolute;
+  top: 576px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  will-change: transform;
+}
+
+.staffroll-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+#effects-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+  background: transparent;
+}
+
+.noise-effect {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+  animation: noise-scroll 0.2s steps(4) infinite;
+}
+
+.noise-monocro {
+  filter: grayscale(100%);
+}
+
+@keyframes noise-scroll {
+  0% { background-position: 0 0; }
+  100% { background-position: 256px 256px; }
+}
+
+.haze-effect {
+  background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.2), transparent 70%);
+  animation: haze-pulse var(--haze-duration, 2s) ease-in-out infinite;
+  backdrop-filter: blur(2px);
+}
+
+@keyframes haze-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.05); }
+}
+
+#textbox {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 160px;
+  padding: 16px 40px 12px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.5), transparent);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  z-index: 10;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+  border-top: 2px solid rgba(255, 255, 255, 0.15);
+}
+
+#textbox.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#textbox.frame-hidden {
+  border-top-color: transparent;
+}
+
+#text {
+  font-size: 1.2rem;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  flex: 1;
+  overflow-y: auto;
+}
+
+#text ruby {
+  ruby-align: center;
+}
+
+#text rt {
+  font-size: 0.55em;
+  font-weight: normal;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+#hint {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: right;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+#history-indicator {
+  display: block;
+  margin-top: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  background: rgba(255, 200, 100, 0.15);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: rgba(255, 200, 100, 0.7);
+  text-align: center;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 768px) {
+  #menu h1 {
+    font-size: 1.5rem;
+  }
+
+  #menu p {
+    font-size: 0.85rem;
+  }
+
+  #script-list {
+    max-width: 100%;
+  }
+
+  .script-btn {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+  }
+}

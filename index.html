@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#1a1a2e" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <title>Mahoyo Web</title>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").catch((err) => {
+            console.warn("Service Worker registration failed:", err);
+          });
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <div id="menu">
+        <h1>魔女の夜 — Web PoC</h1>
+        <p>Mahoutsukai no Yoru • Player web (proof of concept)</p>
+        <div id="menu-actions">
+          <button class="ui-btn" id="btn-flowchart" title="Flowchart">🗺 Flowchart</button>
+        </div>
+        <div id="script-list">
+          <p>Chargement des scripts…</p>
+        </div>
+        <div id="settings">
+          <h3>Réglages</h3>
+          <div class="setting-row">
+            <label>Vitesse du texte</label>
+            <input type="range" id="setting-text-speed" min="0" max="100" value="50" />
+            <span id="setting-text-speed-value">30 ms</span>
+          </div>
+          <div class="setting-row">
+            <label>Délai auto</label>
+            <input type="range" id="setting-auto-delay" min="500" max="8000" step="500" value="3000" />
+            <span id="setting-auto-delay-value">3.0 s</span>
+          </div>
+          <div class="setting-row">
+            <label>Volume BGM</label>
+            <input type="range" id="setting-bgm-volume" min="0" max="100" value="60" />
+            <span id="setting-bgm-volume-value">60%</span>
+          </div>
+          <div class="setting-row">
+            <label>Volume SE</label>
+            <input type="range" id="setting-se-volume" min="0" max="100" value="50" />
+            <span id="setting-se-volume-value">50%</span>
+          </div>
+        </div>
+      </div>
+      <div id="flowchart" style="display:none;">
+        <div id="flowchart-header">
+          <h2>Flowchart</h2>
+          <button class="ui-btn" id="btn-flowchart-back">Retour au menu</button>
+        </div>
+        <div id="flowchart-canvas">
+          <svg id="flowchart-lines"></svg>
+          <div id="flowchart-nodes"></div>
+        </div>
+      </div>
+      <div id="game" style="display:none;">
+        <div id="viewport">
+          <div id="background"></div>
+          <div id="background-next"></div>
+          <div id="layers"></div>
+          <div id="staffroll" style="display:none;">
+            <div id="staffroll-content"></div>
+          </div>
+          <div id="effects-overlay" style="display:none;"></div>
+          <div id="toolbar">
+            <button class="ui-btn" id="btn-pause" title="Menu pause (P)">☰ Pause</button>
+            <button class="ui-btn" id="btn-skip" title="Skip mode (T)">⏩ Skip</button>
+            <button class="ui-btn" id="btn-auto" title="Mode auto (A)">▶ Auto</button>
+            <button class="ui-btn" id="btn-fullscreen" title="Plein écran (F)">⛶ Full</button>
+          </div>
+          <div id="pause-menu" style="display:none;">
+            <div id="pause-panel">
+              <h2>Pause</h2>
+              <div id="pause-tabs">
+                <button class="pause-tab active" data-tab="save">Sauvegarder</button>
+                <button class="pause-tab" data-tab="load">Charger</button>
+                <button class="pause-tab" data-tab="settings">Réglages</button>
+              </div>
+              <div id="save-slots" class="slots-grid"></div>
+              <div id="load-slots" class="slots-grid" style="display:none;"></div>
+              <div id="pause-settings" style="display:none;">
+                <div class="setting-row">
+                  <label>Vitesse du texte</label>
+                  <input type="range" id="pause-setting-text-speed" min="0" max="100" value="50" />
+                  <span id="pause-setting-text-speed-value">30 ms</span>
+                </div>
+                <div class="setting-row">
+                  <label>Délai auto</label>
+                  <input type="range" id="pause-setting-auto-delay" min="500" max="8000" step="500" value="3000" />
+                  <span id="pause-setting-auto-delay-value">3.0 s</span>
+                </div>
+                <div class="setting-row">
+                  <label>Volume BGM</label>
+                  <input type="range" id="pause-setting-bgm-volume" min="0" max="100" value="60" />
+                  <span id="pause-setting-bgm-volume-value">60%</span>
+                </div>
+                <div class="setting-row">
+                  <label>Volume SE</label>
+                  <input type="range" id="pause-setting-se-volume" min="0" max="100" value="50" />
+                  <span id="pause-setting-se-volume-value">50%</span>
+                </div>
+              </div>
+              <div id="pause-actions">
+                <button class="ui-btn" id="btn-pause-menu">Retour au menu</button>
+                <button class="ui-btn" id="btn-pause-resume">Reprendre</button>
+              </div>
+            </div>
+          </div>
+          <div id="textbox">
+            <div id="text"></div>
+            <div id="hint">▼ Cliquez pour continuer</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

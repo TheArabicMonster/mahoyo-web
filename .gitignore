@@ -1,0 +1,32 @@
+# Dépendances
+node_modules/
+package-lock.json
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Env & secrets
+.env
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+
+# Éditeur / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ⚠️ Assets originaux du jeu — JAMAIS commités
+tools/input/
+playdata/
+public/assets/
+*.tlg
+*.tft
+*.xp3
+*.sar
+*.ogg.tmp
