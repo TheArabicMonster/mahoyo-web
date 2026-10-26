@@ -29,6 +29,7 @@ src/renderer/ + src/ui/  ── rendu navigateur
 3. **`runtime.ts`** : exécute instruction par instruction et produit des `Step { events, stop }`.
 4. **`types.ts`** : types partagés (Token, Instruction, Page, TextSegment).
 5. **`events.ts`** : contrat de sortie du runtime (`RenderEvent`, `StopReason`, `Step`, snapshots).
+6. **`stage-state.ts`** : réducteurs purs `reduceStage()` / `reduceAudio()` pour save/load/rollback.
 
 ### `src/renderer/` — rendu navigateur
 
@@ -62,6 +63,22 @@ src/renderer/ + src/ui/  ── rendu navigateur
    - audio vers `AudioPlayer.apply()`
    - menus/flowchart via `UIManager`
 5. Le **player** attend l'interaction utilisateur selon `stop`, puis rappelle `runtime.step()`.
+
+## Agents parallèles
+
+Les prompts et contrats pour les agents sont dans `docs/agents/{A,B,C,D}.md` :
+
+- **A** : `StageRenderer` DOM (`src/renderer/stage-renderer.ts`)
+- **B** : `AudioPlayer` (`src/renderer/audio-manager.ts`)
+- **C** : `UIManager` (`src/ui/ui-manager.ts`)
+- **D** : orchestrateur `Player` (`src/ui/player.ts`)
+
+Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` sont figés (`contracts-v1`). Toute modification doit passer par `docs/agents/*-QUESTIONS.md` et une revue humaine.
+
+## Tests et fixtures
+
+- `tests/unit/mocks/` : mocks partagés (`FakeAudioPlayer`, `FakeUIManager`, `FakeRuntime`).
+- `tests/fixtures/*.json` : séquences de `Step` générées par le runtime à partir de samples.
 
 ## Principes
 

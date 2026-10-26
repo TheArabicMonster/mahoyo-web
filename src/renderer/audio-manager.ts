@@ -1,7 +1,9 @@
 import type { AudioChannel, AudioEvent, AudioSnapshot } from "@/kag/events.js";
-import type { AudioPlayer, AudioSettings } from "./types.js";
+import type { AssetResolver } from "@/core/asset-resolver.js";
+import type { AudioPlayer, AudioPlayerDeps, AudioSettings } from "./types.js";
 
 export class WebAudioPlayer implements AudioPlayer {
+  private resolver: AssetResolver;
   private bgmAudio: HTMLAudioElement | null = null;
   private currentBgm: string | null = null;
   private seAudios = new Map<AudioChannel, HTMLAudioElement>();
@@ -12,6 +14,10 @@ export class WebAudioPlayer implements AudioPlayer {
     voice: 0.8,
     muted: false,
   };
+
+  constructor(deps: AudioPlayerDeps) {
+    this.resolver = deps.resolver;
+  }
 
   async unlock(): Promise<void> {
     // L'élément Audio du navigateur se débloque via un geste utilisateur.
@@ -106,15 +112,17 @@ export class WebAudioPlayer implements AudioPlayer {
     return master;
   }
 
-  private resolveUrl(storage: string): string {
-    return `/assets/${storage}`;
+  private resolveUrl(channel: AudioChannel, storage: string): string {
+    if (channel === "bgm") return this.resolver.bgm(storage);
+    if (channel === "voice") return this.resolver.bgm(storage);
+    return this.resolver.se(storage);
   }
 
   private playBgm(storage: string, loop: boolean, volume: number) {
     if (this.currentBgm === storage && this.bgmAudio) return;
     this.currentBgm = storage;
     this.stopBgm();
-    this.bgmAudio = new Audio(this.resolveUrl(storage));
+    this.bgmAudio = new Audio(this.resolveUrl("bgm", storage));
     this.bgmAudio.loop = loop;
     this.bgmAudio.volume = volume;
     this.bgmAudio.onerror = () => {
@@ -174,7 +182,7 @@ export class WebAudioPlayer implements AudioPlayer {
 
   private playSe(channel: AudioChannel, storage: string, loop: boolean, volume: number) {
     this.stopSe(channel, 0);
-    const audio = new Audio(this.resolveUrl(storage));
+    const audio = new Audio(this.resolveUrl(channel, storage));
     audio.loop = loop;
     audio.volume = volume;
     audio.onerror = () => {

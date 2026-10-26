@@ -2,8 +2,11 @@ import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";
 import { Runtime } from "@/kag/runtime.js";
 import { WebAudioPlayer } from "@/renderer/audio-manager.js";
+import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { ParsedScript } from "@/kag/types.js";
 import type { PlayerCommands, ScriptSummary } from "./types.js";
+
+const resolver = createAssetResolver();
 
 const SCRIPTS: ScriptSummary[] = [
   { id: "1-0", label: "Prologue", file: "1-0.ks", x: 512, y: 80, arc: "Prologue" },
@@ -19,7 +22,7 @@ const SCRIPTS: ScriptSummary[] = [
  */
 export class Player implements PlayerCommands {
   private runtime: Runtime | null = null;
-  private audio = new WebAudioPlayer();
+  private audio = new WebAudioPlayer({ resolver });
 
   constructor() {
     this.setupMenu();

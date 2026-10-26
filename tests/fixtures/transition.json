@@ -1,0 +1,58 @@
+[
+  {
+    "position": {
+      "scriptName": "sample.ks",
+      "page": 1,
+      "instruction": 0
+    },
+    "events": [
+      {
+        "kind": "clearText"
+      },
+      {
+        "kind": "scene",
+        "scene": {
+          "bg": "sunset",
+          "sprites": [
+            {
+              "id": "1000",
+              "storage": "青子",
+              "x": 512,
+              "y": 288,
+              "z": 1000,
+              "opacity": 1
+            }
+          ],
+          "effect": null
+        },
+        "transition": {
+          "method": "crossfade",
+          "time": 1200
+        }
+      },
+      {
+        "kind": "text",
+        "segments": [
+          {
+            "text": "夕焼けがきれいだ。"
+          }
+        ]
+      }
+    ],
+    "stop": {
+      "kind": "click",
+      "style": "page"
+    }
+  },
+  {
+    "position": {
+      "scriptName": "sample.ks",
+      "page": 1,
+      "instruction": 0
+    },
+    "events": [],
+    "stop": {
+      "kind": "end"
+    }
+  }
+]

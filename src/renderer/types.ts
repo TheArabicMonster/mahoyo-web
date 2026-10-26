@@ -4,6 +4,7 @@
  * Les implémentations sont passives : aucune gestion d'entrée utilisateur,
  * aucune décision de flux. Le player est l'unique orchestrateur.
  */
+import type { AssetResolver } from "@/core/asset-resolver.js";
 import type {
   AssetRef,
   AudioChannel,
@@ -20,6 +21,8 @@ import type {
 export type DisplaySettings = {
   /** ms par caractère, 0 = instantané. */
   textSpeed: Ms;
+  /** Délai après la fin du texte en mode auto (ms). */
+  autoDelay: Ms;
   /** Multiplicateur de taille de police (1 = défaut). */
   fontScale: number;
   /** Opacité de la textbox entre 0 et 1. */
@@ -52,6 +55,14 @@ export type RunOptions = {
 
 // ── Rendu visuel ──
 
+/** Dépendances injectées dans StageRenderer. */
+export type StageRendererDeps = {
+  resolver: AssetResolver;
+};
+
+/** Factory pour instancier un StageRenderer. */
+export type StageRendererFactory = (deps: StageRendererDeps) => StageRenderer;
+
 export interface StageRenderer {
   /** Attache le rendu au DOM. Appelé une seule fois. */
   mount(root: HTMLElement): void;
@@ -60,6 +71,8 @@ export interface StageRenderer {
    * Applique un lot d'événements (les événements `audio` sont ignorés : le player les route).
    * Résout quand le TEXTE est entièrement affiché. Les transitions, animations et
    * tremblements continuent ensuite en arrière-plan : utiliser `waitFor` pour les attendre.
+   *
+   * Le player ne peut appeler `apply()` qu'une fois à la fois (pas de concurrence).
    */
   apply(events: readonly RenderEvent[], opts: RunOptions): Promise<void>;
 
@@ -97,6 +110,14 @@ export interface StageRenderer {
 
 // ── Audio ──
 
+/** Dépendances injectées dans AudioPlayer. */
+export type AudioPlayerDeps = {
+  resolver: AssetResolver;
+};
+
+/** Factory pour instancier un AudioPlayer. */
+export type AudioPlayerFactory = (deps: AudioPlayerDeps) => AudioPlayer;
+
 export interface AudioPlayer {
   /**
    * Débloque l'AudioContext. DOIT être appelé de façon synchrone depuis
@@ -107,7 +128,10 @@ export interface AudioPlayer {
   /** En mode instant, les fondus sont réduits à zéro et les effets non bouclés ignorés. */
   apply(event: AudioEvent, opts: { instant: boolean }): void;
 
-  /** [ws] : résout quand le son du canal est terminé (immédiatement si le canal boucle ou est vide). */
+  /**
+   * [ws] : résout quand le son du canal est terminé (immédiatement si le canal boucle ou est vide).
+   * Le player convertit la `target` string en `AudioChannel` avant d'appeler cette méthode.
+   */
   waitFor(channel: AudioChannel, signal: AbortSignal): Promise<void>;
 
   restore(snapshot: AudioSnapshot): void;
@@ -116,7 +140,7 @@ export interface AudioPlayer {
 
   setSettings(settings: Readonly<AudioSettings>): void;
 
-  /** Onglet masqué ou pause. */
+  /** Onglet masqué ou pause. Appelé par le player sur `visibilitychange`. */
   suspend(): void;
   resume(): void;
 

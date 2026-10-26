@@ -26,6 +26,7 @@ import type {
   AudioEvent,
   EffectState,
   Ms,
+  Position,
   QuakeSpec,
   RenderEvent,
   SceneState,
@@ -65,6 +66,8 @@ export type RuntimeState = {
     elapsed: number;
   };
   textbox?: TextboxState;
+  /** Effet visuel actuellement appliqué sur la scène. */
+  effect?: EffectState | null;
 };
 
 export type ScriptContext = {
@@ -83,6 +86,7 @@ export function createRuntimeState(): RuntimeState {
     variables: {},
     staffroll: { lines: [], running: false, height: 10000, time: 60000, elapsed: 0 },
     textbox: { visible: true, frame: true },
+    effect: null,
   };
 }
 
@@ -113,6 +117,23 @@ export class Runtime {
     return this.context.scriptName;
   }
 
+  private buildPosition(segment?: number): Position {
+    return {
+      scriptName: this.context.scriptName,
+      page: this.context.pc,
+      instruction: this.context.instructionIndex,
+      segment,
+    };
+  }
+
+  private makeStep(events: RenderEvent[], stop: StopReason, segment?: number): Step {
+    return {
+      position: this.buildPosition(segment),
+      events,
+      stop,
+    };
+  }
+
   private getPageState(page?: PageLayer): PageState {
     return page === "back" ? this.state.back : this.state.fore;
   }
@@ -138,9 +159,7 @@ export class Runtime {
   }
 
   private buildEffectState(): EffectState | null {
-    // Les effets sont appliqués sur la scène affichée (fore).
-    // On ne garde pas d'état d'effet persistant dans RuntimeState pour l'instant.
-    return null;
+    return this.state.effect ?? null;
   }
 
   private buildTextboxState(): TextboxState {
@@ -354,12 +373,13 @@ export class Runtime {
   }
 
   private applyEffect(instruction: Extract<Instruction, { kind: "noise" | "haze" | "stophaze" }>): RenderEvent {
-    const effect: EffectState =
+    const effect: EffectState | null =
       instruction.kind === "noise"
         ? { kind: "noise", opacity: instruction.opacity, monocro: instruction.monocro }
         : instruction.kind === "haze"
           ? { kind: "haze", power: instruction.power, delta: instruction.delta, omega: instruction.omega }
-          : { kind: "stophaze" };
+          : null;
+    this.state.effect = effect;
     return { kind: "effect", effect };
   }
 
@@ -598,7 +618,7 @@ export class Runtime {
           const result = this.processText(instruction);
           events.push(...result.events);
           if (result.stop) {
-            return { events, stop: result.stop };
+            return this.makeStep(events, result.stop);
           }
           continue;
         }
@@ -613,7 +633,7 @@ export class Runtime {
         events.push(...result.events);
         if (result.stop) {
           this.context.instructionIndex += 1;
-          return { events, stop: result.stop };
+          return this.makeStep(events, result.stop);
         }
 
         // Si le contexte a changé (call/return), on note le changement et on
@@ -643,10 +663,10 @@ export class Runtime {
         continue;
       }
 
-      return { events, stop: { kind: "click", style: "page" } };
+      return this.makeStep(events, { kind: "click", style: "page" });
     }
 
-    return { events, stop: { kind: "end" } };
+    return this.makeStep(events, { kind: "end" });
   }
 
   /**
