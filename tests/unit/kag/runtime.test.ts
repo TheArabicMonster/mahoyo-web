@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";
 import { Runtime } from "@/kag/runtime.js";
+import type { RenderEvent, StopReason } from "@/kag/events.js";
 
 const SAMPLE = `
 *page0|
@@ -17,32 +18,62 @@ const SAMPLE = `
 @pg
 `;
 
+function findEvent<T extends RenderEvent["kind"]>(events: readonly RenderEvent[], kind: T): Extract<RenderEvent, { kind: T }> | undefined {
+  return events.find((e): e is Extract<RenderEvent, { kind: T }> => e.kind === kind);
+}
+
+function expectClick(stop: StopReason, style: "line" | "page") {
+  expect(stop.kind).toBe("click");
+  if (stop.kind !== "click") throw new Error("unexpected stop kind");
+  expect(stop.style).toBe(style);
+}
+
 describe("Runtime", () => {
   it("advances through pages", () => {
     const script = parse(lex(SAMPLE));
     const runtime = new Runtime(script);
 
-    const page0 = runtime.next();
-    expect(page0).not.toBeNull();
-    expect(page0?.text).toContain("こんにちは");
-    expect(page0?.display.background).toBe("black");
-    expect(page0?.display.layers[0].storage).toBe("青子");
+    const step0 = runtime.step();
+    expectClick(step0.stop, "page");
 
-    const page1 = runtime.next();
-    expect(page1).not.toBeNull();
-    expect(page1?.text).toContain("さようなら");
-    expect(page1?.display.background).toBe("white");
-    expect(page1?.display.layers.length).toBe(0);
+    const textEvent = findEvent(step0.events, "text");
+    expect(textEvent).toBeDefined();
+    if (textEvent) {
+      expect(textEvent.segments.some((s) => "text" in s && s.text.includes("こんにちは"))).toBe(true);
+    }
 
-    expect(runtime.next()).toBeNull();
+    const sceneEvents0 = step0.events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
+    expect(sceneEvents0.length).toBeGreaterThan(0);
+    const lastScene0 = sceneEvents0[sceneEvents0.length - 1];
+    expect(lastScene0.scene.bg).toBe("black");
+    expect(lastScene0.scene.sprites[0]?.storage).toBe("青子");
+
+    const step1 = runtime.step();
+    expectClick(step1.stop, "page");
+
+    const sceneEvents1 = step1.events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
+    expect(sceneEvents1.length).toBeGreaterThan(0);
+    const lastScene1 = sceneEvents1[sceneEvents1.length - 1];
+    expect(lastScene1.scene.bg).toBe("white");
+    expect(lastScene1.scene.sprites.length).toBe(0);
+
+    const step2 = runtime.step();
+    expect(step2.stop.kind).toBe("end");
   });
 
   it("jumps to a label", () => {
     const script = parse(lex(SAMPLE));
     const runtime = new Runtime(script);
     expect(runtime.jump("page1")).toBe(true);
-    const page = runtime.next();
-    expect(page?.text).toContain("さようなら");
+
+    const step = runtime.step();
+    expectClick(step.stop, "page");
+
+    const textEvent = findEvent(step.events, "text");
+    expect(textEvent).toBeDefined();
+    if (textEvent) {
+      expect(textEvent.segments.some((s) => "text" in s && s.text.includes("さようなら"))).toBe(true);
+    }
   });
 
   it("supports fore/back layer model with @trans", () => {
@@ -57,11 +88,17 @@ describe("Runtime", () => {
     const script = parse(lex(TRANS_SAMPLE));
     const runtime = new Runtime(script);
 
-    const page0 = runtime.next();
-    expect(page0).not.toBeNull();
-    expect(page0?.display.background).toBe("sunset");
-    expect(page0?.display.layers[0].storage).toBe("青子");
-    expect(page0?.transition).toBe(true);
+    const step = runtime.step();
+    expectClick(step.stop, "page");
+
+    const sceneEvents = step.events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
+    expect(sceneEvents.length).toBe(1);
+    expect(sceneEvents[0].scene.bg).toBe("sunset");
+    expect(sceneEvents[0].scene.sprites[0]?.storage).toBe("青子");
+    expect(sceneEvents[0].transition.method).toBe("crossfade");
+    if (sceneEvents[0].transition.method === "crossfade") {
+      expect(sceneEvents[0].transition.time).toBe(1200);
+    }
   });
 
   it("supports multi-script loading via @call storage=", async () => {
@@ -82,28 +119,41 @@ describe("Runtime", () => {
     const subScript = parse(lex(SUB_SCRIPT));
     const runtime = new Runtime(mainScript, "main.ks");
 
-    // Configurer le scriptLoader
     runtime.scriptLoader = async (storage: string) => {
       if (storage === "sub.ks") return subScript;
       return null;
     };
 
-    // Page 0: @call storage=sub.ks détecté → pendingScriptLoad
-    const p1 = runtime.next();
-    expect(p1?.pendingScriptLoad).toBe("sub.ks");
-    expect(p1?.text).toContain("メインスクリプト");
+    const step1 = runtime.step();
+    expect(step1.stop.kind).toBe("loadScript");
+    if (step1.stop.kind !== "loadScript") throw new Error("unexpected stop kind");
+    expect(step1.stop.file).toBe("sub.ks");
 
-    // Charger le script
+    const textEvent = findEvent(step1.events, "text");
+    expect(textEvent).toBeDefined();
+    if (textEvent) {
+      expect(textEvent.segments.some((s) => "text" in s && s.text.includes("メインスクリプト"))).toBe(true);
+    }
+
     const loaded = await runtime.loadScript("sub.ks");
     expect(loaded).toBe(true);
 
-    // Sub script page 0: texte du sub
-    const p2 = runtime.next();
-    expect(p2?.text).toContain("サブスクリプト");
+    const step2 = runtime.step();
+    // Après @return, le runtime reprend l'exécution dans le script appelant
+    // jusqu'au prochain point d'arrêt. Il contient donc le texte du sub-script
+    // et celui de la page suivante du main.
+    expectClick(step2.stop, "page");
+    const allText2 = step2.events
+      .filter((e): e is Extract<RenderEvent, { kind: "text" }> => e.kind === "text")
+      .flatMap((e) => e.segments)
+      .filter((s) => "text" in s)
+      .map((s) => s.text)
+      .join("");
+    expect(allText2).toContain("サブスクリプト");
+    expect(allText2).toContain("メインに戻った");
 
-    // @return → retour au main, page1
-    const p3 = runtime.next();
-    expect(p3?.text).toContain("メインに戻った");
+    const step3 = runtime.step();
+    expect(step3.stop.kind).toBe("end");
   });
 
   it("clears a specific layer with @clfg", () => {
@@ -116,9 +166,13 @@ describe("Runtime", () => {
 `;
     const script = parse(lex(CLFG_SAMPLE));
     const runtime = new Runtime(script);
-    const page = runtime.next();
-    expect(page?.display.layers.length).toBe(1);
-    expect(page?.display.layers[0].storage).toBe("有珠");
+    const step = runtime.step();
+
+    const sceneEvents = step.events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
+    expect(sceneEvents.length).toBeGreaterThan(0);
+    const lastScene = sceneEvents[sceneEvents.length - 1];
+    expect(lastScene.scene.sprites.length).toBe(1);
+    expect(lastScene.scene.sprites[0]?.storage).toBe("有珠");
   });
 
   it("copies fore to back with @backlay", () => {
@@ -134,14 +188,16 @@ describe("Runtime", () => {
 `;
     const script = parse(lex(BACKLAY_SAMPLE));
     const runtime = new Runtime(script);
-    const page = runtime.next();
-    expect(page?.state.back.background).toBe("sunset");
-    expect(page?.state.back.layers[0].storage).toBe("青子");
-    // Après @trans, fore est mis à jour depuis back
-    expect(page?.display.background).toBe("sunset");
+    const step = runtime.step();
+
+    const sceneEvent = findEvent(step.events, "scene");
+    expect(sceneEvent).toBeDefined();
+    if (sceneEvent) {
+      expect(sceneEvent.scene.bg).toBe("sunset");
+    }
   });
 
-  it("emits audio actions for @playstop and @fadebgm", () => {
+  it("emits audio events for @play, @playstop and @fadebgm", () => {
     const AUDIO_SAMPLE = `
 *page0|
 @play storage=m19
@@ -155,16 +211,30 @@ describe("Runtime", () => {
     const script = parse(lex(AUDIO_SAMPLE));
     const runtime = new Runtime(script);
 
-    const p0 = runtime.next();
-    expect(p0?.state.bgm).toBeNull();
-    expect(p0?.pendingAudioAction).toEqual({ action: "stopBgm" });
+    const step0 = runtime.step();
+    const audioEvents0 = step0.events.filter((e): e is Extract<RenderEvent, { kind: "audio" }> => e.kind === "audio");
+    expect(audioEvents0.length).toBe(2);
+    expect(audioEvents0[0].event.kind).toBe("play");
+    if (audioEvents0[0].event.kind === "play") {
+      expect(audioEvents0[0].event.channel).toBe("bgm");
+    }
+    expect(audioEvents0[1].event.kind).toBe("stop");
+    if (audioEvents0[1].event.kind === "stop") {
+      expect(audioEvents0[1].event.channel).toBe("bgm");
+    }
 
-    const p1 = runtime.next();
-    expect(p1?.state.bgm).toBeNull();
-    expect(p1?.pendingAudioAction).toEqual({ action: "fadeBgm", time: 2000 });
+    const step1 = runtime.step();
+    const audioEvents1 = step1.events.filter((e): e is Extract<RenderEvent, { kind: "audio" }> => e.kind === "audio");
+    expect(audioEvents1.length).toBe(2);
+    expect(audioEvents1[0].event.kind).toBe("play");
+    expect(audioEvents1[1].event.kind).toBe("fade");
+    if (audioEvents1[1].event.kind === "fade") {
+      expect(audioEvents1[1].event.volume).toBe(0);
+      expect(audioEvents1[1].event.time).toBe(2000);
+    }
   });
 
-  it("emits audio action for @sestop", () => {
+  it("emits audio event for @sestop", () => {
     const SE_SAMPLE = `
 *page0|
 @se storage=se01
@@ -173,9 +243,18 @@ describe("Runtime", () => {
 `;
     const script = parse(lex(SE_SAMPLE));
     const runtime = new Runtime(script);
-    const page = runtime.next();
-    expect(page?.state.se).toBeNull();
-    expect(page?.pendingAudioAction).toEqual({ action: "stopSe", storage: "se01", time: 500 });
+    const step = runtime.step();
+
+    const audioEvents = step.events.filter((e): e is Extract<RenderEvent, { kind: "audio" }> => e.kind === "audio");
+    expect(audioEvents.length).toBe(2);
+    expect(audioEvents[0].event.kind).toBe("play");
+    if (audioEvents[0].event.kind === "play") {
+      expect(audioEvents[0].event.channel).toBe("se:0");
+    }
+    expect(audioEvents[1].event.kind).toBe("stop");
+    if (audioEvents[1].event.kind === "stop") {
+      expect(audioEvents[1].event.fadeOut).toBe(500);
+    }
   });
 
   it("toggles textbox visibility with @textoff and @texton", () => {
@@ -190,11 +269,19 @@ describe("Runtime", () => {
     const script = parse(lex(TEXTBOX_SAMPLE));
     const runtime = new Runtime(script);
 
-    const p0 = runtime.next();
-    expect(p0?.pendingTextbox).toEqual({ visible: false, time: 300 });
+    const step0 = runtime.step();
+    const textbox0 = findEvent(step0.events, "textbox");
+    expect(textbox0).toBeDefined();
+    if (textbox0) {
+      expect(textbox0.state.visible).toBe(false);
+    }
 
-    const p1 = runtime.next();
-    expect(p1?.pendingTextbox).toEqual({ visible: true, time: 300 });
+    const step1 = runtime.step();
+    const textbox1 = findEvent(step1.events, "textbox");
+    expect(textbox1).toBeDefined();
+    if (textbox1) {
+      expect(textbox1.state.visible).toBe(true);
+    }
   });
 
   it("emits quake effect for @quake", () => {
@@ -205,7 +292,47 @@ describe("Runtime", () => {
 `;
     const script = parse(lex(QUAKE_SAMPLE));
     const runtime = new Runtime(script);
-    const page = runtime.next();
-    expect(page?.pendingQuake).toEqual({ vmax: 10, hmax: 2, time: 500, interval: 40 });
+    const step = runtime.step();
+
+    const quake = findEvent(step.events, "quake");
+    expect(quake).toBeDefined();
+    if (quake && quake.quake) {
+      expect(quake.quake.vmax).toBe(10);
+      expect(quake.quake.hmax).toBe(2);
+      expect(quake.quake.time).toBe(500);
+    }
+  });
+
+  it("stops on [l] pause markers", () => {
+    const PAUSE_SAMPLE = `
+*page0|
+Première ligne.[l]
+Deuxième ligne.
+@pg
+`;
+    const script = parse(lex(PAUSE_SAMPLE));
+    const runtime = new Runtime(script);
+
+    const step1 = runtime.step();
+    expectClick(step1.stop, "line");
+
+    const step2 = runtime.step();
+    expectClick(step2.stop, "page");
+  });
+
+  it("stops on @wait", () => {
+    const WAIT_SAMPLE = `
+*page0|
+@wait time=800
+@pg
+`;
+    const script = parse(lex(WAIT_SAMPLE));
+    const runtime = new Runtime(script);
+
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("wait");
+    if (step.stop.kind === "wait") {
+      expect(step.stop.time).toBe(800);
+    }
   });
 });

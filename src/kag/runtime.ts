@@ -1,67 +1,53 @@
 /**
- * Minimal KAG3 runtime with fore/back layer model and multi-script support.
+ * Moteur KAG3 minimal avec modèle fore/back et support multi-script.
  *
- * KiriKiri uses a dual-buffer system:
- * - "fore" page: what's currently displayed
- * - "back" page: where changes are prepared before a transition
- * - @trans copies back → fore with a visual transition
+ * Le runtime produit des {@link Step} : un lot d'événements purs suivis d'un
+ * point d'arrêt. Le player est responsable d'orchestrer le rendu et d'attendre
+ * les interactions utilisateur.
  *
- * Multi-script:
- * - @call storage=xxx.ks loads another script file
- * - @return goes back to the calling script
- * - The runtime uses a callback (scriptLoader) to fetch scripts asynchronously
+ * KiriKiri utilise un double buffer :
+ * - "fore" : ce qui est actuellement affiché
+ * - "back" : où les modifications sont préparées avant une transition
+ * - @trans copie back → fore avec une transition visuelle
  */
 
-import type { AnimationDef, Instruction, Layer, Page, ParsedScript, TextSegment } from "./types.js";
+import type {
+  AnimationDef,
+  Instruction,
+  Layer,
+  Page,
+  ParsedScript,
+  TextSegment,
+} from "./types.js";
 import type { PageLayer } from "./types.js";
-
-export type PendingAudioAction =
-  | { action: "stopBgm"; time?: number }
-  | { action: "fadeBgm"; time: number }
-  | { action: "stopSe"; storage?: string; time?: number }
-  | { action: "fadeSe"; storage?: string; time: number; volume: number };
-
-export type PendingQuake = {
-  vmax: number;
-  hmax: number;
-  time: number;
-  interval: number;
-};
-
-export type PendingTextbox = {
-  visible: boolean;
-  time: number;
-};
-
-export type PendingFrame = {
-  visible: boolean;
-};
-
-export type PendingEffect =
-  | { kind: "noise"; opacity: number; monocro?: boolean }
-  | { kind: "haze"; power: number; delta: number; omega: number }
-  | { kind: "stophaze" };
+import type {
+  AssetRef,
+  AudioChannel,
+  AudioEvent,
+  EffectState,
+  Ms,
+  QuakeSpec,
+  RenderEvent,
+  SceneState,
+  SpriteState,
+  StaffrollState,
+  Step,
+  StopReason,
+  TextboxState,
+  TransitionSpec,
+} from "./events.js";
 
 export type RuntimeSaveData = {
   scriptName: string;
   pc: number;
+  instructionIndex: number;
   state: RuntimeState;
-  callStack: { scriptName: string; pc: number }[];
+  callStack: { scriptName: string; pc: number; instructionIndex: number }[];
 };
-
-export type { Layer };
 
 export type PageState = {
   background: string;
   layers: Layer[];
-};
-
-export type StaffrollLine = {
-  text: string;
-  y: number;
-  size: number;
-  face?: string;
-  cmx?: number;
 };
 
 export type RuntimeState = {
@@ -71,49 +57,21 @@ export type RuntimeState = {
   se: string | null;
   variables: Record<string, unknown>;
   staffroll?: {
-    lines: StaffrollLine[];
+    lines: { text: string; y: number; size: number; face?: string; cmx?: number }[];
     face?: string;
     running: boolean;
     height: number;
     time: number;
     elapsed: number;
   };
+  textbox?: TextboxState;
 };
 
 export type ScriptContext = {
   script: ParsedScript;
   pc: number;
+  instructionIndex: number;
   scriptName: string;
-};
-export type RuntimeSnapshot = {
-  page: number;
-  totalPages: number;
-  label?: string;
-  scriptName: string;
-  segments: TextSegment[];
-  text: string;
-  state: RuntimeState;
-  /** L'état "fore" qui doit être rendu */
-  display: PageState;
-  /** S'il y a eu une transition @trans sur cette page */
-  transition: boolean;
-  /** Une demande de chargement de script est en attente */
-  pendingScriptLoad?: string;
-  /** Une animation est en attente pour le renderer */
-  pendingAnimation?: AnimationDef | null;
-  /** Une action audio est en attente pour le renderer */
-  pendingAudioAction?: PendingAudioAction | null;
-  /** Un tremblement d'écran est en attente pour le renderer */
-  pendingQuake?: PendingQuake | null;
-  /** La visibilité de la textbox est en attente pour le renderer */
-  pendingTextbox?: PendingTextbox | null;
-  /** La visibilité de la bordure de la textbox est en attente pour le renderer */
-  pendingFrame?: PendingFrame | null;
-  /** Un effet visuel est en attente pour le renderer */
-  pendingEffect?: PendingEffect | null;
-  /** Temps d'attente demandé par @wait (ms), 0 = pas de wait */
-  waitTime?: number;
-  waiting: boolean;
 };
 
 export function createRuntimeState(): RuntimeState {
@@ -124,6 +82,7 @@ export function createRuntimeState(): RuntimeState {
     se: null,
     variables: {},
     staffroll: { lines: [], running: false, height: 10000, time: 60000, elapsed: 0 },
+    textbox: { visible: true, frame: true },
   };
 }
 
@@ -132,34 +91,17 @@ export class Runtime {
   private callStack: ScriptContext[] = [];
   private state: RuntimeState;
 
-  /** Callback pour charger un script par son nom de fichier */
+  /** Callback pour charger un script par son nom de fichier. */
   public scriptLoader: ((storage: string) => Promise<ParsedScript | null>) | null = null;
 
   public onWarning: (message: string) => void = console.warn;
 
-  /** Animation en attente pour le renderer */
-  public pendingAnimation: AnimationDef | null = null;
-
-  /** Action audio en attente pour le renderer */
-  public pendingAudioAction: PendingAudioAction | null = null;
-
-  /** Tremblement d'écran en attente pour le renderer */
-  public pendingQuake: PendingQuake | null = null;
-
-  /** Visibilité de la textbox en attente pour le renderer */
-  public pendingTextbox: PendingTextbox | null = null;
-
-  /** Visibilité de la bordure de la textbox en attente pour le renderer */
-  public pendingFrame: PendingFrame | null = null;
-
-  /** Effet visuel en attente pour le renderer */
-  public pendingEffect: PendingEffect | null = null;
-
-  /** Temps d'attente demandé par @wait (ms) */
-  public waitTime: number = 0;
-
-  constructor(script: ParsedScript, scriptName: string = "main", initialState: RuntimeState = createRuntimeState()) {
-    this.context = { script, pc: 0, scriptName };
+  constructor(
+    script: ParsedScript,
+    scriptName: string = "main",
+    initialState: RuntimeState = createRuntimeState(),
+  ) {
+    this.context = { script, pc: 0, instructionIndex: 0, scriptName };
     this.state = initialState;
   }
 
@@ -171,335 +113,544 @@ export class Runtime {
     return this.context.scriptName;
   }
 
-  private pcChanged = false;
-
   private getPageState(page?: PageLayer): PageState {
-    if (page === "back") return this.state.back;
-    return this.state.fore;
+    return page === "back" ? this.state.back : this.state.fore;
   }
 
-  private applyInstruction(instruction: Instruction): boolean | string {
-    // Retourne true si une transition @trans a eu lieu
-    // Retourne une string si un chargement de script est nécessaire
+  private layerToSprite(layer: Layer): SpriteState {
+    return {
+      id: String(layer.index),
+      storage: layer.storage,
+      x: layer.center,
+      y: layer.vcenter,
+      z: layer.index,
+      opacity: layer.opacity,
+    };
+  }
+
+  private buildSceneState(page: PageLayer = "fore"): SceneState {
+    const target = page === "back" ? this.state.back : this.state.fore;
+    return {
+      bg: target.background || null,
+      sprites: target.layers.map((l) => this.layerToSprite(l)),
+      effect: this.buildEffectState(),
+    };
+  }
+
+  private buildEffectState(): EffectState | null {
+    // Les effets sont appliqués sur la scène affichée (fore).
+    // On ne garde pas d'état d'effet persistant dans RuntimeState pour l'instant.
+    return null;
+  }
+
+  private buildTextboxState(): TextboxState {
+    return this.state.textbox ?? { visible: true, frame: true };
+  }
+
+  private buildStaffrollState(): StaffrollState {
+    if (!this.state.staffroll) return null;
+    return {
+      lines: this.state.staffroll.lines,
+      face: this.state.staffroll.face,
+      running: this.state.staffroll.running,
+      height: this.state.staffroll.height,
+      time: this.state.staffroll.time,
+      elapsed: this.state.staffroll.elapsed,
+    };
+  }
+
+  private makeTransition(time: number, rule?: string): TransitionSpec {
+    if (!rule || rule === "crossfade") {
+      return time > 0 ? { method: "crossfade", time } : { method: "none" };
+    }
+    return { method: "universal", time, rule, vague: 32 };
+  }
+
+  private emitScene(transition: TransitionSpec): RenderEvent {
+    return {
+      kind: "scene",
+      scene: this.buildSceneState("fore"),
+      transition,
+    };
+  }
+
+  private applyBg(instruction: Extract<Instruction, { kind: "bg" }>): RenderEvent | null {
+    const target = this.getPageState(instruction.page);
+    target.background = instruction.storage;
+    if (instruction.page === "back") return null;
+    return this.emitScene(this.makeTransition(instruction.time, instruction.rule));
+  }
+
+  private applyFg(instruction: Extract<Instruction, { kind: "fg" }>): RenderEvent | null {
+    const target = this.getPageState(instruction.page);
+    const layer: Layer = {
+      storage: instruction.storage,
+      center: instruction.center,
+      vcenter: instruction.vcenter,
+      index: instruction.index,
+      opacity: instruction.opacity ?? 1,
+    };
+    target.layers = target.layers.filter((l) => l.index !== layer.index);
+    target.layers.push(layer);
+    if (instruction.page === "back") return null;
+    return this.emitScene({ method: "none" });
+  }
+
+  private applyAnimate(instruction: Extract<Instruction, { kind: "animate" }>): RenderEvent[] {
+    const def = instruction.def;
+    const target = this.getPageState(def.page);
+    const lastFrame = def.keyframes[def.keyframes.length - 1];
+    const firstFrame = def.keyframes[0];
+    const layer: Layer = {
+      storage: def.storage,
+      center: lastFrame?.center ?? firstFrame?.center ?? 512,
+      vcenter: lastFrame?.vcenter ?? firstFrame?.vcenter ?? 288,
+      index: parseInt(def.id ?? "1"),
+      opacity: lastFrame?.opacity ?? firstFrame?.opacity ?? 1,
+    };
+    target.layers = target.layers.filter((l) => l.storage !== layer.storage);
+    target.layers.push(layer);
+
+    const events: RenderEvent[] = [];
+    if (!def.page || def.page === "fore") {
+      events.push(this.emitScene({ method: "none" }));
+    }
+    events.push({ kind: "animate", target: String(layer.index), def });
+    return events;
+  }
+
+  private applyClall(instruction: Extract<Instruction, { kind: "clall" }>): RenderEvent | null {
+    const target = this.getPageState(instruction.page);
+    target.layers = [];
+    if (instruction.page === "back") return null;
+    return this.emitScene({ method: "none" });
+  }
+
+  private applyClfg(instruction: Extract<Instruction, { kind: "clfg" }>): RenderEvent | null {
+    const target = this.getPageState(instruction.page);
+    if (instruction.storage) {
+      target.layers = target.layers.filter((l) => l.storage !== instruction.storage);
+    } else if (instruction.index !== undefined) {
+      target.layers = target.layers.filter((l) => l.index !== instruction.index);
+    }
+    if (instruction.page === "back") return null;
+    return this.emitScene({ method: "none" });
+  }
+
+  private applyBacklay(instruction: Extract<Instruction, { kind: "backlay" }>): RenderEvent[] {
+    const storage = instruction.storage;
+    if (!storage || storage === "fg") {
+      this.state.back.layers = this.state.fore.layers.slice();
+    }
+    if (!storage || storage === "bg") {
+      this.state.back.background = this.state.fore.background;
+    }
+    return [];
+  }
+
+  private applyTrans(instruction: Extract<Instruction, { kind: "trans" }>): RenderEvent {
+    this.state.fore = {
+      background: this.state.back.background,
+      layers: this.state.back.layers.slice(),
+    };
+    return this.emitScene(this.makeTransition(instruction.time, instruction.rule));
+  }
+
+  private buildAudioEvent(action: AudioEvent["kind"], channel: AudioChannel, args: Omit<AudioEvent & { kind: typeof action }, "kind" | "channel">): AudioEvent {
+    return { kind: action, channel, ...args } as AudioEvent;
+  }
+
+  private applyAudio(instruction: Instruction): RenderEvent | null {
+    let event: AudioEvent | null = null;
     switch (instruction.kind) {
-      case "bg": {
-        const target = this.getPageState(instruction.page);
-        target.background = instruction.storage;
-        break;
-      }
-      case "fg": {
-        const target = this.getPageState(instruction.page);
-        const layer: Layer = {
-          storage: instruction.storage,
-          center: instruction.center,
-          vcenter: instruction.vcenter,
-          index: instruction.index,
-          opacity: instruction.opacity ?? 1,
-        };
-        target.layers = target.layers.filter((l) => l.index !== layer.index);
-        target.layers.push(layer);
-        break;
-      }
-      case "animate": {
-        // Pour le runtime, on place le sprite à la position finale de l'animation
-        const def = instruction.def;
-        const target = this.getPageState(def.page);
-        const lastFrame = def.keyframes[def.keyframes.length - 1];
-        // Première keyframe pour la position initiale
-        const firstFrame = def.keyframes[0];
-        const layer: Layer = {
-          storage: def.storage,
-          center: lastFrame?.center ?? firstFrame?.center ?? 512,
-          vcenter: lastFrame?.vcenter ?? firstFrame?.vcenter ?? 288,
-          index: parseInt(def.id ?? "1"),
-          opacity: lastFrame?.opacity ?? firstFrame?.opacity ?? 1,
-        };
-        target.layers = target.layers.filter((l) => l.storage !== layer.storage);
-        target.layers.push(layer);
-        if (!def.page || def.page === "fore") {
-          this.state.back.layers = target.layers.slice();
-        }
-        // Exposer l'animation pour le renderer
-        this.pendingAnimation = def;
-        break;
-      }
-      case "clall": {
-        const target = this.getPageState(instruction.page);
-        target.layers = [];
-        break;
-      }
-      case "clfg": {
-        const target = this.getPageState(instruction.page);
-        if (instruction.storage) {
-          target.layers = target.layers.filter((l) => l.storage !== instruction.storage);
-        } else if (instruction.index !== undefined) {
-          target.layers = target.layers.filter((l) => l.index !== instruction.index);
-        }
-        break;
-      }
-      case "backlay": {
-        const storage = instruction.storage;
-        if (!storage || storage === "fg") {
-          this.state.back.layers = this.state.fore.layers.slice();
-        }
-        if (!storage || storage === "bg") {
-          this.state.back.background = this.state.fore.background;
-        }
-        break;
-      }
-      case "trans": {
-        this.state.fore = {
-          background: this.state.back.background,
-          layers: this.state.back.layers.slice(),
-        };
-        return true;
-      }
-      case "play":
+      case "play": {
         this.state.bgm = instruction.storage;
+        event = {
+          kind: "play",
+          channel: "bgm",
+          storage: instruction.storage,
+          loop: true,
+          volume: (instruction.volume ?? 100) / 100,
+        };
         break;
-      case "playstop":
+      }
+      case "playstop": {
         this.state.bgm = null;
-        this.pendingAudioAction = { action: "stopBgm" };
+        event = { kind: "stop", channel: "bgm" };
         break;
-      case "fadebgm":
+      }
+      case "fadebgm": {
         this.state.bgm = null;
-        this.pendingAudioAction = { action: "fadeBgm", time: instruction.time };
+        event = { kind: "fade", channel: "bgm", volume: 0, time: instruction.time };
         break;
-      case "se":
+      }
+      case "se": {
         this.state.se = instruction.storage;
+        event = {
+          kind: "play",
+          channel: "se:0",
+          storage: instruction.storage,
+          loop: false,
+          volume: (instruction.volume ?? 100) / 100,
+        };
         break;
-      case "sestop":
+      }
+      case "sestop": {
         this.state.se = null;
-        this.pendingAudioAction = {
-          action: "stopSe",
-          storage: instruction.storage,
+        event = {
+          kind: "stop",
+          channel: instruction.storage ? ("se:0" as AudioChannel) : "allSe",
+          fadeOut: instruction.time,
+        };
+        break;
+      }
+      case "fadese": {
+        event = {
+          kind: "fade",
+          channel: "se:0",
+          volume: instruction.volume / 100,
           time: instruction.time,
         };
         break;
-      case "fadese":
-        this.pendingAudioAction = {
-          action: "fadeSe",
-          storage: instruction.storage,
-          time: instruction.time,
-          volume: instruction.volume,
-        };
-        break;
-      case "quake":
-        this.pendingQuake = {
-          vmax: instruction.vmax,
-          hmax: instruction.hmax,
-          time: instruction.time,
-          interval: instruction.interval,
-        };
-        break;
-      case "stopquake":
-        this.pendingQuake = null;
-        break;
-      case "textoff":
-        this.pendingTextbox = { visible: false, time: instruction.time };
-        break;
-      case "texton":
-        this.pendingTextbox = { visible: true, time: 300 };
-        break;
-      case "position":
-        if (instruction.visible !== undefined) {
-          this.pendingTextbox = { visible: instruction.visible, time: 300 };
-        }
-        break;
-      case "invisibleframe":
-        this.pendingFrame = { visible: false };
-        break;
-      case "visibleframe":
-        this.pendingFrame = { visible: true };
-        break;
-      case "noise":
-        this.pendingEffect = {
-          kind: "noise",
-          opacity: instruction.opacity,
-          monocro: instruction.monocro,
-        };
-        break;
-      case "haze":
-        this.pendingEffect = {
-          kind: "haze",
-          power: instruction.power,
-          delta: instruction.delta,
-          omega: instruction.omega,
-        };
-        break;
-      case "stophaze":
-        this.pendingEffect = { kind: "stophaze" };
-        break;
-      case "beginploy":
-        // Séquence ploy non supportée dans ce PoC
-        break;
-      case "staffrollinit":
+      }
+    }
+    return event ? { kind: "audio", event } : null;
+  }
+
+  private applyQuake(instruction: Extract<Instruction, { kind: "quake" }>): RenderEvent {
+    const quake: QuakeSpec = {
+      time: instruction.time,
+      hmax: instruction.hmax,
+      vmax: instruction.vmax,
+    };
+    return { kind: "quake", quake };
+  }
+
+  private applyTextbox(instruction: Instruction): RenderEvent | null {
+    let visible: boolean | undefined;
+    let time = 300;
+    let frame: boolean | undefined;
+
+    if (instruction.kind === "textoff") {
+      visible = false;
+      time = instruction.time;
+    } else if (instruction.kind === "texton") {
+      visible = true;
+      time = 300;
+    } else if (instruction.kind === "position") {
+      if (instruction.visible !== undefined) visible = instruction.visible;
+    } else if (instruction.kind === "invisibleframe") {
+      frame = false;
+    } else if (instruction.kind === "visibleframe") {
+      frame = true;
+    }
+
+    const state = this.buildTextboxState();
+    if (visible !== undefined) state.visible = visible;
+    if (frame !== undefined) state.frame = frame;
+    this.state.textbox = state;
+
+    return { kind: "textbox", state, time };
+  }
+
+  private applyEffect(instruction: Extract<Instruction, { kind: "noise" | "haze" | "stophaze" }>): RenderEvent {
+    const effect: EffectState =
+      instruction.kind === "noise"
+        ? { kind: "noise", opacity: instruction.opacity, monocro: instruction.monocro }
+        : instruction.kind === "haze"
+          ? { kind: "haze", power: instruction.power, delta: instruction.delta, omega: instruction.omega }
+          : { kind: "stophaze" };
+    return { kind: "effect", effect };
+  }
+
+  private applyStaffroll(instruction: Instruction): RenderEvent | null {
+    if (instruction.kind === "staffrollinit") {
+      this.state.staffroll = {
+        lines: [],
+        face: instruction.face,
+        running: false,
+        height: 10000,
+        time: 60000,
+        elapsed: 0,
+      };
+    } else if (instruction.kind === "staffrolltext") {
+      if (!this.state.staffroll) {
         this.state.staffroll = {
           lines: [],
-          face: instruction.face,
           running: false,
           height: 10000,
           time: 60000,
           elapsed: 0,
         };
-        break;
-      case "staffrolltext":
-        if (!this.state.staffroll) {
-          this.state.staffroll = {
-            lines: [],
-            running: false,
-            height: 10000,
-            time: 60000,
-            elapsed: 0,
-          };
-        }
-        this.state.staffroll.lines.push({
-          text: instruction.text,
-          y: instruction.y,
-          size: instruction.size,
-          face: instruction.face ?? this.state.staffroll.face,
-          cmx: instruction.cmx,
-        });
-        break;
-      case "staffrollstart":
-        if (this.state.staffroll) {
-          this.state.staffroll.running = true;
-          this.state.staffroll.height = instruction.height;
-          this.state.staffroll.time = instruction.time;
-          this.state.staffroll.elapsed = 0;
-        }
-        break;
-      case "iscript":
-      case "endscript":
-        // JavaScript inline non supporté dans ce PoC
-        break;
-      case "eval": {
-        try {
-          const fn = new Function("tf", `"use strict"; return (${instruction.expression});`);
-          fn(this.state.variables);
-        } catch (err) {
-          this.onWarning(`eval failed: ${instruction.expression} — ${err}`);
-        }
-        break;
       }
-      case "jump": {
-        const target = this.context.script.labels[instruction.label];
-        if (target !== undefined) {
-          this.context.pc = target;
-          this.pcChanged = true;
-        } else {
-          this.onWarning(`unknown label: ${instruction.label}`);
-        }
-        break;
+      this.state.staffroll.lines.push({
+        text: instruction.text,
+        y: instruction.y,
+        size: instruction.size,
+        face: instruction.face ?? this.state.staffroll.face,
+        cmx: instruction.cmx,
+      });
+    } else if (instruction.kind === "staffrollstart") {
+      if (this.state.staffroll) {
+        this.state.staffroll.running = true;
+        this.state.staffroll.height = instruction.height;
+        this.state.staffroll.time = instruction.time;
+        this.state.staffroll.elapsed = 0;
       }
-      case "call": {
-        // @call peut avoir soit target=*label, soit storage=xxx.ks
-        // La commande "call" dans le parser met label = target nettoyé
-        // Si c'est un appel vers un label dans le même script
-        const target = this.context.script.labels[instruction.label];
-        if (target !== undefined) {
-          // Sauvegarder le contexte courant et sauter
-          this.callStack.push({ ...this.context, pc: this.context.pc + 1 });
-          this.context.pc = target;
-          this.pcChanged = true;
-        } else {
-          this.onWarning(`unknown label: ${instruction.label}`);
-        }
-        break;
-      }
-      case "return": {
-        const prevContext = this.callStack.pop();
-        if (prevContext !== undefined) {
-          this.context = prevContext;
-          this.pcChanged = true;
-        }
-        break;
-      }
-      case "wait":
-        this.waitTime = instruction.time;
-        break;
-      case "raw":
-      case "text":
-      case "break":
-        break;
     }
-    return false;
+    return { kind: "staffroll", state: this.buildStaffrollState() };
   }
 
-  private executePage(page: Page): RuntimeSnapshot {
-    const segments: TextSegment[] = [];
-    const textParts: string[] = [];
-    let hasTransition = false;
+  private applyEval(instruction: Extract<Instruction, { kind: "eval" }>): RenderEvent[] {
+    try {
+      const fn = new Function("tf", `"use strict"; return (${instruction.expression});`);
+      fn(this.state.variables);
+    } catch (err) {
+      this.onWarning(`eval failed: ${instruction.expression} — ${err}`);
+    }
+    return [];
+  }
 
-    for (const instruction of page.instructions) {
-      if (instruction.kind === "text") {
-        segments.push(...instruction.segments);
-        for (const seg of instruction.segments) {
-          if ("text" in seg) textParts.push(seg.text);
-        }
-      } else if (instruction.kind === "break") {
-        segments.push({ text: "\n" });
-        textParts.push("\n");
-      } else if (instruction.kind === "call" && instruction.label.includes(".")) {
-        // @call storage=xxx.ks — le label contient un "." c'est un nom de fichier
-        // Signaler le besoin de charger un script
-        return {
-          page: this.context.pc,
-          totalPages: this.context.script.pages.length,
-          label: page.label,
-          scriptName: this.context.scriptName,
-          segments,
-          text: textParts.join("").trim(),
-          state: this.state,
-          display: { ...this.state.fore, layers: this.state.fore.layers.slice() },
-          transition: hasTransition,
-          pendingScriptLoad: instruction.label,
-          waiting: true,
-        };
-      } else {
-        const result = this.applyInstruction(instruction);
-        if (result === true) hasTransition = true;
+  private applyJump(instruction: Extract<Instruction, { kind: "jump" }>): void {
+    const target = this.context.script.labels[instruction.label];
+    if (target !== undefined) {
+      this.context.pc = target;
+      this.context.instructionIndex = 0;
+    } else {
+      this.onWarning(`unknown label: ${instruction.label}`);
+    }
+  }
+
+  private applyCall(instruction: Extract<Instruction, { kind: "call" }>): StopReason | null {
+    const target = this.context.script.labels[instruction.label];
+    if (target !== undefined) {
+      this.callStack.push({ ...this.context, pc: this.context.pc + 1, instructionIndex: 0 });
+      this.context.pc = target;
+      this.context.instructionIndex = 0;
+      return null;
+    }
+    if (instruction.label.includes(".")) {
+      return { kind: "loadScript", file: instruction.label };
+    }
+    this.onWarning(`unknown label: ${instruction.label}`);
+    return null;
+  }
+
+  private applyReturn(): void {
+    const prevContext = this.callStack.pop();
+    if (prevContext !== undefined) {
+      this.context = prevContext;
+    }
+  }
+
+  private applyInstruction(instruction: Instruction): { events: RenderEvent[]; stop?: StopReason } {
+    const events: RenderEvent[] = [];
+
+    switch (instruction.kind) {
+      case "bg": {
+        const ev = this.applyBg(instruction);
+        if (ev) events.push(ev);
+        break;
       }
+      case "fg": {
+        const ev = this.applyFg(instruction);
+        if (ev) events.push(ev);
+        break;
+      }
+      case "animate":
+        events.push(...this.applyAnimate(instruction));
+        break;
+      case "clall": {
+        const ev = this.applyClall(instruction);
+        if (ev) events.push(ev);
+        break;
+      }
+      case "clfg": {
+        const ev = this.applyClfg(instruction);
+        if (ev) events.push(ev);
+        break;
+      }
+      case "backlay":
+        events.push(...this.applyBacklay(instruction));
+        break;
+      case "trans":
+        events.push(this.applyTrans(instruction));
+        break;
+      case "play":
+      case "playstop":
+      case "fadebgm":
+      case "se":
+      case "sestop":
+      case "fadese": {
+        const ev = this.applyAudio(instruction);
+        if (ev) events.push(ev);
+        break;
+      }
+      case "quake":
+        events.push(this.applyQuake(instruction));
+        break;
+      case "stopquake":
+        events.push({ kind: "quake", quake: null });
+        break;
+      case "textoff":
+      case "texton":
+      case "position":
+      case "invisibleframe":
+      case "visibleframe": {
+        const ev = this.applyTextbox(instruction);
+        if (ev) events.push(ev);
+        break;
+      }
+      case "noise":
+      case "haze":
+      case "stophaze":
+        events.push(this.applyEffect(instruction));
+        break;
+      case "beginploy":
+        // Ploy non supporté dans cette version.
+        break;
+      case "staffrollinit":
+      case "staffrolltext":
+      case "staffrollstart": {
+        const ev = this.applyStaffroll(instruction);
+        if (ev) events.push(ev);
+        break;
+      }
+      case "iscript":
+      case "endscript":
+        // JavaScript inline non supporté.
+        break;
+      case "eval":
+        events.push(...this.applyEval(instruction));
+        break;
+      case "jump":
+        this.applyJump(instruction);
+        break;
+      case "call": {
+        const stop = this.applyCall(instruction);
+        if (stop) return { events, stop };
+        break;
+      }
+      case "return":
+        this.applyReturn();
+        break;
+      case "wait":
+        return { events, stop: { kind: "wait", time: instruction.time, skippable: true } };
+      case "text":
+      case "break":
+        // Traités dans step() car le texte peut s'arrêter sur [l].
+        break;
+      case "raw":
+        // Commande inconnue tolérée.
+        break;
     }
 
-    const anim = this.pendingAnimation;
-    this.pendingAnimation = null;
-    const audioAction = this.pendingAudioAction;
-    this.pendingAudioAction = null;
-    const quake = this.pendingQuake;
-    this.pendingQuake = null;
-    const textbox = this.pendingTextbox;
-    this.pendingTextbox = null;
-    const frame = this.pendingFrame;
-    this.pendingFrame = null;
-    const effect = this.pendingEffect;
-    this.pendingEffect = null;
-    const wait = this.waitTime;
-    this.waitTime = 0;
-    return {
-      page: this.context.pc,
-      totalPages: this.context.script.pages.length,
-      label: page.label,
-      scriptName: this.context.scriptName,
-      segments,
-      text: textParts.join("").trim(),
-      state: this.state,
-      display: { ...this.state.fore, layers: this.state.fore.layers.slice() },
-      transition: hasTransition,
-      pendingAnimation: anim,
-      pendingAudioAction: audioAction,
-      pendingQuake: quake,
-      pendingTextbox: textbox,
-      pendingFrame: frame,
-      pendingEffect: effect,
-      waitTime: wait,
-      waiting: true,
-    };
+    return { events };
+  }
+
+  private processText(instruction: Extract<Instruction, { kind: "text" }>): { events: RenderEvent[]; stop?: StopReason } {
+    const events: RenderEvent[] = [];
+    const segments = instruction.segments;
+    const pauseIndex = segments.findIndex((seg) => "pause" in seg && seg.pause);
+
+    if (pauseIndex === -1) {
+      // Pas de pause : on consomme tout le texte et on passe à l'instruction suivante.
+      if (segments.length > 0) {
+        events.push({ kind: "text", segments });
+      }
+      this.context.instructionIndex += 1;
+      return { events };
+    }
+
+    // On émet le texte jusqu'à la pause [l], on garde le reste pour la prochaine étape.
+    const before = segments.slice(0, pauseIndex);
+    const after = segments.slice(pauseIndex + 1);
+    if (before.length > 0) {
+      events.push({ kind: "text", segments: before });
+    }
+    instruction.segments = after;
+    return { events, stop: { kind: "click", style: "line" } };
+  }
+
+  /**
+   * Exécute le runtime jusqu'au prochain point d'arrêt.
+   */
+  step(): Step {
+    const events: RenderEvent[] = [];
+
+    while (this.context.pc < this.context.script.pages.length) {
+      const page = this.context.script.pages[this.context.pc];
+      const instructions = page.instructions;
+
+      // Début de page : vider la textbox.
+      if (this.context.instructionIndex === 0) {
+        events.push({ kind: "clearText" });
+      }
+
+      let contextChanged = false;
+
+      while (this.context.instructionIndex < instructions.length) {
+        const instruction = instructions[this.context.instructionIndex];
+        const startScriptName = this.context.scriptName;
+        const startPc = this.context.pc;
+
+        if (instruction.kind === "text") {
+          const result = this.processText(instruction);
+          events.push(...result.events);
+          if (result.stop) {
+            return { events, stop: result.stop };
+          }
+          continue;
+        }
+
+        if (instruction.kind === "break") {
+          events.push({ kind: "lineBreak" });
+          this.context.instructionIndex += 1;
+          continue;
+        }
+
+        const result = this.applyInstruction(instruction);
+        events.push(...result.events);
+        if (result.stop) {
+          this.context.instructionIndex += 1;
+          return { events, stop: result.stop };
+        }
+
+        // Si le contexte a changé (call/return), on note le changement et on
+        // recommence la boucle externe avec les nouvelles instructions.
+        // On n'incrémente PAS instructionIndex : le nouveau contexte porte
+        // déjà l'index de reprise (0 pour un call, l'index empilé pour un return).
+        if (this.context.scriptName !== startScriptName || this.context.pc !== startPc) {
+          contextChanged = true;
+          break;
+        }
+
+        this.context.instructionIndex += 1;
+      }
+
+      // La boucle interne s'est terminée par un changement de contexte :
+      // on continue la boucle externe sans incrémenter pc.
+      if (contextChanged) {
+        continue;
+      }
+
+      // Fin de page : arrêt sur [p].
+      this.context.pc += 1;
+      this.context.instructionIndex = 0;
+
+      if (this.context.pc >= this.context.script.pages.length && this.callStack.length > 0) {
+        this.context = this.callStack.pop()!;
+        continue;
+      }
+
+      return { events, stop: { kind: "click", style: "page" } };
+    }
+
+    return { events, stop: { kind: "end" } };
   }
 
   /**
    * Charger un script externe et l'empiler sur la call stack.
-   * Appelé par le player quand pendingScriptLoad est détecté.
    */
   async loadScript(storage: string): Promise<boolean> {
     if (!this.scriptLoader) {
@@ -513,36 +664,16 @@ export class Runtime {
       return false;
     }
 
-    // Sauvegarder le contexte courant (pc + 1 pour reprendre après @call)
-    this.callStack.push({ ...this.context, pc: this.context.pc + 1 });
-    this.context = { script, pc: 0, scriptName: storage };
-    this.pcChanged = true;
+    this.callStack.push({ ...this.context, pc: this.context.pc + 1, instructionIndex: 0 });
+    this.context = { script, pc: 0, instructionIndex: 0, scriptName: storage };
     return true;
-  }
-
-  next(): RuntimeSnapshot | null {
-    if (this.context.pc >= this.context.script.pages.length) {
-      // Fin du script courant — vérifier s'il y a un contexte parent
-      if (this.callStack.length > 0) {
-        this.context = this.callStack.pop()!;
-        this.pcChanged = true;
-        return this.next();
-      }
-      return null;
-    }
-    this.pcChanged = false;
-    const page = this.context.script.pages[this.context.pc];
-    const snapshot = this.executePage(page);
-    if (!this.pcChanged && !snapshot.pendingScriptLoad) {
-      this.context.pc += 1;
-    }
-    return snapshot;
   }
 
   jump(label: string): boolean {
     const target = this.context.script.labels[label];
     if (target === undefined) return false;
     this.context.pc = target;
+    this.context.instructionIndex = 0;
     return true;
   }
 
@@ -552,16 +683,19 @@ export class Runtime {
     return {
       scriptName: this.context.scriptName,
       pc: this.context.pc,
+      instructionIndex: this.context.instructionIndex,
       state: {
         fore: { ...this.state.fore, layers: this.state.fore.layers.slice() },
         back: { ...this.state.back, layers: this.state.back.layers.slice() },
         bgm: this.state.bgm,
         se: this.state.se,
         variables: { ...this.state.variables },
+        textbox: this.state.textbox ? { ...this.state.textbox } : undefined,
       },
       callStack: this.callStack.map((ctx) => ({
         scriptName: ctx.scriptName,
         pc: ctx.pc,
+        instructionIndex: ctx.instructionIndex,
       })),
     };
   }
@@ -570,7 +704,12 @@ export class Runtime {
     const script = scripts.get(data.scriptName);
     if (!script) return false;
 
-    this.context = { script, pc: data.pc, scriptName: data.scriptName };
+    this.context = {
+      script,
+      pc: data.pc,
+      instructionIndex: data.instructionIndex,
+      scriptName: data.scriptName,
+    };
     this.state = {
       ...data.state,
       fore: { ...data.state.fore, layers: data.state.fore.layers.slice() },
