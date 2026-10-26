@@ -1,0 +1,31 @@
+.mh-ui-overlay { position: absolute; inset: 0; z-index: 100; pointer-events: auto; font-size: 1rem; color: #eee; user-select: none; }
+.mh-ui-overlay > div { position: absolute; inset: 0; pointer-events: none; }
+.mh-ui-panel, .mh-ui-choice, .mh-ui-button { pointer-events: auto; }
+.mh-ui-menu:not(:empty), .mh-ui-flowchart:not(:empty), .mh-ui-pause:not(:empty) { background: rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+.mh-ui-panel { background: rgba(20, 20, 30, 0.92); border: 1px solid #667; padding: 1.5rem; max-height: 90%; overflow: auto; }
+.mh-ui-title { margin: 0 0 1rem; font-size: 1.5rem; }
+.mh-ui-col { display: flex; flex-direction: column; gap: 0.5rem; }
+.mh-ui-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.mh-ui-button, .mh-ui-choice { background: #223; color: inherit; border: 1px solid #889; padding: 0.5rem 1rem; font: inherit; cursor: pointer; }
+.mh-ui-button:hover:not(:disabled), .mh-ui-choice:hover { background: #335; }
+.mh-ui-button:disabled { opacity: 0.4; cursor: default; }
+.mh-ui-scripts { list-style: none; padding: 0; margin: 1rem 0 0; }
+.mh-ui-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+.mh-ui-slot { border: 1px solid #556; padding: 0.5rem; }
+.mh-ui-slot-thumb { width: 100%; }
+.mh-ui-slot-preview { font-size: 0.85rem; opacity: 0.8; }
+.mh-ui-field { display: flex; gap: 0.75rem; align-items: center; margin: 0.4rem 0; }
+.mh-ui-field-label { min-width: 16rem; }
+.mh-ui-backlog { max-height: 30rem; overflow: auto; padding-left: 1.5rem; user-select: text; }
+.mh-ui-flow-map { position: relative; width: 80vmin; aspect-ratio: 16 / 9; }
+.mh-ui-flow-node { position: absolute; transform: translate(-50%, -50%); }
+.mh-ui-flow-done { border-color: #6c6; }
+.mh-ui-choices { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; }
+.mh-ui-choices[hidden], .mh-ui-status[hidden], .mh-ui-loading[hidden] { display: none; }
+.mh-ui-status { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.25rem; pointer-events: none; }
+.mh-ui-badge { background: rgba(0, 0, 0, 0.6); padding: 0.1rem 0.5rem; font-size: 0.8rem; }
+.mh-ui-toast { z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 2rem; gap: 0.25rem; }
+.mh-ui-toast-item { background: rgba(0, 0, 0, 0.8); padding: 0.4rem 1rem; }
+.mh-ui-loading { z-index: 300; background: rgba(0, 0, 0, 0.5); pointer-events: auto; }
+.mh-ui-confirm { position: absolute; inset: 0; z-index: 250; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; }
+.mh-ui-confirm-box { background: #112; border: 1px solid #889; padding: 1.5rem; }
