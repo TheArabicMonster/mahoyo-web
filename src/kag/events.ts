@@ -4,27 +4,43 @@
  * Données pures, sérialisables en JSON, sans DOM.
  * Ce fichier n'importe que depuis ./types.js.
  */
-import type { AnimationDef, Layer, TextSegment } from "./types.js";
+import type { AnimationDef, TextSegment } from "./types.js";
 
 /** Durée en millisecondes. */
 export type Ms = number;
 
 /**
  * Chemin logique d'un asset tel qu'écrit dans le script.
- * La résolution en URL est faite côté renderer/player.
+ * La résolution en URL est faite côté renderer/player via `AssetResolver`.
  */
 export type AssetRef = string;
 
+/** Position stable d'un point d'arrêt dans le déroulement du jeu. */
+export type Position = {
+  /** Nom du script courant (ex: "1-0.ks"). */
+  scriptName: string;
+  /** Index de la page dans le script. */
+  page: number;
+  /** Index de l'instruction dans la page. */
+  instruction: number;
+  /** Index du segment dans l'instruction texte (utile pour les pauses [l]). */
+  segment?: number;
+};
+
 // ── Scène (état affiché, normalisé : pas de fore/back) ──
 
-/** État d'un sprite / layer tel qu'il doit être affiché. */
+/** État d'un sprite / layer tel qu'il doit être affiché.
+ *
+ * Les coordonnées x/y sont exprimées dans la résolution de référence 1280×720.
+ * Le renderer applique le scaling nécessaire pour l'affichage réel.
+ */
 export type SpriteState = {
   /** Identifiant stable du layer KAG (valeur de `layer=` ou index). */
   id: string;
   storage: AssetRef;
-  /** Position horizontale (center). */
+  /** Position horizontale (center), en pixels dans la résolution 1280×720. */
   x: number;
-  /** Position verticale (vcenter). */
+  /** Position verticale (vcenter), en pixels dans la résolution 1280×720. */
   y: number;
   /** Ordre d'empilement, plus grand = devant. */
   z: number;
@@ -32,28 +48,39 @@ export type SpriteState = {
   opacity: number;
 };
 
-/** Effet visuel appliqué sur la scène. */
+/** Effet visuel appliqué sur la scène.
+ *
+ * `null` dans `SceneState.effect` signifie "aucun effet".
+ * Pour arrêter un effet, le runtime émet `{ kind: "effect", effect: null }`.
+ */
 export type EffectState =
   | { kind: "noise"; opacity: number; monocro?: boolean }
-  | { kind: "haze"; power: number; delta: number; omega: number }
-  | { kind: "stophaze" };
+  | { kind: "haze"; power: number; delta: number; omega: number };
 
 /** État complet de la scène à afficher. */
 export type SceneState = {
   bg: AssetRef | null;
   sprites: readonly SpriteState[];
+  /** null = aucun effet actif. */
   effect: EffectState | null;
 };
 
-/** Spécification d'une transition entre deux scènes. */
+/** Spécification d'une transition entre deux scènes.
+ *
+ * `time` est toujours en millisecondes.
+ * `vague` est une valeur sans unité (0–255) contrôlant la netteté de la rule.
+ */
 export type TransitionSpec =
   | { method: "none" }
   | { method: "crossfade"; time: Ms }
   | { method: "universal"; time: Ms; rule: AssetRef; vague: number };
 
-/** Spécification d'un tremblement d'écran. */
+/** Spécification d'un tremblement d'écran.
+ *
+ * `time` en millisecondes ; `null` = jusqu'à un événement `quake: null`.
+ * `hmax` et `vmax` sont en pixels dans la résolution 1280×720.
+ */
 export type QuakeSpec = {
-  /** null = jusqu'à un événement quake: null. */
   time: Ms | null;
   hmax: number;
   vmax: number;
@@ -62,7 +89,11 @@ export type QuakeSpec = {
 /** État de la textbox et de sa bordure. */
 export type TextboxState = { visible: boolean; frame: boolean };
 
-/** État du staffroll. */
+/** État du staffroll.
+ *
+ * `time` est la durée totale du défilement en millisecondes.
+ * `elapsed` est le temps déjà écoulé en millisecondes.
+ */
 export type StaffrollState = {
   lines: readonly { text: string; y: number; size: number; face?: string; cmx?: number }[];
   face?: string;
@@ -81,9 +112,11 @@ export type AudioEvent =
   | { kind: "stop"; channel: AudioChannel | "allSe"; fadeOut?: Ms }
   | { kind: "fade"; channel: AudioChannel; volume: number; time: Ms };
 
-/** Instantané audio utile pour les sauvegardes. */
+/** Instantané audio utile pour les sauvegardes.
+ *
+ * Seuls les sons en boucle sont persistés (BGM + SE loopés).
+ */
 export type AudioSnapshot = {
-  /** Sons en boucle actifs au moment du snapshot (BGM incluse). */
   loops: readonly { channel: AudioChannel; storage: AssetRef; volume: number }[];
 };
 
@@ -108,8 +141,8 @@ export type RenderEvent =
   | { kind: "lineBreak" }
   /** Met à jour le staffroll. */
   | { kind: "staffroll"; state: StaffrollState }
-  /** Effet visuel (noise / haze) ou arrêt. */
-  | { kind: "effect"; effect: EffectState }
+  /** Effet visuel (noise / haze). `null` dans SceneState = aucun effet. */
+  | { kind: "effect"; effect: EffectState | null }
   /** Événement audio. */
   | { kind: "audio"; event: AudioEvent };
 
@@ -133,6 +166,8 @@ export type StopReason =
 
 /** Résultat d'un `runtime.step()` : exécution jusqu'au prochain point bloquant. */
 export type Step = {
+  /** Position dans le script où le runtime s'est arrêté. */
+  position: Position;
   events: readonly RenderEvent[];
   stop: StopReason;
 };

@@ -1,7 +1,7 @@
 /**
  * Contrat UI : écrans hors jeu, entrées utilisateur et commandes vers le player.
  */
-import type { Ms } from "@/kag/events.js";
+import type { Ms, StageSnapshot } from "@/kag/events.js";
 import type { AudioSettings, DisplaySettings } from "@/renderer/types.js";
 
 // ── Réglages et état du player ──
@@ -9,8 +9,6 @@ import type { AudioSettings, DisplaySettings } from "@/renderer/types.js";
 export type GameSettings = {
   display: DisplaySettings;
   audio: AudioSettings;
-  /** Délai après la fin du texte en mode auto. */
-  autoDelay: Ms;
   /** false = le skip s'arrête sur le texte non lu. */
   skipUnread: boolean;
   language: "ja" | "en";
@@ -30,6 +28,12 @@ export type SlotId = number | "quick" | "auto";
 
 // ── Commandes UI → player ──
 
+/**
+ * Commandes que l'UI peut envoyer au player.
+ *
+ * Le player DOIT appeler `audio.unlock()` de façon synchrone dans les handlers
+ * `advance`, `startScript` et `load` pour respecter la politique autoplay.
+ */
 export interface PlayerCommands {
   /** Clic, Espace, Entrée. Le player décide : hurry, avancer, ou rien. */
   advance(): void;
@@ -79,11 +83,13 @@ export type SaveSlot = {
     timestamp: number;
     previewText: string;
     thumbnailUrl: string | null;
+    stage: StageSnapshot;
   } | null;
 };
 
 export type BacklogEntry = {
   text: string;
+  /** Voix rejouable, si présente. */
   voice?: string;
 };
 

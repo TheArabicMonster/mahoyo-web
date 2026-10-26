@@ -1,0 +1,90 @@
+[
+  {
+    "position": {
+      "scriptName": "sample.ks",
+      "page": 0,
+      "instruction": 2
+    },
+    "events": [
+      {
+        "kind": "clearText"
+      },
+      {
+        "kind": "scene",
+        "scene": {
+          "bg": "black",
+          "sprites": [],
+          "effect": null
+        },
+        "transition": {
+          "method": "crossfade",
+          "time": 500
+        }
+      },
+      {
+        "kind": "scene",
+        "scene": {
+          "bg": "black",
+          "sprites": [
+            {
+              "id": "1000",
+              "storage": "青子",
+              "x": 512,
+              "y": 288,
+              "z": 1000,
+              "opacity": 1
+            }
+          ],
+          "effect": null
+        },
+        "transition": {
+          "method": "none"
+        }
+      },
+      {
+        "kind": "text",
+        "segments": [
+          {
+            "text": "魔女の夜へようこそ。"
+          }
+        ]
+      }
+    ],
+    "stop": {
+      "kind": "click",
+      "style": "line"
+    }
+  },
+  {
+    "position": {
+      "scriptName": "sample.ks",
+      "page": 1,
+      "instruction": 0
+    },
+    "events": [
+      {
+        "kind": "text",
+        "segments": [
+          {
+            "text": "ここから物語が始まる。"
+          }
+        ]
+      }
+    ],
+    "stop": {
+      "kind": "click",
+      "style": "page"
+    }
+  },
+  {
+    "position": {
+      "scriptName": "sample.ks",
+      "page": 1,
+      "instruction": 0
+    },
+    "events": [],
+    "stop": {
+      "kind": "end"
+    }
+  }
+]

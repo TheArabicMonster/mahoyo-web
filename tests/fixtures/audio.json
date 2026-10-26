@@ -1,0 +1,72 @@
+[
+  {
+    "position": {
+      "scriptName": "sample.ks",
+      "page": 0,
+      "instruction": 3
+    },
+    "events": [
+      {
+        "kind": "clearText"
+      },
+      {
+        "kind": "audio",
+        "event": {
+          "kind": "play",
+          "channel": "bgm",
+          "storage": "m01",
+          "loop": true,
+          "volume": 1
+        }
+      },
+      {
+        "kind": "audio",
+        "event": {
+          "kind": "play",
+          "channel": "se:0",
+          "storage": "se01",
+          "loop": false,
+          "volume": 1
+        }
+      }
+    ],
+    "stop": {
+      "kind": "wait",
+      "time": 500,
+      "skippable": true
+    }
+  },
+  {
+    "position": {
+      "scriptName": "sample.ks",
+      "page": 1,
+      "instruction": 0
+    },
+    "events": [
+      {
+        "kind": "audio",
+        "event": {
+          "kind": "fade",
+          "channel": "bgm",
+          "volume": 0,
+          "time": 2000
+        }
+      }
+    ],
+    "stop": {
+      "kind": "click",
+      "style": "page"
+    }
+  },
+  {
+    "position": {
+      "scriptName": "sample.ks",
+      "page": 1,
+      "instruction": 0
+    },
+    "events": [],
+    "stop": {
+      "kind": "end"
+    }
+  }
+]
