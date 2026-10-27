@@ -5,7 +5,7 @@
  * Page boundaries are: labels (*pageN|), @pg/[p] (page break), end of input.
  */
 
-import type { AnimationDef, Instruction, ParsedScript, TextSegment, Token } from "./types.js";
+import type { AnimationDef, CropSpec, Instruction, ParsedScript, TextSegment, Token } from "./types.js";
 import { storageKey } from "@/core/storage-key.js";
 import { parseActionKeys } from "./action.js";
 
@@ -56,6 +56,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         opacity: args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : undefined,
         page: parsePageLayer(args.page),
         id: args.id,
+        partbgId: args.partbgid,
       };
     case "chgfg":
       // @chgfg : change l'image d'un calque existant (garde position/z/opacity).
@@ -120,20 +121,46 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
       };
     }
     case "partbg": {
-      // @partbg = partie de background (panorama). Traité comme un @fg positionné.
+      // @partbg = partie de background (panorama cropé).
+      // Rendu : un div width×height overflow:hidden positionné à center/vcenter,
+      // contenant un <img> translaté de (-srcleft,-srctop) et scalé srczoom/100.
       const storage = normStorage(args.storage);
       const center = parseIntArg(args.center);
       const vcenter = parseIntArg(args.vcenter);
       const index = parseIntArg(args.index, 1000);
+      const opacity = args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : undefined;
       const page = parsePageLayer(args.page);
+      const id = args.id;
+      const noclear = args.noclear === "1";
+      const bgstorage = args.bgstorage ? normStorage(args.bgstorage) : undefined;
+      const time = parseIntArg(args.time);
+      const rule = args.rule;
+      // srczoom (uniforme) ou srczoomx/srczoomy (séparé). Défaut 100.
+      const srcZoomX = args.srczoomx !== undefined ? parseIntArg(args.srczoomx) : parseIntArg(args.srczoom, 100);
+      const srcZoomY = args.srczoomy !== undefined ? parseIntArg(args.srczoomy) : parseIntArg(args.srczoom, 100);
+      const crop: CropSpec = {
+        width: parseIntArg(args.width),
+        height: parseIntArg(args.height),
+        srcLeft: parseFloat(args.srcleft ?? "0"),
+        srcTop: parseFloat(args.srctop ?? "0"),
+        srcZoomX,
+        srcZoomY,
+        bgStorage: bgstorage,
+      };
       return {
-        kind: "fg",
+        kind: "partbg",
         storage,
         center,
         vcenter,
         index,
-        opacity: 1,
+        opacity,
         page,
+        id,
+        noclear,
+        bgstorage,
+        time,
+        rule,
+        crop,
       };
     }
     case "bgact": {

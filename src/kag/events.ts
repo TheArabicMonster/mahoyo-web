@@ -46,6 +46,18 @@ export type SpriteState = {
   z: number;
   /** Opacité entre 0 et 1. */
   opacity: number;
+  /** Si défini, ce sprite est un partbg (crop viewport @partbg). */
+  crop?: {
+    width: number;
+    height: number;
+    srcLeft: number;
+    srcTop: number;
+    srcZoomX: number;
+    srcZoomY: number;
+    bgStorage?: string;
+  };
+  /** Pour @fg/@fgact partbgid= : id du partbg parent (clipage). */
+  partbgId?: string;
 };
 
 /** Effet visuel appliqué sur la scène.

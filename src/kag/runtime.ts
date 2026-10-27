@@ -174,7 +174,7 @@ export class Runtime {
   }
 
   private layerToSprite(layer: Layer): SpriteState {
-    return {
+    const sprite: SpriteState = {
       id: layer.id,
       storage: layer.storage,
       x: layer.center,
@@ -182,6 +182,19 @@ export class Runtime {
       z: layer.index,
       opacity: layer.opacity,
     };
+    if (layer.crop) {
+      sprite.crop = {
+        width: layer.crop.width,
+        height: layer.crop.height,
+        srcLeft: layer.crop.srcLeft,
+        srcTop: layer.crop.srcTop,
+        srcZoomX: layer.crop.srcZoomX,
+        srcZoomY: layer.crop.srcZoomY,
+        bgStorage: layer.crop.bgStorage,
+      };
+    }
+    if (layer.partbgId) sprite.partbgId = layer.partbgId;
+    return sprite;
   }
 
   private buildSceneState(page: PageLayer = "fore"): SceneState {
@@ -251,11 +264,37 @@ export class Runtime {
       vcenter: instruction.vcenter,
       index: instruction.index,
       opacity: instruction.opacity ?? 1,
+      partbgId: instruction.partbgId,
     };
     target.layers = target.layers.filter((l) => l.id !== id);
     target.layers.push(layer);
     if (instruction.page === "back") return null;
     return this.emitScene({ method: "none" });
+  }
+
+  private applyPartbg(instruction: Extract<Instruction, { kind: "partbg" }>): RenderEvent | null {
+    const target = this.getPageState(instruction.page);
+    const id = instruction.id ?? instruction.storage;
+    // noclear=0 (défaut) : vide les partbg existants (calques avec crop) avant de poser le nouveau.
+    if (!instruction.noclear) {
+      target.layers = target.layers.filter((l) => !l.crop);
+    }
+    const layer: Layer = {
+      id,
+      storage: instruction.storage,
+      center: instruction.center,
+      vcenter: instruction.vcenter,
+      index: instruction.index,
+      opacity: instruction.opacity ?? 1,
+      crop: instruction.crop,
+    };
+    target.layers = target.layers.filter((l) => l.id !== id);
+    target.layers.push(layer);
+    if (instruction.page === "back") return null;
+    const transition = instruction.time && instruction.time > 0
+      ? this.makeTransition(instruction.time, instruction.rule)
+      : { method: "none" as const };
+    return this.emitScene(transition);
   }
 
   private applyChgfg(instruction: Extract<Instruction, { kind: "chgfg" }>): RenderEvent | null {
@@ -593,6 +632,11 @@ export class Runtime {
       }
       case "chgfg": {
         const ev = this.applyChgfg(instruction);
+        if (ev) events.push(ev);
+        break;
+      }
+      case "partbg": {
+        const ev = this.applyPartbg(instruction);
         if (ev) events.push(ev);
         break;
       }
