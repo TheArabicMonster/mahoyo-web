@@ -11,7 +11,8 @@ body,
   height: 100%;
   overflow: hidden;
   background: #000;
-  font-family: "Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", serif;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", "MS Mincho",
+    "Noto Serif JP", "Shippori Mincho", serif;
 }
 
 /* ── Viewport : conteneur logique 1280×720 centré et scalé ── */
@@ -26,6 +27,7 @@ body,
   position: relative;
   width: 1280px;
   height: 720px;
+  flex: none;
   overflow: hidden;
   transform-origin: center center;
   background: #000;

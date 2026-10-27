@@ -36,6 +36,8 @@ describe("parse", () => {
       storage: "black",
       time: 100,
       rule: "crossfade",
+      left: undefined,
+      top: undefined,
     });
   });
 

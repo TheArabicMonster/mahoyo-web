@@ -60,6 +60,9 @@ export type EffectState =
 /** État complet de la scène à afficher. */
 export type SceneState = {
   bg: AssetRef | null;
+  /** Position explicite du fond (pixels, repère 1024×576). */
+  bgLeft?: number;
+  bgTop?: number;
   sprites: readonly SpriteState[];
   /** null = aucun effet actif. */
   effect: EffectState | null;

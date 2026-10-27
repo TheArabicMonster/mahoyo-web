@@ -262,9 +262,14 @@ export class DomStageRenderer implements StageRenderer {
     style.textContent = `
       .mh-stage {
         position: absolute;
-        inset: 0;
+        left: 0;
+        top: 0;
+        width: 1024px;
+        height: 576px;
+        transform: scale(1.25);
+        transform-origin: 0 0;
         overflow: hidden;
-        font-family: sans-serif;
+        font-family: inherit;
       }
       .mh-stage-scene {
         position: absolute;
@@ -274,8 +279,9 @@ export class DomStageRenderer implements StageRenderer {
       .mh-stage-bg {
         position: absolute;
         inset: 0;
-        background-size: cover;
-        background-position: center;
+        background-size: auto;
+        background-position: 50% 50%;
+        background-repeat: no-repeat;
         z-index: 0;
       }
       .mh-stage-sprites {
@@ -417,6 +423,13 @@ export class DomStageRenderer implements StageRenderer {
     const bg = this.currentScene.bg;
     this.bgEl.style.backgroundImage = bg ? `url(${this.resolver.background(bg)})` : "none";
     this.bgEl.style.backgroundColor = bg ? "" : "#000";
+    // Positionnement natif (repère 1024×576) : left/top explicites sinon centrage.
+    if (bg) {
+      const left = this.currentScene.bgLeft;
+      const top = this.currentScene.bgTop;
+      this.bgEl.style.backgroundPosition =
+        left !== undefined && top !== undefined ? `${left}px ${top}px` : "50% 50%";
+    }
 
     const sprites = [...this.currentScene.sprites].sort((a, b) => a.z - b.z);
     this.spritesEl.innerHTML = "";
