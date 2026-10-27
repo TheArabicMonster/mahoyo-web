@@ -42,8 +42,9 @@ export type RuntimeSaveData = {
   scriptName: string;
   pc: number;
   instructionIndex: number;
+  segmentIndex: number;
   state: RuntimeState;
-  callStack: { scriptName: string; pc: number; instructionIndex: number }[];
+  callStack: { scriptName: string; pc: number; instructionIndex: number; segmentIndex: number }[];
 };
 
 export type PageState = {
@@ -75,6 +76,8 @@ export type ScriptContext = {
   pc: number;
   instructionIndex: number;
   scriptName: string;
+  /** Position dans l'instruction texte courante (pour reprise après [l]). */
+  segmentIndex: number;
 };
 
 export function createRuntimeState(): RuntimeState {
@@ -105,7 +108,7 @@ export class Runtime {
     scriptName: string = "main",
     initialState: RuntimeState = createRuntimeState(),
   ) {
-    this.context = { script, pc: 0, instructionIndex: 0, scriptName };
+    this.context = { script, pc: 0, instructionIndex: 0, scriptName, segmentIndex: 0 };
     this.state = initialState;
   }
 
@@ -431,28 +434,47 @@ export class Runtime {
     return [];
   }
 
-  private applyJump(instruction: Extract<Instruction, { kind: "jump" }>): void {
-    const target = this.context.script.labels[instruction.label];
-    if (target !== undefined) {
-      this.context.pc = target;
-      this.context.instructionIndex = 0;
-    } else {
-      this.onWarning(`unknown label: ${instruction.label}`);
+  private applyJump(instruction: Extract<Instruction, { kind: "jump" }>): StopReason | null {
+    // Inter-script jump: @jump storage=other.ks [target=*label]
+    if (instruction.storage) {
+      return { kind: "loadScript", file: instruction.storage, label: instruction.target, pushCallStack: false };
     }
+    // Intra-script jump: @jump target=*label
+    if (instruction.target) {
+      const pageIdx = this.context.script.labels[instruction.target];
+      if (pageIdx !== undefined) {
+        this.context.pc = pageIdx;
+        this.context.instructionIndex = 0;
+        this.context.segmentIndex = 0;
+      } else {
+        this.onWarning(`unknown label: ${instruction.target}`);
+      }
+    }
+    return null;
   }
 
   private applyCall(instruction: Extract<Instruction, { kind: "call" }>): StopReason | null {
-    const target = this.context.script.labels[instruction.label];
-    if (target !== undefined) {
-      this.callStack.push({ ...this.context, pc: this.context.pc + 1, instructionIndex: 0 });
-      this.context.pc = target;
-      this.context.instructionIndex = 0;
-      return null;
+    // Inter-script call: @call storage=other.ks [target=*label]
+    if (instruction.storage) {
+      return { kind: "loadScript", file: instruction.storage, label: instruction.target, pushCallStack: true };
     }
-    if (instruction.label.includes(".")) {
-      return { kind: "loadScript", file: instruction.label };
+    // Intra-script call: @call target=*label
+    if (instruction.target) {
+      const pageIdx = this.context.script.labels[instruction.target];
+      if (pageIdx !== undefined) {
+        // Push return address: same page, instruction AFTER the @call.
+        this.callStack.push({
+          ...this.context,
+          instructionIndex: this.context.instructionIndex + 1,
+          segmentIndex: 0,
+        });
+        this.context.pc = pageIdx;
+        this.context.instructionIndex = 0;
+        this.context.segmentIndex = 0;
+        return null;
+      }
     }
-    this.onWarning(`unknown label: ${instruction.label}`);
+    this.onWarning(`unknown call target: ${instruction.target ?? instruction.storage ?? "?"}`);
     return null;
   }
 
@@ -543,9 +565,11 @@ export class Runtime {
       case "eval":
         events.push(...this.applyEval(instruction));
         break;
-      case "jump":
-        this.applyJump(instruction);
+      case "jump": {
+        const stop = this.applyJump(instruction);
+        if (stop) return { events, stop };
         break;
+      }
       case "call": {
         const stop = this.applyCall(instruction);
         if (stop) return { events, stop };
@@ -571,24 +595,35 @@ export class Runtime {
   private processText(instruction: Extract<Instruction, { kind: "text" }>): { events: RenderEvent[]; stop?: StopReason } {
     const events: RenderEvent[] = [];
     const segments = instruction.segments;
-    const pauseIndex = segments.findIndex((seg) => "pause" in seg && seg.pause);
+    const startIdx = this.context.segmentIndex;
+
+    // Find the next pause after our current position.
+    let pauseIndex = -1;
+    for (let i = startIdx; i < segments.length; i++) {
+      const seg = segments[i];
+      if (seg && "pause" in seg && (seg as { pause: boolean }).pause) {
+        pauseIndex = i;
+        break;
+      }
+    }
 
     if (pauseIndex === -1) {
-      // Pas de pause : on consomme tout le texte et on passe à l'instruction suivante.
-      if (segments.length > 0) {
-        events.push({ kind: "text", segments });
+      // No pause: consume all remaining text and move to next instruction.
+      const remaining = segments.slice(startIdx);
+      if (remaining.length > 0) {
+        events.push({ kind: "text", segments: remaining });
       }
       this.context.instructionIndex += 1;
+      this.context.segmentIndex = 0;
       return { events };
     }
 
-    // On émet le texte jusqu'à la pause [l], on garde le reste pour la prochaine étape.
-    const before = segments.slice(0, pauseIndex);
-    const after = segments.slice(pauseIndex + 1);
+    // Emit text up to the pause [l], save position for next step.
+    const before = segments.slice(startIdx, pauseIndex);
     if (before.length > 0) {
       events.push({ kind: "text", segments: before });
     }
-    instruction.segments = after;
+    this.context.segmentIndex = pauseIndex + 1;
     return { events, stop: { kind: "click", style: "line" } };
   }
 
@@ -608,6 +643,10 @@ export class Runtime {
       }
 
       let contextChanged = false;
+      // Track whether the inner loop has any instructions to process.
+      // If not (e.g., returned from @call past the end of the page),
+      // we should advance to the next page without stopping.
+      const hadInstructions = this.context.instructionIndex < instructions.length;
 
       while (this.context.instructionIndex < instructions.length) {
         const instruction = instructions[this.context.instructionIndex];
@@ -657,6 +696,13 @@ export class Runtime {
       // Fin de page : arrêt sur [p].
       this.context.pc += 1;
       this.context.instructionIndex = 0;
+      this.context.segmentIndex = 0;
+
+      // Si on n'a traité aucune instruction sur cette page (retour de @call
+      // après la dernière instruction), on continue sans s'arrêter.
+      if (!hadInstructions && this.context.pc < this.context.script.pages.length) {
+        continue;
+      }
 
       if (this.context.pc >= this.context.script.pages.length && this.callStack.length > 0) {
         this.context = this.callStack.pop()!;
@@ -671,8 +717,10 @@ export class Runtime {
 
   /**
    * Charger un script externe et l'empiler sur la call stack.
+   * @param pushCallStack true pour @call (empile l'adresse de retour), false pour @jump (saut permanent)
+   * @param label label optionnel dans le script cible
    */
-  async loadScript(storage: string): Promise<boolean> {
+  async loadScript(storage: string, label?: string, pushCallStack: boolean = true): Promise<boolean> {
     if (!this.scriptLoader) {
       this.onWarning(`scriptLoader not set, cannot load: ${storage}`);
       return false;
@@ -684,8 +732,21 @@ export class Runtime {
       return false;
     }
 
-    this.callStack.push({ ...this.context, pc: this.context.pc + 1, instructionIndex: 0 });
-    this.context = { script, pc: 0, instructionIndex: 0, scriptName: storage };
+    if (pushCallStack) {
+      // instructionIndex has already been incremented by step() before we get here.
+      this.callStack.push({ ...this.context });
+    }
+    this.context = { script, pc: 0, instructionIndex: 0, scriptName: storage, segmentIndex: 0 };
+
+    // Jump to label within the loaded script if specified.
+    if (label) {
+      const pageIdx = script.labels[label];
+      if (pageIdx !== undefined) {
+        this.context.pc = pageIdx;
+      } else {
+        this.onWarning(`label not found in ${storage}: ${label}`);
+      }
+    }
     return true;
   }
 
@@ -694,6 +755,7 @@ export class Runtime {
     if (target === undefined) return false;
     this.context.pc = target;
     this.context.instructionIndex = 0;
+    this.context.segmentIndex = 0;
     return true;
   }
 
@@ -704,6 +766,7 @@ export class Runtime {
       scriptName: this.context.scriptName,
       pc: this.context.pc,
       instructionIndex: this.context.instructionIndex,
+      segmentIndex: this.context.segmentIndex,
       state: {
         fore: { ...this.state.fore, layers: this.state.fore.layers.slice() },
         back: { ...this.state.back, layers: this.state.back.layers.slice() },
@@ -711,11 +774,16 @@ export class Runtime {
         se: this.state.se,
         variables: { ...this.state.variables },
         textbox: this.state.textbox ? { ...this.state.textbox } : undefined,
+        effect: this.state.effect,
+        staffroll: this.state.staffroll
+          ? { ...this.state.staffroll, lines: [...this.state.staffroll.lines] }
+          : undefined,
       },
       callStack: this.callStack.map((ctx) => ({
         scriptName: ctx.scriptName,
         pc: ctx.pc,
         instructionIndex: ctx.instructionIndex,
+        segmentIndex: ctx.segmentIndex,
       })),
     };
   }
@@ -729,14 +797,28 @@ export class Runtime {
       pc: data.pc,
       instructionIndex: data.instructionIndex,
       scriptName: data.scriptName,
+      segmentIndex: data.segmentIndex,
     };
     this.state = {
       ...data.state,
       fore: { ...data.state.fore, layers: data.state.fore.layers.slice() },
       back: { ...data.state.back, layers: data.state.back.layers.slice() },
       variables: { ...data.state.variables },
+      effect: data.state.effect,
+      staffroll: data.state.staffroll
+        ? { ...data.state.staffroll, lines: [...data.state.staffroll.lines] }
+        : undefined,
     };
-    this.callStack = [];
+
+    // Restore the call stack with resolved script objects.
+    this.callStack = data.callStack
+      .map((entry) => {
+        const s = scripts.get(entry.scriptName);
+        if (!s) return null;
+        return { script: s, pc: entry.pc, instructionIndex: entry.instructionIndex, scriptName: entry.scriptName, segmentIndex: entry.segmentIndex };
+      })
+      .filter((ctx): ctx is ScriptContext => ctx !== null);
+
     return true;
   }
 }

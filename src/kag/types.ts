@@ -76,8 +76,8 @@ export type Instruction =
   | { kind: "wait"; time: number }
   | { kind: "text"; segments: TextSegment[] }
   | { kind: "break" }
-  | { kind: "jump"; label: string }
-  | { kind: "call"; label: string }
+  | { kind: "jump"; target?: string; storage?: string }
+  | { kind: "call"; target?: string; storage?: string }
   | { kind: "return" }
   | { kind: "eval"; expression: string }
   | { kind: "raw"; command: string; args: Record<string, string> };

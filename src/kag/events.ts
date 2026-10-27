@@ -160,7 +160,7 @@ export type StopReason =
   /** Choix multiple. */
   | { kind: "choice"; options: readonly { label: string; target: string }[] }
   /** Le runtime a besoin d'un script non chargé. */
-  | { kind: "loadScript"; file: string; label?: string }
+  | { kind: "loadScript"; file: string; label?: string; pushCallStack?: boolean }
   /** Fin du script. */
   | { kind: "end" };
 

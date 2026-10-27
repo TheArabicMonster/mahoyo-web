@@ -32,9 +32,9 @@ export class FakeRuntime {
     return this.steps[this.index++];
   }
 
-  async loadScript(storage: string): Promise<boolean> {
+  async loadScript(_storage: string, _label?: string, _pushCallStack?: boolean): Promise<boolean> {
     if (!this.scriptLoader) return false;
-    const script = await this.scriptLoader(storage);
+    const script = await this.scriptLoader(_storage);
     if (!script) return false;
     this.loadedScripts.push(script);
     return true;
@@ -49,6 +49,7 @@ export class FakeRuntime {
       scriptName: "fake.ks",
       pc: this.index,
       instructionIndex: 0,
+      segmentIndex: 0,
       state: {
         fore: { background: "", layers: [] },
         back: { background: "", layers: [] },
