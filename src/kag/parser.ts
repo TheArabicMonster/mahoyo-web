@@ -5,8 +5,9 @@
  * Page boundaries are: labels (*pageN|), @pg/[p] (page break), end of input.
  */
 
-import type { AnimationDef, AnimKeyframe, Instruction, ParsedScript, TextSegment, Token } from "./types.js";
+import type { AnimationDef, Instruction, ParsedScript, TextSegment, Token } from "./types.js";
 import { storageKey } from "@/core/storage-key.js";
+import { parseActionKeys } from "./action.js";
 
 function parseIntArg(value: string | undefined, fallback = 0): number {
   if (value === undefined) return fallback;
@@ -29,67 +30,6 @@ function parsePageLayer(value: string | undefined): "fore" | "back" | undefined 
   return undefined;
 }
 
-/**
- * Parse les keyframes d'une commande @fgact.
- * Format: keys=(frame,dur,easing,storage,center,vcenter,absolute,opacity,...)(...)
- * Les props= nous donnent l'ordre des colonnes. Pour simplifier, on utilise
- * un mapping par position standard.
- */
-function parseFgactKeyframes(keysStr: string | undefined, propsStr: string | undefined): AnimKeyframe[] {
-  if (!keysStr) return [];
-  const keyframeMatches = keysStr.match(/\([^)]+\)/g);
-  if (!keyframeMatches || keyframeMatches.length === 0) return [];
-
-  // Determiner les indices des colonnes depuis props
-  const propsList = (propsStr ?? "").split(",").map(p => p.replace(/^-/, "").trim());
-  const propIndex: Record<string, number> = {};
-  propsList.forEach((p, i) => { propIndex[p] = i; });
-
-  const keyframes: AnimKeyframe[] = [];
-  let cumulativeTime = 0;
-
-  for (const match of keyframeMatches) {
-    const parts = match.slice(1, -1).split(",").map(s => s.trim());
-    const frame = parseInt(parts[0] ?? "0");
-    const dur = parseInt(parts[1] ?? "0");
-    const easing = parts[2] ?? "l"; // "l" = linear, "n" = ease-in-out
-
-    cumulativeTime += dur || frame;
-
-    const kf: AnimKeyframe = {
-      time: cumulativeTime,
-      duration: dur || frame,
-      easing: easing === "n" ? "ease-in-out" : "linear",
-    };
-
-    // Extraire les propriétés par position si disponibles
-    if (propIndex.center !== undefined && parts[propIndex.center] && parts[propIndex.center] !== "")
-      kf.center = parseInt(parts[propIndex.center]);
-    else if (parts.length > 4 && parts[4] !== "")
-      kf.center = parseInt(parts[4]);
-
-    if (propIndex.vcenter !== undefined && parts[propIndex.vcenter] && parts[propIndex.vcenter] !== "")
-      kf.vcenter = parseInt(parts[propIndex.vcenter]);
-    else if (parts.length > 5 && parts[5] !== "")
-      kf.vcenter = parseInt(parts[5]);
-
-    if (propIndex.opacity !== undefined && parts[propIndex.opacity] && parts[propIndex.opacity] !== "")
-      kf.opacity = parseInt(parts[propIndex.opacity]) / 255;
-    else if (parts.length > 7 && parts[7] !== "")
-      kf.opacity = parseInt(parts[7]) / 255;
-
-    if (propIndex.zoomx !== undefined && parts[propIndex.zoomx] && parts[propIndex.zoomx] !== "")
-      kf.zoomx = parseInt(parts[propIndex.zoomx]) / 100;
-    if (propIndex.zoomy !== undefined && parts[propIndex.zoomy] && parts[propIndex.zoomy] !== "")
-      kf.zoomy = parseInt(parts[propIndex.zoomy]) / 100;
-    if (propIndex.rotate !== undefined && parts[propIndex.rotate] && parts[propIndex.rotate] !== "")
-      kf.rotate = parseFloat(parts[propIndex.rotate]);
-
-    keyframes.push(kf);
-  }
-
-  return keyframes;
-}
 
 function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
   const { name, args } = token;
@@ -149,31 +89,25 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
       // @fgact = animation de sprite avec keyframes
       const storage = normStorage(args.storage);
       const page = parsePageLayer(args.page);
-      const keyframes = parseFgactKeyframes(args.keys, args.props);
+      const keyframes = parseActionKeys(args.keys, args.props);
       const loop = args.loop === "1";
       const id = args.id;
+      const partbgid = args.partbgid;
 
       if (keyframes.length >= 2) {
         // On a des vraies keyframes -> instruction animate
         return {
           kind: "animate",
-          def: { storage, page, keyframes, loop, id },
+          def: { storage, page, keyframes, loop, id, partbgid },
         };
       }
 
       // Fallback: traiter comme un @fg statique (position initiale de la 1ère keyframe)
-      const keysMatch = args.keys?.match(/\([^)]+\)/);
-      let center = parseIntArg(args.center);
-      let vcenter = parseIntArg(args.vcenter);
-      let index = parseIntArg(args.index);
-      let opacity: number | undefined = undefined;
-      if (keysMatch) {
-        const parts = keysMatch[0].slice(1, -1).split(",");
-        if (parts.length >= 7) center = parseInt(parts[4]) || center;
-        if (parts.length >= 8) vcenter = parseInt(parts[5]) || vcenter;
-        if (parts.length >= 9) opacity = parseInt(parts[7]) / 255 || undefined;
-      }
-      if (args.opacity !== undefined) opacity = parseIntArg(args.opacity) / 255;
+      const firstFrame = keyframes[0];
+      const center = firstFrame?.center ?? parseIntArg(args.center);
+      const vcenter = firstFrame?.vcenter ?? parseIntArg(args.vcenter);
+      const index = parseIntArg(args.index);
+      const opacity = firstFrame?.opacity ?? (args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : undefined);
       return {
         kind: "fg",
         storage,
@@ -182,6 +116,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         index: index || 1,
         opacity,
         page,
+        id,
       };
     }
     case "partbg": {
@@ -226,8 +161,8 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
             storage,
             page,
             keyframes: [
-              { time: 0, duration: time, easing: "linear" },
-              { time, duration: time, easing: "linear", center, vcenter, opacity },
+              { time: 0, duration: time, interp: "l", easing: "linear", accel: 0 },
+              { time, duration: time, interp: "l", easing: "linear", accel: 0, center, vcenter, opacity },
             ],
             id,
           },

@@ -27,15 +27,26 @@ export type PageLayer = "fore" | "back";
 
 /** Une keyframe d'animation (propriétés interpolables) */
 export type AnimKeyframe = {
-  time: number;       // ms depuis le début
-  duration: number;   // ms pour atteindre cette keyframe
-  easing: string;     // "l" = linear, "n" = ease-in-out
+  time: number;       // ms absolu depuis le début de l'animation
+  duration: number;   // delta ms depuis la keyframe précédente
+  /** Lettre interp brute : "l"=linear, "n"=steps(palier), "~"=warning. */
+  interp: "l" | "n" | "~";
+  easing: string;     // "linear" | "steps" | "warn" (dérivé de interp)
+  accel: number;      // accélération (col 2)
+  // Props continues :
   center?: number;
   vcenter?: number;
-  opacity?: number;
-  zoomx?: number;
+  opacity?: number;   // 0..1
+  zoomx?: number;     // 1.0 = 100%
   zoomy?: number;
-  rotate?: number;
+  rotate?: number;    // degrés
+  absolute?: number;  // z-index
+  // Props discrètes (appliquées instantanément, pas interpolées) :
+  storage?: string;
+  visible?: boolean;
+  type?: string;
+  effect?: string;
+  contrast?: number;
 };
 
 export type AnimationDef = {
@@ -44,6 +55,8 @@ export type AnimationDef = {
   keyframes: AnimKeyframe[];
   loop?: boolean;
   id?: string;
+  /** Pour @fgact sur un partbg : identifiant du calque partbg ciblé. */
+  partbgid?: string;
 };
 
 export type Instruction =
