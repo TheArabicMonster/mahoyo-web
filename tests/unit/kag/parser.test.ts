@@ -123,14 +123,31 @@ describe("parse", () => {
   });
 
   it("parses @playstop and @fadebgm", () => {
-    const script = parse(lex("@playstop\n@fadebgm time=2000"));
+    const script = parse(lex("@playstop time=500\n@fadebgm time=2000 volume=50"));
     const page = script.pages[0];
     const stop = page.instructions.find((i) => i.kind === "playstop");
     const fade = page.instructions.find((i) => i.kind === "fadebgm");
     expect(stop).toBeDefined();
     expect(fade).toBeDefined();
+    if (stop && stop.kind === "playstop") {
+      expect(stop.time).toBe(500);
+    }
     if (fade && fade.kind === "fadebgm") {
       expect(fade.time).toBe(2000);
+      expect(fade.volume).toBe(50);
+    }
+  });
+
+  it("parses @se with loop and delay", () => {
+    const script = parse(lex("@se storage=se01 loop=true delay=300 volume=80"));
+    const page = script.pages[0];
+    const instr = page.instructions.find((i) => i.kind === "se");
+    expect(instr).toBeDefined();
+    if (instr && instr.kind === "se") {
+      expect(instr.storage).toBe("se01");
+      expect(instr.loop).toBe(true);
+      expect(instr.delay).toBe(300);
+      expect(instr.volume).toBe(80);
     }
   });
 });

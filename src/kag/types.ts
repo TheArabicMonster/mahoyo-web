@@ -92,9 +92,9 @@ export type Instruction =
   | { kind: "backlay"; storage?: string }
   | { kind: "trans"; rule?: string; time: number; nowait?: boolean }
   | { kind: "play"; storage: string; volume?: number }
-  | { kind: "playstop" }
-  | { kind: "fadebgm"; time: number }
-  | { kind: "se"; storage: string; volume?: number }
+  | { kind: "playstop"; time?: number }
+  | { kind: "fadebgm"; time: number; volume?: number }
+  | { kind: "se"; storage: string; volume?: number; loop?: boolean; delay?: number }
   | { kind: "sestop"; storage?: string; time?: number }
   | { kind: "fadese"; storage?: string; time: number; volume: number }
   | { kind: "quake"; vmax: number; hmax: number; time: number; interval: number }

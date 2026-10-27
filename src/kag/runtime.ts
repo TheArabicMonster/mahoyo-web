@@ -420,12 +420,17 @@ export class Runtime {
       }
       case "playstop": {
         this.state.bgm = null;
-        event = { kind: "stop", channel: "bgm" };
+        event = { kind: "stop", channel: "bgm", fadeOut: instruction.time };
         break;
       }
       case "fadebgm": {
         this.state.bgm = null;
-        event = { kind: "fade", channel: "bgm", volume: 0, time: instruction.time };
+        event = {
+          kind: "fade",
+          channel: "bgm",
+          volume: (instruction.volume ?? 0) / 100,
+          time: instruction.time,
+        };
         break;
       }
       case "se": {
@@ -434,8 +439,9 @@ export class Runtime {
           kind: "play",
           channel: "se:0",
           storage: instruction.storage,
-          loop: false,
+          loop: instruction.loop ?? false,
           volume: (instruction.volume ?? 100) / 100,
+          delay: instruction.delay,
         };
         break;
       }

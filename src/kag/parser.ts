@@ -213,14 +213,23 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         volume: args.volume !== undefined ? parseIntArg(args.volume) : undefined,
       };
     case "playstop":
-      return { kind: "playstop" };
+      return {
+        kind: "playstop",
+        time: args.time !== undefined ? parseIntArg(args.time) : undefined,
+      };
     case "fadebgm":
-      return { kind: "fadebgm", time: parseIntArg(args.time, 1000) };
+      return {
+        kind: "fadebgm",
+        time: parseIntArg(args.time, 1000),
+        volume: args.volume !== undefined ? parseIntArg(args.volume) : undefined,
+      };
     case "se":
       return {
         kind: "se",
         storage: normStorage(args.storage),
         volume: args.volume !== undefined ? parseIntArg(args.volume) : undefined,
+        loop: args.loop === "1" || args.loop === "true",
+        delay: args.delay !== undefined ? parseIntArg(args.delay) : undefined,
       };
     case "sestop":
       return {
