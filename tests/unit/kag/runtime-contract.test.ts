@@ -9,7 +9,7 @@ describe("Runtime + Renderer contract", () => {
   it("produces a scene event for @bg and stops on click", () => {
     const source = `
 *page0|
-@bg storage=black time=100
+@bg page=fore storage=black time=100
 Hello.
 @pg
 `;

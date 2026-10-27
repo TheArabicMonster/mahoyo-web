@@ -45,6 +45,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         left: args.left !== undefined ? parseIntArg(args.left) : undefined,
         top: args.top !== undefined ? parseIntArg(args.top) : undefined,
         noclear: args.noclear === "1",
+        nowait: args.nowait === "1",
       };
     case "fg":
       return {
@@ -183,6 +184,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         bgstorage,
         time,
         rule,
+        nowait: args.nowait === "1",
         crop,
       };
     }
