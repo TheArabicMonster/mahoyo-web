@@ -8,12 +8,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { hasAssets } from "./skip-if-no-assets.js";
 
 const ASSETS_DIR = join(import.meta.dirname, "../../public/assets");
 const MANIFEST = JSON.parse(readFileSync(join(ASSETS_DIR, "asset-manifest.json"), "utf-8"));
 const SCENARIO_1_0 = readFileSync(join(ASSETS_DIR, "scenario/1-0.ks"), "utf-8");
 
-describe("Player UI — prologue", () => {
+describe.skipIf(!hasAssets)("Player UI — prologue", () => {
   beforeEach(() => {
     // Nettoie le DOM entre les tests.
     document.body.innerHTML = '<div id="app"></div>';

@@ -14,12 +14,13 @@ import { Runtime } from "@/kag/runtime.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
 import type { RenderEvent } from "@/kag/events.js";
+import { hasAssets } from "./skip-if-no-assets.js";
 
 const ASSETS_DIR = join(import.meta.dirname, "../../public/assets");
 const MANIFEST_PATH = join(ASSETS_DIR, "asset-manifest.json");
 const SCENARIO_PATH = join(ASSETS_DIR, "scenario/1-0.ks");
 
-describe("Prologue 1-0.ks", () => {
+describe.skipIf(!hasAssets)("Prologue 1-0.ks", () => {
   it("se charge et ses assets sont résolubles", () => {
     const manifest: AssetManifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf-8"));
     const resolver = createAssetResolver({ baseUrl: "/assets", manifest });
