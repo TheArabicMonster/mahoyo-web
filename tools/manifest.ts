@@ -7,11 +7,15 @@
  */
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
+import { writeFileSync } from "fs";
+import { dirname } from "path";
+import { mkdirSync } from "fs";
 import type { AssetManifest, ManifestEntry, ScenarioEntry } from "../src/core/asset-manifest.js";
 import type { InventoryEntry } from "./inventory.js";
 import { lex } from "../src/kag/lexer.js";
 import { parse } from "../src/kag/parser.js";
 import { decodeKs } from "./ks-encoding.js";
+import type { TaskResult } from "./plan.js";
 
 /**
  * Construit le manifest à partir de l'inventaire.
@@ -184,6 +188,97 @@ function collectStorageRefs(
       kind,
     });
   }
+}
+
+// ── Manifest depuis résultats réels ──
+
+/**
+ * Construit le manifest à partir des résultats réels des tâches.
+ * Contrairement à buildManifest (qui utilise les prédictions webPath),
+ * cette fonction utilise les chemins réellement écrits.
+ *
+ * Priorité en cas de collision sur images : bg > image > rule.
+ */
+export function buildManifestFromResults(
+  results: TaskResult[],
+  outputDir: string,
+): AssetManifest {
+  const manifest: AssetManifest = {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    images: {},
+    audio: {},
+    scenarios: {},
+  };
+
+  // Collecter les entrées par kind pour gérer les priorités.
+  const imageEntries: { key: string; entry: ManifestEntry; priority: number }[] = [];
+
+  for (const result of results) {
+    if (result.status !== "ok") continue;
+    if (!result.actualOutputPath) continue;
+
+    const task = result.task;
+    const kind = task.entry.kind;
+    const key = task.entry.key;
+
+    // Chemin relatif au outputDir.
+    const relPath = relativePath(outputDir, result.actualOutputPath);
+
+    if (kind === "bg" || kind === "image" || kind === "rule") {
+      const priority = kind === "bg" ? 3 : kind === "image" ? 2 : 1;
+      imageEntries.push({
+        key,
+        entry: { url: relPath, source: task.entry.relPath, kind },
+        priority,
+      });
+    } else if (kind === "bgm" || kind === "se") {
+      manifest.audio[key] = { url: relPath, source: task.entry.relPath, kind };
+    } else if (kind === "scenario") {
+      manifest.scenarios[key] = {
+        url: relPath,
+        source: task.entry.relPath,
+        encoding: "utf-8", // Tous les scénarios sont transcodés en UTF-8
+      };
+    }
+  }
+
+  // Résoudre les collisions images avec priorité bg > image > rule.
+  for (const { key, entry, priority } of imageEntries) {
+    const existing = manifest.images[key];
+    if (!existing) {
+      manifest.images[key] = entry;
+    } else {
+      // Conserver la priorité la plus haute.
+      const existingPriority = existing.kind === "bg" ? 3 : existing.kind === "image" ? 2 : 1;
+      if (priority > existingPriority) {
+        manifest.images[key] = entry;
+      }
+    }
+  }
+
+  return manifest;
+}
+
+/**
+ * Écrit le manifest en JSON de façon atomique.
+ */
+export function writeManifest(manifest: AssetManifest, outputPath: string): void {
+  mkdirSync(dirname(outputPath), { recursive: true });
+  const tmpPath = `${outputPath}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(manifest, null, 2), "utf-8");
+  renameSync(tmpPath, outputPath);
+}
+
+import { renameSync } from "fs";
+
+/** Calcule le chemin relatif d'un fichier par rapport à un dossier de base. */
+function relativePath(baseDir: string, filePath: string): string {
+  const base = baseDir.replace(/\/$/, "");
+  if (filePath.startsWith(base + "/")) {
+    return filePath.slice(base.length + 1);
+  }
+  return filePath;
 }
 
 // CLI

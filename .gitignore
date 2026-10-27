@@ -30,3 +30,8 @@ public/assets/
 *.xp3
 *.sar
 *.ogg.tmp
+
+# Pipeline : dossier de travail intermédiaire
+.pipeline-work/
+decrypted/
+tmp-*/
