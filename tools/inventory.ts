@@ -63,6 +63,11 @@ export function classifyAsset(relPath: string): AssetKind {
     return "scenario";
   }
 
+  // Dossier data/others → ignoré (thumbnails UI, pas des assets de jeu)
+  if (parts.includes("others")) {
+    return "other" as AssetKind;
+  }
+
   // Dossier explicite
   for (const part of parts) {
     if (DIR_TO_KIND[part]) return DIR_TO_KIND[part];
@@ -118,7 +123,10 @@ export function buildInventory(inputDir: string): InventoryEntry[] {
       const kind = classifyAsset(relPath);
       if (kind === ("other" as AssetKind)) continue;
 
-      const key = storageKey(basename(name.name, ext));
+      // storageKey gère déjà le strip de chemin et d'extension.
+      // Ne PAS appeler basename() avant, sinon les points dans le nom
+      // (ex: "1.5-1.ks") sont interprétés comme des extensions.
+      const key = storageKey(name.name);
       const webExt = webExtension(kind);
 
       entries.push({
