@@ -289,12 +289,15 @@ export class Runtime {
     const lastFrame = def.keyframes[def.keyframes.length - 1];
     const firstFrame = def.keyframes[0];
     const id = def.id ?? def.storage;
+    // z-index : priorité au absolute= d'une keyframe, sinon parseInt(id), sinon 1.
+    const zFromFrame = lastFrame?.absolute ?? firstFrame?.absolute;
+    const index = zFromFrame ?? (def.id ? parseInt(def.id, 10) || 1 : 1);
     const layer: Layer = {
       id,
       storage: def.storage,
       center: lastFrame?.center ?? firstFrame?.center ?? 512,
       vcenter: lastFrame?.vcenter ?? firstFrame?.vcenter ?? 288,
-      index: parseInt(def.id ?? "1") || 1,
+      index,
       opacity: lastFrame?.opacity ?? firstFrame?.opacity ?? 1,
     };
     target.layers = target.layers.filter((l) => l.id !== id);
@@ -304,7 +307,8 @@ export class Runtime {
     if (!def.page || def.page === "fore") {
       events.push(this.emitScene({ method: "none" }));
     }
-    events.push({ kind: "animate", target: String(layer.index), def });
+    // target = id du calque (correspond au data-sprite-id côté renderer).
+    events.push({ kind: "animate", target: id, def });
     return events;
   }
 

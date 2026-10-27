@@ -13,6 +13,7 @@ import type {
 } from "@/kag/events.js";
 import type { AnimationDef, TextSegment } from "@/kag/types.js";
 import type { DisplaySettings, RunOptions, StageRenderer, StageRendererDeps } from "./types.js";
+import { compileAction, type DiscreteChange } from "./action-compiler.js";
 
 /**
  * Implémentation DOM de StageRenderer.
@@ -603,9 +604,38 @@ export class DomStageRenderer implements StageRenderer {
 
   private startAnimation(target: string, def: AnimationDef, opts: RunOptions): void {
     this.stopAnimation(target);
-    if (opts.instant) return;
-    const ctrl = new AnimationController(def, () => this.stopAnimation(target));
+    if (opts.instant) {
+      // Mode instant : applique l'état final de l'animation sans la jouer.
+      this.applyAnimationFinal(def);
+      return;
+    }
+    // Récupère l'élément sprite persistant (réconciliation PR 5).
+    const el = this.spriteEls.get(target) ?? this.findPartbgEl(def);
+    const ctrl = new AnimationController(def, target, el, this.resolver, () => this.stopAnimation(target));
     this.animations.set(target, ctrl);
+  }
+
+  /** Applique l'état final d'une animation sur le sprite cible (mode instant). */
+  private applyAnimationFinal(def: AnimationDef): void {
+    const last = def.keyframes[def.keyframes.length - 1];
+    if (!last) return;
+    const el = this.spriteEls.get(def.id ?? def.storage);
+    if (!el) return;
+    if (last.center !== undefined) el.style.left = `${last.center}px`;
+    if (last.vcenter !== undefined) el.style.top = `${last.vcenter}px`;
+    if (last.opacity !== undefined) el.style.opacity = String(last.opacity);
+    if (last.zoomx !== undefined || last.zoomy !== undefined) {
+      el.style.transform = `scale(${last.zoomx ?? 1}, ${last.zoomy ?? 1})`;
+    }
+    if (last.rotate !== undefined) {
+      el.style.transform = `${el.style.transform || ""} rotate(${last.rotate}deg)`.trim();
+    }
+  }
+
+  /** Pour @fgact sur un partbg (PR 7) : recherche l'élément partbg par id. */
+  private findPartbgEl(def: AnimationDef): HTMLElement | null {
+    if (!def.partbgid || !this.container) return null;
+    return this.container.querySelector(`[data-partbg-id="${def.partbgid}"]`) as HTMLElement | null;
   }
 
   private stopAnimation(target: string): void {
@@ -754,37 +784,165 @@ export class DomStageRenderer implements StageRenderer {
   }
 }
 
+/**
+ * Contrôleur d'animation basé sur Web Animations API.
+ *
+ * - Compile le `AnimationDef` via `compileAction` (keyframes WAAPI + discrete).
+ * - Lance `el.animate(...)` sur le sprite persistant (réconciliation PR 5).
+ * - Props discrètes (storage/effect/contrast/visible/type/absolute) appliquées
+ *   au bon instant via setTimeout.
+ * - `loop` → iterations: Infinity. `hurry()` épargne les loops (elles
+ *   continuent en arrière-plan) mais résout le promise (pour @wact skip).
+ * - `cancel()` (via @stopaction) annule tout.
+ *
+ * Fallback : si `el.animate` n'existe pas (jsdom), on simule via setTimeout
+ * (pas d'animation visuelle, juste la timing + discrete).
+ */
 class AnimationController {
   promise: Promise<void>;
-  private resolve: () => void = () => {};
-  private timer: ReturnType<typeof setTimeout> | null = null;
+  private resolveFn: () => void = () => {};
+  private animation: Animation | null = null;
+  private discreteTimers: ReturnType<typeof setTimeout>[] = [];
+  private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly loop: boolean;
 
-  constructor(_def: AnimationDef, private onDone: () => void) {
+  constructor(
+    def: AnimationDef,
+    private target: string,
+    private el: HTMLElement | null,
+    private resolver: AssetResolver,
+    private onDone: () => void,
+  ) {
+    this.loop = !!def.loop;
     this.promise = new Promise((resolve) => {
-      this.resolve = resolve;
-      const duration = _def.keyframes[_def.keyframes.length - 1]?.time ?? 0;
-      this.timer = setTimeout(() => {
-        this.resolve();
-        this.onDone();
-      }, duration);
+      this.resolveFn = resolve;
     });
+    this.run(def);
   }
 
-  hurry(): void {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
+  private run(def: AnimationDef): void {
+    const compiled = compileAction(def);
+    if (!compiled) {
+      // Duration <= 0 : applique l'état final puis termine.
+      this.applyDiscrete(def, 0);
+      this.finish();
+      return;
     }
-    this.resolve();
+
+    // Changements discrets programmés.
+    this.scheduleDiscrete(compiled.discrete, def);
+
+    if (this.el && typeof this.el.animate === "function") {
+      // WAAPI : lance l'animation sur l'élément persistant.
+      const anim = this.el.animate(compiled.keyframes, {
+        duration: compiled.duration,
+        iterations: compiled.iterations,
+        fill: "forwards",
+      });
+      this.animation = anim;
+      if (!this.loop) {
+        anim.onfinish = () => this.finish();
+      } else {
+        // Loop : le promise n'est jamais résolu naturellement (animation infinie).
+        // On résout seulement via hurry()/cancel().
+      }
+    } else {
+      // Fallback jsdom : setTimeout pour la durée.
+      this.fallbackTimer = setTimeout(() => this.finish(), compiled.duration);
+    }
+  }
+
+  /** Applique les changements discrets selon leur timing absolu. */
+  private scheduleDiscrete(discrete: DiscreteChange[], def: AnimationDef): void {
+    for (const change of discrete) {
+      if (change.time <= 0) {
+        // Immédiat.
+        this.applyDiscreteChange(change, def);
+      } else {
+        const t = setTimeout(() => this.applyDiscreteChange(change, def), change.time);
+        this.discreteTimers.push(t);
+      }
+    }
+  }
+
+  /** Applique tous les changements discrets d'un def jusqu'à un temps donné (fallback). */
+  private applyDiscrete(def: AnimationDef, _upToTime: number): void {
+    const compiled = compileAction(def);
+    if (!compiled) return;
+    for (const change of compiled.discrete) {
+      this.applyDiscreteChange(change, def);
+    }
+  }
+
+  private applyDiscreteChange(change: DiscreteChange, def: AnimationDef): void {
+    if (!this.el) return;
+    switch (change.field) {
+      case "storage": {
+        const src = this.resolver.image(change.value as string);
+        if ((this.el as HTMLImageElement).src !== src) (this.el as HTMLImageElement).src = src;
+        break;
+      }
+      case "absolute":
+        this.el.style.zIndex = String(change.value);
+        break;
+      case "visible":
+        this.el.style.visibility = change.value ? "visible" : "hidden";
+        break;
+      case "effect":
+      case "contrast":
+      case "type":
+        // Effets de filtre non gérés ici (PR futur). No-op silencieux.
+        break;
+    }
+  }
+
+  /** Termine l'animation (résout le promise + onDone). */
+  private finish(): void {
+    this.clearTimers();
+    this.resolveFn();
     this.onDone();
   }
 
-  cancel(): void {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
+  /**
+   * Hurry : résout le promise (pour @wact skip) mais ÉPARGNE les loops
+   * (l'animation WAAPI continue en arrière-plan). Pour les animations non-loop,
+   * on termine réellement (finish de l'animation WAAPI).
+   */
+  hurry(): void {
+    this.clearTimers();
+    if (this.loop) {
+      // Loop : on résout le promise sans arrêter l'animation.
+      this.resolveFn();
+    } else {
+      // Non-loop : termine immédiatement (jump à la fin).
+      if (this.animation) {
+        try {
+          this.animation.finish();
+        } catch {
+          this.animation.cancel();
+        }
+      }
+      this.finish();
     }
-    this.resolve();
+  }
+
+  /** Cancel (@stopaction) : annule tout (loops y compris). */
+  cancel(): void {
+    this.clearTimers();
+    if (this.animation) {
+      this.animation.cancel();
+      this.animation = null;
+    }
+    this.resolveFn();
+  }
+
+  private clearTimers(): void {
+    for (const t of this.discreteTimers) clearTimeout(t);
+    this.discreteTimers = [];
+    if (this.fallbackTimer) {
+      clearTimeout(this.fallbackTimer);
+      this.fallbackTimer = null;
+    }
   }
 }
 
