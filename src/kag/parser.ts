@@ -6,11 +6,22 @@
  */
 
 import type { AnimationDef, AnimKeyframe, Instruction, ParsedScript, TextSegment, Token } from "./types.js";
+import { storageKey } from "@/core/storage-key.js";
 
 function parseIntArg(value: string | undefined, fallback = 0): number {
   if (value === undefined) return fallback;
   const parsed = parseInt(value, 10);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+/** Normalise un argument storage via storageKey. "" si absent. */
+function normStorage(value: string | undefined): string {
+  return value ? storageKey(value) : "";
+}
+
+/** Normalise un argument storage optionnel (undefined si absent). */
+function normStorageOpt(value: string | undefined): string | undefined {
+  return value ? storageKey(value) : undefined;
 }
 
 function parsePageLayer(value: string | undefined): "fore" | "back" | undefined {
@@ -87,7 +98,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     case "bg":
       return {
         kind: "bg",
-        storage: args.storage ?? "",
+        storage: normStorage(args.storage),
         time: parseIntArg(args.time),
         rule: args.rule,
         page: parsePageLayer(args.page),
@@ -95,7 +106,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     case "fg":
       return {
         kind: "fg",
-        storage: args.storage ?? "",
+        storage: normStorage(args.storage),
         center: parseIntArg(args.center),
         vcenter: parseIntArg(args.vcenter),
         index: parseIntArg(args.index),
@@ -107,7 +118,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     case "clfg":
     case "clpartbg": {
       const page = parsePageLayer(args.page);
-      const storage = args.storage ? args.storage.replace(/\|[a-z0-9]+$/, "") : undefined;
+      const storage = normStorageOpt(args.storage);
       const index = args.index !== undefined ? parseIntArg(args.index) : undefined;
       return { kind: "clfg", storage, index, page };
     }
@@ -121,7 +132,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
       };
     case "fgact": {
       // @fgact = animation de sprite avec keyframes
-      const storage = (args.storage ?? "").replace(/\|[a-z0-9]+$/, "");
+      const storage = normStorage(args.storage);
       const page = parsePageLayer(args.page);
       const keyframes = parseFgactKeyframes(args.keys, args.props);
       const loop = args.loop === "1";
@@ -160,7 +171,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     }
     case "partbg": {
       // @partbg = partie de background (panorama). Traité comme un @fg positionné.
-      const storage = args.storage ?? "";
+      const storage = normStorage(args.storage);
       const center = parseIntArg(args.center);
       const vcenter = parseIntArg(args.vcenter);
       const index = parseIntArg(args.index, 1000);
@@ -177,18 +188,16 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     }
     case "bgact": {
       // @bgact = animation de background. On extrait le storage.
-      const storage = args.storage ?? "";
+      const storage = normStorage(args.storage);
       const page = parsePageLayer(args.page);
       return { kind: "bg", storage, time: 0, rule: undefined, page };
     }
     case "chgfg": {
       // @chgfg = changer l'image d'un sprite existant (garde position, change storage)
-      const storage = args.storage ?? "";
-      // Nettoyer le suffixe d'expression (|a, |b, etc.)
-      const cleanStorage = storage.replace(/\|[a-z0-9]+$/, "");
+      const storage = normStorage(args.storage);
       return {
         kind: "fg",
-        storage: cleanStorage,
+        storage,
         center: 0,
         vcenter: 0,
         index: parseIntArg(args.index) || 1,
@@ -199,7 +208,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     case "movefg":
     case "movepartbg": {
       // @movefg / @movepartbg = déplacer un sprite/partie de background
-      const storage = (args.storage ?? "").replace(/\|[a-z0-9]+$/, "");
+      const storage = normStorage(args.storage);
       const page = parsePageLayer(args.page);
       const time = parseIntArg(args.time, 1000);
       const center = parseIntArg(args.center);
@@ -236,7 +245,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     case "play":
       return {
         kind: "play",
-        storage: args.storage ?? "",
+        storage: normStorage(args.storage),
         volume: args.volume !== undefined ? parseIntArg(args.volume) : undefined,
       };
     case "playstop":
@@ -246,19 +255,19 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     case "se":
       return {
         kind: "se",
-        storage: args.storage ?? "",
+        storage: normStorage(args.storage),
         volume: args.volume !== undefined ? parseIntArg(args.volume) : undefined,
       };
     case "sestop":
       return {
         kind: "sestop",
-        storage: args.storage,
+        storage: normStorageOpt(args.storage),
         time: args.time !== undefined ? parseIntArg(args.time) : undefined,
       };
     case "fadese":
       return {
         kind: "fadese",
-        storage: args.storage,
+        storage: normStorageOpt(args.storage),
         time: parseIntArg(args.time, 1000),
         volume: parseIntArg(args.volume, 100),
       };
@@ -335,12 +344,14 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
       return { kind: "wait", time: 500 };
     case "jump": {
       // @jump target=*label (intra-script) ou @jump storage=xxx.ks (inter-script)
+      // storage est un nom de fichier : on garde la casse et l'extension.
       const target = (args.target ?? "").replace(/^\*/, "") || undefined;
       const storage = args.storage || undefined;
       return { kind: "jump", target, storage };
     }
     case "call": {
       // @call target=*label (intra-script) ou @call storage=xxx.ks (inter-script)
+      // storage est un nom de fichier : on garde la casse et l'extension.
       const target = (args.target ?? "").replace(/^\*/, "") || undefined;
       const storage = args.storage || undefined;
       return { kind: "call", target, storage };
