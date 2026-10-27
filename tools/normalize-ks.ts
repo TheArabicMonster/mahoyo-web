@@ -1,105 +1,60 @@
 /**
- * Normalise les scripts KAG extraits pour le player web.
+ * Transcodage des scripts KAG (.ks) vers UTF-8 pour le player web.
  *
- * - Lecture en Shift_JIS par défaut.
- * - Supprime les commandes / tags purement internes au moteur console.
- * - Normalise les noms d'assets pour qu'ils correspondent au AssetResolver.
+ * Rôle : décoder (UTF-16LE, UTF-8, Shift_JIS, chiffré KiriKiri) → UTF-8 sans BOM.
+ *
+ * Ce module NE réécrit PAS les `storage=` : la normalisation se fait dans le
+ * parser via `storageKey` (src/core/storage-key.ts).
+ *
+ * Ce module NE supprime PAS les commandes (`@eval`, `@iscript`, etc.) : le
+ * runtime tolère les commandes inconnues et exécute `@eval`.
+ *
+ * Le nombre de lignes est préservé pour que les numéros de ligne des warnings
+ * et du rapport restent justes.
  */
 import { readFileSync } from "fs";
 import { writeFile } from "fs/promises";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
+import { decodeKs } from "./ks-encoding.js";
 import { ensureDirAsync, listFiles, outputPathFor, type PipelineContext } from "./pipeline-utils.js";
 
 /**
- * Détecte et retourne l'encodage probable d'un buffer.
- * Par simplicité, on considère que les scripts KAG originaux sont en Shift_JIS.
- */
-export function detectEncoding(_buffer: Buffer): "shift_jis" | "utf-8" {
-  return "shift_jis";
-}
-
-/** Décode un buffer selon l'encodage détecté. */
-export function decodeBuffer(buffer: Buffer, encoding: string): string {
-  if (encoding === "utf-8") return buffer.toString("utf-8");
-  // Utilise TextDecoder natif pour Shift_JIS.
-  const decoder = new TextDecoder("shift_jis", { fatal: false });
-  return decoder.decode(buffer);
-}
-
-/**
- * Normalise le texte d'un script KAG.
- * - Supprime le BOM.
- * - Normalise les fins de ligne.
+ * Normalise le texte d'un script KAG :
+ * - Supprime un BOM résiduel.
+ * - Convertit \r\n et \r en \n.
+ * - Supprime les caractères NUL.
+ *
+ * NE modifie PAS les commandes, les storage=, ni le nombre de lignes.
  */
 export function normalizeScriptText(text: string): string {
   return text
     .replace(/^\uFEFF/, "")
     .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
+    .replace(/\r/g, "\n")
+    .replace(/\u0000/g, "");
 }
 
 /**
- * Nettoie les commandes non supportées / internes au PC 2012.
- * Renvie le script inchangé si toutes les commandes sont supportées.
+ * Transcode un buffer .ks en texte UTF-8 normalisé.
+ * Utilise decodeKs pour la détection d'encodage, puis normalizeScriptText.
  */
-export function stripUnsupportedCommands(text: string): string {
-  const lines = text.split("\n");
-  const out: string[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    // Commandes liées au système de sauvegarde / debug : à ignurer pour le web.
-    if (trimmed.startsWith("@eval") || trimmed.startsWith("@iscript") || trimmed.startsWith("@endscript")) {
-      // On garde une ligne vide pour ne pas décaler les numéros de ligne.
-      out.push("");
-      continue;
-    }
-    out.push(line);
-  }
-  return out.join("\n");
-}
-
-/** Transforme un nom de storage pour le AssetResolver. */
-export function normalizeStorage(storage: string): string {
-  return storage
-    .replace(/\.(tlg|png|jpg|jpeg|bmp|gif)$/i, "")
-    .replace(/\.(ogg|mp3|wav)$/i, "")
-    .toLowerCase()
-    .replace(/\\/g, "/")
-    .replace(/\//g, "_");
+export function transcodeKagScript(buffer: Buffer): { text: string; encoding: string } {
+  const decoded = decodeKs(buffer);
+  const text = normalizeScriptText(decoded.text);
+  return { text, encoding: decoded.encoding };
 }
 
 /**
- * Réécrit les arguments de certains tags KAG pour pointer vers les assets normalisés.
- * Pour l'instant : storage des images et audio.
+ * Transcode un fichier .ks et retourne son contenu UTF-8.
  */
-export function normalizeAssets(text: string): string {
-  return text
-    .replace(/@bg\s+([^\n]*)/g, (match) => match)
-    .replace(/storage=([^\s\]]+)/g, (_m, storage: string) => {
-      return `storage=${normalizeStorage(storage)}`;
-    });
-}
-
-/**
- * Normalise un script KAG complet (texte).
- */
-export function normalizeKagScript(text: string): string {
-  return normalizeAssets(stripUnsupportedCommands(normalizeScriptText(text)));
-}
-
-/**
- * Normalise un fichier script et retourne son contenu UTF-8.
- */
-export function normalizeKagFile(path: string): string {
+export function normalizeKagFile(path: string): { text: string; encoding: string } {
   const buffer = readFileSync(path);
-  const encoding = detectEncoding(buffer);
-  const text = decodeBuffer(buffer, encoding);
-  return normalizeKagScript(text);
+  return transcodeKagScript(buffer);
 }
 
 /**
- * Point d'entrée du pipeline : normalise tous les scripts .ks
+ * Point d'entrée du pipeline : transcode tous les scripts .ks
  * de `context.inputDir` et écrit le résultat dans `context.outputDir`.
  */
 export async function runNormalizeKs(context: PipelineContext): Promise<void> {
@@ -112,17 +67,17 @@ export async function runNormalizeKs(context: PipelineContext): Promise<void> {
 
   let normalized = 0;
   for (const ksPath of ksFiles) {
-    const normalizedText = normalizeKagFile(ksPath);
+    const { text } = normalizeKagFile(ksPath);
     const outPath = outputPathFor(context.inputDir, context.outputDir, ksPath);
 
     if (!context.dryRun) {
       await ensureDirAsync(dirname(outPath));
-      await writeFile(outPath, normalizedText, "utf-8");
+      await writeFile(outPath, text, "utf-8");
     }
     normalized++;
   }
 
-  console.log(`[normalize-ks] ${ksFiles.length} script(s), ${normalized} normalisé(s)`);
+  console.log(`[normalize-ks] ${ksFiles.length} script(s), ${normalized} transcodé(s)`);
 }
 
 // CLI simple
@@ -132,5 +87,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error("Usage: normalize-ks.ts <input.ks>");
     process.exit(1);
   }
-  console.log(normalizeKagFile(input));
+  const { text, encoding } = normalizeKagFile(input);
+  console.error(`[normalize-ks] encoding: ${encoding}`);
+  console.log(text);
 }

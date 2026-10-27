@@ -45,7 +45,7 @@ class ScriptedRuntime implements RuntimeLike {
         back: { background: "", layers: [] },
         bgm: null,
         se: null,
-        variables: {},
+        variables: { f: {}, sf: {}, tf: {} },
       },
       callStack: [],
     };

@@ -11,6 +11,7 @@ import type { AssetManifest, ManifestEntry, ScenarioEntry } from "../src/core/as
 import type { InventoryEntry } from "./inventory.js";
 import { lex } from "../src/kag/lexer.js";
 import { parse } from "../src/kag/parser.js";
+import { decodeKs } from "./ks-encoding.js";
 
 /**
  * Construit le manifest à partir de l'inventaire.
@@ -39,10 +40,19 @@ export function buildManifest(entries: InventoryEntry[]): AssetManifest {
         kind: entry.kind,
       };
     } else if (entry.kind === "scenario") {
+      // Détecter l'encodage pour le scénario.
+      let encoding = "utf-8";
+      try {
+        const buffer = readFileSync(entry.source);
+        const decoded = decodeKs(buffer);
+        encoding = decoded.encoding;
+      } catch {
+        // Si on ne peut pas lire, on garde utf-8 par défaut.
+      }
       manifest.scenarios[entry.key] = {
         url: entry.webPath,
         source: entry.relPath,
-        encoding: "utf-8",
+        encoding,
       };
     }
   }
@@ -58,6 +68,8 @@ export type VerificationReport = {
   missingStorages: { script: string; line: number; storage: string; kind: string }[];
   /** Expressions @eval trouvées (pour information). */
   evalExpressions: { script: string; expression: string }[];
+  /** Expressions @eval dont la syntaxe n'est pas du JS valide (TJS spécifique). */
+  evalSyntaxErrors: { script: string; expression: string; error: string }[];
   /** Nombre de scripts analysés. */
   scriptsAnalyzed: number;
   /** Nombre total de références vérifiées. */
@@ -75,6 +87,7 @@ export function verifyReferences(
   const report: VerificationReport = {
     missingStorages: [],
     evalExpressions: [],
+    evalSyntaxErrors: [],
     scriptsAnalyzed: 0,
     referencesChecked: 0,
   };
@@ -82,7 +95,8 @@ export function verifyReferences(
   for (const entry of scenarioEntries) {
     try {
       const buffer = readFileSync(entry.source);
-      const text = decodeScript(buffer);
+      const decoded = decodeKs(buffer);
+      const text = decoded.text;
       const tokens = lex(text);
       const parsed = parse(tokens);
       report.scriptsAnalyzed++;
@@ -95,6 +109,16 @@ export function verifyReferences(
               script: entry.relPath,
               expression: instr.expression,
             });
+            // Vérifier la syntaxe JS (compile sans exécuter).
+            try {
+              new Function("f", "sf", "tf", `"use strict"; return (${instr.expression});`);
+            } catch (err) {
+              report.evalSyntaxErrors.push({
+                script: entry.relPath,
+                expression: instr.expression,
+                error: String(err),
+              });
+            }
           }
         }
       }
@@ -105,21 +129,6 @@ export function verifyReferences(
   }
 
   return report;
-}
-
-/** Décode un buffer .ks (UTF-16LE ou UTF-8). */
-function decodeScript(buffer: Buffer): string {
-  // BOM UTF-16LE
-  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
-    const decoder = new TextDecoder("utf-16le", { fatal: false });
-    return decoder.decode(buffer);
-  }
-  // BOM UTF-8
-  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
-    return buffer.toString("utf-8", 3);
-  }
-  // UTF-8 par défaut
-  return buffer.toString("utf-8");
 }
 
 /** Collecte les références storage d'une instruction et vérifie le manifest. */

@@ -55,7 +55,7 @@ export class FakeRuntime {
         back: { background: "", layers: [] },
         bgm: null,
         se: null,
-        variables: {},
+        variables: { f: {}, sf: {}, tf: {} },
         effect: null,
       },
       callStack: [],
