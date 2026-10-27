@@ -27,9 +27,13 @@ Découpage en épics. Chaque épic est une milestone GitHub, et chaque ligne est
 
 ## E4 — Pipeline d'assets
 
-- Scripts Python d'extraction et conversion.
-- Conversion `.tlg` → WebP.
-- Préparation des assets par script cible.
+- Scripts TypeScript d'extraction et conversion (outils dans `tools/`).
+- Extraction `.xp3` (wrapper, extracteur externe requis).
+- Conversion `.tlg` → WebP (wrapper, convertisseur externe requis).
+- Copie/re-encodage audio OGG.
+- Normalisation des scripts `.ks` : Shift_JIS → UTF-8, BOM, fins de ligne, commandes non supportées, noms de storage.
+- CLI orchestrator (`npm run pipeline`).
+- Documentation (`docs/PIPELINE.md`).
 
 ## E5 — UI/UX
 
