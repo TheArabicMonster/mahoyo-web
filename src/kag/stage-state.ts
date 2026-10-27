@@ -39,7 +39,7 @@ function emptyStageSnapshot(): StageSnapshot {
 
 function layerToSprite(layer: Layer): SpriteState {
   return {
-    id: String(layer.index),
+    id: layer.id,
     storage: layer.storage,
     x: layer.center,
     y: layer.vcenter,

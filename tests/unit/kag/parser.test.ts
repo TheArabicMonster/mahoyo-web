@@ -38,6 +38,8 @@ describe("parse", () => {
       rule: "crossfade",
       left: undefined,
       top: undefined,
+      page: undefined,
+      noclear: false,
     });
   });
 

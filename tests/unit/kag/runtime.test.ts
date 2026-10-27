@@ -88,10 +88,13 @@ describe("Runtime", () => {
     const script = parse(lex(TRANS_SAMPLE));
     const runtime = new Runtime(script);
 
-    const step = runtime.step();
-    expectClick(step.stop, "page");
+    // @trans sans nowait : bloque sur waitFor transition.
+    const transStep = runtime.step();
+    expect(transStep.stop?.kind).toBe("waitFor");
+    if (transStep.stop?.kind !== "waitFor") throw new Error("unexpected stop");
+    expect(transStep.stop.what).toBe("transition");
 
-    const sceneEvents = step.events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
+    const sceneEvents = transStep.events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
     expect(sceneEvents.length).toBe(1);
     expect(sceneEvents[0].scene.bg).toBe("sunset");
     expect(sceneEvents[0].scene.sprites[0]?.storage).toBe("青子");
@@ -99,6 +102,10 @@ describe("Runtime", () => {
     if (sceneEvents[0].transition.method === "crossfade") {
       expect(sceneEvents[0].transition.time).toBe(1200);
     }
+
+    // Une fois la transition terminée, le prochain step() reprend : texte + [r] + @pg → arrêt page.
+    const textStep = runtime.step();
+    expectClick(textStep.stop, "page");
   });
 
   it("supports multi-script loading via @call storage=", async () => {
