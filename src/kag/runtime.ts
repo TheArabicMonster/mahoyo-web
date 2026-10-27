@@ -49,6 +49,8 @@ export type RuntimeSaveData = {
 
 export type PageState = {
   background: string;
+  bgLeft?: number;
+  bgTop?: number;
   layers: Layer[];
 };
 
@@ -186,6 +188,8 @@ export class Runtime {
     const target = page === "back" ? this.state.back : this.state.fore;
     return {
       bg: target.background || null,
+      bgLeft: target.bgLeft,
+      bgTop: target.bgTop,
       sprites: target.layers.map((l) => this.layerToSprite(l)),
       effect: this.buildEffectState(),
     };
@@ -229,6 +233,8 @@ export class Runtime {
   private applyBg(instruction: Extract<Instruction, { kind: "bg" }>): RenderEvent | null {
     const target = this.getPageState(instruction.page);
     target.background = instruction.storage;
+    target.bgLeft = instruction.left;
+    target.bgTop = instruction.top;
     if (instruction.page === "back") return null;
     return this.emitScene(this.makeTransition(instruction.time, instruction.rule));
   }
@@ -296,6 +302,8 @@ export class Runtime {
     }
     if (!storage || storage === "bg") {
       this.state.back.background = this.state.fore.background;
+      this.state.back.bgLeft = this.state.fore.bgLeft;
+      this.state.back.bgTop = this.state.fore.bgTop;
     }
     return [];
   }
@@ -303,6 +311,8 @@ export class Runtime {
   private applyTrans(instruction: Extract<Instruction, { kind: "trans" }>): RenderEvent {
     this.state.fore = {
       background: this.state.back.background,
+      bgLeft: this.state.back.bgLeft,
+      bgTop: this.state.back.bgTop,
       layers: this.state.back.layers.slice(),
     };
     return this.emitScene(this.makeTransition(instruction.time, instruction.rule));

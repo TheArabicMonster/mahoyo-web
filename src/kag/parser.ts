@@ -102,6 +102,8 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         time: parseIntArg(args.time),
         rule: args.rule,
         page: parsePageLayer(args.page),
+        left: args.left !== undefined ? parseIntArg(args.left) : undefined,
+        top: args.top !== undefined ? parseIntArg(args.top) : undefined,
       };
     case "fg":
       return {

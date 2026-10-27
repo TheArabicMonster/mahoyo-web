@@ -44,7 +44,7 @@ export type AnimationDef = {
 };
 
 export type Instruction =
-  | { kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer }
+  | { kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number }
   | { kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer }
   | { kind: "animate"; def: AnimationDef }
   | { kind: "clall"; page?: PageLayer }
