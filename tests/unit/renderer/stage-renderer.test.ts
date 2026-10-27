@@ -108,6 +108,9 @@ describe("DomStageRenderer", () => {
     ];
     renderer.setSettings({ textSpeed: 1000, autoDelay: 2000, fontScale: 1, textboxOpacity: 1 });
     const promise = renderer.apply(events, { instant: false, signal: new AbortController().signal });
+    // Laisse le typewriter démarrer (microtask) avant de hurry — reflète l'usage
+    // réel où le player appelle hurry pendant apply (typewriterResolve set).
+    await Promise.resolve();
     renderer.hurry();
     await promise;
     const text = root.querySelector(".mh-stage-text") as HTMLElement;
@@ -263,7 +266,6 @@ describe("DomStageRenderer", () => {
       opacity: 1,
       crop: { width: 522, height: 576, srcLeft, srcTop: 0, srcZoomX: 100, srcZoomY: 100 },
     });
-    // 1ʳᵉ scène : partbg à x=748, srcLeft=542.
     await renderer.apply(
       [{ kind: "scene", scene: { bg: null, sprites: [cropSprite(748, 542)], effect: null }, transition: { method: "none" } }],
       { instant: true, signal: sig() },
@@ -273,15 +275,70 @@ describe("DomStageRenderer", () => {
     expect(w1.style.left).toBe("748px");
     expect(inner1.style.transform).toContain("translate(542px");
 
-    // 2ᵉ scène : même partbg déplacé (x=300, srcLeft=100). Même élément DOM.
     await renderer.apply(
       [{ kind: "scene", scene: { bg: null, sprites: [cropSprite(300, 100)], effect: null }, transition: { method: "none" } }],
       { instant: true, signal: sig() },
     );
     const w2 = root.querySelector(".mh-stage-partbg") as HTMLElement;
     const inner2 = w2.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
-    expect(w2).toBe(w1); // même wrapper (pas recréé)
+    expect(w2).toBe(w1);
     expect(w2.style.left).toBe("300px");
     expect(inner2.style.transform).toContain("translate(100px");
+  });
+
+  it("rend le ruby via <ruby><rt>", async () => {
+    const events: RenderEvent[] = [
+      { kind: "clearText" },
+      { kind: "text", segments: [
+        { text: "あいう" },
+        { text: "お", ruby: "え" },
+        { text: "。" },
+      ] },
+    ];
+    await renderer.apply(events, { instant: true, signal: new AbortController().signal });
+    const textEl = root.querySelector(".mh-stage-text") as HTMLElement;
+    const ruby = textEl.querySelector("ruby");
+    expect(ruby).not.toBeNull();
+    // Le texte visible du <ruby> contient la base "お" et l'annotation "え".
+    expect(textEl.textContent).toBe("あいうおえ。");
+    const baseNode = ruby?.childNodes[0];
+    expect(baseNode?.textContent).toBe("お");
+    const rt = ruby?.querySelector("rt");
+    expect(rt?.textContent).toBe("え");
+  });
+
+  it("ne re-type pas le texte déjà révélé après un nouveau segment", async () => {
+    // 1ʳᵐᵉ apply : texte court, instant.
+    await renderer.apply(
+      [{ kind: "text", segments: [{ text: "abc" }] }],
+      { instant: true, signal: new AbortController().signal },
+    );
+    expect(renderer.typedUnitsExposed()).toBe(3);
+
+    // 2ᵉ apply : nouveau segment. Le typewriter doit continuer depuis 3,
+    // pas re-type depuis 0. On vérifie via un instant apply que typedUnits
+    // reste cumulatif (5) et le texte est "abcde".
+    await renderer.apply(
+      [{ kind: "text", segments: [{ text: "de" }] }],
+      { instant: true, signal: new AbortController().signal },
+    );
+    const textEl = root.querySelector(".mh-stage-text") as HTMLElement;
+    expect(textEl.textContent).toBe("abcde");
+    expect(renderer.typedUnitsExposed()).toBe(5);
+  });
+
+  it("clearText reset typedUnits", async () => {
+    await renderer.apply(
+      [{ kind: "text", segments: [{ text: "hello" }] }],
+      { instant: true, signal: new AbortController().signal },
+    );
+    expect(renderer.typedUnitsExposed()).toBe(5);
+    await renderer.apply(
+      [{ kind: "clearText" }, { kind: "text", segments: [{ text: "x" }] }],
+      { instant: true, signal: new AbortController().signal },
+    );
+    expect(renderer.typedUnitsExposed()).toBe(1);
+    const textEl = root.querySelector(".mh-stage-text") as HTMLElement;
+    expect(textEl.textContent).toBe("x");
   });
 });

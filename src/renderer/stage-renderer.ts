@@ -54,6 +54,8 @@ export class DomStageRenderer implements StageRenderer {
   private typewriterTimer: ReturnType<typeof setTimeout> | null = null;
   private typewriterResolve: (() => void) | null = null;
   private typewriterHurry = false;
+  /** Nombre d'unités de texte déjà révélées (anti re-type après [l]). */
+  private typedUnits = 0;
 
   private transitionPromise: Promise<void> | null = null;
   private transitionResolve: (() => void) | null = null;
@@ -170,10 +172,20 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   hurry(): void {
-    this.typewriterHurry = true;
+    // Typewriter : non-sticky. Si le typewriter tourne, on le termine
+    // immédiatement (rendu complet + resolve) sans laisser de flag persistant.
     if (this.typewriterResolve) {
-      this.typewriterResolve();
+      if (this.typewriterTimer) {
+        clearTimeout(this.typewriterTimer);
+        this.typewriterTimer = null;
+      }
+      const units = this.buildTextUnits();
+      this.renderTextUpTo(units, units.length);
+      this.typedUnits = units.length;
+      const resolve = this.typewriterResolve;
       this.typewriterResolve = null;
+      this.typewriterHurry = false;
+      resolve();
     }
     // Termine la transition courante immédiatement (clear timer + overlays + resolve).
     this.finishTransition();
@@ -201,6 +213,7 @@ export class DomStageRenderer implements StageRenderer {
     this.spriteEls.clear();
     this.currentScene = snapshot.scene;
     this.text = [...snapshot.text];
+    this.typedUnits = this.buildTextUnits().length;
     this.textbox = snapshot.textbox;
     this.staffroll = snapshot.staffroll;
     this.renderScene(true);
@@ -259,6 +272,7 @@ export class DomStageRenderer implements StageRenderer {
     this.spriteEls.clear();
     this.currentScene = { bg: null, sprites: [], effect: null };
     this.text = [];
+    this.typedUnits = 0;
     this.textbox = { visible: true, frame: true };
     this.staffroll = null;
     this.renderScene(true);
@@ -420,6 +434,7 @@ export class DomStageRenderer implements StageRenderer {
       }
       case "clearText": {
         this.text = [];
+        this.typedUnits = 0;
         break;
       }
       case "textbox": {
@@ -818,39 +833,88 @@ export class DomStageRenderer implements StageRenderer {
     }
   }
 
+  /**
+   * Unité de rendu typewriter : un caractère + annotation ruby optionnelle.
+   * Construit à partir de TextSegment[] : un segment { text, ruby } produit
+   * une unité par caractère (chacune portant le ruby), un segment plain
+   * produit une unité par caractère sans ruby.
+   */
+  private buildTextUnits(): Array<{ char: string; ruby?: string }> {
+    const units: Array<{ char: string; ruby?: string }> = [];
+    for (const seg of this.text) {
+      if (!("text" in seg)) continue; // pause
+      const text = seg.text;
+      const ruby = "ruby" in seg ? seg.ruby : undefined;
+      for (const char of Array.from(text)) {
+        units.push({ char, ruby });
+      }
+    }
+    return units;
+  }
+
+  /** Reconstruit le DOM de la textbox jusqu'à n unités (inclu) avec ruby. */
+  private renderTextUpTo(units: Array<{ char: string; ruby?: string }>, n: number): void {
+    if (!this.textEl) return;
+    this.textEl.replaceChildren();
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < n && i < units.length; i++) {
+      const u = units[i];
+      if (u.ruby) {
+        const ruby = document.createElement("ruby");
+        ruby.textContent = u.char;
+        const rt = document.createElement("rt");
+        rt.textContent = u.ruby;
+        ruby.appendChild(rt);
+        frag.appendChild(ruby);
+      } else {
+        frag.appendChild(document.createTextNode(u.char));
+      }
+    }
+    this.textEl.appendChild(frag);
+  }
+
   private renderText(instant: boolean): void {
     if (!this.textEl) return;
+    const units = this.buildTextUnits();
     if (instant) {
-      this.textEl.textContent = this.text.map((s) => ("text" in s ? s.text : "")).join("");
+      this.renderTextUpTo(units, units.length);
+      this.typedUnits = units.length;
       return;
     }
+    // Non-instant : le typewriter gère la révélation progressive.
   }
 
   private runTypewriter(opts: RunOptions): Promise<void> {
     return new Promise((resolve) => {
       this.typewriterResolve = resolve;
+      const units = this.buildTextUnits();
+      // Anti re-type : on continue depuis typedUnits (déjà révélées).
+      const startUnit = Math.min(this.typedUnits, units.length);
+
       if (opts.instant || this.settings.textSpeed <= 0 || this.typewriterHurry) {
-        this.renderText(true);
+        this.renderTextUpTo(units, units.length);
+        this.typedUnits = units.length;
         this.typewriterResolve = null;
         this.typewriterHurry = false;
         resolve();
         return;
       }
       this.typewriterHurry = false;
-      const full = this.text.map((s) => ("text" in s ? s.text : "")).join("");
-      this.textEl!.textContent = "";
-      let i = 0;
+
+      let i = startUnit;
       const step = () => {
         if (!this.textEl) return;
         if (this.typewriterHurry) {
-          this.textEl.textContent = full;
+          this.renderTextUpTo(units, units.length);
+          this.typedUnits = units.length;
           this.typewriterResolve = null;
           resolve();
           return;
         }
         i++;
-        this.textEl.textContent = full.slice(0, i);
-        if (i >= full.length) {
+        this.renderTextUpTo(units, i);
+        if (i >= units.length) {
+          this.typedUnits = units.length;
           this.typewriterResolve = null;
           resolve();
           return;
@@ -859,6 +923,11 @@ export class DomStageRenderer implements StageRenderer {
       };
       step();
     });
+  }
+
+  /** Accès test-only au compteur d'unités tapées. */
+  typedUnitsExposed(): number {
+    return this.typedUnits;
   }
 
   private clearTimers(): void {
@@ -1036,6 +1105,6 @@ class AnimationController {
   }
 }
 
-export function createDomStageRenderer(deps: StageRendererDeps): StageRenderer {
+export function createDomStageRenderer(deps: StageRendererDeps): DomStageRenderer {
   return new DomStageRenderer(deps);
 }
