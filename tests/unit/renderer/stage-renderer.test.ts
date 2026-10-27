@@ -113,4 +113,92 @@ describe("DomStageRenderer", () => {
     const text = root.querySelector(".mh-stage-text") as HTMLElement;
     expect(text.textContent).toBe("Long text here");
   });
+
+  it("réconcilie les sprites par id (pas de recréation DOM)", async () => {
+    const scene = (sprites: { id: string; storage: string; x: number; y: number; z: number; opacity: number }[]) => ({
+      bg: null,
+      sprites: sprites.map((s) => ({ ...s })),
+      effect: null,
+    });
+    const sig = () => new AbortController().signal;
+
+    // 1ʳᵉ scène : deux sprites A et B.
+    await renderer.apply(
+      [{ kind: "scene", scene: scene([
+        { id: "A", storage: "im01", x: 100, y: 100, z: 1, opacity: 1 },
+        { id: "B", storage: "im02", x: 200, y: 200, z: 2, opacity: 1 },
+      ]), transition: { method: "none" } }],
+      { instant: true, signal: sig() },
+    );
+    const spritesEl = root.querySelector("#stage-sprites") as HTMLElement;
+    expect(spritesEl.children.length).toBe(2);
+    const elA1 = spritesEl.querySelector('[data-sprite-id="A"]') as HTMLImageElement;
+    const elB1 = spritesEl.querySelector('[data-sprite-id="B"]') as HTMLImageElement;
+    expect(elA1).not.toBeNull();
+    expect(elB1).not.toBeNull();
+    const identityA = elA1;
+    const identityB = elB1;
+
+    // 2ᵉ scène : A déplacé (même id), B retiré, C ajouté.
+    await renderer.apply(
+      [{ kind: "scene", scene: scene([
+        { id: "A", storage: "im01", x: 300, y: 300, z: 1, opacity: 0.5 },
+        { id: "C", storage: "im03", x: 400, y: 400, z: 3, opacity: 1 },
+      ]), transition: { method: "none" } }],
+      { instant: true, signal: sig() },
+    );
+    expect(spritesEl.children.length).toBe(2);
+    const elA2 = spritesEl.querySelector('[data-sprite-id="A"]') as HTMLImageElement;
+    const elC2 = spritesEl.querySelector('[data-sprite-id="C"]') as HTMLImageElement;
+    // A est le même élément DOM (pas recréé) : position/opacité mises à jour.
+    expect(elA2).toBe(identityA);
+    expect(elA2.style.left).toBe("300px");
+    expect(elA2.style.opacity).toBe("0.5");
+    // B a été retiré.
+    expect(spritesEl.querySelector('[data-sprite-id="B"]')).toBeNull();
+    // C est nouveau.
+    expect(elC2).not.toBeNull();
+    expect(elC2.style.left).toBe("400px");
+  });
+
+  it("la transition est non-bloquante et waitFor la résout", async () => {
+    const sig = () => new AbortController().signal;
+    const t0 = performance.now();
+    await renderer.apply(
+      [{ kind: "scene", scene: { bg: "old", sprites: [], effect: null }, transition: { method: "none" } }],
+      { instant: true, signal: sig() },
+    );
+    // Transition crossfade 100ms : apply() doit rendre la main immédiatement.
+    const start = performance.now();
+    await renderer.apply(
+      [{ kind: "scene", scene: { bg: "newbg", sprites: [], effect: null }, transition: { method: "crossfade", time: 100 } }],
+      { instant: false, signal: sig() },
+    );
+    const applyElapsed = performance.now() - start;
+    // Non-bloquant : apply() ne doit pas attendre les 100ms de transition.
+    expect(applyElapsed).toBeLessThan(60);
+
+    // waitFor("transition") doit attendre la fin de la transition.
+    const ctrl = new AbortController();
+    await renderer.waitFor("transition", undefined, ctrl.signal);
+    // Pas d'overlay résiduel après la transition.
+    expect(root.querySelectorAll(".mh-stage-bg-overlay").length).toBe(0);
+  });
+
+  it("hurry termine la transition immédiatement", async () => {
+    const sig = () => new AbortController().signal;
+    await renderer.apply(
+      [{ kind: "scene", scene: { bg: "old", sprites: [], effect: null }, transition: { method: "none" } }],
+      { instant: true, signal: sig() },
+    );
+    await renderer.apply(
+      [{ kind: "scene", scene: { bg: "newbg", sprites: [], effect: null }, transition: { method: "crossfade", time: 5000 } }],
+      { instant: false, signal: sig() },
+    );
+    // Overlays présents pendant la transition.
+    expect(root.querySelectorAll(".mh-stage-bg-overlay").length).toBeGreaterThan(0);
+    renderer.hurry();
+    // Après hurry : overlays nettoyés.
+    expect(root.querySelectorAll(".mh-stage-bg-overlay").length).toBe(0);
+  });
 });
