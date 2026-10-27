@@ -1,7 +1,10 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
 
+const publicDir = process.env.MAHOYO_E2E_ASSETS ? resolve(process.env.MAHOYO_E2E_ASSETS) : "public";
+
 export default defineConfig({
+  publicDir,
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
