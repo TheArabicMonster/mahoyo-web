@@ -6,14 +6,14 @@ import type { RenderEvent, StopReason } from "@/kag/events.js";
 
 const SAMPLE = `
 *page0|
-@bg time=100 storage=black
-@fg storage=青子 center=512 vcenter=288 index=1000
+@bg page=fore time=100 storage=black
+@fg page=fore storage=青子 center=512 vcenter=288 index=1000
 こんにちは。[r]
 青子です。
 @pg
 *page1|
-@bg time=100 storage=white
-@clall
+@bg page=fore time=100 storage=white
+@clall page=fore
 さようなら。
 @pg
 `;
@@ -166,9 +166,9 @@ describe("Runtime", () => {
   it("clears a specific layer with @clfg", () => {
     const CLFG_SAMPLE = `
 *page0|
-@fg storage=青子 center=512 vcenter=288 index=1000
-@fg storage=有珠 center=300 vcenter=288 index=2000
-@clfg storage=青子
+@fg page=fore storage=青子 center=512 vcenter=288 index=1000
+@fg page=fore storage=有珠 center=300 vcenter=288 index=2000
+@clfg page=fore storage=青子
 @pg
 `;
     const script = parse(lex(CLFG_SAMPLE));
@@ -185,11 +185,11 @@ describe("Runtime", () => {
   it("copies fore to back with @backlay", () => {
     const BACKLAY_SAMPLE = `
 *page0|
-@bg storage=sunset
-@fg storage=青子 center=512 vcenter=288 index=1000
+@bg page=fore storage=sunset
+@fg page=fore storage=青子 center=512 vcenter=288 index=1000
 @backlay
-@bg storage=night
-@clall
+@bg page=fore storage=night
+@clall page=fore
 @trans time=100
 @pg
 `;
@@ -202,6 +202,81 @@ describe("Runtime", () => {
     if (sceneEvent) {
       expect(sceneEvent.scene.bg).toBe("sunset");
     }
+  });
+
+  it("back par défaut : @fg sans page écrit sur back, @trans révèle sur fore", () => {
+    // Critère d'acceptation issue #49 : @bg page=back + @fg red index=2000 + @trans
+    // → fore.layers contient red z=2000.
+    const SRC = `
+*page0|
+@bg page=back storage=bgA
+@fg storage=red center=512 vcenter=288 index=2000
+@trans time=100
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    // @trans bloque sur waitFor transition.
+    expect(step.stop.kind).toBe("waitFor");
+    const scene = findEvent(step.events, "scene");
+    expect(scene).toBeDefined();
+    if (scene) {
+      expect(scene.scene.bg).toBe("bga");
+      const red = scene.scene.sprites.find((s) => s.storage === "red");
+      expect(red).toBeDefined();
+      expect(red?.z).toBe(2000);
+    }
+  });
+
+  it("trans implicite : @fg ×4 + @bg time=300 noclear=1 → une scène crossfade avec les 4 calques", () => {
+    // Critère d'acceptation issue #49 : préparation back puis @bg time+rule sans page
+    // déclenche un trans implicite back→fore avec tous les calques préparés.
+    const SRC = `
+*page0|
+@fg storage=s1 center=100 vcenter=100 index=1000
+@fg storage=s2 center=200 vcenter=100 index=1100
+@fg storage=s3 center=300 vcenter=100 index=1200
+@fg storage=s4 center=400 vcenter=100 index=1300
+@bg rule=crossfade time=300 storage=black noclear=1
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    // Trans implicite bloquant (pas de nowait sur le @bg).
+    expect(step.stop.kind).toBe("waitFor");
+    const scenes = step.events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
+    // Une seule scène émise (la trans implicite), contenant les 4 calques.
+    expect(scenes.length).toBe(1);
+    expect(scenes[0].scene.sprites.length).toBe(4);
+    expect(scenes[0].transition.method).toBe("crossfade");
+    expect(scenes[0].scene.bg).toBe("black");
+  });
+
+  it("@trans conserve back (pas de vidage après trans)", () => {
+    // Critère d'acceptation issue #49 : après un @trans, back n'est pas vidé.
+    // On prépare back (bg+sprite), on trans (fore=back, back conserved),
+    // puis on ajoute un sprite sur back et on re-trans : le bg et le 1er sprite
+    // doivent toujours être là (back n'a pas été vidé par le 1er trans).
+    const SRC = `
+*page0|
+@bg page=back storage=bgx
+@fg page=back storage=red center=512 vcenter=288 index=2000
+@trans time=100 nowait=1
+@fg page=back storage=blue center=400 vcenter=288 index=2100
+@trans time=100
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    // Le 2e @trans (sans nowait) bloque.
+    expect(step.stop.kind).toBe("waitFor");
+    const scenes = step.events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
+    const last = scenes[scenes.length - 1];
+    expect(last).toBeDefined();
+    // back conservé : bg + red toujours présents après le 2e trans.
+    expect(last.scene.bg).toBe("bgx");
+    expect(last.scene.sprites.some((s) => s.storage === "red")).toBe(true);
+    expect(last.scene.sprites.some((s) => s.storage === "blue")).toBe(true);
   });
 
   it("emits audio events for @play, @playstop and @fadebgm", () => {

@@ -40,6 +40,7 @@ describe("parse", () => {
       top: undefined,
       page: undefined,
       noclear: false,
+      nowait: false,
     });
   });
 

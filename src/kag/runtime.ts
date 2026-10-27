@@ -173,6 +173,22 @@ export class Runtime {
     return page === "back" ? this.state.back : this.state.fore;
   }
 
+  /**
+   * Résout la page cible quand `page` est absent.
+   *
+   * Sémantique Mahoyo (prouvée par 1-0.ks l.73-78 et 183-193) :
+   * `@fg`/`@partbg`/`@chgfg`/`@clall`/`@clfg`/`@bg`/`@fgact`/`@partbgact`
+   * **sans `page=`** écrivent sur **back**. Le trans explicite ou implicite
+   * (back→fore) révèle ensuite le résultat.
+   *
+   * `@movefg`/`@movepartbg` ciblent fore (ils animent un calque déjà visible).
+   */
+  private resolvePage(kind: string, page?: PageLayer): PageLayer {
+    if (page) return page;
+    if (kind === "movefg" || kind === "movepartbg") return "fore";
+    return "back";
+  }
+
   private layerToSprite(layer: Layer): SpriteState {
     const sprite: SpriteState = {
       id: layer.id,
@@ -243,19 +259,44 @@ export class Runtime {
     };
   }
 
-  private applyBg(instruction: Extract<Instruction, { kind: "bg" }>): RenderEvent | null {
-    const target = this.getPageState(instruction.page);
+  private applyBg(instruction: Extract<Instruction, { kind: "bg" }>): { events: RenderEvent[]; stop?: StopReason } {
+    const page = this.resolvePage("bg", instruction.page);
+    const target = this.getPageState(page);
     // noclear=0 (défaut) : vide les calques de la page cible avant de poser le fond.
     if (!instruction.noclear) target.layers = [];
     target.background = instruction.storage;
     target.bgLeft = instruction.left;
     target.bgTop = instruction.top;
-    if (instruction.page === "back") return null;
-    return this.emitScene(this.makeTransition(instruction.time, instruction.rule));
+
+    // Trans implicite : @bg sans page explicite + time>0 → trans back→fore.
+    // Pas de backlay : on a écrit directement sur back.
+    if (!instruction.page && instruction.time && instruction.time > 0) {
+      return this.runImplicitTrans(instruction.time, instruction.rule, instruction.nowait);
+    }
+    if (page === "back") return { events: [] };
+    return { events: [this.emitScene(this.makeTransition(instruction.time ?? 0, instruction.rule))] };
+  }
+
+  /**
+   * Trans implicite back→fore (cas @bg/@partbg sans page + time>0).
+   * fore = clone(back) ; back **conservé** (sémantique KAG exchange=false).
+   * Bloque jusqu'à la fin du trans sauf si nowait.
+   */
+  private runImplicitTrans(time: number, rule: string | undefined, nowait?: boolean): { events: RenderEvent[]; stop?: StopReason } {
+    this.state.fore = {
+      background: this.state.back.background,
+      bgLeft: this.state.back.bgLeft,
+      bgTop: this.state.back.bgTop,
+      layers: this.state.back.layers.slice(),
+    };
+    const events: RenderEvent[] = [this.emitScene(this.makeTransition(time, rule))];
+    if (nowait) return { events };
+    return { events, stop: { kind: "waitFor", what: "transition", skippable: false } };
   }
 
   private applyFg(instruction: Extract<Instruction, { kind: "fg" }>): RenderEvent | null {
-    const target = this.getPageState(instruction.page);
+    const page = this.resolvePage("fg", instruction.page);
+    const target = this.getPageState(page);
     const id = instruction.id ?? instruction.storage;
     const layer: Layer = {
       id,
@@ -268,17 +309,19 @@ export class Runtime {
     };
     target.layers = target.layers.filter((l) => l.id !== id);
     target.layers.push(layer);
-    if (instruction.page === "back") return null;
+    if (page === "back") return null;
     return this.emitScene({ method: "none" });
   }
 
-  private applyPartbg(instruction: Extract<Instruction, { kind: "partbg" }>): RenderEvent | null {
-    const target = this.getPageState(instruction.page);
+  private applyPartbg(instruction: Extract<Instruction, { kind: "partbg" }>): { events: RenderEvent[]; stop?: StopReason } {
+    const page = this.resolvePage("partbg", instruction.page);
+    const target = this.getPageState(page);
     const id = instruction.id ?? instruction.storage;
     // noclear=0 (défaut) : vide les partbg existants (calques avec crop) avant de poser le nouveau.
     if (!instruction.noclear) {
       target.layers = target.layers.filter((l) => !l.crop);
     }
+    const crop = instruction.crop;
     const layer: Layer = {
       id,
       storage: instruction.storage,
@@ -286,19 +329,28 @@ export class Runtime {
       vcenter: instruction.vcenter,
       index: instruction.index,
       opacity: instruction.opacity ?? 1,
-      crop: instruction.crop,
+      crop,
     };
     target.layers = target.layers.filter((l) => l.id !== id);
     target.layers.push(layer);
-    if (instruction.page === "back") return null;
+    // bgstorage : remplace le fond de la page cible (doc §4).
+    if (crop?.bgStorage) {
+      target.background = crop.bgStorage;
+    }
+    // Trans implicite : @partbg sans page + time>0 → trans back→fore.
+    if (!instruction.page && instruction.time && instruction.time > 0) {
+      return this.runImplicitTrans(instruction.time, instruction.rule, instruction.nowait);
+    }
+    if (page === "back") return { events: [] };
     const transition = instruction.time && instruction.time > 0
       ? this.makeTransition(instruction.time, instruction.rule)
       : { method: "none" as const };
-    return this.emitScene(transition);
+    return { events: [this.emitScene(transition)] };
   }
 
   private applyChgfg(instruction: Extract<Instruction, { kind: "chgfg" }>): RenderEvent | null {
-    const target = this.getPageState(instruction.page);
+    const page = this.resolvePage("chgfg", instruction.page);
+    const target = this.getPageState(page);
     const key = instruction.id ?? instruction.storage;
     let found = false;
     target.layers = target.layers.map((l) => {
@@ -318,13 +370,14 @@ export class Runtime {
         opacity: 1,
       });
     }
-    if (instruction.page === "back") return null;
+    if (page === "back") return null;
     return this.emitScene({ method: "none" });
   }
 
   private applyAnimate(instruction: Extract<Instruction, { kind: "animate" }>): RenderEvent[] {
     const def = instruction.def;
-    const target = this.getPageState(def.page);
+    const page = this.resolvePage(def.isPartbg ? "partbgact" : "fgact", def.page);
+    const target = this.getPageState(page);
     const lastFrame = def.keyframes[def.keyframes.length - 1];
     const firstFrame = def.keyframes[0];
     const id = def.id ?? def.storage;
@@ -343,7 +396,7 @@ export class Runtime {
     target.layers.push(layer);
 
     const events: RenderEvent[] = [];
-    if (!def.page || def.page === "fore") {
+    if (page === "fore") {
       events.push(this.emitScene({ method: "none" }));
     }
     // target = id du calque (correspond au data-sprite-id côté renderer).
@@ -352,14 +405,16 @@ export class Runtime {
   }
 
   private applyClall(instruction: Extract<Instruction, { kind: "clall" }>): RenderEvent | null {
-    const target = this.getPageState(instruction.page);
+    const page = this.resolvePage("clall", instruction.page);
+    const target = this.getPageState(page);
     target.layers = [];
-    if (instruction.page === "back") return null;
+    if (page === "back") return null;
     return this.emitScene({ method: "none" });
   }
 
   private applyClfg(instruction: Extract<Instruction, { kind: "clfg" }>): RenderEvent | null {
-    const target = this.getPageState(instruction.page);
+    const page = this.resolvePage("clfg", instruction.page);
+    const target = this.getPageState(page);
     if (instruction.id) {
       target.layers = target.layers.filter((l) => l.id !== instruction.id);
     } else if (instruction.storage) {
@@ -367,7 +422,7 @@ export class Runtime {
     } else if (instruction.index !== undefined) {
       target.layers = target.layers.filter((l) => l.index !== instruction.index);
     }
-    if (instruction.page === "back") return null;
+    if (page === "back") return null;
     return this.emitScene({ method: "none" });
   }
 
@@ -385,14 +440,13 @@ export class Runtime {
   }
 
   private applyTrans(instruction: Extract<Instruction, { kind: "trans" }>): { events: RenderEvent[]; stop?: StopReason } {
+    // fore = clone(back) ; back conservé (sémantique KAG exchange=false).
     this.state.fore = {
       background: this.state.back.background,
       bgLeft: this.state.back.bgLeft,
       bgTop: this.state.back.bgTop,
       layers: this.state.back.layers.slice(),
     };
-    // Après un @trans, la page back est vidée (sinon les calques s'empilent).
-    this.state.back = { background: "", layers: [] };
     const events: RenderEvent[] = [this.emitScene(this.makeTransition(instruction.time, instruction.rule))];
     if (!instruction.nowait) {
       return { events, stop: { kind: "waitFor", what: "transition", skippable: false } };
@@ -627,8 +681,9 @@ export class Runtime {
 
     switch (instruction.kind) {
       case "bg": {
-        const ev = this.applyBg(instruction);
-        if (ev) events.push(ev);
+        const res = this.applyBg(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
         break;
       }
       case "fg": {
@@ -642,8 +697,9 @@ export class Runtime {
         break;
       }
       case "partbg": {
-        const ev = this.applyPartbg(instruction);
-        if (ev) events.push(ev);
+        const res = this.applyPartbg(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
         break;
       }
       case "animate":

@@ -89,10 +89,10 @@ export type AnimationDef = {
 };
 
 export type Instruction =
-  | { kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean }
+  | { kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean; nowait?: boolean }
   | { kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; partbgId?: string }
   | { kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer }
-  | { kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; crop: CropSpec }
+  | { kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; nowait?: boolean; crop: CropSpec }
   | { kind: "animate"; def: AnimationDef }
   | { kind: "clall"; page?: PageLayer }
   | { kind: "clfg"; storage?: string; index?: number; id?: string; page?: PageLayer }
