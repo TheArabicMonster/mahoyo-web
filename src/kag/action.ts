@@ -145,6 +145,16 @@ function coerceProp(
       const n = parseFloat(raw);
       return Number.isNaN(n) ? null : { value: n, field: "rotate" };
     }
+    case "srcleft":
+    case "srctop": {
+      const n = parseFloat(raw);
+      return Number.isNaN(n) ? null : { value: n, field: name as keyof AnimKeyframe };
+    }
+    case "srczoomx":
+    case "srczoomy": {
+      const n = parseInt(raw, 10);
+      return Number.isNaN(n) ? null : { value: n, field: name as keyof AnimKeyframe };
+    }
     default:
       return null; // prop continue inconnue : ignorée
   }

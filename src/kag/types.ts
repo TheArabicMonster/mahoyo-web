@@ -63,6 +63,11 @@ export type AnimKeyframe = {
   zoomy?: number;
   rotate?: number;    // degrés
   absolute?: number;  // z-index
+  // Props continues spécifiques aux partbg (crop interne) :
+  srcleft?: number;
+  srctop?: number;
+  srczoomx?: number;
+  srczoomy?: number;
   // Props discrètes (appliquées instantanément, pas interpolées) :
   storage?: string;
   visible?: boolean;
@@ -79,6 +84,8 @@ export type AnimationDef = {
   id?: string;
   /** Pour @fgact sur un partbg : identifiant du calque partbg ciblé. */
   partbgid?: string;
+  /** Si true, l'animation cible un partbg (ex. @partbgact). */
+  isPartbg?: boolean;
 };
 
 export type Instruction =
