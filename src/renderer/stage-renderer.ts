@@ -61,6 +61,12 @@ export class DomStageRenderer implements StageRenderer {
 
   private animations = new Map<string, AnimationController>();
   /**
+   * Animations en attente : démarrées quand le sprite cible est créé.
+   * Cas typique : @fgact page=back émet l'évent animate AVANT que @trans
+   * ne copie le sprite sur la page fore (où il devient visible/DOM).
+   */
+  private pendingAnimations = new Map<string, { def: AnimationDef; opts: RunOptions }>();
+  /**
    * Sprites courants par id (réconciliation, pas de innerHTML="").
    * Clé = SpriteState.id. Permet aux éléments DOM de survivre entre scènes
    * (et donc aux animations CSS/WAAPI qui y tournent).
@@ -484,6 +490,18 @@ export class DomStageRenderer implements StageRenderer {
         img.alt = "";
         img.dataset.spriteId = s.id;
         this.spriteEls.set(s.id, img);
+        // Démarre une animation en attente ciblant ce sprite (cas @fgact page=back).
+        const pending = this.pendingAnimations.get(s.id);
+        if (pending) {
+          this.pendingAnimations.delete(s.id);
+          // On démarre après avoir attaché l'élément (appendChild ci-dessous).
+          const elToAnimate = img;
+          queueMicrotask(() => {
+            if (this.animations.has(s.id)) return;
+            const ctrl = new AnimationController(pending.def, s.id, elToAnimate, this.resolver, () => this.stopAnimation(s.id));
+            this.animations.set(s.id, ctrl);
+          });
+        }
       }
       // Mise à jour src (peut changer via @chgfg).
       const src = this.resolver.image(s.storage);
@@ -496,11 +514,13 @@ export class DomStageRenderer implements StageRenderer {
       this.spritesEl.appendChild(img);
     }
 
-    // Retire les sprites disparus.
+    // Retire les sprites disparus (+ annule leurs animations).
     for (const [id, el] of this.spriteEls) {
       if (!seen.has(id)) {
         el.remove();
         this.spriteEls.delete(id);
+        this.stopAnimation(id);
+        this.pendingAnimations.delete(id);
       }
     }
 
@@ -611,6 +631,12 @@ export class DomStageRenderer implements StageRenderer {
     }
     // Récupère l'élément sprite persistant (réconciliation PR 5).
     const el = this.spriteEls.get(target) ?? this.findPartbgEl(def);
+    if (!el) {
+      // Sprite pas encore rendu (cas @fgact page=back avant @trans) :
+      // on diffère le démarrage jusqu'à la création de l'élément.
+      this.pendingAnimations.set(target, { def, opts });
+      return;
+    }
     const ctrl = new AnimationController(def, target, el, this.resolver, () => this.stopAnimation(target));
     this.animations.set(target, ctrl);
   }
