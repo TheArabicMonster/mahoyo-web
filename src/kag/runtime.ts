@@ -77,6 +77,11 @@ export type RuntimeState = {
     time: number;
     elapsed: number;
   };
+  /**
+   * Sandbox partagée pour les expressions @eval et blocs @iscript.
+   * Certains scripts Mahoyo utilisent `global.__tmp_tla` et `timeline_object`.
+   */
+  evalGlobal: Record<string, unknown>;
   textbox?: TextboxState;
   /** Effet visuel actuellement appliqué sur la scène. */
   effect?: EffectState | null;
@@ -111,6 +116,7 @@ export function createRuntimeState(): RuntimeState {
     bgm: null,
     se: null,
     variables: { f: {}, sf: {}, tf: {} },
+    evalGlobal: {},
     staffroll: { lines: [], running: false, height: 10000, time: 60000, elapsed: 0 },
     textbox: { visible: true, frame: true },
     effect: null,
@@ -451,8 +457,16 @@ export class Runtime {
   private applyEval(instruction: Extract<Instruction, { kind: "eval" }>): RenderEvent[] {
     const { f, sf, tf } = this.state.variables;
     try {
-      const fn = new Function("f", "sf", "tf", `"use strict"; return (${instruction.expression});`);
-      fn(f, sf, tf);
+      const timeline_object = { loadByData: () => {} };
+      const fn = new Function(
+        "f",
+        "sf",
+        "tf",
+        "global",
+        "timeline_object",
+        `"use strict"; return (${instruction.expression});`,
+      );
+      fn(f, sf, tf, this.state.evalGlobal, timeline_object);
     } catch (err) {
       this.onWarning(`eval failed: ${instruction.expression} — ${err}`);
     }
@@ -798,6 +812,7 @@ export class Runtime {
         bgm: this.state.bgm,
         se: this.state.se,
         variables: structuredClone(this.state.variables),
+        evalGlobal: structuredClone(this.state.evalGlobal),
         textbox: this.state.textbox ? { ...this.state.textbox } : undefined,
         effect: this.state.effect,
         staffroll: this.state.staffroll
@@ -836,6 +851,7 @@ export class Runtime {
       fore: structuredClone(data.state.fore),
       back: structuredClone(data.state.back),
       variables: normalizedVars,
+      evalGlobal: data.state.evalGlobal ?? {},
       effect: data.state.effect,
       staffroll: data.state.staffroll
         ? structuredClone(data.state.staffroll)
