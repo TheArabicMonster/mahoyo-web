@@ -1,199 +1,115 @@
 /**
- * Tests unitaires pour tools/normalize-ks.ts
+ * Tests unitaires pour tools/normalize-ks.ts (transcodeur)
  *
- * On teste les fonctions pures uniquement (pas d'I/O).
+ * normalize-ks ne fait plus de réécriture de storage= ni de suppression
+ * de commandes. Il se contente de transcoder (UTF-16LE/UTF-8/Shift_JIS → UTF-8).
  */
 import { describe, it, expect } from "vitest";
-import {
-  detectEncoding,
-  decodeBuffer,
-  normalizeScriptText,
-  stripUnsupportedCommands,
-  normalizeStorage,
-  normalizeAssets,
-  normalizeKagScript,
-} from "../../../tools/normalize-ks.js";
-
-describe("detectEncoding", () => {
-  it("retourne shift_jis par défaut", () => {
-    expect(detectEncoding(Buffer.from("test"))).toBe("shift_jis");
-  });
-
-  it("retourne shift_jis même pour un buffer vide", () => {
-    expect(detectEncoding(Buffer.alloc(0))).toBe("shift_jis");
-  });
-});
-
-describe("decodeBuffer", () => {
-  it("décode un buffer UTF-8", () => {
-    const text = "こんにちは世界";
-    const buf = Buffer.from(text, "utf-8");
-    expect(decodeBuffer(buf, "utf-8")).toBe(text);
-  });
-
-  it("décode un buffer Shift_JIS", () => {
-    // "こんにちは" en Shift_JIS
-    const buf = Buffer.from([0x82, 0xb1, 0x82, 0xf1, 0x82, 0xc9, 0x82, 0xbf, 0x82, 0xcd]);
-    const decoded = decodeBuffer(buf, "shift_jis");
-    expect(decoded).toContain("こんにちは");
-  });
-
-  it("décode un buffer ASCII (compatible Shift_JIS)", () => {
-    const buf = Buffer.from("Hello World", "ascii");
-    expect(decodeBuffer(buf, "shift_jis")).toBe("Hello World");
-  });
-});
+import { normalizeScriptText, transcodeKagScript } from "../../../tools/normalize-ks.js";
 
 describe("normalizeScriptText", () => {
   it("supprime le BOM", () => {
-    const text = "\uFEFF[line] Ceci est un test";
-    expect(normalizeScriptText(text)).toBe("[line] Ceci est un test");
+    expect(normalizeScriptText("\uFEFF[line] Test")).toBe("[line] Test");
   });
 
   it("normalise les fins de ligne CRLF", () => {
-    const text = "ligne1\r\nligne2\r\nligne3";
-    expect(normalizeScriptText(text)).toBe("ligne1\nligne2\nligne3");
+    expect(normalizeScriptText("ligne1\r\nligne2\r\nligne3")).toBe("ligne1\nligne2\nligne3");
   });
 
   it("normalise les fins de ligne CR", () => {
-    const text = "ligne1\rligne2\rligne3";
-    expect(normalizeScriptText(text)).toBe("ligne1\nligne2\nligne3");
+    expect(normalizeScriptText("ligne1\rligne2\rligne3")).toBe("ligne1\nligne2\nligne3");
+  });
+
+  it("supprime les caractères NUL", () => {
+    expect(normalizeScriptText("text\u0000suite")).toBe("textsuite");
   });
 
   it("ne modifie pas un texte déjà normalisé", () => {
-    const text = "ligne1\nligne2\nligne3";
+    expect(normalizeScriptText("ligne1\nligne2")).toBe("ligne1\nligne2");
+  });
+
+  it("combine BOM + CRLF + NUL", () => {
+    expect(normalizeScriptText("\uFEFFligne1\r\n\u0000ligne2")).toBe("ligne1\nligne2");
+  });
+
+  it("NE modifie PAS les storage=", () => {
+    const text = "@bg storage=bg/Night.tlg|b";
     expect(normalizeScriptText(text)).toBe(text);
   });
 
-  it("gère un BOM + CRLF combiné", () => {
-    const text = "\uFEFFligne1\r\nligne2";
-    expect(normalizeScriptText(text)).toBe("ligne1\nligne2");
+  it("NE supprime PAS @eval", () => {
+    const text = "@eval exp=f.x=1";
+    expect(normalizeScriptText(text)).toBe(text);
+  });
+
+  it("NE supprime PAS @iscript/@endscript", () => {
+    const text = "@iscript\nvar x = 1;\n@endscript";
+    expect(normalizeScriptText(text)).toBe(text);
+  });
+
+  it("préserve le nombre de lignes", () => {
+    const text = "ligne1\r\nligne2\r\nligne3";
+    const result = normalizeScriptText(text);
+    expect(result.split("\n")).toHaveLength(3);
   });
 });
 
-describe("stripUnsupportedCommands", () => {
-  it("supprime @eval", () => {
-    const text = "@eval f.flag = 1\n[line] Suite";
-    const result = stripUnsupportedCommands(text);
-    expect(result).not.toContain("@eval");
-    expect(result).toContain("[line] Suite");
+describe("transcodeKagScript", () => {
+  it("décode un buffer UTF-8", () => {
+    const text = "@bg storage=black\nTexte.";
+    const buf = Buffer.from(text, "utf-8");
+    const result = transcodeKagScript(buf);
+    expect(result.encoding).toBe("utf-8");
+    expect(result.text).toBe(text);
   });
 
-  it("supprime @iscript", () => {
-    const text = "@iscript\nvar x = 1;\n@endscript\nSuite";
-    const result = stripUnsupportedCommands(text);
-    expect(result).not.toContain("@iscript");
-    expect(result).not.toContain("@endscript");
-    expect(result).toContain("Suite");
+  it("décode un buffer UTF-16LE avec BOM", () => {
+    const text = "@bg storage=black\nこんにちは。";
+    // Créer un buffer UTF-16LE avec BOM
+    const bom = Buffer.from([0xff, 0xfe]);
+    const content = Buffer.from(text, "utf-16le");
+    const buf = Buffer.concat([bom, content]);
+    const result = transcodeKagScript(buf);
+    expect(result.encoding).toBe("utf-16le");
+    expect(result.text).toContain("こんにちは");
+    expect(result.text).toContain("@bg");
   });
 
-  it("préserve les numéros de ligne (remplace par ligne vide)", () => {
-    const text = "ligne0\n@eval f.x=1\nligne2";
-    const result = stripUnsupportedCommands(text);
-    const lines = result.split("\n");
-    expect(lines).toHaveLength(3);
-    expect(lines[0]).toBe("ligne0");
-    expect(lines[1]).toBe("");
-    expect(lines[2]).toBe("ligne2");
+  it("décode un buffer UTF-8 avec BOM", () => {
+    const text = "@bg storage=black";
+    const buf = Buffer.from("\uFEFF" + text, "utf-8");
+    const result = transcodeKagScript(buf);
+    expect(result.encoding).toBe("utf-8");
+    expect(result.text).toBe(text); // BOM removed by normalizeScriptText
   });
 
-  it("conserve les commandes supportées", () => {
-    const text = "@bg storage=bg01\n[line] Bonjour";
-    const result = stripUnsupportedCommands(text);
-    expect(result).toBe(text);
+  it("décode un buffer ASCII (UTF-8 sans BOM)", () => {
+    const text = "@bg storage=black\nHello.";
+    const buf = Buffer.from(text, "ascii");
+    const result = transcodeKagScript(buf);
+    expect(result.encoding).toBe("utf-8");
+    expect(result.text).toBe(text);
   });
 
-  it("ne supprime pas @eval au milieu d'une ligne (pas un tag)", () => {
-    // Un @eval qui n'est pas en début de ligne après trim n'est pas un tag KAG
-    const text = "texte @eval f.x=1";
-    const result = stripUnsupportedCommands(text);
-    // Ici le trim détecte @eval au début → supprimé. C'est le comportement attendu.
-    // Les tags KAG sont toujours en début de ligne.
-    expect(result).toContain("texte @eval");
-  });
-});
-
-describe("normalizeStorage", () => {
-  it("supprime l'extension .tlg", () => {
-    expect(normalizeStorage("bg/night.tlg")).toBe("bg_night");
+  it("retourne du texte vide pour un buffer vide", () => {
+    const result = transcodeKagScript(Buffer.alloc(0));
+    expect(result.text).toBe("");
+    expect(result.encoding).toBe("utf-8");
   });
 
-  it("supprime l'extension .png", () => {
-    expect(normalizeStorage("bg/sunset.png")).toBe("bg_sunset");
+  it("préserve les commandes @eval et @iscript", () => {
+    const text = "@eval exp=f.x=1\n@iscript\nvar x;\n@endscript";
+    const buf = Buffer.from(text, "utf-8");
+    const result = transcodeKagScript(buf);
+    expect(result.text).toContain("@eval");
+    expect(result.text).toContain("@iscript");
+    expect(result.text).toContain("@endscript");
   });
 
-  it("supprime l'extension .ogg", () => {
-    expect(normalizeStorage("bgm/title.ogg")).toBe("bgm_title");
-  });
-
-  it("convertit en minuscules", () => {
-    expect(normalizeStorage("BG/Night.TLG")).toBe("bg_night");
-  });
-
-  it("remplace les backslashes par des underscores", () => {
-    expect(normalizeStorage("bg\\night.tlg")).toBe("bg_night");
-  });
-
-  it("remplace les slashes par des underscores", () => {
-    expect(normalizeStorage("bg/night.tlg")).toBe("bg_night");
-  });
-
-  it("gère un nom sans chemin", () => {
-    expect(normalizeStorage("title.ogg")).toBe("title");
-  });
-
-  it("gère un chemin profond", () => {
-    expect(normalizeStorage("image/bg/night.tlg")).toBe("image_bg_night");
-  });
-});
-
-describe("normalizeAssets", () => {
-  it("normalise les attributs storage", () => {
-    const text = "@bg storage=bg/night.tlg";
-    const result = normalizeAssets(text);
-    expect(result).toBe("@bg storage=bg_night");
-  });
-
-  it("normalise storage dans les crochets", () => {
-    const text = "[playbgm storage=bgm/title.ogg]";
-    const result = normalizeAssets(text);
-    expect(result).toBe("[playbgm storage=bgm_title]");
-  });
-
-  it("normalise plusieurs storage dans un même texte", () => {
-    const text = "@bg storage=bg/night.tlg\n[playbgm storage=bgm/rain.ogg]";
-    const result = normalizeAssets(text);
-    expect(result).toContain("storage=bg_night");
-    expect(result).toContain("storage=bgm_rain");
-  });
-
-  it("préserve le reste de la ligne", () => {
-    const text = "@bg storage=bg/night.tlg time=1000";
-    const result = normalizeAssets(text);
-    expect(result).toContain("time=1000");
-  });
-});
-
-describe("normalizeKagScript", () => {
-  it("applique toutes les normalisations en séquence", () => {
-    const input = "\uFEFF@eval f.x=1\r\n@bg storage=bg/night.tlg\r\nTexte";
-    const result = normalizeKagScript(input);
-
-    // BOM supprimé
-    expect(result).not.toContain("\uFEFF");
-    // CRLF → LF
-    expect(result).not.toContain("\r");
-    // @eval supprimé
-    expect(result).not.toContain("@eval");
-    // storage normalisé
-    expect(result).toContain("storage=bg_night");
-    // Texte conservé
-    expect(result).toContain("Texte");
-  });
-
-  it("retourne un texte propre pour un script simple", () => {
-    const input = "@bg storage=bg/sunset.png\n[line] Bonjour le monde";
-    const result = normalizeKagScript(input);
-    expect(result).toBe("@bg storage=bg_sunset\n[line] Bonjour le monde");
+  it("préserve les storage= avec suffixe |", () => {
+    const text = "@fg storage=Aoko.tlg|b";
+    const buf = Buffer.from(text, "utf-8");
+    const result = transcodeKagScript(buf);
+    expect(result.text).toContain("storage=Aoko.tlg|b");
   });
 });

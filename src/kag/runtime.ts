@@ -57,7 +57,18 @@ export type RuntimeState = {
   back: PageState;
   bgm: string | null;
   se: string | null;
-  variables: Record<string, unknown>;
+  /**
+   * Variables KAG organisées en portées :
+   * - f : variables de jeu (persistantes entre scènes, resets au new game)
+   * - sf : variables système (sauvegardes, config)
+   * - tf : variables temporaires (par scénario)
+   * Ancien format plat (Record<string, unknown>) accepté à la restauration.
+   */
+  variables: {
+    f: Record<string, unknown>;
+    sf: Record<string, unknown>;
+    tf: Record<string, unknown>;
+  };
   staffroll?: {
     lines: { text: string; y: number; size: number; face?: string; cmx?: number }[];
     face?: string;
@@ -80,13 +91,26 @@ export type ScriptContext = {
   segmentIndex: number;
 };
 
+/** Type guard : vérifie si les variables sont au format scoped ({f, sf, tf}). */
+function isScopedVariables(
+  vars: unknown,
+): vars is { f: Record<string, unknown>; sf: Record<string, unknown>; tf: Record<string, unknown> } {
+  return (
+    typeof vars === "object" &&
+    vars !== null &&
+    "f" in vars &&
+    "sf" in vars &&
+    "tf" in vars
+  );
+}
+
 export function createRuntimeState(): RuntimeState {
   return {
     fore: { background: "", layers: [] },
     back: { background: "", layers: [] },
     bgm: null,
     se: null,
-    variables: {},
+    variables: { f: {}, sf: {}, tf: {} },
     staffroll: { lines: [], running: false, height: 10000, time: 60000, elapsed: 0 },
     textbox: { visible: true, frame: true },
     effect: null,
@@ -425,9 +449,10 @@ export class Runtime {
   }
 
   private applyEval(instruction: Extract<Instruction, { kind: "eval" }>): RenderEvent[] {
+    const { f, sf, tf } = this.state.variables;
     try {
-      const fn = new Function("tf", `"use strict"; return (${instruction.expression});`);
-      fn(this.state.variables);
+      const fn = new Function("f", "sf", "tf", `"use strict"; return (${instruction.expression});`);
+      fn(f, sf, tf);
     } catch (err) {
       this.onWarning(`eval failed: ${instruction.expression} — ${err}`);
     }
@@ -768,15 +793,15 @@ export class Runtime {
       instructionIndex: this.context.instructionIndex,
       segmentIndex: this.context.segmentIndex,
       state: {
-        fore: { ...this.state.fore, layers: this.state.fore.layers.slice() },
-        back: { ...this.state.back, layers: this.state.back.layers.slice() },
+        fore: structuredClone(this.state.fore),
+        back: structuredClone(this.state.back),
         bgm: this.state.bgm,
         se: this.state.se,
-        variables: { ...this.state.variables },
+        variables: structuredClone(this.state.variables),
         textbox: this.state.textbox ? { ...this.state.textbox } : undefined,
         effect: this.state.effect,
         staffroll: this.state.staffroll
-          ? { ...this.state.staffroll, lines: [...this.state.staffroll.lines] }
+          ? structuredClone(this.state.staffroll)
           : undefined,
       },
       callStack: this.callStack.map((ctx) => ({
@@ -799,14 +824,21 @@ export class Runtime {
       scriptName: data.scriptName,
       segmentIndex: data.segmentIndex,
     };
+
+    // Restaurer les variables — gérer l'ancien format plat (Record<string, unknown>).
+    const vars = data.state.variables;
+    const normalizedVars = isScopedVariables(vars)
+      ? structuredClone(vars)
+      : { f: structuredClone(vars), sf: {}, tf: {} };
+
     this.state = {
       ...data.state,
-      fore: { ...data.state.fore, layers: data.state.fore.layers.slice() },
-      back: { ...data.state.back, layers: data.state.back.layers.slice() },
-      variables: { ...data.state.variables },
+      fore: structuredClone(data.state.fore),
+      back: structuredClone(data.state.back),
+      variables: normalizedVars,
       effect: data.state.effect,
       staffroll: data.state.staffroll
-        ? { ...data.state.staffroll, lines: [...data.state.staffroll.lines] }
+        ? structuredClone(data.state.staffroll)
         : undefined,
     };
 
