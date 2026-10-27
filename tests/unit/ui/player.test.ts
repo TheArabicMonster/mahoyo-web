@@ -46,6 +46,7 @@ class ScriptedRuntime implements RuntimeLike {
         bgm: null,
         se: null,
         variables: { f: {}, sf: {}, tf: {} },
+        evalGlobal: {},
       },
       callStack: [],
     };

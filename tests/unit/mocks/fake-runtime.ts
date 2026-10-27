@@ -56,6 +56,7 @@ export class FakeRuntime {
         bgm: null,
         se: null,
         variables: { f: {}, sf: {}, tf: {} },
+        evalGlobal: {},
         effect: null,
       },
       callStack: [],
