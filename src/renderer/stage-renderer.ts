@@ -30,6 +30,8 @@ export class DomStageRenderer implements StageRenderer {
   private container: HTMLElement | null = null;
   private bgEl: HTMLElement | null = null;
   private spritesEl: HTMLElement | null = null;
+  /** Calque(s) overlay pour le crossfade de fond (transition non-bloquante). */
+  private bgOverlays: HTMLElement[] = [];
   private effectsEl: HTMLElement | null = null;
   private textboxEl: HTMLElement | null = null;
   private textEl: HTMLElement | null = null;
@@ -54,8 +56,15 @@ export class DomStageRenderer implements StageRenderer {
 
   private transitionPromise: Promise<void> | null = null;
   private transitionResolve: (() => void) | null = null;
+  private transitionTimer: ReturnType<typeof setTimeout> | null = null;
 
   private animations = new Map<string, AnimationController>();
+  /**
+   * Sprites courants par id (réconciliation, pas de innerHTML="").
+   * Clé = SpriteState.id. Permet aux éléments DOM de survivre entre scènes
+   * (et donc aux animations CSS/WAAPI qui y tournent).
+   */
+  private spriteEls = new Map<string, HTMLImageElement>();
   private quakeTimer: ReturnType<typeof setTimeout> | null = null;
   private quakeResolve: (() => void) | null = null;
 
@@ -157,10 +166,8 @@ export class DomStageRenderer implements StageRenderer {
       this.typewriterResolve();
       this.typewriterResolve = null;
     }
-    if (this.transitionResolve) {
-      this.transitionResolve();
-      this.transitionResolve = null;
-    }
+    // Termine la transition courante immédiatement (clear timer + overlays + resolve).
+    this.finishTransition();
     for (const ctrl of this.animations.values()) ctrl.hurry();
     if (this.quakeResolve) {
       this.quakeResolve();
@@ -180,6 +187,9 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   async restore(snapshot: StageSnapshot, signal: AbortSignal): Promise<void> {
+    this.finishTransition();
+    this.clearBgOverlays();
+    this.spriteEls.clear();
     this.currentScene = snapshot.scene;
     this.text = [...snapshot.text];
     this.textbox = snapshot.textbox;
@@ -235,6 +245,9 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   clear(): void {
+    this.finishTransition();
+    this.clearBgOverlays();
+    this.spriteEls.clear();
     this.currentScene = { bg: null, sprites: [], effect: null };
     this.text = [];
     this.textbox = { visible: true, frame: true };
@@ -246,11 +259,27 @@ export class DomStageRenderer implements StageRenderer {
 
   dispose(): void {
     this.clearTimers();
+    this.finishTransition();
+    this.clearBgOverlays();
+    this.spriteEls.clear();
     if (this.container && this.root) {
       this.root.removeChild(this.container);
     }
     this.root = null;
     this.container = null;
+  }
+
+  /** Termine immédiatement la transition courante (si any) sans attendre. */
+  private finishTransition(): void {
+    if (this.transitionTimer) {
+      clearTimeout(this.transitionTimer);
+      this.transitionTimer = null;
+    }
+    const resolve = this.transitionResolve;
+    this.transitionResolve = null;
+    this.transitionPromise = null;
+    this.clearBgOverlays();
+    if (resolve) resolve();
   }
 
   // ── Interne ──
@@ -367,7 +396,9 @@ export class DomStageRenderer implements StageRenderer {
         const oldScene = this.currentScene;
         this.currentScene = event.scene;
         const transitionTime = event.transition.method === "none" ? 0 : event.transition.time;
-        await this.transitionScene(oldScene, event.scene, transitionTime, opts);
+        // Non-bloquant : on démarre la transition et on rend la main.
+        // waitFor("transition") permettra au player d'attendre sa fin.
+        this.startTransition(oldScene, event.scene, transitionTime, opts);
         break;
       }
       case "text": {
@@ -418,6 +449,15 @@ export class DomStageRenderer implements StageRenderer {
     }
   }
 
+  /**
+   * Réconcilie les sprites de la scène courante avec le DOM.
+   *
+   * On garde un `Map<id, HTMLImageElement>` : les sprites dont l'id persiste
+   * sont mis à jour (position/opacity/src) sans être recréés — c'est
+   * indispensable pour que les animations CSS/WAAPI qui ciblent un calque
+   * survivent entre deux scènes. Les sprites absents de la nouvelle scène
+   * sont retirés ; les nouveaux sont créés et insérés dans l'ordre z.
+   */
   private renderScene(instant: boolean): void {
     if (!this.bgEl || !this.spritesEl) return;
     const bg = this.currentScene.bg;
@@ -432,16 +472,35 @@ export class DomStageRenderer implements StageRenderer {
     }
 
     const sprites = [...this.currentScene.sprites].sort((a, b) => a.z - b.z);
-    this.spritesEl.innerHTML = "";
+    const seen = new Set<string>();
+
     for (const s of sprites) {
-      const img = document.createElement("img");
-      img.className = "mh-stage-sprite";
-      img.src = this.resolver.image(s.storage);
+      seen.add(s.id);
+      let img = this.spriteEls.get(s.id);
+      if (!img) {
+        img = document.createElement("img");
+        img.className = "mh-stage-sprite";
+        img.alt = "";
+        img.dataset.spriteId = s.id;
+        this.spriteEls.set(s.id, img);
+      }
+      // Mise à jour src (peut changer via @chgfg).
+      const src = this.resolver.image(s.storage);
+      if (img.src !== src && !img.src.endsWith(src)) img.src = src;
       img.style.left = `${s.x}px`;
       img.style.top = `${s.y}px`;
       img.style.opacity = String(s.opacity);
-      img.alt = "";
+      img.style.zIndex = String(s.z);
+      // Réordonne selon z : appendChild déplace l'élément à la fin (au-dessus).
       this.spritesEl.appendChild(img);
+    }
+
+    // Retire les sprites disparus.
+    for (const [id, el] of this.spriteEls) {
+      if (!seen.has(id)) {
+        el.remove();
+        this.spriteEls.delete(id);
+      }
     }
 
     if (!instant) {
@@ -454,37 +513,73 @@ export class DomStageRenderer implements StageRenderer {
     this.renderEffect();
   }
 
-  private async transitionScene(from: SceneState, to: SceneState, time: Ms, opts: RunOptions): Promise<void> {
+  /**
+   * Démarre une transition non-bloquante entre `from` et `to`.
+   *
+   * - Réconcilie les sprites vers `to` immédiatement (les calques persistent).
+   * - Pour le crossfade de fond : on pose un overlay avec l'ancien fond par-dessus
+   *   le nouveau, puis on fade out l'overlay. Le nouveau fond apparaît dessous.
+   * - `transitionPromise` est résolu après `time` ms (ou immédiatement via hurry()).
+   * - Si une transition était déjà en cours, on la termine d'abord (clear overlays).
+   *
+   * Non-await : `apply()` rend la main avant la fin de la transition.
+   */
+  private startTransition(from: SceneState, to: SceneState, time: Ms, opts: RunOptions): void {
+    // Termine une transition précédente éventuelle (clear timer + overlays).
+    this.finishTransition();
+
     this.currentScene = to;
+
     if (opts.instant || time <= 0) {
       this.renderScene(true);
       return;
     }
 
+    // Rend la nouvelle scène (sprites réconciliés + nouveau fond).
     this.renderScene(true);
     if (!this.bgEl) return;
 
-    const overlay = document.createElement("div");
-    overlay.className = "mh-stage-bg";
-    overlay.style.cssText = this.bgEl.style.cssText;
-    overlay.style.zIndex = "5";
-    overlay.style.opacity = "1";
-    this.bgEl.parentElement?.appendChild(overlay);
+    // Overlay avec l'ancien fond, par-dessus, qui fade out.
+    const oldBg = from.bg;
+    if (oldBg) {
+      const overlay = document.createElement("div");
+      overlay.className = "mh-stage-bg mh-stage-bg-overlay";
+      overlay.style.cssText = this.bgEl.style.cssText;
+      overlay.style.backgroundImage = `url(${this.resolver.background(oldBg)})`;
+      if (from.bgLeft !== undefined && from.bgTop !== undefined) {
+        overlay.style.backgroundPosition = `${from.bgLeft}px ${from.bgTop}px`;
+      }
+      overlay.style.zIndex = "5";
+      overlay.style.opacity = "1";
+      this.bgEl.parentElement?.appendChild(overlay);
+      this.bgOverlays.push(overlay);
 
-    this.transitionPromise = new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        overlay.style.transition = `opacity ${time}ms ease`;
+        overlay.style.opacity = "0";
+      });
+    }
+
+    // Promise résolu à la fin de la transition (ou via hurry/finishTransition).
+    this.transitionPromise = new Promise<void>((resolve) => {
       this.transitionResolve = resolve;
-      setTimeout(resolve, time);
+      this.transitionTimer = setTimeout(() => {
+        this.onTransitionEnd();
+        resolve();
+      }, time);
     });
+  }
 
-    requestAnimationFrame(() => {
-      overlay.style.transition = `opacity ${time}ms ease`;
-      overlay.style.opacity = "0";
-    });
-
-    await this.transitionPromise;
-    overlay.remove();
-    this.transitionPromise = null;
+  private onTransitionEnd(): void {
+    this.transitionTimer = null;
     this.transitionResolve = null;
+    this.transitionPromise = null;
+    this.clearBgOverlays();
+  }
+
+  private clearBgOverlays(): void {
+    for (const el of this.bgOverlays) el.remove();
+    this.bgOverlays = [];
   }
 
   private renderEffect(): void {
