@@ -99,6 +99,39 @@ describe("parse", () => {
     }
   });
 
+  it("parses @partbgact as animate instruction with isPartbg flag", () => {
+    // Échantillon réel simplifié : srcleft/srctop animés sur 30 000 ms.
+    const source = `@partbgact storage=im02空(曇り) page=fore keys=(0,0,l,0,0,100,100)(30000,0,l,-542,0,100,100) props=srcleft,srctop,srczoomx,srczoomy`;
+    const script = parse(lex(source));
+    const page = script.pages[0];
+    const anim = page.instructions.find((i) => i.kind === "animate");
+    expect(anim).toBeDefined();
+    if (anim && anim.kind === "animate") {
+      expect(anim.def.storage).toBe("im02空(曇り)");
+      expect(anim.def.isPartbg).toBe(true);
+      expect(anim.def.keyframes.length).toBe(2);
+      const last = anim.def.keyframes[1];
+      expect(last.srcleft).toBe(-542);
+      expect(last.srctop).toBe(0);
+      expect(last.srczoomx).toBe(100);
+      expect(last.srczoomy).toBe(100);
+      // Durée absolue = 30000.
+      expect(last.time).toBe(30000);
+    }
+  });
+
+  it("parses @partbgact with float srctop (ex. -103.52)", () => {
+    const source = `@partbgact storage=im02 keys=(0,0,l,0,-103.52,100,100)(1000,0,l,0,0,100,100) props=srcleft,srctop,srczoomx,srczoomy`;
+    const script = parse(lex(source));
+    const page = script.pages[0];
+    const anim = page.instructions.find((i) => i.kind === "animate");
+    expect(anim).toBeDefined();
+    if (anim && anim.kind === "animate") {
+      const first = anim.def.keyframes[0];
+      expect(first.srctop).toBeCloseTo(-103.52, 2);
+    }
+  });
+
   it("parses @sestop with storage and time", () => {
     const script = parse(lex("@sestop storage=se01043 time=3000"));
     const page = script.pages[0];

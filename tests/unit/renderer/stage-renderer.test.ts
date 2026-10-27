@@ -341,4 +341,87 @@ describe("DomStageRenderer", () => {
     const textEl = root.querySelector(".mh-stage-text") as HTMLElement;
     expect(textEl.textContent).toBe("x");
   });
+
+  it("@partbgact instant : applique l'état final sur l'image interne", async () => {
+    const sig = () => new AbortController().signal;
+    // 1. Pose un partbg initial (srcleft=542).
+    await renderer.apply(
+      [{
+        kind: "scene",
+        scene: {
+          bg: null,
+          sprites: [{
+            id: "im02",
+            storage: "im02",
+            x: 748, y: 0, z: 1000, opacity: 1,
+            crop: { width: 522, height: 576, srcLeft: 542, srcTop: 0, srcZoomX: 100, srcZoomY: 100 },
+          }],
+          effect: null,
+        },
+        transition: { method: "none" },
+      }],
+      { instant: true, signal: sig() },
+    );
+    const inner1 = root.querySelector(".mh-stage-partbg-img") as HTMLElement;
+    expect(inner1.style.transform).toContain("translate(542px");
+
+    // 2. @partbgact instant : applique l'état final (srcleft=-100).
+    await renderer.apply(
+      [{
+        kind: "animate",
+        target: "im02",
+        def: {
+          storage: "im02",
+          isPartbg: true,
+          keyframes: [
+            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: 542, srctop: 0, srczoomx: 100, srczoomy: 100 },
+            { time: 30000, duration: 30000, interp: "l", easing: "linear", accel: 0, srcleft: -100, srctop: 0, srczoomx: 100, srczoomy: 100 },
+          ],
+        },
+      }],
+      { instant: true, signal: sig() },
+    );
+    const inner2 = root.querySelector(".mh-stage-partbg-img") as HTMLElement;
+    expect(inner2.style.transform).toContain("translate(-100px");
+  });
+
+  it("@partbgact non-instant : démarre l'animation et résout la promise", async () => {
+    const sig = () => new AbortController().signal;
+    // Pose un partbg.
+    await renderer.apply(
+      [{
+        kind: "scene",
+        scene: {
+          bg: null,
+          sprites: [{
+            id: "im02",
+            storage: "im02",
+            x: 748, y: 0, z: 1000, opacity: 1,
+            crop: { width: 522, height: 576, srcLeft: 542, srcTop: 0, srcZoomX: 100, srcZoomY: 100 },
+          }],
+          effect: null,
+        },
+        transition: { method: "none" },
+      }],
+      { instant: true, signal: sig() },
+    );
+    // Lance l'animation (durée courte pour le test).
+    await renderer.apply(
+      [{
+        kind: "animate",
+        target: "im02",
+        def: {
+          storage: "im02",
+          isPartbg: true,
+          keyframes: [
+            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: 542, srctop: 0, srczoomx: 100, srczoomy: 100 },
+            { time: 100, duration: 100, interp: "l", easing: "linear", accel: 0, srcleft: 0, srctop: 0, srczoomx: 100, srczoomy: 100 },
+          ],
+        },
+      }],
+      { instant: false, signal: sig() },
+    );
+    // L'animation doit être terminée (promise résolue). Pas de crash.
+    expect(root.querySelector(".mh-stage-partbg-img")).not.toBeNull();
+  });
 });

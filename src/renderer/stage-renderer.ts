@@ -11,7 +11,7 @@ import type {
   StageSnapshot,
   TextboxState,
 } from "@/kag/events.js";
-import type { AnimationDef, TextSegment } from "@/kag/types.js";
+import type { AnimationDef, AnimKeyframe, TextSegment } from "@/kag/types.js";
 import type { DisplaySettings, RunOptions, StageRenderer, StageRendererDeps } from "./types.js";
 import { compileAction, type DiscreteChange } from "./action-compiler.js";
 
@@ -480,7 +480,8 @@ export class DomStageRenderer implements StageRenderer {
     this.pendingAnimations.delete(id);
     queueMicrotask(() => {
       if (this.animations.has(id)) return;
-      const ctrl = new AnimationController(pending.def, id, el, this.resolver, () => this.stopAnimation(id));
+      const innerEl = pending.def.isPartbg ? el.querySelector<HTMLElement>(".mh-stage-partbg-img") : null;
+      const ctrl = new AnimationController(pending.def, id, el, this.resolver, () => this.stopAnimation(id), innerEl);
       this.animations.set(id, ctrl);
     });
   }
@@ -716,7 +717,8 @@ export class DomStageRenderer implements StageRenderer {
       this.pendingAnimations.set(target, { def, opts });
       return;
     }
-    const ctrl = new AnimationController(def, target, el, this.resolver, () => this.stopAnimation(target));
+    const innerEl = def.isPartbg ? el.querySelector<HTMLElement>(".mh-stage-partbg-img") : null;
+    const ctrl = new AnimationController(def, target, el, this.resolver, () => this.stopAnimation(target), innerEl);
     this.animations.set(target, ctrl);
   }
 
@@ -724,16 +726,37 @@ export class DomStageRenderer implements StageRenderer {
   private applyAnimationFinal(def: AnimationDef): void {
     const last = def.keyframes[def.keyframes.length - 1];
     if (!last) return;
-    const el = this.spriteEls.get(def.id ?? def.storage);
+    const el = this.spriteEls.get(def.id ?? def.storage) ?? this.findPartbgEl(def);
     if (!el) return;
-    if (last.center !== undefined) el.style.left = `${last.center}px`;
-    if (last.vcenter !== undefined) el.style.top = `${last.vcenter}px`;
-    if (last.opacity !== undefined) el.style.opacity = String(last.opacity);
-    if (last.zoomx !== undefined || last.zoomy !== undefined) {
-      el.style.transform = `scale(${last.zoomx ?? 1}, ${last.zoomy ?? 1})`;
+    const isPartbg = !!def.isPartbg;
+    if (isPartbg) {
+      const inner = el.querySelector<HTMLElement>(".mh-stage-partbg-img");
+      if (inner) this.applyKeyframeToElement(last, inner, true);
+    } else {
+      this.applyKeyframeToElement(last, el, false);
     }
-    if (last.rotate !== undefined) {
-      el.style.transform = `${el.style.transform || ""} rotate(${last.rotate}deg)`.trim();
+  }
+
+  private applyKeyframeToElement(last: AnimKeyframe, el: HTMLElement, isInner: boolean): void {
+    if (!isInner) {
+      if (last.center !== undefined) el.style.left = `${last.center}px`;
+      if (last.vcenter !== undefined) el.style.top = `${last.vcenter}px`;
+      if (last.opacity !== undefined) el.style.opacity = String(last.opacity);
+      if (last.zoomx !== undefined || last.zoomy !== undefined) {
+        el.style.transform = `scale(${last.zoomx ?? 1}, ${last.zoomy ?? 1})`;
+      }
+      if (last.rotate !== undefined) {
+        el.style.transform = `${el.style.transform || ""} rotate(${last.rotate}deg)`.trim();
+      }
+    } else {
+      const transforms: string[] = [];
+      if (last.srcleft !== undefined || last.srctop !== undefined) {
+        transforms.push(`translate(${last.srcleft ?? 0}px, ${last.srctop ?? 0}px)`);
+      }
+      if (last.srczoomx !== undefined || last.srczoomy !== undefined) {
+        transforms.push(`scale(${(last.srczoomx ?? 100) / 100}, ${(last.srczoomy ?? 100) / 100})`);
+      }
+      if (transforms.length > 0) el.style.transform = transforms.join(" ");
     }
   }
 
@@ -971,6 +994,7 @@ class AnimationController {
     private el: HTMLElement | null,
     private resolver: AssetResolver,
     private onDone: () => void,
+    private innerEl?: HTMLElement | null,
   ) {
     this.loop = !!def.loop;
     this.promise = new Promise((resolve) => {
@@ -991,16 +1015,26 @@ class AnimationController {
     // Changements discrets programmés.
     this.scheduleDiscrete(compiled.discrete, def);
 
-    if (this.el && typeof this.el.animate === "function") {
-      // WAAPI : lance l'animation sur l'élément persistant.
-      const anim = this.el.animate(compiled.keyframes, {
-        duration: compiled.duration,
-        iterations: compiled.iterations,
-        fill: "forwards",
-      });
-      this.animation = anim;
+    const hasWAAPI = this.el && typeof this.el.animate === "function";
+    if (hasWAAPI) {
+      // WAAPI : animation wrapper.
+      if (compiled.keyframes.wrapper.length > 0) {
+        this.animation = this.el!.animate(compiled.keyframes.wrapper, {
+          duration: compiled.duration,
+          iterations: compiled.iterations,
+          fill: "forwards",
+        });
+      }
+      // WAAPI : animation image interne (partbg).
+      if (this.innerEl && compiled.keyframes.inner.length > 0) {
+        this.innerEl.animate(compiled.keyframes.inner, {
+          duration: compiled.duration,
+          iterations: compiled.iterations,
+          fill: "forwards",
+        });
+      }
       if (!this.loop) {
-        anim.onfinish = () => this.finish();
+        this.animation!.onfinish = () => this.finish();
       } else {
         // Loop : le promise n'est jamais résolu naturellement (animation infinie).
         // On résout seulement via hurry()/cancel().

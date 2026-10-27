@@ -86,8 +86,11 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         time: parseIntArg(args.time),
         nowait: args.nowait === "1",
       };
-    case "fgact": {
+    case "fgact":
+    case "partbgact": {
       // @fgact = animation de sprite avec keyframes
+      // @partbgact = animation d'un partbg (panorama cropé)
+      const isPartbg = name === "partbgact";
       const storage = normStorage(args.storage);
       const page = parsePageLayer(args.page);
       const keyframes = parseActionKeys(args.keys, args.props);
@@ -99,7 +102,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         // On a des vraies keyframes -> instruction animate
         return {
           kind: "animate",
-          def: { storage, page, keyframes, loop, id, partbgid },
+          def: { storage, page, keyframes, loop, id, partbgid, isPartbg },
         };
       }
 
@@ -109,6 +112,26 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
       const vcenter = firstFrame?.vcenter ?? parseIntArg(args.vcenter);
       const index = parseIntArg(args.index);
       const opacity = firstFrame?.opacity ?? (args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : undefined);
+      if (isPartbg) {
+        return {
+          kind: "partbg",
+          storage,
+          center,
+          vcenter,
+          index: index || 1000,
+          opacity,
+          page,
+          id,
+          crop: {
+            width: parseIntArg(args.width),
+            height: parseIntArg(args.height),
+            srcLeft: parseFloat(args.srcleft ?? "0"),
+            srcTop: parseFloat(args.srctop ?? "0"),
+            srcZoomX: parseIntArg(args.srczoomx, 100),
+            srcZoomY: parseIntArg(args.srczoomy, 100),
+          },
+        };
+      }
       return {
         kind: "fg",
         storage,

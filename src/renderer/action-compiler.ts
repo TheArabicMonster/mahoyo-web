@@ -23,10 +23,18 @@ export type DiscreteChange = {
   value: string | number | boolean;
 };
 
+/** Keyframes WAAPI par cible. */
+export type CompiledKeyframes = {
+  /** Props du wrapper/sprite principal (center/vcenter/opacity/zoom/rotate). */
+  wrapper: Keyframe[];
+  /** Props de l'image interne d'un partbg (srcleft/srctop/srczoom). */
+  inner: Keyframe[];
+};
+
 /** Résultat de la compilation. */
 export type CompiledAction = {
-  /** Keyframes WAAPI (props continues). Vide si aucune prop continue. */
-  keyframes: Keyframe[];
+  /** Keyframes WAAPI par cible. */
+  keyframes: CompiledKeyframes;
   /** Durée totale en ms (temps absolu de la dernière keyframe). */
   duration: number;
   /** Nombre d'itérations : Infinity si loop, sinon 1. */
@@ -56,27 +64,37 @@ export function compileAction(def: AnimationDef): CompiledAction | null {
     return null;
   }
 
-  const waKeyframes: Keyframe[] = [];
+  const wrapperKeyframes: Keyframe[] = [];
+  const innerKeyframes: Keyframe[] = [];
   const discrete: DiscreteChange[] = [];
 
   for (const kf of kfs) {
     const offset = total > 0 ? kf.time / total : 0;
-    const frame: Keyframe = {
-      offset,
-      // easing = interp pour ATTEINDRE cette keyframe (sémantique WAAPI).
-      easing: interpToEasing(kf.interp),
-    };
+    const easing = interpToEasing(kf.interp);
+    const wrapperFrame: Keyframe = { offset, easing };
+    const innerFrame: Keyframe = { offset, easing };
 
-    // Props continues → keyframe WAAPI.
-    if (kf.center !== undefined) frame.left = `${kf.center}px`;
-    if (kf.vcenter !== undefined) frame.top = `${kf.vcenter}px`;
-    if (kf.opacity !== undefined) frame.opacity = kf.opacity;
+    // Props continues → keyframe WAAPI wrapper.
+    if (kf.center !== undefined) wrapperFrame.left = `${kf.center}px`;
+    if (kf.vcenter !== undefined) wrapperFrame.top = `${kf.vcenter}px`;
+    if (kf.opacity !== undefined) wrapperFrame.opacity = kf.opacity;
     const transforms: string[] = [];
     if (kf.zoomx !== undefined || kf.zoomy !== undefined) {
       transforms.push(`scale(${kf.zoomx ?? 1}, ${kf.zoomy ?? 1})`);
     }
     if (kf.rotate !== undefined) transforms.push(`rotate(${kf.rotate}deg)`);
-    if (transforms.length > 0) frame.transform = transforms.join(" ");
+    if (transforms.length > 0) wrapperFrame.transform = transforms.join(" ");
+
+    // Props continues spécifiques au crop interne d'un partbg.
+    if (kf.srcleft !== undefined || kf.srctop !== undefined || kf.srczoomx !== undefined || kf.srczoomy !== undefined) {
+      const srcTransforms: string[] = [];
+      if (kf.srcleft !== undefined) srcTransforms.push(`translate(${kf.srcleft}px, ${kf.srctop ?? 0}px)`);
+      else if (kf.srctop !== undefined) srcTransforms.push(`translate(0px, ${kf.srctop}px)`);
+      if (kf.srczoomx !== undefined || kf.srczoomy !== undefined) {
+        srcTransforms.push(`scale(${(kf.srczoomx ?? 100) / 100}, ${(kf.srczoomy ?? 100) / 100})`);
+      }
+      innerFrame.transform = srcTransforms.join(" ");
+    }
 
     // Props discrètes → scheduler.
     for (const field of DISCRETE_FIELDS) {
@@ -91,23 +109,25 @@ export function compileAction(def: AnimationDef): CompiledAction | null {
     }
 
     // N'ajoute la keyframe WAAPI que si elle a au moins une prop continue.
-    if (frame.left !== undefined || frame.top !== undefined || frame.opacity !== undefined || frame.transform !== undefined) {
-      waKeyframes.push(frame);
+    if (wrapperFrame.left !== undefined || wrapperFrame.top !== undefined || wrapperFrame.opacity !== undefined || wrapperFrame.transform !== undefined) {
+      wrapperKeyframes.push(wrapperFrame);
+    }
+    if (innerFrame.transform !== undefined) {
+      innerKeyframes.push(innerFrame);
     }
   }
 
   // WAAPI exige que la 1ʳᵉ keyframe ait offset 0 et la dernière offset 1.
-  if (waKeyframes.length > 0) {
-    if (waKeyframes[0].offset !== 0) {
-      waKeyframes.unshift({ offset: 0, easing: "linear" });
-    }
-    if (waKeyframes[waKeyframes.length - 1].offset !== 1) {
-      waKeyframes.push({ offset: 1, easing: "linear" });
-    }
+  function normalize(kfs: Keyframe[]) {
+    if (kfs.length === 0) return;
+    if (kfs[0].offset !== 0) kfs.unshift({ offset: 0, easing: "linear" });
+    if (kfs[kfs.length - 1].offset !== 1) kfs.push({ offset: 1, easing: "linear" });
   }
+  normalize(wrapperKeyframes);
+  normalize(innerKeyframes);
 
   return {
-    keyframes: waKeyframes,
+    keyframes: { wrapper: wrapperKeyframes, inner: innerKeyframes },
     duration: total,
     iterations: def.loop ? Infinity : 1,
     discrete,

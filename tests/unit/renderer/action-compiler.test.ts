@@ -24,16 +24,17 @@ describe("compileAction", () => {
     expect(compiled.iterations).toBe(Infinity);
 
     // Les keyframes WAAPI ont des offset entre 0 et 1.
-    const offsets = compiled.keyframes.map((k) => k.offset);
+    const wrapper = compiled.keyframes.wrapper;
+    const offsets = wrapper.map((k) => k.offset);
     expect(offsets[0]).toBe(0);
     expect(offsets[offsets.length - 1]).toBe(1);
 
-    // opacity est continue : on doit la retrouver sur les keyframes.
-    const hasOpacity = compiled.keyframes.some((k) => k.opacity !== undefined);
+    // opacity est continue : on doit la retrouver sur les keyframes wrapper.
+    const hasOpacity = wrapper.some((k) => k.opacity !== undefined);
     expect(hasOpacity).toBe(true);
 
     // center/vcenter sont continues (left/top).
-    const hasLeft = compiled.keyframes.some((k) => k.left !== undefined);
+    const hasLeft = wrapper.some((k) => k.left !== undefined);
     expect(hasLeft).toBe(true);
   });
 
@@ -42,9 +43,9 @@ describe("compileAction", () => {
     const compiled = compileAction(def);
     if (!compiled) return;
     // 1ʳᵉ keyframe (offset 0) interp l → linear.
-    expect(compiled.keyframes[0].easing).toBe("linear");
+    expect(compiled.keyframes.wrapper[0].easing).toBe("linear");
     // 2e keyframe interp n → steps(1, end).
-    expect(compiled.keyframes[1].easing).toBe("steps(1, end)");
+    expect(compiled.keyframes.wrapper[1].easing).toBe("steps(1, end)");
   });
 
   it("retourne null si duration <= 0", () => {
@@ -65,7 +66,7 @@ describe("compileAction", () => {
     const compiled = compileAction(def);
     if (!compiled) return;
     // La 2e keyframe doit avoir transform contenant scale + rotate.
-    const last = compiled.keyframes.find((k) => k.offset === 1);
+    const last = compiled.keyframes.wrapper.find((k) => k.offset === 1);
     expect(last).toBeDefined();
     expect(last!.transform).toContain("scale(1, 1)");
     expect(last!.transform).toContain("rotate(45deg)");
@@ -117,8 +118,8 @@ describe("compileAction", () => {
     if (!compiled) return;
     expect(compiled.duration).toBe(800);
     // WAAPI exige offset 0 et 1.
-    expect(compiled.keyframes[0].offset).toBe(0);
-    expect(compiled.keyframes[compiled.keyframes.length - 1].offset).toBe(1);
+    expect(compiled.keyframes.wrapper[0].offset).toBe(0);
+    expect(compiled.keyframes.wrapper[compiled.keyframes.wrapper.length - 1].offset).toBe(1);
   });
 
   it("compile l'échantillon nested-paren (storage avec sous-parenthèses)", () => {
@@ -132,5 +133,41 @@ describe("compileAction", () => {
     const discrete = compiled?.discrete ?? [];
     const storage = discrete.find((d) => d.field === "storage");
     expect(storage?.value).toBe("im12宇宙の果て01(中心無し)");
+  });
+
+  it("compile une anim partbg : inner keyframes séparées des wrapper", () => {
+    // @partbgact : srcleft/srctop/srczoomx/srczoomy animés (panoramique).
+    const def = defFrom(
+      "(0,0,l,0,0,100,100)(30000,0,l,-542,0,100,100)",
+      "srcleft,srctop,srczoomx,srczoomy",
+      { storage: "im02", isPartbg: true },
+    );
+    const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
+    if (!compiled) return;
+    expect(compiled.duration).toBe(30000);
+    // Wrapper keyframes : aucune (pas de center/vcenter/opacity/zoom).
+    expect(compiled.keyframes.wrapper.length).toBe(0);
+    // Inner keyframes : 2 + padding offset 0/1 = 4.
+    expect(compiled.keyframes.inner.length).toBeGreaterThanOrEqual(2);
+    const last = compiled.keyframes.inner.find((k) => k.offset === 1);
+    expect(last).toBeDefined();
+    expect(last!.transform).toContain("translate(-542px");
+    expect(last!.transform).toContain("scale(1, 1)");
+  });
+
+  it("compile une anim partbg mixte : wrapper + inner", () => {
+    // center + srcleft animés simultanément.
+    const def = defFrom(
+      "(0,0,l,748,0,100,100)(30000,0,l,300,-542,100,100)",
+      "center,srcleft,srctop,srczoomx,srczoomy",
+      { storage: "im02", isPartbg: true },
+    );
+    const compiled = compileAction(def);
+    if (!compiled) return;
+    // Wrapper : center animé.
+    expect(compiled.keyframes.wrapper.some((k) => k.left !== undefined)).toBe(true);
+    // Inner : srcleft animé.
+    expect(compiled.keyframes.inner.some((k) => k.transform !== undefined)).toBe(true);
   });
 });
