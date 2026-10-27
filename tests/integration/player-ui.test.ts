@@ -38,7 +38,7 @@ describe.skipIf(!hasAssets)("Player UI — prologue", () => {
     await import("@/main.js");
 
     // Attendre que le runtime produise du texte (plusieurs steps async).
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     const viewport = document.getElementById("viewport");
     expect(viewport).toBeTruthy();

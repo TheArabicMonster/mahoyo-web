@@ -104,6 +104,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         page: parsePageLayer(args.page),
         left: args.left !== undefined ? parseIntArg(args.left) : undefined,
         top: args.top !== undefined ? parseIntArg(args.top) : undefined,
+        noclear: args.noclear === "1",
       };
     case "fg":
       return {
@@ -114,6 +115,16 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         index: parseIntArg(args.index),
         opacity: args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : undefined,
         page: parsePageLayer(args.page),
+        id: args.id,
+      };
+    case "chgfg":
+      // @chgfg : change l'image d'un calque existant (garde position/z/opacity).
+      return {
+        kind: "chgfg",
+        storage: normStorage(args.storage),
+        id: args.id,
+        index: args.index !== undefined ? parseIntArg(args.index) : undefined,
+        page: parsePageLayer(args.page),
       };
     case "clall":
       return { kind: "clall", page: parsePageLayer(args.page) };
@@ -122,7 +133,8 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
       const page = parsePageLayer(args.page);
       const storage = normStorageOpt(args.storage);
       const index = args.index !== undefined ? parseIntArg(args.index) : undefined;
-      return { kind: "clfg", storage, index, page };
+      const id = args.id;
+      return { kind: "clfg", storage, index, id, page };
     }
     case "backlay":
       return { kind: "backlay", storage: args.storage };
@@ -131,6 +143,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         kind: "trans",
         rule: args.rule,
         time: parseIntArg(args.time),
+        nowait: args.nowait === "1",
       };
     case "fgact": {
       // @fgact = animation de sprite avec keyframes
@@ -193,19 +206,6 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
       const storage = normStorage(args.storage);
       const page = parsePageLayer(args.page);
       return { kind: "bg", storage, time: 0, rule: undefined, page };
-    }
-    case "chgfg": {
-      // @chgfg = changer l'image d'un sprite existant (garde position, change storage)
-      const storage = normStorage(args.storage);
-      return {
-        kind: "fg",
-        storage,
-        center: 0,
-        vcenter: 0,
-        index: parseIntArg(args.index) || 1,
-        opacity: undefined,
-        page: parsePageLayer(args.page),
-      };
     }
     case "movefg":
     case "movepartbg": {
@@ -314,6 +314,12 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
       };
     case "stophaze":
       return { kind: "stophaze", page: parsePageLayer(args.page) };
+    case "stopnoise":
+      return { kind: "stopnoise" };
+    case "stopaction":
+      return { kind: "stopaction" };
+    case "stoptrans":
+      return { kind: "stoptrans" };
     case "beginploy":
       return { kind: "beginploy" };
     case "staffrollinit":
@@ -338,12 +344,13 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     case "endscript":
       return { kind: "endscript" };
     case "wait":
-      return { kind: "wait", time: parseIntArg(args.time) };
+      return { kind: "wait", time: parseIntArg(args.time), skippable: args.canskip !== "0" };
     case "wt":
+      return { kind: "waitfor", what: "transition", skippable: args.canskip !== "0" };
     case "wact":
+      return { kind: "waitfor", what: "animation", skippable: args.canskip !== "0" };
     case "wm":
-      // Ces commandes attendent la fin des animations/transitions. Pour le PoC, on utilise une durée fixe.
-      return { kind: "wait", time: 500 };
+      return { kind: "waitfor", what: "quake", skippable: args.canskip !== "0" };
     case "jump": {
       // @jump target=*label (intra-script) ou @jump storage=xxx.ks (inter-script)
       // storage est un nom de fichier : on garde la casse et l'extension.
@@ -360,6 +367,9 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     }
     case "return":
       return { kind: "return" };
+    case "r":
+      // @r en commande = saut de ligne (équivalent au tag [r]).
+      return { kind: "break" };
     case "eval":
       return { kind: "eval", expression: args.exp ?? "" };
     default:

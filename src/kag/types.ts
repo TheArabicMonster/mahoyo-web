@@ -13,9 +13,12 @@ export type TextSegment =
   | { pause: true };
 
 export type Layer = {
+  /** Identité stable du calque : id= explicite, sinon storage. Jamais parseInt. */
+  id: string;
   storage: string;
   center: number;
   vcenter: number;
+  /** z-index (= index= / absolute=). */
   index: number;
   opacity: number;
 };
@@ -44,13 +47,14 @@ export type AnimationDef = {
 };
 
 export type Instruction =
-  | { kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number }
-  | { kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer }
+  | { kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean }
+  | { kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string }
+  | { kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer }
   | { kind: "animate"; def: AnimationDef }
   | { kind: "clall"; page?: PageLayer }
-  | { kind: "clfg"; storage?: string; index?: number; page?: PageLayer }
+  | { kind: "clfg"; storage?: string; index?: number; id?: string; page?: PageLayer }
   | { kind: "backlay"; storage?: string }
-  | { kind: "trans"; rule?: string; time: number }
+  | { kind: "trans"; rule?: string; time: number; nowait?: boolean }
   | { kind: "play"; storage: string; volume?: number }
   | { kind: "playstop" }
   | { kind: "fadebgm"; time: number }
@@ -65,6 +69,9 @@ export type Instruction =
   | { kind: "invisibleframe" }
   | { kind: "visibleframe" }
   | { kind: "noise"; opacity: number; monocro?: boolean; page?: PageLayer }
+  | { kind: "stopnoise" }
+  | { kind: "stopaction" }
+  | { kind: "stoptrans" }
   | { kind: "haze"; power: number; delta: number; omega: number; page?: PageLayer }
   | { kind: "stophaze"; page?: PageLayer }
   | { kind: "beginploy" }
@@ -73,7 +80,8 @@ export type Instruction =
   | { kind: "staffrollstart"; height: number; time: number }
   | { kind: "iscript" }
   | { kind: "endscript" }
-  | { kind: "wait"; time: number }
+  | { kind: "wait"; time: number; skippable?: boolean }
+  | { kind: "waitfor"; what: "transition" | "animation" | "quake"; skippable?: boolean }
   | { kind: "text"; segments: TextSegment[] }
   | { kind: "break" }
   | { kind: "jump"; target?: string; storage?: string }

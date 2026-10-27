@@ -175,7 +175,7 @@ export class Runtime {
 
   private layerToSprite(layer: Layer): SpriteState {
     return {
-      id: String(layer.index),
+      id: layer.id,
       storage: layer.storage,
       x: layer.center,
       y: layer.vcenter,
@@ -232,6 +232,8 @@ export class Runtime {
 
   private applyBg(instruction: Extract<Instruction, { kind: "bg" }>): RenderEvent | null {
     const target = this.getPageState(instruction.page);
+    // noclear=0 (défaut) : vide les calques de la page cible avant de poser le fond.
+    if (!instruction.noclear) target.layers = [];
     target.background = instruction.storage;
     target.bgLeft = instruction.left;
     target.bgTop = instruction.top;
@@ -241,15 +243,42 @@ export class Runtime {
 
   private applyFg(instruction: Extract<Instruction, { kind: "fg" }>): RenderEvent | null {
     const target = this.getPageState(instruction.page);
+    const id = instruction.id ?? instruction.storage;
     const layer: Layer = {
+      id,
       storage: instruction.storage,
       center: instruction.center,
       vcenter: instruction.vcenter,
       index: instruction.index,
       opacity: instruction.opacity ?? 1,
     };
-    target.layers = target.layers.filter((l) => l.index !== layer.index);
+    target.layers = target.layers.filter((l) => l.id !== id);
     target.layers.push(layer);
+    if (instruction.page === "back") return null;
+    return this.emitScene({ method: "none" });
+  }
+
+  private applyChgfg(instruction: Extract<Instruction, { kind: "chgfg" }>): RenderEvent | null {
+    const target = this.getPageState(instruction.page);
+    const key = instruction.id ?? instruction.storage;
+    let found = false;
+    target.layers = target.layers.map((l) => {
+      if (l.id !== key && (instruction.id === undefined || l.storage !== key)) return l;
+      found = true;
+      return { ...l, storage: instruction.storage, id: instruction.id ?? l.id };
+    });
+    if (!found) {
+      // Calque inexistant : on en crée un par défaut (centré).
+      const id = instruction.id ?? instruction.storage;
+      target.layers.push({
+        id,
+        storage: instruction.storage,
+        center: 512,
+        vcenter: 288,
+        index: instruction.index ?? 1,
+        opacity: 1,
+      });
+    }
     if (instruction.page === "back") return null;
     return this.emitScene({ method: "none" });
   }
@@ -259,14 +288,16 @@ export class Runtime {
     const target = this.getPageState(def.page);
     const lastFrame = def.keyframes[def.keyframes.length - 1];
     const firstFrame = def.keyframes[0];
+    const id = def.id ?? def.storage;
     const layer: Layer = {
+      id,
       storage: def.storage,
       center: lastFrame?.center ?? firstFrame?.center ?? 512,
       vcenter: lastFrame?.vcenter ?? firstFrame?.vcenter ?? 288,
-      index: parseInt(def.id ?? "1"),
+      index: parseInt(def.id ?? "1") || 1,
       opacity: lastFrame?.opacity ?? firstFrame?.opacity ?? 1,
     };
-    target.layers = target.layers.filter((l) => l.storage !== layer.storage);
+    target.layers = target.layers.filter((l) => l.id !== id);
     target.layers.push(layer);
 
     const events: RenderEvent[] = [];
@@ -286,7 +317,9 @@ export class Runtime {
 
   private applyClfg(instruction: Extract<Instruction, { kind: "clfg" }>): RenderEvent | null {
     const target = this.getPageState(instruction.page);
-    if (instruction.storage) {
+    if (instruction.id) {
+      target.layers = target.layers.filter((l) => l.id !== instruction.id);
+    } else if (instruction.storage) {
       target.layers = target.layers.filter((l) => l.storage !== instruction.storage);
     } else if (instruction.index !== undefined) {
       target.layers = target.layers.filter((l) => l.index !== instruction.index);
@@ -308,14 +341,20 @@ export class Runtime {
     return [];
   }
 
-  private applyTrans(instruction: Extract<Instruction, { kind: "trans" }>): RenderEvent {
+  private applyTrans(instruction: Extract<Instruction, { kind: "trans" }>): { events: RenderEvent[]; stop?: StopReason } {
     this.state.fore = {
       background: this.state.back.background,
       bgLeft: this.state.back.bgLeft,
       bgTop: this.state.back.bgTop,
       layers: this.state.back.layers.slice(),
     };
-    return this.emitScene(this.makeTransition(instruction.time, instruction.rule));
+    // Après un @trans, la page back est vidée (sinon les calques s'empilent).
+    this.state.back = { background: "", layers: [] };
+    const events: RenderEvent[] = [this.emitScene(this.makeTransition(instruction.time, instruction.rule))];
+    if (!instruction.nowait) {
+      return { events, stop: { kind: "waitFor", what: "transition", skippable: false } };
+    }
+    return { events };
   }
 
   private buildAudioEvent(action: AudioEvent["kind"], channel: AudioChannel, args: Omit<AudioEvent & { kind: typeof action }, "kind" | "channel">): AudioEvent {
@@ -548,6 +587,11 @@ export class Runtime {
         if (ev) events.push(ev);
         break;
       }
+      case "chgfg": {
+        const ev = this.applyChgfg(instruction);
+        if (ev) events.push(ev);
+        break;
+      }
       case "animate":
         events.push(...this.applyAnimate(instruction));
         break;
@@ -564,9 +608,12 @@ export class Runtime {
       case "backlay":
         events.push(...this.applyBacklay(instruction));
         break;
-      case "trans":
-        events.push(this.applyTrans(instruction));
+      case "trans": {
+        const res = this.applyTrans(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
         break;
+      }
       case "play":
       case "playstop":
       case "fadebgm":
@@ -596,6 +643,18 @@ export class Runtime {
       case "haze":
       case "stophaze":
         events.push(this.applyEffect(instruction));
+        break;
+      case "stopnoise":
+        // Arrête le bruit (et uniquement le bruit).
+        this.state.effect = null;
+        events.push({ kind: "effect", effect: null });
+        break;
+      case "stopaction":
+        // Arrête toutes les animations de calques.
+        events.push({ kind: "stopAnimation" });
+        break;
+      case "stoptrans":
+        // Terminaison de transition : géré par le renderer (PR5). No-op pour l'instant.
         break;
       case "beginploy":
         // Ploy non supporté dans cette version.
@@ -628,7 +687,9 @@ export class Runtime {
         this.applyReturn();
         break;
       case "wait":
-        return { events, stop: { kind: "wait", time: instruction.time, skippable: true } };
+        return { events, stop: { kind: "wait", time: instruction.time, skippable: instruction.skippable ?? true } };
+      case "waitfor":
+        return { events, stop: { kind: "waitFor", what: instruction.what, skippable: instruction.skippable ?? true } };
       case "text":
       case "break":
         // Traités dans step() car le texte peut s'arrêter sur [l].
