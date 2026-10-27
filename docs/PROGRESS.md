@@ -13,10 +13,10 @@ Barre de progression globale (mise à jour manuelle).
 | E0 — Gouvernance & socle | Repo, docs, CI, conventions | 95 % | 🟢 Avancé |
 | E1 — Extraction | `.xp3`, `.tlg`, scripts `.ks` | 0 % | ⚪ Non commencé |
 | E2 — Parser KAG3 | Lexer, parser, types | 95 % | 🟢 Avancé |
-| E3 — Runtime & rendu web | Runtime, renderer, player | 90 % | 🟢 Avancé (116 tests passent) |
+| E3 — Runtime & rendu web | Runtime, renderer, player | 95 % | 🟢 Avancé (116 tests passent, démo jouable) |
 | E4 — Pipeline d'assets | Conversion WebP/OGG, outils Python | 0 % | ⚪ Non commencé |
-| E5 — UI/UX | Thème, accessibilité, PWA | 40 % | 🟡 En cours |
-| E6 — QA & optimisation | Tests, perfs, mobile | 60 % | 🟡 En cours |
+| E5 — UI/UX | Thème, accessibilité, PWA | 50 % | 🟡 En cours |
+| E6 — QA & optimisation | Tests, perfs, mobile | 70 % | 🟡 En cours |
 | E7 — Projet réel | Architecture propre, refactor | 95 % | 🟢 Avancé (agents A/B/C/D mergés) |
 
 ## Légende
