@@ -44,7 +44,7 @@ import type {
 export interface RuntimeLike {
   scriptLoader: ((storage: string) => Promise<ParsedScript | null>) | null;
   step(): Step;
-  loadScript(storage: string): Promise<boolean>;
+  loadScript(storage: string, label?: string, pushCallStack?: boolean): Promise<boolean>;
   jump(label: string): boolean;
   getSaveData(): RuntimeSaveData;
   loadSaveData(data: RuntimeSaveData, scripts: Map<string, ParsedScript>): Promise<boolean>;
@@ -602,14 +602,14 @@ export class Player implements PlayerCommands {
       }
       case "loadScript": {
         this.setState("loading");
-        const ok = await this.runtime!.loadScript(stop.file);
+        const push = stop.pushCallStack !== false;
+        const ok = await this.runtime!.loadScript(stop.file, stop.label, push);
         if (signal.aborted) return false;
         if (!ok) {
           this.ui.toast(`Script introuvable : ${stop.file}`);
           void this.returnToTitle();
           return false;
         }
-        if (stop.label) this.runtime!.jump(stop.label);
         return true;
       }
       case "end": {

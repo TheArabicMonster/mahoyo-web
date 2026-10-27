@@ -334,18 +334,16 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
       // Ces commandes attendent la fin des animations/transitions. Pour le PoC, on utilise une durée fixe.
       return { kind: "wait", time: 500 };
     case "jump": {
-      // @jump target=*label ou @jump storage=xxx.ks
-      const target = (args.target ?? "").replace(/^\*/, "");
-      const storage = args.storage ?? "";
-      const label = target || storage;
-      return { kind: "jump", label };
+      // @jump target=*label (intra-script) ou @jump storage=xxx.ks (inter-script)
+      const target = (args.target ?? "").replace(/^\*/, "") || undefined;
+      const storage = args.storage || undefined;
+      return { kind: "jump", target, storage };
     }
     case "call": {
       // @call target=*label (intra-script) ou @call storage=xxx.ks (inter-script)
-      const target = (args.target ?? "").replace(/^\*/, "");
-      const storage = args.storage ?? "";
-      const label = target || storage;
-      return { kind: "call", label };
+      const target = (args.target ?? "").replace(/^\*/, "") || undefined;
+      const storage = args.storage || undefined;
+      return { kind: "call", target, storage };
     }
     case "return":
       return { kind: "return" };

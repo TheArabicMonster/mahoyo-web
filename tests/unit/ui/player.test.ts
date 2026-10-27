@@ -27,7 +27,7 @@ class ScriptedRuntime implements RuntimeLike {
       }
     );
   }
-  async loadScript(): Promise<boolean> {
+  async loadScript(_storage: string, _label?: string, _pushCallStack?: boolean): Promise<boolean> {
     return true;
   }
   jump(label: string): boolean {
@@ -39,6 +39,7 @@ class ScriptedRuntime implements RuntimeLike {
       scriptName: "t.ks",
       pc: this.index,
       instructionIndex: 0,
+      segmentIndex: 0,
       state: {
         fore: { background: "", layers: [] },
         back: { background: "", layers: [] },
