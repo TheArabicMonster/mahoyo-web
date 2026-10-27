@@ -66,8 +66,9 @@ height=576 type=13 effect=monocro noclear=1 srczoom=400 id=pb1`
 - `partbgid=pb1` (sur `@fg`) : clip le sprite **à l'intérieur** du partbg
   (à implémenter plus tard).
 - `@clpartbg id=pb1` : supprime le partbg par id.
-- `@partbgact` : animation des propriétés du wrapper (center/width/height) et
-  de l'img (srcleft/srctop/srczoom).
+- `@partbgact` : animation des propriétés du wrapper (center/vcenter/opacity/
+  absolute/zoom/rotate) et de l'img interne (srcleft/srctop/srczoomx/srczoomy).
+  Implémenté : keyframes WAAPI séparées par cible (wrapper + inner).
 
 ## 5. `@fgact` / `@movefg` / `@partbgact` — keyframes
 
