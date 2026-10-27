@@ -12,6 +12,24 @@ export type TextSegment =
   | { text: string; ruby: string }
   | { pause: true };
 
+/** Métadonnées de crop pour un calque partbg (@partbg). */
+export type CropSpec = {
+  /** Largeur du viewport de crop (px, repère 1024×576). */
+  width: number;
+  /** Hauteur du viewport de crop (px). */
+  height: number;
+  /** Offset source horizontal (px) — l'image est translatée de -srcLeft. */
+  srcLeft: number;
+  /** Offset source vertical (px). */
+  srcTop: number;
+  /** Zoom source X (100 = 1.0). */
+  srcZoomX: number;
+  /** Zoom source Y (100 = 1.0). */
+  srcZoomY: number;
+  /** Fond derrière le crop (storage). */
+  bgStorage?: string;
+};
+
 export type Layer = {
   /** Identité stable du calque : id= explicite, sinon storage. Jamais parseInt. */
   id: string;
@@ -21,6 +39,10 @@ export type Layer = {
   /** z-index (= index= / absolute=). */
   index: number;
   opacity: number;
+  /** Si défini, ce calque est un partbg (crop viewport @partbg). */
+  crop?: CropSpec;
+  /** Pour @fg/@fgact partbgid= : id du partbg parent (clipage). */
+  partbgId?: string;
 };
 
 export type PageLayer = "fore" | "back";
@@ -61,8 +83,9 @@ export type AnimationDef = {
 
 export type Instruction =
   | { kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean }
-  | { kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string }
+  | { kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; partbgId?: string }
   | { kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer }
+  | { kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; crop: CropSpec }
   | { kind: "animate"; def: AnimationDef }
   | { kind: "clall"; page?: PageLayer }
   | { kind: "clfg"; storage?: string; index?: number; id?: string; page?: PageLayer }

@@ -68,10 +68,12 @@ export class DomStageRenderer implements StageRenderer {
   private pendingAnimations = new Map<string, { def: AnimationDef; opts: RunOptions }>();
   /**
    * Sprites courants par id (réconciliation, pas de innerHTML="").
-   * Clé = SpriteState.id. Permet aux éléments DOM de survivre entre scènes
-   * (et donc aux animations CSS/WAAPI qui y tournent).
+   * Clé = SpriteState.id. Pour un sprite simple → <img>. Pour un partbg →
+   * <div class="mh-stage-partbg"> (wrapper overflow:hidden + <img> interne).
+   * Permet aux éléments DOM de survivre entre scènes (et donc aux animations
+   * CSS/WAAPI qui y tournent).
    */
-  private spriteEls = new Map<string, HTMLImageElement>();
+  private spriteEls = new Map<string, HTMLElement>();
   private quakeTimer: ReturnType<typeof setTimeout> | null = null;
   private quakeResolve: (() => void) | null = null;
 
@@ -456,6 +458,18 @@ export class DomStageRenderer implements StageRenderer {
     }
   }
 
+  /** Démarre une animation en attente ciblant ce sprite (cas @fgact page=back). */
+  private maybeStartPending(id: string, el: HTMLElement): void {
+    const pending = this.pendingAnimations.get(id);
+    if (!pending) return;
+    this.pendingAnimations.delete(id);
+    queueMicrotask(() => {
+      if (this.animations.has(id)) return;
+      const ctrl = new AnimationController(pending.def, id, el, this.resolver, () => this.stopAnimation(id));
+      this.animations.set(id, ctrl);
+    });
+  }
+
   /**
    * Réconcilie les sprites de la scène courante avec le DOM.
    *
@@ -483,35 +497,85 @@ export class DomStageRenderer implements StageRenderer {
 
     for (const s of sprites) {
       seen.add(s.id);
-      let img = this.spriteEls.get(s.id);
-      if (!img) {
-        img = document.createElement("img");
-        img.className = "mh-stage-sprite";
-        img.alt = "";
-        img.dataset.spriteId = s.id;
-        this.spriteEls.set(s.id, img);
-        // Démarre une animation en attente ciblant ce sprite (cas @fgact page=back).
-        const pending = this.pendingAnimations.get(s.id);
-        if (pending) {
-          this.pendingAnimations.delete(s.id);
-          // On démarre après avoir attaché l'élément (appendChild ci-dessous).
-          const elToAnimate = img;
-          queueMicrotask(() => {
-            if (this.animations.has(s.id)) return;
-            const ctrl = new AnimationController(pending.def, s.id, elToAnimate, this.resolver, () => this.stopAnimation(s.id));
-            this.animations.set(s.id, ctrl);
-          });
-        }
+      const isPartbg = !!s.crop;
+      let el = this.spriteEls.get(s.id);
+      // Si le type a changé (partbg ↔ sprite simple), on recrée l'élément.
+      if (el && isPartbg !== el.classList.contains("mh-stage-partbg")) {
+        el.remove();
+        this.stopAnimation(s.id);
+        this.spriteEls.delete(s.id);
+        el = undefined;
       }
-      // Mise à jour src (peut changer via @chgfg).
-      const src = this.resolver.image(s.storage);
-      if (img.src !== src && !img.src.endsWith(src)) img.src = src;
-      img.style.left = `${s.x}px`;
-      img.style.top = `${s.y}px`;
-      img.style.opacity = String(s.opacity);
-      img.style.zIndex = String(s.z);
-      // Réordonne selon z : appendChild déplace l'élément à la fin (au-dessus).
-      this.spritesEl.appendChild(img);
+
+      if (isPartbg) {
+        // ── Partbg : div width×height overflow:hidden + <img> interne ──
+        let wrapper = el as HTMLElement | undefined;
+        if (!wrapper) {
+          wrapper = document.createElement("div");
+          wrapper.className = "mh-stage-partbg";
+          wrapper.dataset.spriteId = s.id;
+          if (s.partbgId) wrapper.dataset.partbgId = s.partbgId;
+          const innerImg = document.createElement("img");
+          innerImg.className = "mh-stage-partbg-img";
+          innerImg.alt = "";
+          wrapper.appendChild(innerImg);
+          this.spriteEls.set(s.id, wrapper);
+          el = wrapper;
+          this.maybeStartPending(s.id, wrapper);
+        }
+        const crop = s.crop!;
+        const innerImg = wrapper.querySelector<HTMLImageElement>(".mh-stage-partbg-img");
+        wrapper.style.position = "absolute";
+        wrapper.style.left = `${s.x}px`;
+        wrapper.style.top = `${s.y}px`;
+        wrapper.style.width = `${crop.width}px`;
+        wrapper.style.height = `${crop.height}px`;
+        wrapper.style.overflow = "hidden";
+        wrapper.style.opacity = String(s.opacity);
+        wrapper.style.zIndex = String(s.z);
+        // Fond derrière le crop (bgstorage).
+        if (crop.bgStorage) {
+          wrapper.style.backgroundImage = `url(${this.resolver.background(crop.bgStorage)})`;
+          wrapper.style.backgroundSize = "auto";
+          wrapper.style.backgroundPosition = "0 0";
+        } else {
+          wrapper.style.backgroundImage = "none";
+        }
+        // Image interne translatée + scalée.
+        if (innerImg) {
+          const src = this.resolver.image(s.storage);
+          if (innerImg.src !== src && !innerImg.src.endsWith(src)) innerImg.src = src;
+          const zx = crop.srcZoomX / 100;
+          const zy = crop.srcZoomY / 100;
+          innerImg.style.position = "absolute";
+          innerImg.style.left = "0";
+          innerImg.style.top = "0";
+          innerImg.style.transform = `translate(${crop.srcLeft}px, ${crop.srcTop}px) scale(${zx}, ${zy})`;
+          innerImg.style.transformOrigin = "0 0";
+        }
+        this.spritesEl.appendChild(wrapper);
+      } else {
+        // ── Sprite simple : <img> ──
+        let img = el as HTMLImageElement | undefined;
+        if (!img || img.tagName !== "IMG") {
+          img = document.createElement("img");
+          img.className = "mh-stage-sprite";
+          img.alt = "";
+          img.dataset.spriteId = s.id;
+          if (s.partbgId) img.dataset.partbgId = s.partbgId;
+          this.spriteEls.set(s.id, img);
+          el = img;
+          this.maybeStartPending(s.id, img);
+        }
+        // Mise à jour src (peut changer via @chgfg).
+        const src = this.resolver.image(s.storage);
+        if (img.src !== src && !img.src.endsWith(src)) img.src = src;
+        img.style.left = `${s.x}px`;
+        img.style.top = `${s.y}px`;
+        img.style.opacity = String(s.opacity);
+        img.style.zIndex = String(s.z);
+        this.spritesEl.appendChild(img);
+      }
     }
 
     // Retire les sprites disparus (+ annule leurs animations).

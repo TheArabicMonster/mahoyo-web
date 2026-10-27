@@ -201,4 +201,87 @@ describe("DomStageRenderer", () => {
     // Après hurry : overlays nettoyés.
     expect(root.querySelectorAll(".mh-stage-bg-overlay").length).toBe(0);
   });
+
+  it("rend un sprite partbg (crop wrapper overflow:hidden + img translatée)", async () => {
+    const sig = () => new AbortController().signal;
+    await renderer.apply(
+      [{
+        kind: "scene",
+        scene: {
+          bg: "black",
+          sprites: [{
+            id: "pb1",
+            storage: "im02空",
+            x: 748,
+            y: 0,
+            z: 1000,
+            opacity: 1,
+            crop: {
+              width: 522,
+              height: 576,
+              srcLeft: 542,
+              srcTop: 0,
+              srcZoomX: 100,
+              srcZoomY: 100,
+              bgStorage: "black",
+            },
+          }],
+          effect: null,
+        },
+        transition: { method: "none" },
+      }],
+      { instant: true, signal: sig() },
+    );
+
+    const wrapper = root.querySelector(".mh-stage-partbg") as HTMLElement;
+    expect(wrapper).not.toBeNull();
+    expect(wrapper.dataset.spriteId).toBe("pb1");
+    expect(wrapper.style.width).toBe("522px");
+    expect(wrapper.style.height).toBe("576px");
+    expect(wrapper.style.overflow).toBe("hidden");
+    expect(wrapper.style.left).toBe("748px");
+    expect(wrapper.style.opacity).toBe("1");
+    // bgstorage derrière le crop.
+    expect(wrapper.style.backgroundImage).toContain("black.webp");
+
+    const innerImg = wrapper.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
+    expect(innerImg).not.toBeNull();
+    // Image translatée de -srcLeft et scalée (zoom 100% = scale(1,1)).
+    expect(innerImg.style.transform).toContain("translate(542px");
+    expect(innerImg.style.transform).toContain("scale(1, 1)");
+    expect(innerImg.src).toContain("im02");
+  });
+
+  it("réconcilie un partbg (pas de recréation du wrapper)", async () => {
+    const sig = () => new AbortController().signal;
+    const cropSprite = (x: number, srcLeft: number) => ({
+      id: "pb1",
+      storage: "im02空",
+      x,
+      y: 0,
+      z: 1000,
+      opacity: 1,
+      crop: { width: 522, height: 576, srcLeft, srcTop: 0, srcZoomX: 100, srcZoomY: 100 },
+    });
+    // 1ʳᵉ scène : partbg à x=748, srcLeft=542.
+    await renderer.apply(
+      [{ kind: "scene", scene: { bg: null, sprites: [cropSprite(748, 542)], effect: null }, transition: { method: "none" } }],
+      { instant: true, signal: sig() },
+    );
+    const w1 = root.querySelector(".mh-stage-partbg") as HTMLElement;
+    const inner1 = w1.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
+    expect(w1.style.left).toBe("748px");
+    expect(inner1.style.transform).toContain("translate(542px");
+
+    // 2ᵉ scène : même partbg déplacé (x=300, srcLeft=100). Même élément DOM.
+    await renderer.apply(
+      [{ kind: "scene", scene: { bg: null, sprites: [cropSprite(300, 100)], effect: null }, transition: { method: "none" } }],
+      { instant: true, signal: sig() },
+    );
+    const w2 = root.querySelector(".mh-stage-partbg") as HTMLElement;
+    const inner2 = w2.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
+    expect(w2).toBe(w1); // même wrapper (pas recréé)
+    expect(w2.style.left).toBe("300px");
+    expect(inner2.style.transform).toContain("translate(100px");
+  });
 });

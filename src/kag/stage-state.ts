@@ -38,7 +38,7 @@ function emptyStageSnapshot(): StageSnapshot {
 }
 
 function layerToSprite(layer: Layer): SpriteState {
-  return {
+  const sprite: SpriteState = {
     id: layer.id,
     storage: layer.storage,
     x: layer.center,
@@ -46,6 +46,19 @@ function layerToSprite(layer: Layer): SpriteState {
     z: layer.index,
     opacity: layer.opacity,
   };
+  if (layer.crop) {
+    sprite.crop = {
+      width: layer.crop.width,
+      height: layer.crop.height,
+      srcLeft: layer.crop.srcLeft,
+      srcTop: layer.crop.srcTop,
+      srcZoomX: layer.crop.srcZoomX,
+      srcZoomY: layer.crop.srcZoomY,
+      bgStorage: layer.crop.bgStorage,
+    };
+  }
+  if (layer.partbgId) sprite.partbgId = layer.partbgId;
+  return sprite;
 }
 
 /** État mutable interne utilisé par reduceStage. */
