@@ -123,7 +123,7 @@ export type StaffrollState = {
 export type AudioChannel = "bgm" | "voice" | `se:${number}`;
 
 export type AudioEvent =
-  | { kind: "play"; channel: AudioChannel; storage: AssetRef; loop: boolean; volume: number; fadeIn?: Ms }
+  | { kind: "play"; channel: AudioChannel; storage: AssetRef; loop: boolean; volume: number; fadeIn?: Ms; delay?: Ms }
   | { kind: "stop"; channel: AudioChannel | "allSe"; fadeOut?: Ms }
   | { kind: "fade"; channel: AudioChannel; volume: number; time: Ms };
 

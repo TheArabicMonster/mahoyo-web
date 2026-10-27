@@ -50,6 +50,8 @@ export class WebAudioPlayer implements AudioPlayer {
   private readonly voices = new Map<AudioChannel, Voice>();
   /** Voix détachées de leur canal, en fondu de sortie. */
   private readonly fading = new Set<Voice>();
+  /** Timers de délai avant lecture (paramètre delay des events play). */
+  private readonly delayTimers = new Map<AudioChannel, ReturnType<typeof setTimeout>>();
   private settings: AudioSettings = { ...DEFAULT_SETTINGS };
   private suspended = false;
   private disposed = false;
@@ -72,9 +74,20 @@ export class WebAudioPlayer implements AudioPlayer {
     if (this.disposed) return;
     const { instant } = opts;
     switch (event.kind) {
-      case "play":
-        this.play(event.channel, event.storage, event.loop, clamp01(event.volume), instant ? 0 : (event.fadeIn ?? 0), instant);
+      case "play": {
+        const delay = instant ? 0 : (event.delay ?? 0);
+        if (delay > 0) {
+          this.clearDelayTimer(event.channel);
+          const timer = setTimeout(() => {
+            this.delayTimers.delete(event.channel);
+            this.play(event.channel, event.storage, event.loop, clamp01(event.volume), instant ? 0 : (event.fadeIn ?? 0), instant);
+          }, delay);
+          this.delayTimers.set(event.channel, timer);
+        } else {
+          this.play(event.channel, event.storage, event.loop, clamp01(event.volume), instant ? 0 : (event.fadeIn ?? 0), instant);
+        }
         break;
+      }
       case "stop":
         if (event.channel === "allSe") {
           for (const channel of Array.from(this.voices.keys())) {
@@ -116,6 +129,7 @@ export class WebAudioPlayer implements AudioPlayer {
 
   stopAll(fadeOut: Ms = 0): void {
     for (const channel of Array.from(this.voices.keys())) this.stop(channel, fadeOut);
+    for (const channel of Array.from(this.delayTimers.keys())) this.clearDelayTimer(channel);
   }
 
   setSettings(settings: Readonly<AudioSettings>): void {
@@ -143,6 +157,7 @@ export class WebAudioPlayer implements AudioPlayer {
     this.stopAll(0);
     for (const voice of Array.from(this.fading)) this.release(voice);
     this.fading.clear();
+    for (const channel of Array.from(this.delayTimers.keys())) this.clearDelayTimer(channel);
     this.disposed = true;
   }
 
@@ -248,7 +263,16 @@ export class WebAudioPlayer implements AudioPlayer {
     voice.waiters.clear();
   }
 
+  private clearDelayTimer(channel: AudioChannel): void {
+    const timer = this.delayTimers.get(channel);
+    if (timer) {
+      clearTimeout(timer);
+      this.delayTimers.delete(channel);
+    }
+  }
+
   private stop(channel: AudioChannel, fadeOut: Ms): void {
+    this.clearDelayTimer(channel);
     const voice = this.voices.get(channel);
     if (!voice) return;
     // Le canal est libéré tout de suite : un nouveau play() peut démarrer pendant le fondu.

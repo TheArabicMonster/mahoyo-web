@@ -264,6 +264,43 @@ describe("Runtime", () => {
     }
   });
 
+  it("emits audio events for @playstop time, @fadebgm volume and @se loop+delay", () => {
+    const SAMPLE = `
+*page0|
+@playstop time=500
+@fadebgm time=2000 volume=50
+@se storage=se01 loop=true delay=300
+@pg
+`;
+    const script = parse(lex(SAMPLE));
+    const runtime = new Runtime(script);
+    const step = runtime.step();
+
+    const audioEvents = step.events.filter((e): e is Extract<RenderEvent, { kind: "audio" }> => e.kind === "audio");
+    expect(audioEvents.length).toBe(3);
+
+    expect(audioEvents[0].event.kind).toBe("stop");
+    if (audioEvents[0].event.kind === "stop") {
+      expect(audioEvents[0].event.channel).toBe("bgm");
+      expect(audioEvents[0].event.fadeOut).toBe(500);
+    }
+
+    expect(audioEvents[1].event.kind).toBe("fade");
+    if (audioEvents[1].event.kind === "fade") {
+      expect(audioEvents[1].event.channel).toBe("bgm");
+      expect(audioEvents[1].event.volume).toBe(0.5);
+      expect(audioEvents[1].event.time).toBe(2000);
+    }
+
+    expect(audioEvents[2].event.kind).toBe("play");
+    if (audioEvents[2].event.kind === "play") {
+      expect(audioEvents[2].event.channel).toBe("se:0");
+      expect(audioEvents[2].event.loop).toBe(true);
+      expect(audioEvents[2].event.delay).toBe(300);
+      expect(audioEvents[2].event.volume).toBe(1);
+    }
+  });
+
   it("toggles textbox visibility with @textoff and @texton", () => {
     const TEXTBOX_SAMPLE = `
 *page0|

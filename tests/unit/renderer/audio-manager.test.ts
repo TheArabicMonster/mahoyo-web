@@ -189,6 +189,24 @@ describe("WebAudioPlayer", () => {
     expect(created).toHaveLength(2);
   });
 
+  it("retarde la lecture avec delay", () => {
+    player.apply({ kind: "play", channel: "se:0", storage: "a", loop: false, volume: 1, delay: 500 }, { instant: false });
+    expect(created).toHaveLength(0);
+    vi.advanceTimersByTime(499);
+    expect(created).toHaveLength(0);
+    vi.advanceTimersByTime(2);
+    expect(created).toHaveLength(1);
+    expect(created[0]!.paused).toBe(false);
+  });
+
+  it("annule le delay si un autre play arrive sur le même canal", () => {
+    player.apply({ kind: "play", channel: "se:0", storage: "a", loop: false, volume: 1, delay: 500 }, { instant: false });
+    player.apply({ kind: "play", channel: "se:0", storage: "b", loop: false, volume: 1, delay: 100 }, { instant: false });
+    vi.advanceTimersByTime(500);
+    expect(created).toHaveLength(1);
+    expect(created[0]!.src).toBe("/assets/se/b.ogg");
+  });
+
   it("joue les événements audio des fixtures sans erreur", () => {
     for (const step of fixtures) {
       for (const ev of step.events) {
