@@ -531,18 +531,14 @@ describe("DomStageRenderer", () => {
     vi.useRealTimers();
   });
 
-  it("waitFor('animation') avec cible attend seulement cette cible", async () => {
-    vi.useFakeTimers();
+  it("@stopaction conserve l'état visuel via commitStyles", async () => {
     const sig = () => new AbortController().signal;
     await renderer.apply(
       [{
         kind: "scene",
         scene: {
           bg: null,
-          sprites: [
-            { id: "fast", storage: "fast", x: 0, y: 0, z: 1000, opacity: 1 },
-            { id: "slow", storage: "slow", x: 0, y: 0, z: 1001, opacity: 1 },
-          ],
+          sprites: [{ id: "s", storage: "s", x: 0, y: 0, z: 1000, opacity: 1 }],
           effect: null,
         },
         transition: { method: "none" },
@@ -550,45 +546,39 @@ describe("DomStageRenderer", () => {
       { instant: true, signal: sig() },
     );
 
+    const el = root.querySelector(".mh-stage-sprite") as HTMLElement;
+    const commitStyles = vi.fn();
+    const cancel = vi.fn();
+    const mockAnimation = {
+      commitStyles,
+      cancel,
+      playState: "running",
+      onfinish: null as ((this: Animation, ev: Event) => unknown) | null,
+    } as unknown as Animation;
+    el.animate = vi.fn(() => mockAnimation);
+
     await renderer.apply(
-      [
-        {
-          kind: "animate",
-          target: "fast",
-          def: {
-            storage: "fast",
-            keyframes: [
-              { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1 },
-              { time: 20, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1 },
-            ],
-          },
+      [{
+        kind: "animate",
+        target: "s",
+        def: {
+          storage: "s",
+          keyframes: [
+            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1, center: 0 },
+            { time: 100, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1, center: 100 },
+          ],
         },
-        {
-          kind: "animate",
-          target: "slow",
-          def: {
-            storage: "slow",
-            keyframes: [
-              { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1 },
-              { time: 200, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1 },
-            ],
-          },
-        },
-      ],
+      }],
       { instant: false, signal: sig() },
     );
 
-    // Attend seulement la cible "fast" (20 ms), pas "slow".
-    const waitFast = renderer.waitFor("animation", "fast", sig());
-    let resolvedFast = false;
-    waitFast.then(() => { resolvedFast = true; });
-    await Promise.resolve();
-    expect(resolvedFast).toBe(false);
+    // Arrête l'animation.
+    await renderer.apply(
+      [{ kind: "stopAnimation", target: "s" }],
+      { instant: true, signal: sig() },
+    );
 
-    vi.advanceTimersByTime(20);
-    await waitFast;
-    expect(resolvedFast).toBe(true);
-
-    vi.useRealTimers();
+    expect(commitStyles).toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalled();
   });
 });

@@ -1134,6 +1134,15 @@ class AnimationController {
   cancel(): void {
     this.clearTimers();
     if (this.animation) {
+      // Preserve the visual state produced by the animation before cancelling,
+      // otherwise WAAPI reverts to the pre-animation style (doc §8).
+      try {
+        if (typeof (this.animation as Animation & { commitStyles?: () => void }).commitStyles === "function") {
+          (this.animation as Animation & { commitStyles: () => void }).commitStyles();
+        }
+      } catch {
+        // ignore (jsdom, animation déjà terminée, etc.)
+      }
       this.animation.cancel();
       this.animation = null;
     }
