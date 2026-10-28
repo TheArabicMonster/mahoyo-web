@@ -165,8 +165,8 @@ describe("compileAction", () => {
       "center,vcenter,opacity,rotate,zoomx,zoomy",
     );
     const compiled = compileAction(def);
-    if (!compiled) return;
-    const kfs = compiled.keyframes.wrapper;
+    expect(compiled).not.toBeNull();
+    const kfs = compiled!.keyframes.wrapper;
     expect(kfs.length).toBeGreaterThanOrEqual(2);
     const first = kfs[0];
     const last = kfs[kfs.length - 1];

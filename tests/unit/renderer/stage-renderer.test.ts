@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDomStageRenderer } from "@/renderer/stage-renderer.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import { compileAction } from "@/renderer/action-compiler.js";
+import { partbgInnerTransform } from "@/renderer/transform-helpers.js";
 import type { RenderEvent, StageSnapshot } from "@/kag/events.js";
 
 type MockAnim = {
@@ -382,6 +383,77 @@ describe("DomStageRenderer", () => {
     // Le carry-forward + helper garantissent rotate(45deg) et zoomx=2/zoomy=1.
     expect(el.style.transform).toContain("rotate(45deg)");
     expect(el.style.transform).toContain("scale(2, 1)");
+  });
+
+  it("les 3 sites partbg produisent le même transform inner avec srczoom ≠ 100", async () => {
+    const sig = () => new AbortController().signal;
+    const srcLeft = 542;
+    const srcTop = 120;
+    const srcZoomX = 150;
+    const srcZoomY = 150;
+    const expected = partbgInnerTransform({
+      srcleft: srcLeft,
+      srctop: srcTop,
+      srczoomx: srcZoomX,
+      srczoomy: srcZoomY,
+    });
+
+    // Site 1 : renderScene.
+    await renderer.apply(
+      [{
+        kind: "scene",
+        scene: {
+          bg: null,
+          sprites: [{
+            id: "pb-crop",
+            storage: "im02",
+            x: 748,
+            y: 0,
+            z: 1000,
+            opacity: 1,
+            crop: { width: 522, height: 576, srcLeft, srcTop, srcZoomX, srcZoomY },
+          }],
+          effect: null,
+        },
+        transition: { method: "none" },
+      }],
+      { instant: true, signal: sig() },
+    );
+    const inner1 = root.querySelector(".mh-stage-partbg-img") as HTMLElement;
+    expect(inner1.style.transform).toBe(expected);
+
+    // Site 2 : applyAnimationFinal (mode instant).
+    await renderer.apply(
+      [{
+        kind: "animate",
+        target: "pb-crop",
+        def: {
+          storage: "im02",
+          isPartbg: true,
+          keyframes: [
+            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: srcLeft, srctop: srcTop, srczoomx: srcZoomX, srczoomy: srcZoomY },
+            { time: 100, duration: 100, interp: "l", easing: "linear", accel: 0, srcleft: srcLeft, srctop: srcTop, srczoomx: srcZoomX, srczoomy: srcZoomY },
+          ],
+        },
+      }],
+      { instant: true, signal: sig() },
+    );
+    const inner2 = root.querySelector(".mh-stage-partbg-img") as HTMLElement;
+    expect(inner2.style.transform).toBe(expected);
+
+    // Site 3 : compileAction (dernière keyframe WAAPI).
+    const compiled = compileAction({
+      storage: "im02",
+      isPartbg: true,
+      keyframes: [
+        { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: srcLeft, srctop: srcTop, srczoomx: srcZoomX, srczoomy: srcZoomY },
+        { time: 100, duration: 100, interp: "l", easing: "linear", accel: 0, srcleft: srcLeft, srctop: srcTop, srczoomx: srcZoomX, srczoomy: srcZoomY },
+      ],
+    });
+    expect(compiled).not.toBeNull();
+    const last = compiled!.keyframes.inner.find((k) => k.offset === 1);
+    expect(last).toBeDefined();
+    expect(last!.transform).toBe(expected);
   });
 
   it("rend le ruby via <ruby><rt>", async () => {

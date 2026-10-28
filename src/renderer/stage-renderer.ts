@@ -755,6 +755,8 @@ export class DomStageRenderer implements StageRenderer {
     if (!el) return;
     const isPartbg = !!def.isPartbg;
     if (isPartbg) {
+      // Le wrapper partbg peut aussi animer center/vcenter/opacity/zoom/rotate.
+      this.applyKeyframeToElement(last, el, false);
       const inner = el.querySelector<HTMLElement>(".mh-stage-partbg-img");
       if (inner) this.applyKeyframeToElement(last, inner, true);
     } else {
