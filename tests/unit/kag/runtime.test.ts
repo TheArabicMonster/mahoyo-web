@@ -62,6 +62,19 @@ describe("Runtime", () => {
     expect(step2.stop.kind).toBe("end");
   });
 
+  it("jumps to an intra-page label", () => {
+    const script = parse(lex("*start|@bg storage=black\n@jump target=*start\n@pg"));
+    const runtime = new Runtime(script);
+
+    // Jump to the label and step through the page.
+    expect(runtime.jump("start")).toBe(true);
+    const step = runtime.step();
+    expectClick(step.stop, "page");
+
+    // The jump target resolves to the page containing the label.
+    expect(script.labels["start"]).toBe(0);
+  });
+
   it("jumps to a label", () => {
     const script = parse(lex(SAMPLE));
     const runtime = new Runtime(script);

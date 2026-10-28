@@ -2,7 +2,7 @@
  * KAG3 parser — transforms tokens into a list of "pages" that can be executed
  * by the runtime.
  *
- * Page boundaries are: labels (*pageN|), @pg/[p] (page break), end of input.
+ * Page boundaries are: @pg/[p] (page break), end of input.
  */
 
 import type { AnimationDef, CropSpec, Instruction, ParsedScript, TextSegment, Token } from "./types.js";
@@ -385,6 +385,8 @@ export function parse(tokens: Token[]): ParsedScript {
 
   let current: { label?: string; instructions: Instruction[] } = { instructions: [] };
 
+  const labelInstructionIndex: ParsedScript["labelInstructionIndex"] = {};
+
   // Text accumulation with ruby support
   let pendingSegments: TextSegment[] = [];
   // Pending ruby annotation that applies to the next text characters
@@ -465,9 +467,14 @@ export function parse(tokens: Token[]): ParsedScript {
         break;
       }
       case "label": {
-        pushPage();
-        current.label = token.name;
+        // Labels are jump targets, not page breaks. Keep the first label
+        // of the current page; additional labels in the same page still
+        // resolve to the same page index.
+        if (!current.label) {
+          current.label = token.name;
+        }
         labels[token.name] = pages.length;
+        labelInstructionIndex[token.name] = current.instructions.length;
         break;
       }
       case "text": {
@@ -482,5 +489,5 @@ export function parse(tokens: Token[]): ParsedScript {
 
   pushPage();
 
-  return { pages, labels };
+  return { pages, labels, labelInstructionIndex };
 }
