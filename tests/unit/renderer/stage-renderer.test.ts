@@ -531,54 +531,52 @@ describe("DomStageRenderer", () => {
     vi.useRealTimers();
   });
 
-  it("@stopaction conserve l'état visuel via commitStyles", async () => {
+  it("clear() retire tous les sprites du DOM (pas de ghost)", async () => {
     const sig = () => new AbortController().signal;
     await renderer.apply(
       [{
         kind: "scene",
         scene: {
           bg: null,
-          sprites: [{ id: "s", storage: "s", x: 0, y: 0, z: 1000, opacity: 1 }],
+          sprites: [
+            { id: "a", storage: "a", x: 0, y: 0, z: 1000, opacity: 1 },
+            { id: "b", storage: "b", x: 0, y: 0, z: 1001, opacity: 1 },
+          ],
           effect: null,
         },
         transition: { method: "none" },
       }],
       { instant: true, signal: sig() },
     );
+    expect(root.querySelectorAll(".mh-stage-sprite").length).toBe(2);
 
-    const el = root.querySelector(".mh-stage-sprite") as HTMLElement;
-    const commitStyles = vi.fn();
-    const cancel = vi.fn();
-    const mockAnimation = {
-      commitStyles,
-      cancel,
-      playState: "running",
-      onfinish: null as ((this: Animation, ev: Event) => unknown) | null,
-    } as unknown as Animation;
-    el.animate = vi.fn(() => mockAnimation);
+    renderer.clear();
+    expect(root.querySelectorAll(".mh-stage-sprite").length).toBe(0);
+  });
 
+  it("restore() retire les anciens sprites du DOM avant de rendre le snapshot", async () => {
+    const sig = () => new AbortController().signal;
     await renderer.apply(
       [{
-        kind: "animate",
-        target: "s",
-        def: {
-          storage: "s",
-          keyframes: [
-            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1, center: 0 },
-            { time: 100, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1, center: 100 },
-          ],
+        kind: "scene",
+        scene: {
+          bg: null,
+          sprites: [{ id: "old", storage: "old", x: 0, y: 0, z: 1000, opacity: 1 }],
+          effect: null,
         },
+        transition: { method: "none" },
       }],
-      { instant: false, signal: sig() },
-    );
-
-    // Arrête l'animation.
-    await renderer.apply(
-      [{ kind: "stopAnimation", target: "s" }],
       { instant: true, signal: sig() },
     );
+    expect(root.querySelectorAll(".mh-stage-sprite").length).toBe(1);
 
-    expect(commitStyles).toHaveBeenCalled();
-    expect(cancel).toHaveBeenCalled();
+    const snapshot: StageSnapshot = {
+      scene: { bg: null, sprites: [], effect: null },
+      text: [],
+      textbox: { visible: true, frame: true },
+      staffroll: null,
+    };
+    await renderer.restore(snapshot, sig());
+    expect(root.querySelectorAll(".mh-stage-sprite").length).toBe(0);
   });
 });
