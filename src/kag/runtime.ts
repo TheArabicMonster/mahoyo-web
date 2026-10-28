@@ -382,31 +382,98 @@ export class Runtime {
 
   private applyAnimate(instruction: Extract<Instruction, { kind: "animate" }>): RenderEvent[] {
     const def = instruction.def;
-    const page = this.resolvePage(def.isPartbg ? "partbgact" : "fgact", def.page);
+    const events: RenderEvent[] = [];
+
+    // 1. Résoudre la page cible : @movefg/@movepartbg → fore, sinon back par défaut.
+    const page = def.isMove
+      ? this.resolvePage("movefg", def.page)
+      : this.resolvePage(def.isPartbg ? "partbgact" : "fgact", def.page);
     const target = this.getPageState(page);
+
     const lastFrame = def.keyframes[def.keyframes.length - 1];
     const firstFrame = def.keyframes[0];
-    const id = def.id ?? def.storage;
-    // z-index : priorité au absolute= d'une keyframe, sinon parseInt(id), sinon 1.
-    const zFromFrame = lastFrame?.absolute ?? firstFrame?.absolute;
-    const index = zFromFrame ?? (def.id ? parseInt(def.id, 10) || 1 : 1);
-    const layer: Layer = {
-      id,
-      storage: def.storage,
-      center: lastFrame?.center ?? firstFrame?.center ?? 512,
-      vcenter: lastFrame?.vcenter ?? firstFrame?.vcenter ?? 288,
-      index,
-      opacity: lastFrame?.opacity ?? firstFrame?.opacity ?? 1,
-    };
-    target.layers = target.layers.filter((l) => l.id !== id);
-    target.layers.push(layer);
 
-    const events: RenderEvent[] = [];
+    // 2. Trouver le calque existant (dans la page cible, puis dans fore en fallback).
+    const storage = def.storage || firstFrame?.storage || lastFrame?.storage || "";
+    const searchId = def.id || storage;
+    let existing = target.layers.find((l) => l.id === searchId);
+    if (!existing && page === "back") {
+      existing = this.state.fore.layers.find((l) => l.id === searchId);
+    }
+    // Pour un partbgact sans id, chercher par storage + crop.
+    if (!existing && def.isPartbg && !def.id) {
+      existing = target.layers.find((l) => l.storage === storage && l.crop);
+      if (!existing && page === "back") {
+        existing = this.state.fore.layers.find((l) => l.storage === storage && l.crop);
+      }
+    }
+
+    // 3. Déterminer l'id réel du calque cible.
+    const realId = existing?.id || def.id || storage;
+
+    // 4. Fusionner : garder crop, partbgId, index existants ; appliquer les props finales.
+    const zFromFrame = lastFrame?.absolute ?? firstFrame?.absolute;
+    const merged: Layer = {
+      id: realId,
+      storage: lastFrame?.storage || firstFrame?.storage || existing?.storage || storage,
+      center: lastFrame?.center ?? firstFrame?.center ?? existing?.center ?? 512,
+      vcenter: lastFrame?.vcenter ?? firstFrame?.vcenter ?? existing?.vcenter ?? 288,
+      index: zFromFrame ?? existing?.index ?? 1,
+      opacity: lastFrame?.opacity ?? firstFrame?.opacity ?? existing?.opacity ?? 1,
+      crop: existing?.crop,
+      partbgId: existing?.partbgId,
+    };
+
+    // Reporter les src* de la dernière keyframe dans le crop (partbg).
+    if (merged.crop && (lastFrame?.srcleft !== undefined || lastFrame?.srctop !== undefined || lastFrame?.srczoomx !== undefined)) {
+      merged.crop = {
+        ...merged.crop,
+        srcLeft: lastFrame?.srcleft ?? merged.crop.srcLeft,
+        srcTop: lastFrame?.srctop ?? merged.crop.srcTop,
+        srcZoomX: lastFrame?.srczoomx ?? merged.crop.srcZoomX,
+        srcZoomY: lastFrame?.srczoomy ?? merged.crop.srcZoomY,
+      };
+    }
+
+    // Remplacer ou ajouter le calque dans la page cible.
+    const idx = target.layers.findIndex((l) => l.id === realId);
+    if (idx >= 0) {
+      target.layers[idx] = merged;
+    } else {
+      target.layers.push(merged);
+    }
+
+    // 5. @movefg : appliquer aussi l'état final au calque homonyme sur back.
+    if (def.isMove) {
+      const backLayer = this.state.back.layers.find((l) => l.id === realId);
+      if (backLayer) {
+        Object.assign(backLayer, {
+          center: merged.center,
+          vcenter: merged.vcenter,
+          opacity: merged.opacity,
+          index: merged.index,
+        });
+      }
+    }
+
+    // 6. Keyframe 0 : compléter les props manquantes depuis le calque existant (copie, pas mutation).
+    const enrichedDef = { ...def, id: realId };
+    if (existing) {
+      enrichedDef.keyframes = def.keyframes.map((kf, i) => {
+        if (i !== 0) return kf;
+        return {
+          ...kf,
+          center: kf.center ?? existing!.center,
+          vcenter: kf.vcenter ?? existing!.vcenter,
+          opacity: kf.opacity ?? existing!.opacity,
+        };
+      });
+    }
+
     if (page === "fore") {
       events.push(this.emitScene({ method: "none" }));
     }
-    // target = id du calque (correspond au data-sprite-id côté renderer).
-    events.push({ kind: "animate", target: id, def });
+    events.push({ kind: "animate", target: realId, def: enrichedDef });
     return events;
   }
 

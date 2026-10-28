@@ -197,6 +197,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     case "movefg":
     case "movepartbg": {
       // @movefg / @movepartbg = déplacer un sprite/partie de background
+      const isPartbg = name === "movepartbg";
       const storage = normStorage(args.storage);
       const page = parsePageLayer(args.page);
       const time = parseIntArg(args.time, 1000);
@@ -212,6 +213,8 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
           def: {
             storage,
             page,
+            isMove: true,
+            isPartbg,
             keyframes: [
               { time: 0, duration: time, interp: "l", easing: "linear", accel: 0 },
               { time, duration: time, interp: "l", easing: "linear", accel: 0, center, vcenter, opacity },
