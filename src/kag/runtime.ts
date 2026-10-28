@@ -277,7 +277,7 @@ export class Runtime {
     // Trans implicite : @bg sans page explicite + time>0 → trans back→fore.
     // Pas de backlay : on a écrit directement sur back.
     if (!instruction.page && instruction.time && instruction.time > 0) {
-      return this.runImplicitTrans(instruction.time, instruction.rule, instruction.nowait);
+      return this.runImplicitTrans(instruction.time, instruction.rule, instruction.nowait, instruction.canskip);
     }
     if (page === "back") return { events: [] };
     return { events: [this.emitScene(this.makeTransition(instruction.time ?? 0, instruction.rule))] };
@@ -288,7 +288,7 @@ export class Runtime {
    * fore = clone(back) ; back **conservé** (sémantique KAG exchange=false).
    * Bloque jusqu'à la fin du trans sauf si nowait.
    */
-  private runImplicitTrans(time: number, rule: string | undefined, nowait?: boolean): { events: RenderEvent[]; stop?: StopReason } {
+  private runImplicitTrans(time: number, rule: string | undefined, nowait?: boolean, canskip?: boolean): { events: RenderEvent[]; stop?: StopReason } {
     this.state.fore = {
       background: this.state.back.background,
       bgLeft: this.state.back.bgLeft,
@@ -297,7 +297,7 @@ export class Runtime {
     };
     const events: RenderEvent[] = [this.emitScene(this.makeTransition(time, rule))];
     if (nowait) return { events };
-    return { events, stop: { kind: "waitFor", what: "transition", skippable: false } };
+    return { events, stop: { kind: "waitFor", what: "transition", skippable: canskip ?? true } };
   }
 
   private applyFg(instruction: Extract<Instruction, { kind: "fg" }>): RenderEvent | null {
@@ -345,7 +345,7 @@ export class Runtime {
     }
     // Trans implicite : @partbg sans page + time>0 → trans back→fore.
     if (!instruction.page && instruction.time && instruction.time > 0) {
-      return this.runImplicitTrans(instruction.time, instruction.rule, instruction.nowait);
+      return this.runImplicitTrans(instruction.time, instruction.rule, instruction.nowait, instruction.canskip);
     }
     if (page === "back") return { events: [] };
     const transition = instruction.time && instruction.time > 0
@@ -534,7 +534,7 @@ export class Runtime {
     };
     const events: RenderEvent[] = [this.emitScene(this.makeTransition(instruction.time, instruction.rule))];
     if (!instruction.nowait) {
-      return { events, stop: { kind: "waitFor", what: "transition", skippable: false } };
+      return { events, stop: { kind: "waitFor", what: "transition", skippable: instruction.canskip ?? true } };
     }
     return { events };
   }

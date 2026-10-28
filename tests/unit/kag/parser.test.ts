@@ -41,6 +41,7 @@ describe("parse", () => {
       page: undefined,
       noclear: false,
       nowait: false,
+      canskip: true,
     });
   });
 
