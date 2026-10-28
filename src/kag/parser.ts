@@ -470,6 +470,7 @@ export function parse(tokens: Token[]): ParsedScript {
         // Labels are jump targets, not page breaks. Keep the first label
         // of the current page; additional labels in the same page still
         // resolve to the same page index.
+        flushText();
         if (!current.label) {
           current.label = token.name;
         }

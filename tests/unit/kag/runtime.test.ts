@@ -63,16 +63,36 @@ describe("Runtime", () => {
   });
 
   it("jumps to an intra-page label", () => {
-    const script = parse(lex("*start|@bg storage=black\n@jump target=*start\n@pg"));
+    const script = parse(lex(
+      "@bg storage=black\n" +
+      "@jump target=*target\n" +
+      "*target|\n" +
+      "@fg page=fore storage=red center=512 vcenter=288 index=1000\n" +
+      "@pg",
+    ));
     const runtime = new Runtime(script);
 
-    // Jump to the label and step through the page.
-    expect(runtime.jump("start")).toBe(true);
     const step = runtime.step();
     expectClick(step.stop, "page");
+    const scene = step.events.find((e) => e.kind === "scene");
+    expect(scene).toBeDefined();
+    expect(scene?.scene.sprites.some((s) => s.storage === "red")).toBe(true);
+  });
 
-    // The jump target resolves to the page containing the label.
-    expect(script.labels["start"]).toBe(0);
+  it("calls an intra-page label", () => {
+    const script = parse(lex(
+      "@call target=*target\n" +
+      "@pg\n" +
+      "*target|\n" +
+      "@fg page=fore storage=red center=512 vcenter=288 index=1000\n" +
+      "@return\n" +
+      "@pg",
+    ));
+    const runtime = new Runtime(script);
+
+    const step = runtime.step();
+    expectClick(step.stop, "page");
+    expect(step.events.some((e) => e.kind === "scene" && e.scene.sprites.some((s) => s.storage === "red"))).toBe(true);
   });
 
   it("jumps to a label", () => {

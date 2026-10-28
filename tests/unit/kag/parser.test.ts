@@ -198,6 +198,16 @@ describe("parse", () => {
     expect(script.labels["b"]).toBe(0);
   });
 
+  it("flushes pending text before a label", () => {
+    const script = parse(lex("texte A\n*label\ntexte B\n@pg"));
+    expect(script.pages[0].instructions.length).toBe(2);
+    const textA = script.pages[0].instructions[0];
+    const textB = script.pages[0].instructions[1];
+    expect(textA.kind).toBe("text");
+    expect(textB.kind).toBe("text");
+    expect(script.labelInstructionIndex["label"]).toBe(1);
+  });
+
   it("parses @se with loop and delay", () => {
     const script = parse(lex("@se storage=se01 loop=true delay=300 volume=80"));
     const page = script.pages[0];

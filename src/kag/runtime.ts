@@ -963,6 +963,7 @@ export class Runtime {
         const instruction = instructions[this.context.instructionIndex];
         const startScriptName = this.context.scriptName;
         const startPc = this.context.pc;
+        const startInstructionIndex = this.context.instructionIndex;
 
         if (instruction.kind === "text") {
           const result = this.processText(instruction);
@@ -993,6 +994,12 @@ export class Runtime {
         if (this.context.scriptName !== startScriptName || this.context.pc !== startPc) {
           contextChanged = true;
           break;
+        }
+
+        // Si une instruction (jump/call) a repositionné instructionIndex,
+        // on ne l'incrémente pas pour éviter de sauter la cible.
+        if (this.context.instructionIndex !== startInstructionIndex) {
+          continue;
         }
 
         this.context.instructionIndex += 1;
