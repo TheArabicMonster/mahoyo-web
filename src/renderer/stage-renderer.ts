@@ -220,7 +220,10 @@ export class DomStageRenderer implements StageRenderer {
   async restore(snapshot: StageSnapshot, signal: AbortSignal): Promise<void> {
     this.finishTransition();
     this.clearBgOverlays();
+    this.clearTimers();
     this.spriteEls.clear();
+    this.pendingAnimations.clear();
+    this.spritesEl!.innerHTML = "";
     this.currentScene = snapshot.scene;
     this.text = [...snapshot.text];
     this.typedUnits = this.buildTextUnits().length;
@@ -279,7 +282,10 @@ export class DomStageRenderer implements StageRenderer {
   clear(): void {
     this.finishTransition();
     this.clearBgOverlays();
+    this.clearTimers();
     this.spriteEls.clear();
+    this.pendingAnimations.clear();
+    this.spritesEl!.innerHTML = "";
     this.currentScene = { bg: null, sprites: [], effect: null };
     this.text = [];
     this.typedUnits = 0;
