@@ -484,7 +484,9 @@ export class Runtime {
         break;
       }
       case "fadebgm": {
-        this.state.bgm = null;
+        // Ne pas nullifier state.bgm : on fonde le volume, la BGM continue
+        // de jouer (silencieuse si volume=0) et reste préservée pour
+        // reduceAudio/sauvegarde (doc §9 : fade vers volume cible).
         event = {
           kind: "fade",
           channel: "bgm",
