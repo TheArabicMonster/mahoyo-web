@@ -58,16 +58,17 @@ describe("compileAction", () => {
     expect(compileAction(def)).toBeNull();
   });
 
-  it("compile rotate + zoom en transform", () => {
+  it("compile rotate + zoom en transform centré", () => {
     const def = defFrom(
       "(0,0,l,0,0,0)(1000,0,l,45,100,100)",
       "rotate,zoomx,zoomy",
     );
     const compiled = compileAction(def);
     if (!compiled) return;
-    // La 2e keyframe doit avoir transform contenant scale + rotate.
+    // La 2e keyframe doit avoir transform contenant translate(-50%,-50%) + scale + rotate.
     const last = compiled.keyframes.wrapper.find((k) => k.offset === 1);
     expect(last).toBeDefined();
+    expect(last!.transform).toContain("translate(-50%, -50%)");
     expect(last!.transform).toContain("scale(1, 1)");
     expect(last!.transform).toContain("rotate(45deg)");
   });
@@ -138,7 +139,7 @@ describe("compileAction", () => {
   it("compile une anim partbg : inner keyframes séparées des wrapper", () => {
     // @partbgact : srcleft/srctop/srczoomx/srczoomy animés (panoramique).
     const def = defFrom(
-      "(0,0,l,0,0,100,100)(30000,0,l,-542,0,100,100)",
+      "(0,0,l,0,0,100,100)(30000,0,l,542,0,100,100)",
       "srcleft,srctop,srczoomx,srczoomy",
       { storage: "im02", isPartbg: true },
     );

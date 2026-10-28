@@ -281,13 +281,15 @@ describe("DomStageRenderer", () => {
     expect(wrapper.style.overflow).toBe("hidden");
     expect(wrapper.style.left).toBe("748px");
     expect(wrapper.style.opacity).toBe("1");
+    // Le wrapper est centré sur son point d'ancrage (centre du partbg).
+    expect(wrapper.style.transform).toContain("translate(-50%, -50%)");
     // bgstorage derrière le crop.
     expect(wrapper.style.backgroundImage).toContain("black.webp");
 
     const innerImg = wrapper.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
     expect(innerImg).not.toBeNull();
     // Image translatée de -srcLeft et scalée (zoom 100% = scale(1,1)).
-    expect(innerImg.style.transform).toContain("translate(542px");
+    expect(innerImg.style.transform).toContain("translate(-542px");
     expect(innerImg.style.transform).toContain("scale(1, 1)");
     expect(innerImg.src).toContain("im02");
   });
@@ -310,7 +312,7 @@ describe("DomStageRenderer", () => {
     const w1 = root.querySelector(".mh-stage-partbg") as HTMLElement;
     const inner1 = w1.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
     expect(w1.style.left).toBe("748px");
-    expect(inner1.style.transform).toContain("translate(542px");
+    expect(inner1.style.transform).toContain("translate(-542px");
 
     await renderer.apply(
       [{ kind: "scene", scene: { bg: null, sprites: [cropSprite(300, 100)], effect: null }, transition: { method: "none" } }],
@@ -320,7 +322,33 @@ describe("DomStageRenderer", () => {
     const inner2 = w2.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
     expect(w2).toBe(w1);
     expect(w2.style.left).toBe("300px");
-    expect(inner2.style.transform).toContain("translate(100px");
+    expect(inner2.style.transform).toContain("translate(-100px");
+  });
+
+  it("conserve le centrage d'un sprite zoomé/rotaté (transform composé)", async () => {
+    const sig = () => new AbortController().signal;
+    await renderer.apply(
+      [{ kind: "scene", scene: { bg: null, sprites: [{ id: "sp", storage: "sp", x: 512, y: 288, z: 1000, opacity: 1 }], effect: null }, transition: { method: "none" } }],
+      { instant: true, signal: sig() },
+    );
+    await renderer.apply(
+      [{
+        kind: "animate",
+        target: "sp",
+        def: {
+          storage: "sp",
+          keyframes: [
+            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, center: 512, vcenter: 288, opacity: 1, zoomx: 1, zoomy: 1, rotate: 0 },
+            { time: 100, duration: 0, interp: "l", easing: "linear", accel: 0, center: 512, vcenter: 288, opacity: 1, zoomx: 2, zoomy: 2, rotate: 90 },
+          ],
+        },
+      }],
+      { instant: true, signal: sig() },
+    );
+    const el = root.querySelector('[data-sprite-id="sp"]') as HTMLElement;
+    expect(el.style.transform).toContain("translate(-50%, -50%)");
+    expect(el.style.transform).toContain("scale(2, 2)");
+    expect(el.style.transform).toContain("rotate(90deg)");
   });
 
   it("rend le ruby via <ruby><rt>", async () => {
@@ -400,9 +428,9 @@ describe("DomStageRenderer", () => {
       { instant: true, signal: sig() },
     );
     const inner1 = root.querySelector(".mh-stage-partbg-img") as HTMLElement;
-    expect(inner1.style.transform).toContain("translate(542px");
+    expect(inner1.style.transform).toContain("translate(-542px");
 
-    // 2. @partbgact instant : applique l'état final (srcleft=-100).
+    // 2. @partbgact instant : applique l'état final (srcleft=100 → translate(-100px)).
     await renderer.apply(
       [{
         kind: "animate",
@@ -412,7 +440,7 @@ describe("DomStageRenderer", () => {
           isPartbg: true,
           keyframes: [
             { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: 542, srctop: 0, srczoomx: 100, srczoomy: 100 },
-            { time: 30000, duration: 30000, interp: "l", easing: "linear", accel: 0, srcleft: -100, srctop: 0, srczoomx: 100, srczoomy: 100 },
+            { time: 30000, duration: 30000, interp: "l", easing: "linear", accel: 0, srcleft: 100, srctop: 0, srczoomx: 100, srczoomy: 100 },
           ],
         },
       }],
