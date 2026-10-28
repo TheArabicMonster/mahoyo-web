@@ -144,6 +144,8 @@ export type RenderEvent =
   | { kind: "animate"; target: string; def: AnimationDef }
   /** Arrête une animation. */
   | { kind: "stopAnimation"; target?: string }
+  /** Termine immédiatement la transition en cours. */
+  | { kind: "stopTransition" }
   /** Démarre ou arrête un tremblement d'écran. */
   | { kind: "quake"; quake: QuakeSpec | null }
   /** Affiche ou masque la textbox et sa bordure. */
