@@ -17,8 +17,6 @@ describe("compileAction", () => {
     const compiled = compileAction(def);
     expect(compiled).not.toBeNull();
     if (!compiled) return;
-    expect(compiled).not.toBeNull();
-    if (!compiled) return;
 
     // Durée totale = temps absolu de la dernière keyframe = 1800.
     expect(compiled.duration).toBe(1800);
@@ -150,8 +148,6 @@ describe("compileAction", () => {
       { storage: "im02", isPartbg: true },
     );
     const compiled = compileAction(def);
-    expect(compiled).not.toBeNull();
-    if (!compiled) return;
     expect(compiled).not.toBeNull();
     if (!compiled) return;
     expect(compiled.duration).toBe(30000);

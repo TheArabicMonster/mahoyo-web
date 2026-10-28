@@ -500,6 +500,8 @@ describe("DomStageRenderer", () => {
     expect(wrapper.style.left).toBe("600px");
     expect(wrapper.style.top).toBe("100px");
     expect(wrapper.style.opacity).toBe("0.5");
+    // Le centrage du wrapper est préservé.
+    expect(wrapper.style.transform).toContain("translate(-50%, -50%)");
   });
 
   it("rend le ruby via <ruby><rt>", async () => {

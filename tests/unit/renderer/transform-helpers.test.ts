@@ -23,7 +23,7 @@ describe("transform helpers", () => {
     );
   });
 
-  it("les 3 sites partbg produisent le même transform inner pour un même état", () => {
+  it("compileAction produit le même transform inner que le helper", () => {
     const srcleft = 542;
     const srctop = 120;
     const srczoomx = 150;
