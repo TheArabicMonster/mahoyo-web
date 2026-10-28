@@ -67,9 +67,30 @@ describe.skipIf(!hasAssets)("Prologue 1-0.ks", () => {
     // Le prologue fait au moins quelques pas.
     expect(steps).toBeGreaterThan(10);
 
-    // Seul warning attendu : timeline_object non défini (TLA animé non essentiel)
-    const unexpectedWarnings = warnings.filter((w) => !w.includes("timeline_object"));
+    // Allowlist des commandes/tags actuellement droppés (raw) sur 1-0.ks.
+    // Chaque entrée est un préfixe de warning attendu. Toute commande non
+    // listée ici fait échouer le test → détecteur de régression.
+    //
+    // Inventaire (issue #51) :
+    // - @cm4pg : reset de mise en page texte (macro @pg le couvre structurellement).
+    // - [wait] : tag inline de pause texte (3 occurrences, lignes 58/107/248).
+    //   Le tag form n'est pas géré par le parser (seul @wait command l'est).
+    // - timeline_object : @eval TLA animé (non essentiel).
+    const ALLOWED_RAW_PREFIXES = [
+      "commande non gérée: @cm4pg",
+      "commande non gérée: @wait", // tag [wait] inline → raw avec command "wait"
+      "timeline_object",
+    ];
+    const unexpectedWarnings = warnings.filter(
+      (w) => !ALLOWED_RAW_PREFIXES.some((p) => w.includes(p)),
+    );
     expect(unexpectedWarnings).toEqual([]);
+
+    // Le compteur rawCount du runtime doit refléter les commandes droppées
+    // (3 × [wait] + 1 × @cm4pg = 4). Si ce nombre change, c'est une régression
+    // de couverture de commandes — mettre à jour l'allowlist ci-dessus après
+    // vérification.
+    expect(runtime.rawCount).toBe(4);
   });
 });
 

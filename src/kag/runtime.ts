@@ -134,6 +134,12 @@ export class Runtime {
   public scriptLoader: ((storage: string) => Promise<ParsedScript | null>) | null = null;
 
   public onWarning: (message: string) => void = console.warn;
+  /**
+   * Compteur de commandes `raw` (inconnues) rencontrées depuis l'instanciation.
+   * Permet de détecter les régressions (une commande autrefois gérée qui
+   * deviendrait no-op ferait bondir ce compteur).
+   */
+  public rawCount = 0;
 
   constructor(
     script: ParsedScript,
@@ -805,7 +811,10 @@ export class Runtime {
         // Traités dans step() car le texte peut s'arrêter sur [l].
         break;
       case "raw":
-        // Commande inconnue tolérée.
+        // Commande inconnue : tolérée mais bruyante (AGENTS.md §6).
+        // On prévient via onWarning et on compte pour détecter les régressions.
+        this.rawCount++;
+        this.onWarning(`commande non gérée: @${instruction.command}`);
         break;
     }
 
