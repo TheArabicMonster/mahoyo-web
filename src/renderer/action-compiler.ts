@@ -52,6 +52,29 @@ function isContinuous(field: string): boolean {
 }
 
 /**
+ * Complète chaque keyframe avec les props continues de la keyframe précédente.
+ * Garantit que les listes de fonctions transform sont identiques d'une keyframe
+ * à l'autre, pour une interpolation WAAPI stable.
+ */
+export function resolveKeyframes(kfs: readonly AnimKeyframe[]): AnimKeyframe[] {
+  const resolved: AnimKeyframe[] = [];
+  let prev: AnimKeyframe | null = null;
+  for (const rawKf of kfs) {
+    const kf = { ...rawKf };
+    if (kf.zoomx === undefined && prev?.zoomx !== undefined) kf.zoomx = prev.zoomx;
+    if (kf.zoomy === undefined && prev?.zoomy !== undefined) kf.zoomy = prev.zoomy;
+    if (kf.rotate === undefined && prev?.rotate !== undefined) kf.rotate = prev.rotate;
+    if (kf.srcleft === undefined && prev?.srcleft !== undefined) kf.srcleft = prev.srcleft;
+    if (kf.srctop === undefined && prev?.srctop !== undefined) kf.srctop = prev.srctop;
+    if (kf.srczoomx === undefined && prev?.srczoomx !== undefined) kf.srczoomx = prev.srczoomx;
+    if (kf.srczoomy === undefined && prev?.srczoomy !== undefined) kf.srczoomy = prev.srczoomy;
+    resolved.push(kf);
+    prev = kf;
+  }
+  return resolved;
+}
+
+/**
  * Compile un `AnimationDef` en structure prête pour `Element.animate()`.
  *
  * Retourne `null` si l'animation est vide ou ne dure pas (duration <= 0).
@@ -69,20 +92,7 @@ export function compileAction(def: AnimationDef): CompiledAction | null {
   const innerKeyframes: Keyframe[] = [];
   const discrete: DiscreteChange[] = [];
 
-  // Carry-forward des props continues transform pour garantir une interpolation
-  // WAAPI stable (même liste de fonctions transform sur chaque keyframe).
-  let prev: AnimKeyframe | null = null;
-
-  for (const rawKf of kfs) {
-    const kf = { ...rawKf };
-    if (kf.zoomx === undefined && prev?.zoomx !== undefined) kf.zoomx = prev.zoomx;
-    if (kf.zoomy === undefined && prev?.zoomy !== undefined) kf.zoomy = prev.zoomy;
-    if (kf.rotate === undefined && prev?.rotate !== undefined) kf.rotate = prev.rotate;
-    if (kf.srcleft === undefined && prev?.srcleft !== undefined) kf.srcleft = prev.srcleft;
-    if (kf.srctop === undefined && prev?.srctop !== undefined) kf.srctop = prev.srctop;
-    if (kf.srczoomx === undefined && prev?.srczoomx !== undefined) kf.srczoomx = prev.srczoomx;
-    if (kf.srczoomy === undefined && prev?.srczoomy !== undefined) kf.srczoomy = prev.srczoomy;
-
+  for (const kf of resolveKeyframes(kfs)) {
     const offset = total > 0 ? kf.time / total : 0;
     const easing = interpToEasing(kf.interp);
     const wrapperFrame: Keyframe = { offset, easing };
@@ -109,8 +119,6 @@ export function compileAction(def: AnimationDef): CompiledAction | null {
         srczoomy: kf.srczoomy,
       });
     }
-
-    prev = kf;
 
     // Props discrètes → scheduler.
     for (const field of DISCRETE_FIELDS) {

@@ -13,9 +13,8 @@ export function spriteTransform(props: {
   zoomy?: number;
   rotate?: number;
 }): string {
-  const { zoomx = 1, zoomy = 1, rotate } = props;
-  const rotatePart = rotate !== undefined ? ` rotate(${rotate}deg)` : "";
-  return `translate(-50%, -50%)${rotatePart} scale(${zoomx}, ${zoomy})`;
+  const { zoomx = 1, zoomy = 1, rotate = 0 } = props;
+  return `translate(-50%, -50%) rotate(${rotate}deg) scale(${zoomx}, ${zoomy})`;
 }
 
 /** Transform de l'image interne d'un partbg (offset source négatif + zoom source). */

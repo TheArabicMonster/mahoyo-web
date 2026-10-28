@@ -13,7 +13,7 @@ import type {
 } from "@/kag/events.js";
 import type { AnimationDef, AnimKeyframe, TextSegment } from "@/kag/types.js";
 import type { DisplaySettings, RunOptions, StageRenderer, StageRendererDeps } from "./types.js";
-import { compileAction, type DiscreteChange } from "./action-compiler.js";
+import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
 import { partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 
 /**
@@ -748,8 +748,9 @@ export class DomStageRenderer implements StageRenderer {
 
   /** Applique l'état final d'une animation sur le sprite cible (mode instant). */
   private applyAnimationFinal(def: AnimationDef): void {
-    const last = def.keyframes[def.keyframes.length - 1];
-    if (!last) return;
+    if (def.keyframes.length === 0) return;
+    const resolved = resolveKeyframes(def.keyframes);
+    const last = resolved[resolved.length - 1];
     const el = this.spriteEls.get(def.id ?? def.storage) ?? this.findPartbgEl(def);
     if (!el) return;
     const isPartbg = !!def.isPartbg;

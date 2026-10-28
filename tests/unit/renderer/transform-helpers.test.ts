@@ -10,7 +10,7 @@ describe("transform helpers", () => {
   });
 
   it("spriteTransform supporte l'absence de rotation", () => {
-    expect(spriteTransform({ zoomx: 1, zoomy: 1 })).toBe("translate(-50%, -50%) scale(1, 1)");
+    expect(spriteTransform({ zoomx: 1, zoomy: 1 })).toBe("translate(-50%, -50%) rotate(0deg) scale(1, 1)");
   });
 
   it("partbgWrapperTransform centre le wrapper", () => {

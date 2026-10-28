@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDomStageRenderer } from "@/renderer/stage-renderer.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
+import { compileAction } from "@/renderer/action-compiler.js";
 import type { RenderEvent, StageSnapshot } from "@/kag/events.js";
 
 type MockAnim = {
@@ -349,6 +350,38 @@ describe("DomStageRenderer", () => {
     expect(el.style.transform).toContain("translate(-50%, -50%)");
     expect(el.style.transform).toContain("scale(2, 2)");
     expect(el.style.transform).toContain("rotate(90deg)");
+  });
+
+  it("le mode instant produit le même transform final que la dernière keyframe WAAPI", async () => {
+    const sig = () => new AbortController().signal;
+    await renderer.apply(
+      [{ kind: "scene", scene: { bg: null, sprites: [{ id: "sp", storage: "sp", x: 512, y: 288, z: 1000, opacity: 1 }], effect: null }, transition: { method: "none" } }],
+      { instant: true, signal: sig() },
+    );
+
+    const def = {
+      storage: "sp",
+      keyframes: [
+        { time: 0, duration: 0, interp: "l" as const, easing: "linear" as const, accel: 0, center: 512, vcenter: 288, opacity: 1, zoomx: 1, zoomy: 1, rotate: 0 },
+        { time: 100, duration: 0, interp: "l" as const, easing: "linear" as const, accel: 0, center: 600, vcenter: 300, opacity: 1, zoomx: 2, rotate: 45 },
+      ],
+    };
+
+    const compiled = compileAction({ storage: "sp", keyframes: def.keyframes });
+    expect(compiled).not.toBeNull();
+    const waapiLast = compiled!.keyframes.wrapper.find((k) => k.offset === 1);
+    expect(waapiLast).toBeDefined();
+
+    await renderer.apply(
+      [{ kind: "animate", target: "sp", def }],
+      { instant: true, signal: sig() },
+    );
+
+    const el = root.querySelector('[data-sprite-id="sp"]') as HTMLElement;
+    expect(el.style.transform).toBe(waapiLast!.transform);
+    // Le carry-forward + helper garantissent rotate(45deg) et zoomx=2/zoomy=1.
+    expect(el.style.transform).toContain("rotate(45deg)");
+    expect(el.style.transform).toContain("scale(2, 1)");
   });
 
   it("rend le ruby via <ruby><rt>", async () => {
