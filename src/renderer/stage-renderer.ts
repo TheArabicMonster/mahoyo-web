@@ -160,7 +160,17 @@ export class DomStageRenderer implements StageRenderer {
         promise = this.transitionPromise;
         break;
       case "animation":
-        promise = target ? this.animations.get(target)?.promise ?? null : null;
+        if (target) {
+          promise = this.animations.get(target)?.promise ?? null;
+        } else {
+          // @wact sans cible : attend toutes les animations non-loop.
+          // Les loops tournent en arrière-plan (clignotements, etc.) et
+          // ne doivent pas bloquer le jeu (doc §7).
+          const nonLoop = [...this.animations.values()].filter((c) => !c.isLoop);
+          if (nonLoop.length > 0) {
+            promise = Promise.all(nonLoop.map((c) => c.promise)).then(() => {});
+          }
+        }
         break;
       case "quake":
         promise = this.quakeResolve && this.quakePromise ? this.quakePromise() : null;
@@ -982,11 +992,12 @@ export class DomStageRenderer implements StageRenderer {
  */
 class AnimationController {
   promise: Promise<void>;
+  /** Accès en lecture au flag loop (pour waitFor("animation") global : on n'attend pas les loops). */
+  readonly isLoop: boolean;
   private resolveFn: () => void = () => {};
   private animation: Animation | null = null;
   private discreteTimers: ReturnType<typeof setTimeout>[] = [];
   private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly loop: boolean;
 
   constructor(
     def: AnimationDef,
@@ -996,7 +1007,7 @@ class AnimationController {
     private onDone: () => void,
     private innerEl?: HTMLElement | null,
   ) {
-    this.loop = !!def.loop;
+    this.isLoop = !!def.loop;
     this.promise = new Promise((resolve) => {
       this.resolveFn = resolve;
     });
@@ -1033,7 +1044,7 @@ class AnimationController {
           fill: "forwards",
         });
       }
-      if (!this.loop) {
+      if (!this.isLoop) {
         this.animation!.onfinish = () => this.finish();
       } else {
         // Loop : le promise n'est jamais résolu naturellement (animation infinie).
@@ -1103,7 +1114,7 @@ class AnimationController {
    */
   hurry(): void {
     this.clearTimers();
-    if (this.loop) {
+    if (this.isLoop) {
       // Loop : on résout le promise sans arrêter l'animation.
       this.resolveFn();
     } else {
