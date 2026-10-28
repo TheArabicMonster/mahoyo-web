@@ -360,7 +360,6 @@ export class DomStageRenderer implements StageRenderer {
       .mh-stage-sprite {
         position: absolute;
         transform: translate(-50%, -50%);
-        transition: opacity 0.3s ease;
       }
       .mh-stage-effects {
         position: absolute;
@@ -1006,8 +1005,10 @@ class AnimationController {
   readonly isLoop: boolean;
   private resolveFn: () => void = () => {};
   private animation: Animation | null = null;
+  private innerAnimation: Animation | null = null;
   private discreteTimers: ReturnType<typeof setTimeout>[] = [];
   private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  private finished = false;
 
   constructor(
     def: AnimationDef,
@@ -1048,14 +1049,24 @@ class AnimationController {
       }
       // WAAPI : animation image interne (partbg).
       if (this.innerEl && compiled.keyframes.inner.length > 0) {
-        this.innerEl.animate(compiled.keyframes.inner, {
+        this.innerAnimation = this.innerEl.animate(compiled.keyframes.inner, {
           duration: compiled.duration,
           iterations: compiled.iterations,
           fill: "forwards",
         });
       }
       if (!this.isLoop) {
-        this.animation!.onfinish = () => this.finish();
+        // Le promise doit se résoudre même si aucun keyframe WAAPI n'a été
+        // généré (props discrètes uniquement). On s'appuie sur la première
+        // animation disponible (wrapper, puis inner), sinon on fallback sur
+        // un setTimeout pour ne pas lever une exception sur un null.
+        if (this.animation) {
+          this.animation.onfinish = () => this.finish();
+        } else if (this.innerAnimation) {
+          this.innerAnimation.onfinish = () => this.finish();
+        } else {
+          this.fallbackTimer = setTimeout(() => this.finish(), compiled.duration);
+        }
       } else {
         // Loop : le promise n'est jamais résolu naturellement (animation infinie).
         // On résout seulement via hurry()/cancel().
@@ -1110,8 +1121,10 @@ class AnimationController {
     }
   }
 
-  /** Termine l'animation (résout le promise + onDone). */
+  /** Termine l'animation (résout le promise + onDone). Idempotent. */
   private finish(): void {
+    if (this.finished) return;
+    this.finished = true;
     this.clearTimers();
     this.resolveFn();
     this.onDone();
@@ -1129,6 +1142,16 @@ class AnimationController {
       this.resolveFn();
     } else {
       // Non-loop : termine immédiatement (jump à la fin).
+      // L'inner est terminé avant le wrapper : le finish du wrapper déclenche
+      // onfinish -> finish() -> onDone, ce qui annule le contrôleur et
+      // empêcherait d'atteindre l'inner si on le faisait après.
+      if (this.innerAnimation) {
+        try {
+          this.innerAnimation.finish();
+        } catch {
+          this.innerAnimation.cancel();
+        }
+      }
       if (this.animation) {
         try {
           this.animation.finish();
@@ -1143,6 +1166,7 @@ class AnimationController {
   /** Cancel (@stopaction) : annule tout (loops y compris). */
   cancel(): void {
     this.clearTimers();
+    this.finished = true;
     if (this.animation) {
       // Preserve the visual state produced by the animation before cancelling,
       // otherwise WAAPI reverts to the pre-animation style (doc §8).
@@ -1155,6 +1179,21 @@ class AnimationController {
       }
       this.animation.cancel();
       this.animation = null;
+    }
+    if (this.innerAnimation) {
+      try {
+        if (typeof (this.innerAnimation as Animation & { commitStyles?: () => void }).commitStyles === "function") {
+          (this.innerAnimation as Animation & { commitStyles: () => void }).commitStyles();
+        }
+      } catch {
+        // ignore (jsdom, animation déjà terminée, etc.)
+      }
+      try {
+        this.innerAnimation.cancel();
+      } catch {
+        // ignore
+      }
+      this.innerAnimation = null;
     }
     this.resolveFn();
   }

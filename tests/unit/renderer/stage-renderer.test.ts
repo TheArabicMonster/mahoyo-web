@@ -3,6 +3,43 @@ import { createDomStageRenderer } from "@/renderer/stage-renderer.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { RenderEvent, StageSnapshot } from "@/kag/events.js";
 
+type MockAnim = {
+  element: HTMLElement;
+  onfinish: (() => void) | null;
+  finish: ReturnType<typeof vi.fn>;
+  cancel: ReturnType<typeof vi.fn>;
+  commitStyles: ReturnType<typeof vi.fn>;
+};
+
+async function withMockAnimate<T>(
+  fn: (mocks: { getAnims: () => MockAnim[] }) => Promise<T>,
+): Promise<T> {
+  const anims: MockAnim[] = [];
+  const original = (HTMLElement.prototype as unknown as { animate?: unknown }).animate;
+  (HTMLElement.prototype as unknown as { animate: unknown }).animate = function (
+    this: HTMLElement,
+    _keyframes: Keyframe[],
+    _options: KeyframeAnimationOptions,
+  ) {
+    const anim: MockAnim = {
+      element: this,
+      onfinish: null,
+      finish: vi.fn(() => {
+        if (anim.onfinish) anim.onfinish();
+      }),
+      cancel: vi.fn(),
+      commitStyles: vi.fn(),
+    };
+    anims.push(anim);
+    return anim as unknown as Animation;
+  };
+  try {
+    return await fn({ getAnims: () => anims });
+  } finally {
+    (HTMLElement.prototype as unknown as { animate: unknown }).animate = original;
+  }
+}
+
 describe("DomStageRenderer", () => {
   let root: HTMLElement;
   let renderer: ReturnType<typeof createDomStageRenderer>;
@@ -578,5 +615,150 @@ describe("DomStageRenderer", () => {
     };
     await renderer.restore(snapshot, sig());
     expect(root.querySelectorAll(".mh-stage-sprite").length).toBe(0);
+  });
+
+  it("WAAPI path: animation with only discrete props falls back to a timer and resolves", async () => {
+    await withMockAnimate(async ({ getAnims }) => {
+      vi.useFakeTimers();
+      const sig = () => new AbortController().signal;
+      await renderer.apply(
+        [{
+          kind: "scene",
+          scene: { bg: null, sprites: [{ id: "a", storage: "a", x: 0, y: 0, z: 1000, opacity: 1 }], effect: null },
+          transition: { method: "none" },
+        }],
+        { instant: true, signal: sig() },
+      );
+
+      const animatePromise = renderer.apply(
+        [{
+          kind: "animate",
+          target: "a",
+          def: {
+            storage: "a",
+            keyframes: [
+              { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0 },
+              { time: 100, duration: 0, interp: "l", easing: "linear", accel: 0, visible: false },
+            ],
+          },
+        }],
+        { instant: false, signal: sig() },
+      );
+
+      // No continuous keyframes => no WAAPI animation should be created.
+      expect(getAnims().length).toBe(0);
+
+      const waitPromise = renderer.waitFor("animation", "a", sig());
+      vi.advanceTimersByTime(100);
+      await waitPromise;
+      await animatePromise;
+      vi.useRealTimers();
+    });
+  });
+
+  it("WAAPI path: stopAnimation cancels both wrapper and inner partbg animations", async () => {
+    await withMockAnimate(async ({ getAnims }) => {
+      const sig = () => new AbortController().signal;
+      await renderer.apply(
+        [{
+          kind: "scene",
+          scene: {
+            bg: null,
+            sprites: [{
+              id: "im02",
+              storage: "im02",
+              x: 748, y: 0, z: 1000, opacity: 1,
+              crop: { width: 522, height: 576, srcLeft: 542, srcTop: 0, srcZoomX: 100, srcZoomY: 100 },
+            }],
+            effect: null,
+          },
+          transition: { method: "none" },
+        }],
+        { instant: true, signal: sig() },
+      );
+
+      await renderer.apply(
+        [{
+          kind: "animate",
+          target: "im02",
+          def: {
+            storage: "im02",
+            isPartbg: true,
+            keyframes: [
+              { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: 542, srctop: 0, srczoomx: 100, srczoomy: 100, opacity: 1 },
+              { time: 100, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: 0, srctop: 0, srczoomx: 100, srczoomy: 100, opacity: 0.5 },
+            ],
+          },
+        }],
+        { instant: false, signal: sig() },
+      );
+
+      expect(getAnims().length).toBe(2);
+      const [wrapper, inner] = getAnims();
+
+      await renderer.apply(
+        [{ kind: "stopAnimation", target: "im02" }],
+        { instant: true, signal: sig() },
+      );
+
+      expect(wrapper.commitStyles).toHaveBeenCalledTimes(1);
+      expect(wrapper.cancel).toHaveBeenCalledTimes(1);
+      expect(inner.commitStyles).toHaveBeenCalledTimes(1);
+      expect(inner.cancel).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("WAAPI path: hurry finishes both wrapper and inner partbg animations", async () => {
+    await withMockAnimate(async ({ getAnims }) => {
+      const sig = () => new AbortController().signal;
+      await renderer.apply(
+        [{
+          kind: "scene",
+          scene: {
+            bg: null,
+            sprites: [{
+              id: "im02",
+              storage: "im02",
+              x: 748, y: 0, z: 1000, opacity: 1,
+              crop: { width: 522, height: 576, srcLeft: 542, srcTop: 0, srcZoomX: 100, srcZoomY: 100 },
+            }],
+            effect: null,
+          },
+          transition: { method: "none" },
+        }],
+        { instant: true, signal: sig() },
+      );
+
+      await renderer.apply(
+        [{
+          kind: "animate",
+          target: "im02",
+          def: {
+            storage: "im02",
+            isPartbg: true,
+            keyframes: [
+              { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: 542, srctop: 0, srczoomx: 100, srczoomy: 100, opacity: 1 },
+              { time: 100, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: 0, srctop: 0, srczoomx: 100, srczoomy: 100, opacity: 0.5 },
+            ],
+          },
+        }],
+        { instant: false, signal: sig() },
+      );
+
+      expect(getAnims().length).toBe(2);
+      const [wrapper, inner] = getAnims();
+
+      renderer.hurry();
+
+      expect(wrapper.finish).toHaveBeenCalledTimes(1);
+      expect(inner.finish).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("injected CSS does not apply a transition to .mh-stage-sprite", () => {
+    const style = document.head.querySelector("style")?.textContent ?? "";
+    const match = style.match(/\.mh-stage-sprite\s*\{([^}]*)\}/);
+    expect(match).not.toBeNull();
+    expect(match![1]).not.toContain("transition");
   });
 });
