@@ -630,6 +630,126 @@ Deuxième ligne.
     }
   });
 
+  it("@trans sans canskip est skippable par défaut", () => {
+    const SRC = `
+*page0|
+@bg page=back storage=bgx
+@trans time=300
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("waitFor");
+    if (step.stop.kind === "waitFor") {
+      expect(step.stop.what).toBe("transition");
+      expect(step.stop.skippable).toBe(true);
+    }
+  });
+
+  it("@trans time=300 canskip=0 → waitFor transition non skippable", () => {
+    const SRC = `
+*page0|
+@bg page=back storage=bgx
+@trans time=300 canskip=0
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("waitFor");
+    if (step.stop.kind === "waitFor") {
+      expect(step.stop.what).toBe("transition");
+      expect(step.stop.skippable).toBe(false);
+    }
+  });
+
+  it("@trans time=300 nowait=1 n'émet pas de stop", () => {
+    const SRC = `
+*page0|
+@bg page=back storage=bgx
+@trans time=300 nowait=1
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("click");
+    const sceneEvents = step.events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
+    expect(sceneEvents.length).toBeGreaterThan(0);
+  });
+
+  it("trans implicite @bg time=300 est skippable par défaut", () => {
+    const SRC = `
+*page0|
+@fg storage=red center=512 vcenter=288 index=1000
+@bg time=300 storage=bgx
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("waitFor");
+    if (step.stop.kind === "waitFor") {
+      expect(step.stop.what).toBe("transition");
+      expect(step.stop.skippable).toBe(true);
+    }
+  });
+
+  it("trans implicite @bg time=300 canskip=0 est non skippable", () => {
+    const SRC = `
+*page0|
+@fg storage=red center=512 vcenter=288 index=1000
+@bg time=300 storage=bgx canskip=0
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("waitFor");
+    if (step.stop.kind === "waitFor") {
+      expect(step.stop.what).toBe("transition");
+      expect(step.stop.skippable).toBe(false);
+    }
+  });
+
+  it("trans implicite @partbg time=300 canskip=0 est non skippable", () => {
+    const SRC = `
+*page0|
+@partbg id=pb1 storage=im02 center=512 vcenter=288 index=2000 width=522 height=576 srcleft=0 srctop=0 srczoomx=100 srczoomy=100 time=300 canskip=0
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("waitFor");
+    if (step.stop.kind === "waitFor") {
+      expect(step.stop.what).toBe("transition");
+      expect(step.stop.skippable).toBe(false);
+    }
+  });
+
+  it("trans implicite @partbg time=300 est skippable par défaut", () => {
+    const SRC = `
+*page0|
+@partbg id=pb1 storage=im02 center=512 vcenter=288 index=2000 width=522 height=576 srcleft=0 srctop=0 srczoomx=100 srczoomy=100 time=300
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("waitFor");
+    if (step.stop.kind === "waitFor") {
+      expect(step.stop.what).toBe("transition");
+      expect(step.stop.skippable).toBe(true);
+    }
+  });
+
+  it("l'instruction trans parsée porte canskip true/false selon l'argument", () => {
+    const defaultScript = parse(lex(`*page0|\n@trans time=300\n@pg\n`));
+    const transDefault = defaultScript.pages[0].instructions.find((i) => i.kind === "trans") as Extract<Instruction, { kind: "trans" }> | undefined;
+    expect(transDefault).toBeDefined();
+    expect(transDefault?.canskip).toBe(true);
+
+    const falseScript = parse(lex(`*page0|\n@trans time=300 canskip=0\n@pg\n`));
+    const transFalse = falseScript.pages[0].instructions.find((i) => i.kind === "trans") as Extract<Instruction, { kind: "trans" }> | undefined;
+    expect(transFalse).toBeDefined();
+    expect(transFalse?.canskip).toBe(false);
+  });
+
   it("animate : instruction.def n'est pas muté", () => {
     const SRC = `
 *page0|

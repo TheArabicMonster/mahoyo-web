@@ -46,6 +46,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         top: args.top !== undefined ? parseIntArg(args.top) : undefined,
         noclear: args.noclear === "1",
         nowait: args.nowait === "1",
+        canskip: args.canskip !== "0",
       };
     case "fg":
       return {
@@ -86,6 +87,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         rule: args.rule,
         time: parseIntArg(args.time),
         nowait: args.nowait === "1",
+        canskip: args.canskip !== "0",
       };
     case "fgact":
     case "partbgact": {
@@ -185,6 +187,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         time,
         rule,
         nowait: args.nowait === "1",
+        canskip: args.canskip !== "0",
         crop,
       };
     }

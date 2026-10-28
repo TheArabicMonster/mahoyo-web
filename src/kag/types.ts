@@ -91,15 +91,15 @@ export type AnimationDef = {
 };
 
 export type Instruction =
-  | { kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean; nowait?: boolean }
+  | { kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean; nowait?: boolean; canskip?: boolean }
   | { kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; partbgId?: string }
   | { kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer }
-  | { kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; nowait?: boolean; crop: CropSpec }
+  | { kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean; crop: CropSpec }
   | { kind: "animate"; def: AnimationDef }
   | { kind: "clall"; page?: PageLayer }
   | { kind: "clfg"; storage?: string; index?: number; id?: string; page?: PageLayer }
   | { kind: "backlay"; storage?: string }
-  | { kind: "trans"; rule?: string; time: number; nowait?: boolean }
+  | { kind: "trans"; rule?: string; time: number; nowait?: boolean; canskip?: boolean }
   | { kind: "play"; storage: string; volume?: number }
   | { kind: "playstop"; time?: number }
   | { kind: "fadebgm"; time: number; volume?: number }
