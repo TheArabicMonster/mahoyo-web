@@ -3,6 +3,7 @@ import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";
 import { Runtime } from "@/kag/runtime.js";
 import type { RenderEvent, StopReason } from "@/kag/events.js";
+import type { Instruction } from "@/kag/types.js";
 
 const SAMPLE = `
 *page0|
@@ -533,5 +534,121 @@ Deuxième ligne.
     const stopTransEvent = step.events.find((e) => e.kind === "stopTransition");
     expect(stopTransEvent).toBeDefined();
     expect(stopTransEvent?.kind).toBe("stopTransition");
+  });
+
+  it("@movefg préserve z-index et cible fore (pas back)", () => {
+    // Régression #50 : @movefg arrivait sur back au lieu de fore.
+    // @fg sans page écrit sur back par défaut (@trans copie back→fore).
+    const SRC = `
+*page0|
+@fg storage=red index=2000 opacity=0 center=512 vcenter=288
+@trans time=100 nowait=1
+@movefg storage=red time=3000 opacity=80
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.events.find((e) => e.kind === "animate")).toBeDefined();
+    const save = runtime.getSaveData();
+    const foreRed = save.state.fore.layers.find((l) => l.id === "red");
+    expect(foreRed).toBeDefined();
+    expect(foreRed?.index).toBe(2000);
+    expect(foreRed?.opacity).toBeCloseTo(80 / 255, 2);
+  });
+
+  it("@partbgact sans id cible le partbg existant (pas de double calque)", () => {
+    // @partbg sans page → back. @partbgact avec ≥2 keyframes crée animate.
+    // Sans id, on cherche par storage + crop.
+    const SRC = `
+*page0|
+@partbg id=pb1 storage=im09 storagebg=black center=512 vcenter=288 index=2000 width=522 height=576 srcleft=542 srctop=0 srczoomx=100 srczoomy=100
+@partbgact storage=im09 keys=(srcleft,542)(srcleft,0)
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    const animEvent = step.events.find((e) => e.kind === "animate");
+    expect(animEvent).toBeDefined();
+    if (animEvent?.kind === "animate") {
+      // L'animation cible pb1 (id du partbg), pas un nouveau calque.
+      expect(animEvent.target).toBe("pb1");
+    }
+    const save = runtime.getSaveData();
+    const backLayers = save.state.back.layers.filter((l) => l.storage === "im09");
+    expect(backLayers.length).toBe(1);
+    expect(backLayers[0]?.crop).toBeDefined();
+  });
+
+  it("animate : keyframe 0 complétée depuis le calque existant", () => {
+    // @fg center=512 vcenter=288 → @trans → @movefg sans center : kf0 = existing.
+    // La keyframe 0 doit avoir les valeurs de DÉPART (calque existant), pas d'arrivée.
+    const SRC = `
+*page0|
+@fg storage=red index=2000 opacity=50 center=512 vcenter=288
+@trans time=100 nowait=1
+@movefg storage=red time=100 center=100
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    const animEvent = step.events.find((e) => e.kind === "animate") as Extract<RenderEvent, { kind: "animate" }> | undefined;
+    expect(animEvent).toBeDefined();
+    if (animEvent) {
+      const kf0 = animEvent.def.keyframes[0];
+      // opacity absente dans @movefg → vient du calque existant (50/255).
+      expect(kf0.opacity).toBeCloseTo(50 / 255, 2);
+      // center/vcenter absents dans @movefg → viennent du calque existant.
+      // (@movefg met center=100 dans kf1, pas kf0).
+      expect(kf0.center).toBe(512);
+      expect(kf0.vcenter).toBe(288);
+    }
+  });
+
+  it("animate : keyframe 0 sans props = valeurs du calque existant", () => {
+    // @movefg sans center → kf0.center = existing.center (512), pas la valeur finale.
+    const SRC = `
+*page0|
+@fg storage=red index=2000 opacity=50 center=512 vcenter=288
+@trans time=100 nowait=1
+@movefg storage=red time=100 opacity=80
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    const animEvent = step.events.find((e) => e.kind === "animate") as Extract<RenderEvent, { kind: "animate" }> | undefined;
+    expect(animEvent).toBeDefined();
+    if (animEvent) {
+      const kf0 = animEvent.def.keyframes[0];
+      const kf1 = animEvent.def.keyframes[1];
+      // kf0 : valeurs de DÉPART (calque existant).
+      expect(kf0.center).toBe(512);
+      expect(kf0.vcenter).toBe(288);
+      expect(kf0.opacity).toBeCloseTo(50 / 255, 2);
+      // kf1 : valeurs d'ARRIVÉE (instruction).
+      expect(kf1.center).toBe(0); // @movefg sans center= → parser met 0 (parseIntArg default)
+      expect(kf1.opacity).toBeCloseTo(80 / 255, 2);
+    }
+  });
+
+  it("animate : instruction.def n'est pas muté", () => {
+    const SRC = `
+*page0|
+@fg storage=red index=2000 opacity=50 center=512 vcenter=288
+@trans time=100 nowait=1
+@movefg storage=red time=100 center=100
+@pg
+`;
+    const script = parse(lex(SRC));
+    const animInstr = script.pages[0].instructions.find((i) => i.kind === "animate") as Extract<Instruction, { kind: "animate" }> | undefined;
+    expect(animInstr).toBeDefined();
+    const originalId = animInstr?.def.id;
+    const originalKf0 = { ...animInstr!.def.keyframes[0] };
+
+    const runtime = new Runtime(script);
+    runtime.step();
+
+    // L'instruction originale ne doit pas avoir été modifiée.
+    expect(animInstr?.def.id).toBe(originalId);
+    expect(animInstr?.def.keyframes[0]).toEqual(originalKf0);
   });
 });

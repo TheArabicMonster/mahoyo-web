@@ -86,6 +86,8 @@ export type AnimationDef = {
   partbgid?: string;
   /** Si true, l'animation cible un partbg (ex. @partbgact). */
   isPartbg?: boolean;
+  /** Si true, c'est un @movefg/@movepartbg (cible fore, écrit aussi sur back). */
+  isMove?: boolean;
 };
 
 export type Instruction =
