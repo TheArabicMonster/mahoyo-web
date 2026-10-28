@@ -722,7 +722,7 @@ export class Runtime {
       const pageIdx = this.context.script.labels[instruction.target];
       if (pageIdx !== undefined) {
         this.context.pc = pageIdx;
-        this.context.instructionIndex = 0;
+        this.context.instructionIndex = this.context.script.labelInstructionIndex[instruction.target] ?? 0;
         this.context.segmentIndex = 0;
       } else {
         this.onWarning(`unknown label: ${instruction.target}`);
@@ -747,7 +747,7 @@ export class Runtime {
           segmentIndex: 0,
         });
         this.context.pc = pageIdx;
-        this.context.instructionIndex = 0;
+        this.context.instructionIndex = this.context.script.labelInstructionIndex[instruction.target] ?? 0;
         this.context.segmentIndex = 0;
         return null;
       }
@@ -963,6 +963,7 @@ export class Runtime {
         const instruction = instructions[this.context.instructionIndex];
         const startScriptName = this.context.scriptName;
         const startPc = this.context.pc;
+        const startInstructionIndex = this.context.instructionIndex;
 
         if (instruction.kind === "text") {
           const result = this.processText(instruction);
@@ -993,6 +994,12 @@ export class Runtime {
         if (this.context.scriptName !== startScriptName || this.context.pc !== startPc) {
           contextChanged = true;
           break;
+        }
+
+        // Si une instruction (jump/call) a repositionné instructionIndex,
+        // on ne l'incrémente pas pour éviter de sauter la cible.
+        if (this.context.instructionIndex !== startInstructionIndex) {
+          continue;
         }
 
         this.context.instructionIndex += 1;
@@ -1054,6 +1061,7 @@ export class Runtime {
       const pageIdx = script.labels[label];
       if (pageIdx !== undefined) {
         this.context.pc = pageIdx;
+        this.context.instructionIndex = script.labelInstructionIndex[label] ?? 0;
       } else {
         this.onWarning(`label not found in ${storage}: ${label}`);
       }
@@ -1065,7 +1073,7 @@ export class Runtime {
     const target = this.context.script.labels[label];
     if (target === undefined) return false;
     this.context.pc = target;
-    this.context.instructionIndex = 0;
+    this.context.instructionIndex = this.context.script.labelInstructionIndex[label] ?? 0;
     this.context.segmentIndex = 0;
     return true;
   }

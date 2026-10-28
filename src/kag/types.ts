@@ -143,4 +143,9 @@ export type Page = {
 export type ParsedScript = {
   pages: Page[];
   labels: Record<string, number>;
+  /**
+   * Instruction index within the target page for each label. Required now
+   * that labels are no longer page boundaries.
+   */
+  labelInstructionIndex: Record<string, number>;
 };

@@ -173,6 +173,41 @@ describe("parse", () => {
     }
   });
 
+  it("does not split pages on a label without @pg", () => {
+    const script = parse(lex("*start|@bg storage=black"));
+    expect(script.pages.length).toBe(1);
+    expect(script.pages[0].label).toBe("start");
+  });
+
+  it("indexes labels on the current page", () => {
+    const script = parse(lex("*start|@bg storage=black@pg"));
+    expect(script.labels["start"]).toBe(0);
+  });
+
+  it("keeps a label before @pg in the same page", () => {
+    const script = parse(lex(SAMPLE));
+    expect(script.pages[0].label).toBe("page0");
+    expect(script.pages[1].label).toBe("page1");
+  });
+
+  it("keeps the first label when multiple labels appear in the same page", () => {
+    const script = parse(lex("*a|\n*b|\n@bg storage=black\n@pg"));
+    expect(script.pages.length).toBe(1);
+    expect(script.pages[0].label).toBe("a");
+    expect(script.labels["a"]).toBe(0);
+    expect(script.labels["b"]).toBe(0);
+  });
+
+  it("flushes pending text before a label", () => {
+    const script = parse(lex("texte A\n*label\ntexte B\n@pg"));
+    expect(script.pages[0].instructions.length).toBe(2);
+    const textA = script.pages[0].instructions[0];
+    const textB = script.pages[0].instructions[1];
+    expect(textA.kind).toBe("text");
+    expect(textB.kind).toBe("text");
+    expect(script.labelInstructionIndex["label"]).toBe(1);
+  });
+
   it("parses @se with loop and delay", () => {
     const script = parse(lex("@se storage=se01 loop=true delay=300 volume=80"));
     const page = script.pages[0];

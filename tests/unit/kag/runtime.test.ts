@@ -62,6 +62,39 @@ describe("Runtime", () => {
     expect(step2.stop.kind).toBe("end");
   });
 
+  it("jumps to an intra-page label", () => {
+    const script = parse(lex(
+      "@bg storage=black\n" +
+      "@jump target=*target\n" +
+      "*target|\n" +
+      "@fg page=fore storage=red center=512 vcenter=288 index=1000\n" +
+      "@pg",
+    ));
+    const runtime = new Runtime(script);
+
+    const step = runtime.step();
+    expectClick(step.stop, "page");
+    const scene = step.events.find((e) => e.kind === "scene");
+    expect(scene).toBeDefined();
+    expect(scene?.scene.sprites.some((s) => s.storage === "red")).toBe(true);
+  });
+
+  it("calls an intra-page label", () => {
+    const script = parse(lex(
+      "@call target=*target\n" +
+      "@pg\n" +
+      "*target|\n" +
+      "@fg page=fore storage=red center=512 vcenter=288 index=1000\n" +
+      "@return\n" +
+      "@pg",
+    ));
+    const runtime = new Runtime(script);
+
+    const step = runtime.step();
+    expectClick(step.stop, "page");
+    expect(step.events.some((e) => e.kind === "scene" && e.scene.sprites.some((s) => s.storage === "red"))).toBe(true);
+  });
+
   it("jumps to a label", () => {
     const script = parse(lex(SAMPLE));
     const runtime = new Runtime(script);
