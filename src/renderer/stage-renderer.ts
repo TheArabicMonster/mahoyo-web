@@ -13,7 +13,8 @@ import type {
 } from "@/kag/events.js";
 import type { AnimationDef, AnimKeyframe, TextSegment } from "@/kag/types.js";
 import type { DisplaySettings, RunOptions, StageRenderer, StageRendererDeps } from "./types.js";
-import { compileAction, type DiscreteChange } from "./action-compiler.js";
+import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
+import { partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 
 /**
  * Implémentation DOM de StageRenderer.
@@ -568,6 +569,7 @@ export class DomStageRenderer implements StageRenderer {
         wrapper.style.overflow = "hidden";
         wrapper.style.opacity = String(s.opacity);
         wrapper.style.zIndex = String(s.z);
+        wrapper.style.transform = partbgWrapperTransform();
         // Fond derrière le crop (bgstorage).
         if (crop.bgStorage) {
           wrapper.style.backgroundImage = `url(${this.resolver.background(crop.bgStorage)})`;
@@ -580,12 +582,15 @@ export class DomStageRenderer implements StageRenderer {
         if (innerImg) {
           const src = this.resolver.image(s.storage);
           if (innerImg.src !== src && !innerImg.src.endsWith(src)) innerImg.src = src;
-          const zx = crop.srcZoomX / 100;
-          const zy = crop.srcZoomY / 100;
           innerImg.style.position = "absolute";
           innerImg.style.left = "0";
           innerImg.style.top = "0";
-          innerImg.style.transform = `translate(${crop.srcLeft}px, ${crop.srcTop}px) scale(${zx}, ${zy})`;
+          innerImg.style.transform = partbgInnerTransform({
+            srcleft: crop.srcLeft,
+            srctop: crop.srcTop,
+            srczoomx: crop.srcZoomX,
+            srczoomy: crop.srcZoomY,
+          });
           innerImg.style.transformOrigin = "0 0";
         }
         this.spritesEl.appendChild(wrapper);
@@ -743,12 +748,15 @@ export class DomStageRenderer implements StageRenderer {
 
   /** Applique l'état final d'une animation sur le sprite cible (mode instant). */
   private applyAnimationFinal(def: AnimationDef): void {
-    const last = def.keyframes[def.keyframes.length - 1];
-    if (!last) return;
+    if (def.keyframes.length === 0) return;
+    const resolved = resolveKeyframes(def.keyframes);
+    const last = resolved[resolved.length - 1];
     const el = this.spriteEls.get(def.id ?? def.storage) ?? this.findPartbgEl(def);
     if (!el) return;
     const isPartbg = !!def.isPartbg;
     if (isPartbg) {
+      // Le wrapper partbg peut aussi animer center/vcenter/opacity/zoom/rotate.
+      this.applyKeyframeToElement(last, el, false);
       const inner = el.querySelector<HTMLElement>(".mh-stage-partbg-img");
       if (inner) this.applyKeyframeToElement(last, inner, true);
     } else {
@@ -761,21 +769,22 @@ export class DomStageRenderer implements StageRenderer {
       if (last.center !== undefined) el.style.left = `${last.center}px`;
       if (last.vcenter !== undefined) el.style.top = `${last.vcenter}px`;
       if (last.opacity !== undefined) el.style.opacity = String(last.opacity);
-      if (last.zoomx !== undefined || last.zoomy !== undefined) {
-        el.style.transform = `scale(${last.zoomx ?? 1}, ${last.zoomy ?? 1})`;
-      }
-      if (last.rotate !== undefined) {
-        el.style.transform = `${el.style.transform || ""} rotate(${last.rotate}deg)`.trim();
+      if (last.zoomx !== undefined || last.zoomy !== undefined || last.rotate !== undefined) {
+        el.style.transform = spriteTransform({
+          zoomx: last.zoomx ?? 1,
+          zoomy: last.zoomy ?? 1,
+          rotate: last.rotate,
+        });
       }
     } else {
-      const transforms: string[] = [];
-      if (last.srcleft !== undefined || last.srctop !== undefined) {
-        transforms.push(`translate(${last.srcleft ?? 0}px, ${last.srctop ?? 0}px)`);
+      if (last.srcleft !== undefined || last.srctop !== undefined || last.srczoomx !== undefined || last.srczoomy !== undefined) {
+        el.style.transform = partbgInnerTransform({
+          srcleft: last.srcleft,
+          srctop: last.srctop,
+          srczoomx: last.srczoomx,
+          srczoomy: last.srczoomy,
+        });
       }
-      if (last.srczoomx !== undefined || last.srczoomy !== undefined) {
-        transforms.push(`scale(${(last.srczoomx ?? 100) / 100}, ${(last.srczoomy ?? 100) / 100})`);
-      }
-      if (transforms.length > 0) el.style.transform = transforms.join(" ");
     }
   }
 

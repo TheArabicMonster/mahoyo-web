@@ -15,6 +15,7 @@
  * - `absolute` = z-index : appliqué discrètement (pas interpolé).
  */
 import type { AnimKeyframe, AnimationDef } from "@/kag/types.js";
+import { partbgInnerTransform, spriteTransform } from "./transform-helpers.js";
 
 /** Un changement discret à appliquer à un instant t (ms). */
 export type DiscreteChange = {
@@ -51,6 +52,29 @@ function isContinuous(field: string): boolean {
 }
 
 /**
+ * Complète chaque keyframe avec les props continues de la keyframe précédente.
+ * Garantit que les listes de fonctions transform sont identiques d'une keyframe
+ * à l'autre, pour une interpolation WAAPI stable.
+ */
+export function resolveKeyframes(kfs: readonly AnimKeyframe[]): AnimKeyframe[] {
+  const resolved: AnimKeyframe[] = [];
+  let prev: AnimKeyframe | null = null;
+  for (const rawKf of kfs) {
+    const kf = { ...rawKf };
+    if (kf.zoomx === undefined && prev?.zoomx !== undefined) kf.zoomx = prev.zoomx;
+    if (kf.zoomy === undefined && prev?.zoomy !== undefined) kf.zoomy = prev.zoomy;
+    if (kf.rotate === undefined && prev?.rotate !== undefined) kf.rotate = prev.rotate;
+    if (kf.srcleft === undefined && prev?.srcleft !== undefined) kf.srcleft = prev.srcleft;
+    if (kf.srctop === undefined && prev?.srctop !== undefined) kf.srctop = prev.srctop;
+    if (kf.srczoomx === undefined && prev?.srczoomx !== undefined) kf.srczoomx = prev.srczoomx;
+    if (kf.srczoomy === undefined && prev?.srczoomy !== undefined) kf.srczoomy = prev.srczoomy;
+    resolved.push(kf);
+    prev = kf;
+  }
+  return resolved;
+}
+
+/**
  * Compile un `AnimationDef` en structure prête pour `Element.animate()`.
  *
  * Retourne `null` si l'animation est vide ou ne dure pas (duration <= 0).
@@ -68,7 +92,7 @@ export function compileAction(def: AnimationDef): CompiledAction | null {
   const innerKeyframes: Keyframe[] = [];
   const discrete: DiscreteChange[] = [];
 
-  for (const kf of kfs) {
+  for (const kf of resolveKeyframes(kfs)) {
     const offset = total > 0 ? kf.time / total : 0;
     const easing = interpToEasing(kf.interp);
     const wrapperFrame: Keyframe = { offset, easing };
@@ -78,22 +102,22 @@ export function compileAction(def: AnimationDef): CompiledAction | null {
     if (kf.center !== undefined) wrapperFrame.left = `${kf.center}px`;
     if (kf.vcenter !== undefined) wrapperFrame.top = `${kf.vcenter}px`;
     if (kf.opacity !== undefined) wrapperFrame.opacity = kf.opacity;
-    const transforms: string[] = [];
-    if (kf.zoomx !== undefined || kf.zoomy !== undefined) {
-      transforms.push(`scale(${kf.zoomx ?? 1}, ${kf.zoomy ?? 1})`);
+    if (kf.zoomx !== undefined || kf.zoomy !== undefined || kf.rotate !== undefined) {
+      wrapperFrame.transform = spriteTransform({
+        zoomx: kf.zoomx ?? 1,
+        zoomy: kf.zoomy ?? 1,
+        rotate: kf.rotate,
+      });
     }
-    if (kf.rotate !== undefined) transforms.push(`rotate(${kf.rotate}deg)`);
-    if (transforms.length > 0) wrapperFrame.transform = transforms.join(" ");
 
     // Props continues spécifiques au crop interne d'un partbg.
     if (kf.srcleft !== undefined || kf.srctop !== undefined || kf.srczoomx !== undefined || kf.srczoomy !== undefined) {
-      const srcTransforms: string[] = [];
-      if (kf.srcleft !== undefined) srcTransforms.push(`translate(${kf.srcleft}px, ${kf.srctop ?? 0}px)`);
-      else if (kf.srctop !== undefined) srcTransforms.push(`translate(0px, ${kf.srctop}px)`);
-      if (kf.srczoomx !== undefined || kf.srczoomy !== undefined) {
-        srcTransforms.push(`scale(${(kf.srczoomx ?? 100) / 100}, ${(kf.srczoomy ?? 100) / 100})`);
-      }
-      innerFrame.transform = srcTransforms.join(" ");
+      innerFrame.transform = partbgInnerTransform({
+        srcleft: kf.srcleft,
+        srctop: kf.srctop,
+        srczoomx: kf.srczoomx,
+        srczoomy: kf.srczoomy,
+      });
     }
 
     // Props discrètes → scheduler.

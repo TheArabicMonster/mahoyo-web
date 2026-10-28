@@ -41,6 +41,7 @@ describe("compileAction", () => {
   it("interp n → steps(1, end), l → linear", () => {
     const def = defFrom("(0,0,l,0)(100,0,n,255)", "opacity");
     const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
     if (!compiled) return;
     // 1ʳᵉ keyframe (offset 0) interp l → linear.
     expect(compiled.keyframes.wrapper[0].easing).toBe("linear");
@@ -58,16 +59,18 @@ describe("compileAction", () => {
     expect(compileAction(def)).toBeNull();
   });
 
-  it("compile rotate + zoom en transform", () => {
+  it("compile rotate + zoom en transform centré", () => {
     const def = defFrom(
       "(0,0,l,0,0,0)(1000,0,l,45,100,100)",
       "rotate,zoomx,zoomy",
     );
     const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
     if (!compiled) return;
-    // La 2e keyframe doit avoir transform contenant scale + rotate.
+    // La 2e keyframe doit avoir transform contenant translate(-50%,-50%) + scale + rotate.
     const last = compiled.keyframes.wrapper.find((k) => k.offset === 1);
     expect(last).toBeDefined();
+    expect(last!.transform).toContain("translate(-50%, -50%)");
     expect(last!.transform).toContain("scale(1, 1)");
     expect(last!.transform).toContain("rotate(45deg)");
   });
@@ -115,6 +118,7 @@ describe("compileAction", () => {
     // keyframes à t=200 et t=800 (pas de t=0 ni de t=1000 final) avec opacity.
     const def = defFrom("(200,0,l,0)(800,0,l,255)", "opacity");
     const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
     if (!compiled) return;
     expect(compiled.duration).toBe(800);
     // WAAPI exige offset 0 et 1.
@@ -130,6 +134,7 @@ describe("compileAction", () => {
     );
     const compiled = compileAction(def);
     expect(compiled).not.toBeNull();
+    if (!compiled) return;
     const discrete = compiled?.discrete ?? [];
     const storage = discrete.find((d) => d.field === "storage");
     expect(storage?.value).toBe("im12宇宙の果て01(中心無し)");
@@ -138,7 +143,7 @@ describe("compileAction", () => {
   it("compile une anim partbg : inner keyframes séparées des wrapper", () => {
     // @partbgact : srcleft/srctop/srczoomx/srczoomy animés (panoramique).
     const def = defFrom(
-      "(0,0,l,0,0,100,100)(30000,0,l,-542,0,100,100)",
+      "(0,0,l,0,0,100,100)(30000,0,l,542,0,100,100)",
       "srcleft,srctop,srczoomx,srczoomy",
       { storage: "im02", isPartbg: true },
     );
@@ -156,6 +161,26 @@ describe("compileAction", () => {
     expect(last!.transform).toContain("scale(1, 1)");
   });
 
+  it("complète les props transform manquantes depuis la keyframe précédente", () => {
+    // kf0 a zoom=200% (parse → 2) mais pas rotate ; kf1 a rotate mais pas zoom.
+    // Le carry-forward doit conserver zoom=2 sur la dernière keyframe.
+    const def = defFrom(
+      "(0,0,l,512,288,0,0,200,200)(1000,0,l,512,288,0,45,,)",
+      "center,vcenter,opacity,rotate,zoomx,zoomy",
+    );
+    const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
+    if (!compiled) return;
+    const kfs = compiled!.keyframes.wrapper;
+    expect(kfs.length).toBeGreaterThanOrEqual(2);
+    const first = kfs[0];
+    const last = kfs[kfs.length - 1];
+    expect(first.transform).toContain("scale(2, 2)");
+    expect(first.transform).toContain("rotate(0deg)");
+    expect(last.transform).toContain("scale(2, 2)");
+    expect(last.transform).toContain("rotate(45deg)");
+  });
+
   it("compile une anim partbg mixte : wrapper + inner", () => {
     // center + srcleft animés simultanément.
     const def = defFrom(
@@ -164,6 +189,7 @@ describe("compileAction", () => {
       { storage: "im02", isPartbg: true },
     );
     const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
     if (!compiled) return;
     // Wrapper : center animé.
     expect(compiled.keyframes.wrapper.some((k) => k.left !== undefined)).toBe(true);

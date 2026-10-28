@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDomStageRenderer } from "@/renderer/stage-renderer.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
+import { compileAction } from "@/renderer/action-compiler.js";
+import { partbgInnerTransform } from "@/renderer/transform-helpers.js";
 import type { RenderEvent, StageSnapshot } from "@/kag/events.js";
 
 type MockAnim = {
@@ -281,13 +283,15 @@ describe("DomStageRenderer", () => {
     expect(wrapper.style.overflow).toBe("hidden");
     expect(wrapper.style.left).toBe("748px");
     expect(wrapper.style.opacity).toBe("1");
+    // Le wrapper est centré sur son point d'ancrage (centre du partbg).
+    expect(wrapper.style.transform).toContain("translate(-50%, -50%)");
     // bgstorage derrière le crop.
     expect(wrapper.style.backgroundImage).toContain("black.webp");
 
     const innerImg = wrapper.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
     expect(innerImg).not.toBeNull();
     // Image translatée de -srcLeft et scalée (zoom 100% = scale(1,1)).
-    expect(innerImg.style.transform).toContain("translate(542px");
+    expect(innerImg.style.transform).toContain("translate(-542px");
     expect(innerImg.style.transform).toContain("scale(1, 1)");
     expect(innerImg.src).toContain("im02");
   });
@@ -310,7 +314,7 @@ describe("DomStageRenderer", () => {
     const w1 = root.querySelector(".mh-stage-partbg") as HTMLElement;
     const inner1 = w1.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
     expect(w1.style.left).toBe("748px");
-    expect(inner1.style.transform).toContain("translate(542px");
+    expect(inner1.style.transform).toContain("translate(-542px");
 
     await renderer.apply(
       [{ kind: "scene", scene: { bg: null, sprites: [cropSprite(300, 100)], effect: null }, transition: { method: "none" } }],
@@ -320,7 +324,184 @@ describe("DomStageRenderer", () => {
     const inner2 = w2.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
     expect(w2).toBe(w1);
     expect(w2.style.left).toBe("300px");
-    expect(inner2.style.transform).toContain("translate(100px");
+    expect(inner2.style.transform).toContain("translate(-100px");
+  });
+
+  it("conserve le centrage d'un sprite zoomé/rotaté (transform composé)", async () => {
+    const sig = () => new AbortController().signal;
+    await renderer.apply(
+      [{ kind: "scene", scene: { bg: null, sprites: [{ id: "sp", storage: "sp", x: 512, y: 288, z: 1000, opacity: 1 }], effect: null }, transition: { method: "none" } }],
+      { instant: true, signal: sig() },
+    );
+    await renderer.apply(
+      [{
+        kind: "animate",
+        target: "sp",
+        def: {
+          storage: "sp",
+          keyframes: [
+            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, center: 512, vcenter: 288, opacity: 1, zoomx: 1, zoomy: 1, rotate: 0 },
+            { time: 100, duration: 0, interp: "l", easing: "linear", accel: 0, center: 512, vcenter: 288, opacity: 1, zoomx: 2, zoomy: 2, rotate: 90 },
+          ],
+        },
+      }],
+      { instant: true, signal: sig() },
+    );
+    const el = root.querySelector('[data-sprite-id="sp"]') as HTMLElement;
+    expect(el.style.transform).toContain("translate(-50%, -50%)");
+    expect(el.style.transform).toContain("scale(2, 2)");
+    expect(el.style.transform).toContain("rotate(90deg)");
+  });
+
+  it("le mode instant produit le même transform final que la dernière keyframe WAAPI", async () => {
+    const sig = () => new AbortController().signal;
+    await renderer.apply(
+      [{ kind: "scene", scene: { bg: null, sprites: [{ id: "sp", storage: "sp", x: 512, y: 288, z: 1000, opacity: 1 }], effect: null }, transition: { method: "none" } }],
+      { instant: true, signal: sig() },
+    );
+
+    const def = {
+      storage: "sp",
+      keyframes: [
+        { time: 0, duration: 0, interp: "l" as const, easing: "linear" as const, accel: 0, center: 512, vcenter: 288, opacity: 1, zoomx: 1, zoomy: 1, rotate: 0 },
+        { time: 100, duration: 0, interp: "l" as const, easing: "linear" as const, accel: 0, center: 600, vcenter: 300, opacity: 1, zoomx: 2, rotate: 45 },
+      ],
+    };
+
+    const compiled = compileAction({ storage: "sp", keyframes: def.keyframes });
+    expect(compiled).not.toBeNull();
+    const waapiLast = compiled!.keyframes.wrapper.find((k) => k.offset === 1);
+    expect(waapiLast).toBeDefined();
+
+    await renderer.apply(
+      [{ kind: "animate", target: "sp", def }],
+      { instant: true, signal: sig() },
+    );
+
+    const el = root.querySelector('[data-sprite-id="sp"]') as HTMLElement;
+    expect(el.style.transform).toBe(waapiLast!.transform);
+    // Le carry-forward + helper garantissent rotate(45deg) et zoomx=2/zoomy=1.
+    expect(el.style.transform).toContain("rotate(45deg)");
+    expect(el.style.transform).toContain("scale(2, 1)");
+  });
+
+  it("les 3 sites partbg produisent le même transform inner avec srczoom ≠ 100", async () => {
+    const sig = () => new AbortController().signal;
+    const srcLeft = 542;
+    const srcTop = 120;
+    const srcZoomX = 150;
+    const srcZoomY = 150;
+    const expected = partbgInnerTransform({
+      srcleft: srcLeft,
+      srctop: srcTop,
+      srczoomx: srcZoomX,
+      srczoomy: srcZoomY,
+    });
+
+    // Site 1 : renderScene.
+    await renderer.apply(
+      [{
+        kind: "scene",
+        scene: {
+          bg: null,
+          sprites: [{
+            id: "pb-crop",
+            storage: "im02",
+            x: 748,
+            y: 0,
+            z: 1000,
+            opacity: 1,
+            crop: { width: 522, height: 576, srcLeft, srcTop, srcZoomX, srcZoomY },
+          }],
+          effect: null,
+        },
+        transition: { method: "none" },
+      }],
+      { instant: true, signal: sig() },
+    );
+    const inner1 = root.querySelector(".mh-stage-partbg-img") as HTMLElement;
+    expect(inner1.style.transform).toBe(expected);
+
+    // Site 2 : applyAnimationFinal (mode instant).
+    await renderer.apply(
+      [{
+        kind: "animate",
+        target: "pb-crop",
+        def: {
+          storage: "im02",
+          isPartbg: true,
+          keyframes: [
+            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: srcLeft, srctop: srcTop, srczoomx: srcZoomX, srczoomy: srcZoomY },
+            { time: 100, duration: 100, interp: "l", easing: "linear", accel: 0, srcleft: srcLeft, srctop: srcTop, srczoomx: srcZoomX, srczoomy: srcZoomY },
+          ],
+        },
+      }],
+      { instant: true, signal: sig() },
+    );
+    const inner2 = root.querySelector(".mh-stage-partbg-img") as HTMLElement;
+    expect(inner2.style.transform).toBe(expected);
+
+    // Site 3 : compileAction (dernière keyframe WAAPI).
+    const compiled = compileAction({
+      storage: "im02",
+      isPartbg: true,
+      keyframes: [
+        { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: srcLeft, srctop: srcTop, srczoomx: srcZoomX, srczoomy: srcZoomY },
+        { time: 100, duration: 100, interp: "l", easing: "linear", accel: 0, srcleft: srcLeft, srctop: srcTop, srczoomx: srcZoomX, srczoomy: srcZoomY },
+      ],
+    });
+    expect(compiled).not.toBeNull();
+    const last = compiled!.keyframes.inner.find((k) => k.offset === 1);
+    expect(last).toBeDefined();
+    expect(last!.transform).toBe(expected);
+  });
+
+  it("@partbgact instant applique aussi les props wrapper (center/vcenter/opacity)", async () => {
+    const sig = () => new AbortController().signal;
+    await renderer.apply(
+      [{
+        kind: "scene",
+        scene: {
+          bg: null,
+          sprites: [{
+            id: "pb-wrapper",
+            storage: "im02",
+            x: 748,
+            y: 0,
+            z: 1000,
+            opacity: 1,
+            crop: { width: 522, height: 576, srcLeft: 0, srcTop: 0, srcZoomX: 100, srcZoomY: 100 },
+          }],
+          effect: null,
+        },
+        transition: { method: "none" },
+      }],
+      { instant: true, signal: sig() },
+    );
+
+    await renderer.apply(
+      [{
+        kind: "animate",
+        target: "pb-wrapper",
+        def: {
+          storage: "im02",
+          id: "pb-wrapper",
+          isPartbg: true,
+          keyframes: [
+            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, center: 748, vcenter: 0, opacity: 1, srcleft: 0, srctop: 0, srczoomx: 100, srczoomy: 100 },
+            { time: 100, duration: 100, interp: "l", easing: "linear", accel: 0, center: 600, vcenter: 100, opacity: 0.5, srcleft: 0, srctop: 0, srczoomx: 100, srczoomy: 100 },
+          ],
+        },
+      }],
+      { instant: true, signal: sig() },
+    );
+
+    const wrapper = root.querySelector(".mh-stage-partbg") as HTMLElement;
+    expect(wrapper.style.left).toBe("600px");
+    expect(wrapper.style.top).toBe("100px");
+    expect(wrapper.style.opacity).toBe("0.5");
+    // Le centrage du wrapper est préservé.
+    expect(wrapper.style.transform).toContain("translate(-50%, -50%)");
   });
 
   it("rend le ruby via <ruby><rt>", async () => {
@@ -400,9 +581,9 @@ describe("DomStageRenderer", () => {
       { instant: true, signal: sig() },
     );
     const inner1 = root.querySelector(".mh-stage-partbg-img") as HTMLElement;
-    expect(inner1.style.transform).toContain("translate(542px");
+    expect(inner1.style.transform).toContain("translate(-542px");
 
-    // 2. @partbgact instant : applique l'état final (srcleft=-100).
+    // 2. @partbgact instant : applique l'état final (srcleft=100 → translate(-100px)).
     await renderer.apply(
       [{
         kind: "animate",
@@ -412,7 +593,7 @@ describe("DomStageRenderer", () => {
           isPartbg: true,
           keyframes: [
             { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, srcleft: 542, srctop: 0, srczoomx: 100, srczoomy: 100 },
-            { time: 30000, duration: 30000, interp: "l", easing: "linear", accel: 0, srcleft: -100, srctop: 0, srczoomx: 100, srczoomy: 100 },
+            { time: 30000, duration: 30000, interp: "l", easing: "linear", accel: 0, srcleft: 100, srctop: 0, srczoomx: 100, srczoomy: 100 },
           ],
         },
       }],
