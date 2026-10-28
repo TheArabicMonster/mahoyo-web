@@ -17,6 +17,8 @@ describe("compileAction", () => {
     const compiled = compileAction(def);
     expect(compiled).not.toBeNull();
     if (!compiled) return;
+    expect(compiled).not.toBeNull();
+    if (!compiled) return;
 
     // Durée totale = temps absolu de la dernière keyframe = 1800.
     expect(compiled.duration).toBe(1800);
@@ -41,6 +43,7 @@ describe("compileAction", () => {
   it("interp n → steps(1, end), l → linear", () => {
     const def = defFrom("(0,0,l,0)(100,0,n,255)", "opacity");
     const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
     if (!compiled) return;
     // 1ʳᵉ keyframe (offset 0) interp l → linear.
     expect(compiled.keyframes.wrapper[0].easing).toBe("linear");
@@ -64,6 +67,7 @@ describe("compileAction", () => {
       "rotate,zoomx,zoomy",
     );
     const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
     if (!compiled) return;
     // La 2e keyframe doit avoir transform contenant translate(-50%,-50%) + scale + rotate.
     const last = compiled.keyframes.wrapper.find((k) => k.offset === 1);
@@ -116,6 +120,7 @@ describe("compileAction", () => {
     // keyframes à t=200 et t=800 (pas de t=0 ni de t=1000 final) avec opacity.
     const def = defFrom("(200,0,l,0)(800,0,l,255)", "opacity");
     const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
     if (!compiled) return;
     expect(compiled.duration).toBe(800);
     // WAAPI exige offset 0 et 1.
@@ -131,6 +136,7 @@ describe("compileAction", () => {
     );
     const compiled = compileAction(def);
     expect(compiled).not.toBeNull();
+    if (!compiled) return;
     const discrete = compiled?.discrete ?? [];
     const storage = discrete.find((d) => d.field === "storage");
     expect(storage?.value).toBe("im12宇宙の果て01(中心無し)");
@@ -144,6 +150,8 @@ describe("compileAction", () => {
       { storage: "im02", isPartbg: true },
     );
     const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
+    if (!compiled) return;
     expect(compiled).not.toBeNull();
     if (!compiled) return;
     expect(compiled.duration).toBe(30000);
@@ -166,6 +174,7 @@ describe("compileAction", () => {
     );
     const compiled = compileAction(def);
     expect(compiled).not.toBeNull();
+    if (!compiled) return;
     const kfs = compiled!.keyframes.wrapper;
     expect(kfs.length).toBeGreaterThanOrEqual(2);
     const first = kfs[0];
@@ -184,6 +193,7 @@ describe("compileAction", () => {
       { storage: "im02", isPartbg: true },
     );
     const compiled = compileAction(def);
+    expect(compiled).not.toBeNull();
     if (!compiled) return;
     // Wrapper : center animé.
     expect(compiled.keyframes.wrapper.some((k) => k.left !== undefined)).toBe(true);

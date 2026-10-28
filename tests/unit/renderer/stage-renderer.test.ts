@@ -456,6 +456,52 @@ describe("DomStageRenderer", () => {
     expect(last!.transform).toBe(expected);
   });
 
+  it("@partbgact instant applique aussi les props wrapper (center/vcenter/opacity)", async () => {
+    const sig = () => new AbortController().signal;
+    await renderer.apply(
+      [{
+        kind: "scene",
+        scene: {
+          bg: null,
+          sprites: [{
+            id: "pb-wrapper",
+            storage: "im02",
+            x: 748,
+            y: 0,
+            z: 1000,
+            opacity: 1,
+            crop: { width: 522, height: 576, srcLeft: 0, srcTop: 0, srcZoomX: 100, srcZoomY: 100 },
+          }],
+          effect: null,
+        },
+        transition: { method: "none" },
+      }],
+      { instant: true, signal: sig() },
+    );
+
+    await renderer.apply(
+      [{
+        kind: "animate",
+        target: "pb-wrapper",
+        def: {
+          storage: "im02",
+          id: "pb-wrapper",
+          isPartbg: true,
+          keyframes: [
+            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, center: 748, vcenter: 0, opacity: 1, srcleft: 0, srctop: 0, srczoomx: 100, srczoomy: 100 },
+            { time: 100, duration: 100, interp: "l", easing: "linear", accel: 0, center: 600, vcenter: 100, opacity: 0.5, srcleft: 0, srctop: 0, srczoomx: 100, srczoomy: 100 },
+          ],
+        },
+      }],
+      { instant: true, signal: sig() },
+    );
+
+    const wrapper = root.querySelector(".mh-stage-partbg") as HTMLElement;
+    expect(wrapper.style.left).toBe("600px");
+    expect(wrapper.style.top).toBe("100px");
+    expect(wrapper.style.opacity).toBe("0.5");
+  });
+
   it("rend le ruby via <ruby><rt>", async () => {
     const events: RenderEvent[] = [
       { kind: "clearText" },
