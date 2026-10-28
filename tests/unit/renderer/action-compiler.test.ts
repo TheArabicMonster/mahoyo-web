@@ -157,6 +157,25 @@ describe("compileAction", () => {
     expect(last!.transform).toContain("scale(1, 1)");
   });
 
+  it("complète les props transform manquantes depuis la keyframe précédente", () => {
+    // kf0 a zoom=200% (parse → 2) mais pas rotate ; kf1 a rotate mais pas zoom.
+    // Le carry-forward doit conserver zoom=2 sur la dernière keyframe.
+    const def = defFrom(
+      "(0,0,l,512,288,0,0,200,200)(1000,0,l,512,288,0,45,,)",
+      "center,vcenter,opacity,rotate,zoomx,zoomy",
+    );
+    const compiled = compileAction(def);
+    if (!compiled) return;
+    const kfs = compiled.keyframes.wrapper;
+    expect(kfs.length).toBeGreaterThanOrEqual(2);
+    const first = kfs[0];
+    const last = kfs[kfs.length - 1];
+    expect(first.transform).toContain("scale(2, 2)");
+    expect(first.transform).toContain("rotate(0deg)");
+    expect(last.transform).toContain("scale(2, 2)");
+    expect(last.transform).toContain("rotate(45deg)");
+  });
+
   it("compile une anim partbg mixte : wrapper + inner", () => {
     // center + srcleft animés simultanément.
     const def = defFrom(

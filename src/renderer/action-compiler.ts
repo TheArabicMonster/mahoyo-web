@@ -69,7 +69,20 @@ export function compileAction(def: AnimationDef): CompiledAction | null {
   const innerKeyframes: Keyframe[] = [];
   const discrete: DiscreteChange[] = [];
 
-  for (const kf of kfs) {
+  // Carry-forward des props continues transform pour garantir une interpolation
+  // WAAPI stable (même liste de fonctions transform sur chaque keyframe).
+  let prev: AnimKeyframe | null = null;
+
+  for (const rawKf of kfs) {
+    const kf = { ...rawKf };
+    if (kf.zoomx === undefined && prev?.zoomx !== undefined) kf.zoomx = prev.zoomx;
+    if (kf.zoomy === undefined && prev?.zoomy !== undefined) kf.zoomy = prev.zoomy;
+    if (kf.rotate === undefined && prev?.rotate !== undefined) kf.rotate = prev.rotate;
+    if (kf.srcleft === undefined && prev?.srcleft !== undefined) kf.srcleft = prev.srcleft;
+    if (kf.srctop === undefined && prev?.srctop !== undefined) kf.srctop = prev.srctop;
+    if (kf.srczoomx === undefined && prev?.srczoomx !== undefined) kf.srczoomx = prev.srczoomx;
+    if (kf.srczoomy === undefined && prev?.srczoomy !== undefined) kf.srczoomy = prev.srczoomy;
+
     const offset = total > 0 ? kf.time / total : 0;
     const easing = interpToEasing(kf.interp);
     const wrapperFrame: Keyframe = { offset, easing };
@@ -96,6 +109,8 @@ export function compileAction(def: AnimationDef): CompiledAction | null {
         srczoomy: kf.srczoomy,
       });
     }
+
+    prev = kf;
 
     // Props discrètes → scheduler.
     for (const field of DISCRETE_FIELDS) {
