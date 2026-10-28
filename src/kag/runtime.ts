@@ -411,7 +411,28 @@ export class Runtime {
     // 3. Déterminer l'id réel du calque cible.
     const realId = existing?.id || def.id || storage;
 
-    // 4. Fusionner : garder crop, partbgId, index existants ; appliquer les props finales.
+    // 4. ⚠️ CAPTURER l'état de départ de `existing` AVANT toute écriture.
+    //    `applyTrans` fait une copie superficielle de back.layers (slice), donc
+    //    `existing` peut être partagé entre fore et back. Si on écrit sur back
+    //    (étape 6), on modifierait `existing` avant l'étape 5.
+    const startOpacity = existing?.opacity;
+    const startCenter = existing?.center;
+    const startVcenter = existing?.vcenter;
+
+    // 5. Keyframe 0 : compléter les props manquantes depuis l'état initial capturé (copie, pas mutation).
+    const enrichedDef = { ...def, id: realId };
+    if (startOpacity !== undefined || startCenter !== undefined || startVcenter !== undefined) {
+      enrichedDef.keyframes = def.keyframes.map((kf, i) => {
+        if (i !== 0) return kf;
+        const enriched: Record<string, unknown> = { ...kf };
+        if (enriched.center === undefined && startCenter !== undefined) enriched.center = startCenter;
+        if (enriched.vcenter === undefined && startVcenter !== undefined) enriched.vcenter = startVcenter;
+        if (enriched.opacity === undefined && startOpacity !== undefined) enriched.opacity = startOpacity;
+        return enriched as typeof kf;
+      });
+    }
+
+    // 6. Fusionner : garder crop, partbgId, index existants ; appliquer les props finales.
     const zFromFrame = lastFrame?.absolute ?? firstFrame?.absolute;
     const merged: Layer = {
       id: realId,
@@ -443,31 +464,22 @@ export class Runtime {
       target.layers.push(merged);
     }
 
-    // 5. @movefg : appliquer aussi l'état final au calque homonyme sur back.
+    // 7. @movefg : appliquer aussi l'état final au calque homonyme sur back.
+    //    ⚠️ Ne PAS utiliser Object.assign : back et fore peuvent partager le
+    //    même objet Layer après un @trans (copy superficielle via slice).
+    //    On remplace par un nouvel objet.
     if (def.isMove) {
-      const backLayer = this.state.back.layers.find((l) => l.id === realId);
-      if (backLayer) {
-        Object.assign(backLayer, {
+      const backIdx = this.state.back.layers.findIndex((l) => l.id === realId);
+      if (backIdx >= 0) {
+        const oldBack = this.state.back.layers[backIdx];
+        this.state.back.layers[backIdx] = {
+          ...oldBack,
           center: merged.center,
           vcenter: merged.vcenter,
           opacity: merged.opacity,
           index: merged.index,
-        });
-      }
-    }
-
-    // 6. Keyframe 0 : compléter les props manquantes depuis le calque existant (copie, pas mutation).
-    const enrichedDef = { ...def, id: realId };
-    if (existing) {
-      enrichedDef.keyframes = def.keyframes.map((kf, i) => {
-        if (i !== 0) return kf;
-        return {
-          ...kf,
-          center: kf.center ?? existing!.center,
-          vcenter: kf.vcenter ?? existing!.vcenter,
-          opacity: kf.opacity ?? existing!.opacity,
         };
-      });
+      }
     }
 
     if (page === "fore") {

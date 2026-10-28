@@ -541,7 +541,7 @@ Deuxième ligne.
     // @fg sans page écrit sur back par défaut (@trans copie back→fore).
     const SRC = `
 *page0|
-@fg storage=red index=2000 opacity=0
+@fg storage=red index=2000 opacity=0 center=512 vcenter=288
 @trans time=100 nowait=1
 @movefg storage=red time=3000 opacity=80
 @pg
@@ -580,10 +580,11 @@ Deuxième ligne.
   });
 
   it("animate : keyframe 0 complétée depuis le calque existant", () => {
-    // @fg opacity=50 → @trans → @movefg sans opacity : kf0.opacity = existing.opacity.
+    // @fg center=512 vcenter=288 → @trans → @movefg sans center : kf0 = existing.
+    // La keyframe 0 doit avoir les valeurs de DÉPART (calque existant), pas d'arrivée.
     const SRC = `
 *page0|
-@fg storage=red index=2000 opacity=50
+@fg storage=red index=2000 opacity=50 center=512 vcenter=288
 @trans time=100 nowait=1
 @movefg storage=red time=100 center=100
 @pg
@@ -593,24 +594,51 @@ Deuxième ligne.
     const animEvent = step.events.find((e) => e.kind === "animate") as Extract<RenderEvent, { kind: "animate" }> | undefined;
     expect(animEvent).toBeDefined();
     if (animEvent) {
-      // La keyframe 0 doit avoir les props du calque existant quand absentes dans l'instruction.
-      // @movefg centre=center=100, mais opacity n'est pas précisé → default = existing.opacity (50/255).
       const kf0 = animEvent.def.keyframes[0];
+      // opacity absente dans @movefg → vient du calque existant (50/255).
       expect(kf0.opacity).toBeCloseTo(50 / 255, 2);
-      // center vient de l'instruction @movefg (valeur explicite), pas du calque.
-      expect(kf0.center).toBe(100);
+      // center/vcenter absents dans @movefg → viennent du calque existant.
+      // (@movefg met center=100 dans kf1, pas kf0).
+      expect(kf0.center).toBe(512);
+      expect(kf0.vcenter).toBe(288);
+    }
+  });
+
+  it("animate : keyframe 0 sans props = valeurs du calque existant", () => {
+    // @movefg sans center → kf0.center = existing.center (512), pas la valeur finale.
+    const SRC = `
+*page0|
+@fg storage=red index=2000 opacity=50 center=512 vcenter=288
+@trans time=100 nowait=1
+@movefg storage=red time=100 opacity=80
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    const animEvent = step.events.find((e) => e.kind === "animate") as Extract<RenderEvent, { kind: "animate" }> | undefined;
+    expect(animEvent).toBeDefined();
+    if (animEvent) {
+      const kf0 = animEvent.def.keyframes[0];
+      const kf1 = animEvent.def.keyframes[1];
+      // kf0 : valeurs de DÉPART (calque existant).
+      expect(kf0.center).toBe(512);
+      expect(kf0.vcenter).toBe(288);
+      expect(kf0.opacity).toBeCloseTo(50 / 255, 2);
+      // kf1 : valeurs d'ARRIVÉE (instruction).
+      expect(kf1.center).toBe(0); // @movefg sans center= → parser met 0 (parseIntArg default)
+      expect(kf1.opacity).toBeCloseTo(80 / 255, 2);
     }
   });
 
   it("animate : instruction.def n'est pas muté", () => {
     const SRC = `
 *page0|
-@fg page=fore storage=red index=2000 opacity=50
+@fg storage=red index=2000 opacity=50 center=512 vcenter=288
+@trans time=100 nowait=1
 @movefg storage=red time=100 center=100
 @pg
 `;
     const script = parse(lex(SRC));
-    // Trouver l'instruction animate dans le script parsé.
     const animInstr = script.pages[0].instructions.find((i) => i.kind === "animate") as Extract<Instruction, { kind: "animate" }> | undefined;
     expect(animInstr).toBeDefined();
     const originalId = animInstr?.def.id;
