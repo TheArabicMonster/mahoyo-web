@@ -772,7 +772,8 @@ export class Runtime {
         events.push({ kind: "stopAnimation" });
         break;
       case "stoptrans":
-        // Terminaison de transition : géré par le renderer (PR5). No-op pour l'instant.
+        // Termine immédiatement la transition en cours.
+        events.push({ kind: "stopTransition" });
         break;
       case "beginploy":
         // Ploy non supporté dans cette version.

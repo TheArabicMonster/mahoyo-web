@@ -474,6 +474,10 @@ export class DomStageRenderer implements StageRenderer {
         }
         break;
       }
+      case "stopTransition": {
+        this.finishTransition();
+        break;
+      }
       case "quake": {
         if (event.quake) this.startQuake(event.quake, opts);
         else this.stopQuake();

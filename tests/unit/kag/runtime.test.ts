@@ -519,4 +519,19 @@ Deuxième ligne.
     expect(warnings[1]).toContain("@unknownCmd");
     expect(warnings[2]).toContain("@anotherUnknown");
   });
+
+  it("@stoptrans émet un événement stopTransition", () => {
+    const SRC = `
+*page0|
+@bg storage=bg1
+@trans time=1000 nowait=1
+@stoptrans
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    const stopTransEvent = step.events.find((e) => e.kind === "stopTransition");
+    expect(stopTransEvent).toBeDefined();
+    expect(stopTransEvent?.kind).toBe("stopTransition");
+  });
 });
