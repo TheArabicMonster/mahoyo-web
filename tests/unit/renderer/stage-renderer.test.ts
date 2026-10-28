@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDomStageRenderer } from "@/renderer/stage-renderer.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { RenderEvent, StageSnapshot } from "@/kag/events.js";
@@ -423,5 +423,172 @@ describe("DomStageRenderer", () => {
     );
     // L'animation doit être terminée (promise résolue). Pas de crash.
     expect(root.querySelector(".mh-stage-partbg-img")).not.toBeNull();
+  });
+
+  it("waitFor('animation') sans cible attend toutes les animations non-loop", async () => {
+    vi.useFakeTimers();
+    const sig = () => new AbortController().signal;
+    // Crée les sprites avant d'animer.
+    await renderer.apply(
+      [{
+        kind: "scene",
+        scene: {
+          bg: null,
+          sprites: [
+            { id: "a", storage: "a", x: 0, y: 0, z: 1000, opacity: 1 },
+            { id: "b", storage: "b", x: 0, y: 0, z: 1001, opacity: 1 },
+          ],
+          effect: null,
+        },
+        transition: { method: "none" },
+      }],
+      { instant: true, signal: sig() },
+    );
+
+    // Lance deux animations non-loop (durée 100 ms).
+    await renderer.apply(
+      [
+        {
+          kind: "animate",
+          target: "a",
+          def: {
+            storage: "a",
+            keyframes: [
+              { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1, center: 0 },
+              { time: 100, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1, center: 100 },
+            ],
+          },
+        },
+        {
+          kind: "animate",
+          target: "b",
+          def: {
+            storage: "b",
+            keyframes: [
+              { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1, center: 0 },
+              { time: 100, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1, center: 100 },
+            ],
+          },
+        },
+      ],
+      { instant: false, signal: sig() },
+    );
+
+    const waitPromise = renderer.waitFor("animation", undefined, sig());
+    let resolved = false;
+    waitPromise.then(() => { resolved = true; });
+
+    // Immédiatement, la promise ne devrait pas être résolue.
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    // Avance le temps jusqu'à la fin des animations.
+    vi.advanceTimersByTime(100);
+    await waitPromise;
+    expect(resolved).toBe(true);
+
+    vi.useRealTimers();
+  });
+
+  it("waitFor('animation') sans cible ignore les loops", async () => {
+    vi.useFakeTimers();
+    const sig = () => new AbortController().signal;
+    await renderer.apply(
+      [{
+        kind: "scene",
+        scene: {
+          bg: null,
+          sprites: [{ id: "loopA", storage: "loopA", x: 0, y: 0, z: 1000, opacity: 1 }],
+          effect: null,
+        },
+        transition: { method: "none" },
+      }],
+      { instant: true, signal: sig() },
+    );
+
+    await renderer.apply(
+      [{
+        kind: "animate",
+        target: "loopA",
+        def: {
+          storage: "loopA",
+          loop: true,
+          keyframes: [
+            { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1 },
+            { time: 50, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 0 },
+          ],
+        },
+      }],
+      { instant: false, signal: sig() },
+    );
+
+    const waitPromise = renderer.waitFor("animation", undefined, sig());
+    // Les loops ne bloquent pas : la promise est déjà résolue (ou rejetée
+    // immédiatement si aucune animation non-loop).
+    await waitPromise;
+    // Avance le temps : la loop tourne sans fin sans bloquer waitFor.
+    vi.advanceTimersByTime(200);
+    vi.useRealTimers();
+  });
+
+  it("waitFor('animation') avec cible attend seulement cette cible", async () => {
+    vi.useFakeTimers();
+    const sig = () => new AbortController().signal;
+    await renderer.apply(
+      [{
+        kind: "scene",
+        scene: {
+          bg: null,
+          sprites: [
+            { id: "fast", storage: "fast", x: 0, y: 0, z: 1000, opacity: 1 },
+            { id: "slow", storage: "slow", x: 0, y: 0, z: 1001, opacity: 1 },
+          ],
+          effect: null,
+        },
+        transition: { method: "none" },
+      }],
+      { instant: true, signal: sig() },
+    );
+
+    await renderer.apply(
+      [
+        {
+          kind: "animate",
+          target: "fast",
+          def: {
+            storage: "fast",
+            keyframes: [
+              { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1 },
+              { time: 20, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1 },
+            ],
+          },
+        },
+        {
+          kind: "animate",
+          target: "slow",
+          def: {
+            storage: "slow",
+            keyframes: [
+              { time: 0, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1 },
+              { time: 200, duration: 0, interp: "l", easing: "linear", accel: 0, opacity: 1 },
+            ],
+          },
+        },
+      ],
+      { instant: false, signal: sig() },
+    );
+
+    // Attend seulement la cible "fast" (20 ms), pas "slow".
+    const waitFast = renderer.waitFor("animation", "fast", sig());
+    let resolvedFast = false;
+    waitFast.then(() => { resolvedFast = true; });
+    await Promise.resolve();
+    expect(resolvedFast).toBe(false);
+
+    vi.advanceTimersByTime(20);
+    await waitFast;
+    expect(resolvedFast).toBe(true);
+
+    vi.useRealTimers();
   });
 });
