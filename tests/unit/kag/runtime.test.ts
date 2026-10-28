@@ -708,6 +708,21 @@ Deuxième ligne.
     }
   });
 
+  it("trans implicite @partbg time=300 canskip=0 est non skippable", () => {
+    const SRC = `
+*page0|
+@partbg id=pb1 storage=im02 center=512 vcenter=288 index=2000 width=522 height=576 srcleft=0 srctop=0 srczoomx=100 srczoomy=100 time=300 canskip=0
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("waitFor");
+    if (step.stop.kind === "waitFor") {
+      expect(step.stop.what).toBe("transition");
+      expect(step.stop.skippable).toBe(false);
+    }
+  });
+
   it("trans implicite @partbg time=300 est skippable par défaut", () => {
     const SRC = `
 *page0|
