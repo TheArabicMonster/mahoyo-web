@@ -376,6 +376,36 @@ describe("Runtime", () => {
     }
   });
 
+  it("@fadebgm préserve state.bgm (ne tue plus la BGM)", () => {
+    // R2 : @fadebgm ne doit pas nullifier state.bgm. La BGM continue de jouer
+    // (volume fondé) et reste préservée pour la sauvegarde.
+    const SRC = `
+*page0|
+@play storage=m19
+@fadebgm time=2000 volume=50
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.step();
+    const save = runtime.getSaveData();
+    expect(save.state.bgm).toBe("m19");
+  });
+
+  it("@fadebgm volume=0 puis volume=100 : BGM toujours préservée", () => {
+    const SRC = `
+*page0|
+@play storage=m19
+@fadebgm time=100 volume=0
+@fadebgm time=100 volume=100
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.step();
+    const save = runtime.getSaveData();
+    // La BGM n'est pas perdue même après un fade à 0.
+    expect(save.state.bgm).toBe("m19");
+  });
+
   it("toggles textbox visibility with @textoff and @texton", () => {
     const TEXTBOX_SAMPLE = `
 *page0|
