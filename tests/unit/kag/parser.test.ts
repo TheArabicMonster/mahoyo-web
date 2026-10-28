@@ -220,4 +220,73 @@ describe("parse", () => {
       expect(instr.volume).toBe(80);
     }
   });
+
+  it("parses @if...@endif as a single conditional instruction", () => {
+    const script = parse(lex([
+      `@if cond="1"`,
+      `@eval exp="f.x = 1"`,
+      `@endif`,
+    ].join("\n")));
+    const page = script.pages[0];
+    const conditional = page.instructions.find((i) => i.kind === "conditional");
+    expect(conditional).toBeDefined();
+    if (conditional && conditional.kind === "conditional") {
+      expect(conditional.branches.length).toBe(1);
+      expect(conditional.branches[0].cond).toBe("1");
+      expect(conditional.branches[0].instructions.length).toBe(1);
+      expect(conditional.branches[0].instructions[0].kind).toBe("eval");
+    }
+  });
+
+  it("parses @if...@else...@endif with two branches", () => {
+    const script = parse(lex([
+      `@if cond="0"`,
+      `@eval exp="f.x = 1"`,
+      `@else`,
+      `@eval exp="f.x = 2"`,
+      `@endif`,
+    ].join("\n")));
+    const page = script.pages[0];
+    const conditional = page.instructions.find((i) => i.kind === "conditional");
+    expect(conditional).toBeDefined();
+    if (conditional && conditional.kind === "conditional") {
+      expect(conditional.branches.length).toBe(2);
+      expect(conditional.branches[0].cond).toBe("0");
+      expect(conditional.branches[0].instructions[0].kind).toBe("eval");
+      expect(conditional.branches[1].cond).toBeUndefined();
+      expect(conditional.branches[1].instructions[0].kind).toBe("eval");
+    }
+  });
+
+  it("parses nested @if blocks", () => {
+    const script = parse(lex([
+      `@if cond="1"`,
+      `@if cond="2"`,
+      `@eval exp="f.x = 1"`,
+      `@endif`,
+      `@endif`,
+    ].join("\n")));
+    const page = script.pages[0];
+    const outer = page.instructions.find((i) => i.kind === "conditional");
+    expect(outer).toBeDefined();
+    if (outer && outer.kind === "conditional") {
+      expect(outer.branches[0].instructions[0].kind).toBe("conditional");
+    }
+  });
+
+  it("parses @macro...@endmacro as a macrodef instruction", () => {
+    const script = parse(lex([
+      `@macro name=toto`,
+      `@eval exp="f.flag = 1"`,
+      `@endmacro`,
+    ].join("\n")));
+    const page = script.pages[0];
+    const macro = page.instructions.find((i) => i.kind === "macrodef");
+    expect(macro).toBeDefined();
+    if (macro && macro.kind === "macrodef") {
+      expect(macro.name).toBe("toto");
+      expect(macro.instructions.length).toBe(1);
+      expect(macro.instructions[0].kind).toBe("eval");
+    }
+  });
 });

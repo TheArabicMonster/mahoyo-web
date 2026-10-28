@@ -141,6 +141,16 @@ export class Runtime {
    */
   public rawCount = 0;
 
+  /** Macros définies par @macro/@endmacro. */
+  private macros: Map<string, Instruction[]> = new Map();
+
+  /**
+   * Pile de frames d'exécution pour les branches conditionnelles et les
+   * expansions de macros. Chaque frame porte son index d'instruction et sa
+   * position dans un éventuel segment texte ([l]).
+   */
+  private frames: Array<{ instructions: Instruction[]; index: number; segmentIndex: number }> = [];
+
   constructor(
     script: ParsedScript,
     scriptName: string = "main",
@@ -173,6 +183,125 @@ export class Runtime {
       events,
       stop,
     };
+  }
+
+  /**
+   * Évalue une expression KAG comme @eval le ferait, avec accès aux variables
+   * f/sf/tf/global/timeline_object. Retourne la valeur évaluée ou undefined
+   * en cas d'erreur (warning émis).
+   */
+  private evaluateExpression(expression: string): unknown {
+    const { f, sf, tf } = this.state.variables;
+    try {
+      const timeline_object = { loadByData: () => {} };
+      const fn = new Function(
+        "f",
+        "sf",
+        "tf",
+        "global",
+        "timeline_object",
+        `"use strict"; return (${expression});`,
+      );
+      return fn(f, sf, tf, this.state.evalGlobal, timeline_object);
+    } catch (err) {
+      this.onWarning(`eval failed: ${expression} — ${err}`);
+      return undefined;
+    }
+  }
+
+  private evaluateCondition(expression: string): boolean {
+    return Boolean(this.evaluateExpression(expression));
+  }
+
+  private pushFrame(instructions: Instruction[]) {
+    this.frames.push({ instructions, index: 0, segmentIndex: 0 });
+  }
+
+  private processFrameText(
+    frame: { instructions: Instruction[]; index: number; segmentIndex: number },
+    instruction: Extract<Instruction, { kind: "text" }>,
+  ): { events: RenderEvent[]; stop?: StopReason } {
+    const events: RenderEvent[] = [];
+    const segments = instruction.segments;
+    const startIdx = frame.segmentIndex;
+
+    let pauseIndex = -1;
+    for (let i = startIdx; i < segments.length; i++) {
+      const seg = segments[i];
+      if (seg && "pause" in seg && (seg as { pause: boolean }).pause) {
+        pauseIndex = i;
+        break;
+      }
+    }
+
+    if (pauseIndex === -1) {
+      const remaining = segments.slice(startIdx);
+      if (remaining.length > 0) {
+        events.push({ kind: "text", segments: remaining });
+      }
+      frame.segmentIndex = 0;
+      frame.index += 1;
+      return { events };
+    }
+
+    const before = segments.slice(startIdx, pauseIndex);
+    if (before.length > 0) {
+      events.push({ kind: "text", segments: before });
+    }
+    frame.segmentIndex = pauseIndex + 1;
+    return { events, stop: { kind: "click", style: "line" } };
+  }
+
+  /**
+   * Exécute les frames empilées (branches @if ou expansions de macros) jusqu'à
+   * ce qu'elles soient vides ou qu'un point d'arrêt soit atteint. Si le
+   * contexte change (jump), les frames sont abandonnées.
+   */
+  private drainFrames(events: RenderEvent[]): StopReason | null {
+    while (this.frames.length > 0) {
+      const frame = this.frames[this.frames.length - 1];
+      if (frame.index >= frame.instructions.length) {
+        this.frames.pop();
+        continue;
+      }
+
+      const instruction = frame.instructions[frame.index];
+
+      if (instruction.kind === "text") {
+        const result = this.processFrameText(frame, instruction);
+        events.push(...result.events);
+        if (result.stop) {
+          return result.stop;
+        }
+        continue;
+      }
+
+      if (instruction.kind === "break") {
+        events.push({ kind: "lineBreak" });
+        frame.index += 1;
+        continue;
+      }
+
+      const startScriptName = this.context.scriptName;
+      const startPc = this.context.pc;
+      const result = this.applyInstruction(instruction);
+      events.push(...result.events);
+
+      if (this.context.scriptName !== startScriptName || this.context.pc !== startPc) {
+        // Un jump/call a changé le contexte : on abandonne les frames.
+        this.frames = [];
+        return null;
+      }
+
+      if (result.stop) {
+        frame.index += 1;
+        return result.stop;
+      }
+
+      frame.index += 1;
+    }
+
+    return null;
   }
 
   private getPageState(page?: PageLayer): PageState {
@@ -694,21 +823,7 @@ export class Runtime {
   }
 
   private applyEval(instruction: Extract<Instruction, { kind: "eval" }>): RenderEvent[] {
-    const { f, sf, tf } = this.state.variables;
-    try {
-      const timeline_object = { loadByData: () => {} };
-      const fn = new Function(
-        "f",
-        "sf",
-        "tf",
-        "global",
-        "timeline_object",
-        `"use strict"; return (${instruction.expression});`,
-      );
-      fn(f, sf, tf, this.state.evalGlobal, timeline_object);
-    } catch (err) {
-      this.onWarning(`eval failed: ${instruction.expression} — ${err}`);
-    }
+    this.evaluateExpression(instruction.expression);
     return [];
   }
 
@@ -892,12 +1007,40 @@ export class Runtime {
       case "break":
         // Traités dans step() car le texte peut s'arrêter sur [l].
         break;
-      case "raw":
+      case "conditional": {
+        // Évalue les branches dans l'ordre et empile la première dont la
+        // condition est vraie (ou la branche @else sans condition).
+        for (const branch of instruction.branches) {
+          if (branch.cond === undefined || this.evaluateCondition(branch.cond)) {
+            if (branch.instructions.length > 0) {
+              this.pushFrame(branch.instructions);
+            }
+            break;
+          }
+        }
+        break;
+      }
+      case "macrodef": {
+        // Enregistre la macro pour une utilisation ultérieure.
+        this.macros.set(instruction.name, instruction.instructions);
+        break;
+      }
+      case "raw": {
+        // Si la commande correspond à une macro définie, on l'expanse sans
+        // compter comme une commande raw inconnue.
+        const macro = this.macros.get(instruction.command);
+        if (macro) {
+          if (macro.length > 0) {
+            this.pushFrame(macro);
+          }
+          break;
+        }
         // Commande inconnue : tolérée mais bruyante (AGENTS.md §6).
         // On prévient via onWarning et on compte pour détecter les régressions.
         this.rawCount++;
         this.onWarning(`commande non gérée: @${instruction.command}`);
         break;
+      }
     }
 
     return { events };
@@ -943,6 +1086,12 @@ export class Runtime {
    */
   step(): Step {
     const events: RenderEvent[] = [];
+
+    // Reprendre une éventuelle frame suspendue (branche @if ou macro).
+    const initialFrameStop = this.drainFrames(events);
+    if (initialFrameStop) {
+      return this.makeStep(events, initialFrameStop);
+    }
 
     while (this.context.pc < this.context.script.pages.length) {
       const page = this.context.script.pages[this.context.pc];
@@ -1003,6 +1152,12 @@ export class Runtime {
         }
 
         this.context.instructionIndex += 1;
+
+        // Exécuter les éventuelles frames créées par @if ou une macro.
+        const frameStop = this.drainFrames(events);
+        if (frameStop) {
+          return this.makeStep(events, frameStop);
+        }
       }
 
       // La boucle interne s'est terminée par un changement de contexte :

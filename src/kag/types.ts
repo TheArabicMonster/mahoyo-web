@@ -133,7 +133,9 @@ export type Instruction =
   | { kind: "call"; target?: string; storage?: string }
   | { kind: "return" }
   | { kind: "eval"; expression: string }
-  | { kind: "raw"; command: string; args: Record<string, string> };
+  | { kind: "raw"; command: string; args: Record<string, string> }
+  | { kind: "conditional"; branches: Array<{ cond?: string; instructions: Instruction[] }> }
+  | { kind: "macrodef"; name: string; instructions: Instruction[] };
 
 export type Page = {
   label?: string;

@@ -434,12 +434,182 @@ export function parse(tokens: Token[]): ParsedScript {
     }
   }
 
-  for (const token of tokens) {
+  /**
+   * Parse a sequence of tokens into a flat list of instructions, stopping when
+   * one of the given terminator commands is encountered. The terminator token
+   * itself is not consumed.
+   */
+  function parseBlockInstructions(
+    tokens: Token[],
+    start: number,
+    terminators: string[],
+  ): { instructions: Instruction[]; terminator: string | null; nextIndex: number } {
+    const instructions: Instruction[] = [];
+    let blockPending: TextSegment[] = [];
+    let blockRuby: string | null = null;
+    let blockRubyCharCount = 1;
+
+    function flushBlockText() {
+      if (blockPending.length > 0) {
+        instructions.push({ kind: "text", segments: blockPending });
+        blockPending = [];
+      }
+      blockRuby = null;
+    }
+
+    function addBlockText(content: string) {
+      if (content.length === 0) return;
+      if (blockRuby !== null) {
+        const rubyText = content.slice(0, blockRubyCharCount);
+        const rest = content.slice(blockRubyCharCount);
+        blockPending.push({ text: rubyText, ruby: blockRuby });
+        blockRuby = null;
+        blockRubyCharCount = 1;
+        if (rest.length > 0) {
+          blockPending.push({ text: rest });
+        }
+      } else {
+        blockPending.push({ text: content });
+      }
+    }
+
+    let i = start;
+    while (i < tokens.length) {
+      const token = tokens[i];
+      if (token.type === "command" && terminators.includes(token.name)) {
+        break;
+      }
+
+      switch (token.type) {
+        case "command": {
+          flushBlockText();
+          if (token.name === "if") {
+            const { instruction, nextIndex } = parseConditional(tokens, i);
+            instructions.push(instruction);
+            i = nextIndex;
+          } else if (token.name === "macro") {
+            const { instruction, nextIndex } = parseMacro(tokens, i);
+            instructions.push(instruction);
+            i = nextIndex;
+          } else {
+            instructions.push(parseCommand(token));
+            i++;
+          }
+          break;
+        }
+        case "tag": {
+          if (token.name === "r") {
+            flushBlockText();
+            instructions.push({ kind: "break" });
+          } else if (token.name === "l") {
+            blockPending.push({ pause: true });
+          } else if (token.name === "ruby") {
+            blockRuby = token.args.text ?? null;
+            blockRubyCharCount = parseIntArg(token.args.char, 1);
+          } else if (token.name === "p") {
+            // Page breaks are not supported inside blocks; ignore them.
+            flushBlockText();
+          } else {
+            flushBlockText();
+            instructions.push({ kind: "raw", command: token.name, args: token.args });
+          }
+          i++;
+          break;
+        }
+        case "text": {
+          addBlockText(token.content);
+          i++;
+          break;
+        }
+        case "label": {
+          // Labels inside blocks are not valid jump targets; ignore them.
+          i++;
+          break;
+        }
+        case "comment":
+        case "linebreak": {
+          i++;
+          break;
+        }
+      }
+    }
+
+    flushBlockText();
+    const terminatorToken = tokens[i];
+    const terminator =
+      terminatorToken && terminatorToken.type === "command" && terminators.includes(terminatorToken.name)
+        ? terminatorToken.name
+        : null;
+    return { instructions, terminator, nextIndex: i };
+  }
+
+  function parseConditional(tokens: Token[], start: number): { instruction: Instruction; nextIndex: number } {
+    const ifToken = tokens[start] as Extract<Token, { type: "command" }>;
+    const branches: Array<{ cond?: string; instructions: Instruction[] }> = [];
+    let currentCond: string | undefined = ifToken.args.cond;
+    let i = start + 1;
+
+    while (i <= tokens.length) {
+      const { instructions, terminator, nextIndex } = parseBlockInstructions(tokens, i, [
+        "elsif",
+        "else",
+        "endif",
+      ]);
+      branches.push({ cond: currentCond, instructions });
+
+      if (terminator === "elsif") {
+        const elsifToken = tokens[nextIndex] as Extract<Token, { type: "command" }>;
+        currentCond = elsifToken.args.cond;
+        i = nextIndex + 1;
+      } else if (terminator === "else") {
+        const elseRes = parseBlockInstructions(tokens, nextIndex + 1, ["endif"]);
+        branches.push({ cond: undefined, instructions: elseRes.instructions });
+        if (elseRes.terminator !== "endif") {
+          console.warn(`Missing @endif for @if starting at token ${start}`);
+        }
+        return { instruction: { kind: "conditional", branches }, nextIndex: elseRes.nextIndex + 1 };
+      } else if (terminator === "endif") {
+        return { instruction: { kind: "conditional", branches }, nextIndex: nextIndex + 1 };
+      } else {
+        console.warn(`Missing @endif for @if starting at token ${start}`);
+        return { instruction: { kind: "conditional", branches }, nextIndex: tokens.length };
+      }
+    }
+
+    console.warn(`Missing @endif for @if starting at token ${start}`);
+    return { instruction: { kind: "conditional", branches }, nextIndex: tokens.length };
+  }
+
+  function parseMacro(tokens: Token[], start: number): { instruction: Instruction; nextIndex: number } {
+    const macroToken = tokens[start] as Extract<Token, { type: "command" }>;
+    const name = macroToken.args.name ?? "";
+    const { instructions, terminator, nextIndex } = parseBlockInstructions(tokens, start + 1, ["endmacro"]);
+    if (terminator !== "endmacro") {
+      console.warn(`Missing @endmacro for @macro starting at token ${start}`);
+    }
+    return {
+      instruction: { kind: "macrodef", name, instructions },
+      nextIndex: terminator === "endmacro" ? nextIndex + 1 : tokens.length,
+    };
+  }
+
+  for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex++) {
+    const token = tokens[tokenIndex];
     switch (token.type) {
       case "command": {
         if (token.name === "pg") {
           // @pg is a page break macro
           pushPage();
+        } else if (token.name === "if") {
+          flushText();
+          const { instruction, nextIndex } = parseConditional(tokens, tokenIndex);
+          current.instructions.push(instruction);
+          tokenIndex = nextIndex - 1;
+        } else if (token.name === "macro") {
+          flushText();
+          const { instruction, nextIndex } = parseMacro(tokens, tokenIndex);
+          current.instructions.push(instruction);
+          tokenIndex = nextIndex - 1;
         } else {
           flushText();
           current.instructions.push(parseCommand(token));
