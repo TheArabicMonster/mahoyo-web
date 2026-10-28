@@ -454,4 +454,39 @@ Deuxième ligne.
       expect(step.stop.time).toBe(800);
     }
   });
+
+  it("raw : warning bruyant + rawCount incrémenté", () => {
+    // Une commande inconnue (@cm4pg) doit prévenir via onWarning et incrémenter
+    // rawCount. Sans warning silencieux (AGENTS.md §6).
+    const SRC = `
+*page0|
+@cm4pg
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const warnings: string[] = [];
+    runtime.onWarning = (msg: string) => warnings.push(msg);
+    runtime.step();
+    expect(runtime.rawCount).toBe(1);
+    expect(warnings).toEqual(["commande non gérée: @cm4pg"]);
+  });
+
+  it("raw : plusieurs commandes inconnues cumulent rawCount", () => {
+    const SRC = `
+*page0|
+@cm4pg
+@unknownCmd
+@anotherUnknown
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const warnings: string[] = [];
+    runtime.onWarning = (msg: string) => warnings.push(msg);
+    runtime.step();
+    expect(runtime.rawCount).toBe(3);
+    expect(warnings.length).toBe(3);
+    expect(warnings[0]).toContain("@cm4pg");
+    expect(warnings[1]).toContain("@unknownCmd");
+    expect(warnings[2]).toContain("@anotherUnknown");
+  });
 });
