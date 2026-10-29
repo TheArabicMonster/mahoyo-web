@@ -144,11 +144,11 @@ type PipelineContext = {
 ## Tests
 
 Les fonctions pures de normalisation sont testées dans `tests/unit/tools/normalize-ks.test.ts` (17 tests).
-L'outil d'audit headless est testé dans `tests/unit/tools/audit-scenario.test.ts` (18 tests, dont 7 pour la détection de scripts chiffrés).
+L'outil d'audit headless est testé dans `tests/unit/tools/audit-scenario.test.ts` (21 tests, dont 11 pour la détection de scripts chiffrés).
 Le parser KAG est testé dans `tests/unit/kag/parser.test.ts` (27 tests, dont 5 pour les inline tags).
 
 ```bash
-npm test           # Lance tous les tests (385 au total)
+npm test           # Lance tous les tests (388 au total)
 npm run audit      # Audit headless du corpus KAG complet
 ```
 
