@@ -1,0 +1,9 @@
+# Fichiers autorisés (allowlist) pour le contrôle « aucun asset commité ».
+# Ce sont des placeholders ou créations originales du projet ; ils ne proviennent pas du jeu.
+#
+# Format : un chemin relatif à la racine du dépôt par ligne. Les lignes vides et les
+# commentaires (commençant par #) sont ignorés.
+
+# Icônes PWA du player web, créées pour le projet.
+public/icon-192.png
+public/icon-512.png

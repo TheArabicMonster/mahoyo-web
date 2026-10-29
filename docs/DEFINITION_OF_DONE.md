@@ -6,7 +6,7 @@ Check-lists à satisfaire avant de déclarer un travail "terminé".
 
 - [ ] Les critères d'acceptation de l'issue sont tous remplis.
 - [ ] Le code compile / les tests passent (le cas échéant).
-- [ ] Aucun asset sous copyright n'a été ajouté au dépôt.
+- [ ] Aucun asset sous copyright n'a été ajouté au dépôt (`npm run check:assets` doit rester vert).
 - [ ] La documentation impactée est à jour.
 - [ ] L'issue est rattachée au bon épic et à la bonne priorité.
 
