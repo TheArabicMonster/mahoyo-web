@@ -144,11 +144,11 @@ type PipelineContext = {
 ## Tests
 
 Les fonctions pures de normalisation sont testées dans `tests/unit/tools/normalize-ks.test.ts` (17 tests).
-L'outil d'audit headless est testé dans `tests/unit/tools/audit-scenario.test.ts` (10 tests).
-Le parser KAG est testé dans `tests/unit/kag/parser.test.ts` (22 tests, dont 5 pour les inline tags).
+L'outil d'audit headless est testé dans `tests/unit/tools/audit-scenario.test.ts` (18 tests, dont 7 pour la détection de scripts chiffrés).
+Le parser KAG est testé dans `tests/unit/kag/parser.test.ts` (27 tests, dont 5 pour les inline tags).
 
 ```bash
-npm test           # Lance tous les tests (377 au total)
+npm test           # Lance tous les tests (385 au total)
 npm run audit      # Audit headless du corpus KAG complet
 ```
 
@@ -158,6 +158,9 @@ L'outil `tools/audit-scenario.ts` parcourt tous les scripts `.ks` narratifs
 via le moteur KAG et produit un rapport JSON + Markdown dans `reports/`.
 
 - Les scripts système (menus, config, plugins, teatime, tracerplugin) sont ignorés.
+- Les scripts chiffrés/binaires sont détectés automatiquement (`isEncrypted()`) :
+  signatures magiques (PNG, RIFF), caractères de contrôle et katakana demi-chasse.
+  Ils sont exclus du cache de scripts pour empêcher le chargement via `@call`/`@jump`.
 - Chaque script est exécuté jusqu'à `@end` ou 10 000 steps maximum.
 - Les commandes inconnues, warnings et assets manquants sont collectés et agrégés.
 - Les rapports sont dans `.gitignore` (ils citent des noms d'assets du jeu).

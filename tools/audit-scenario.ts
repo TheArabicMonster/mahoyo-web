@@ -30,9 +30,9 @@ const DEFAULT_MAX_STEPS = 10_000;
 /**
  * Seuil pour la détection de scripts chiffrés/binaires.
  * Si plus de ce ratio de bytes dans les 512 premiers octets sont des
- * caractères de contrôle (< 0x20, hors \t\n\r), des bytes > 0xFF,
- * ou des caractères dans la plage 0xFF00–0xFFEF (samples audio 16-bit
- * décodés comme caractères Unicode), le script est considéré chiffré.
+ * caractères de contrôle (< 0x20, hors \t\n\r), des katakana demi-chasse
+ * (U+FF61–FF9F, rares dans Mahoyo) ou le caractère de remplacement U+FFFD,
+ * le script est considéré chiffré.
  */
 const ENCRYPTED_BYTE_THRESHOLD = 0.10;
 
@@ -74,12 +74,12 @@ const SKIP_SCRIPTS = new Set([
  * - PNG : 0x89→U+81FC (臼), puis "NG" intact → on cherche "臼NG"
  * - RIFF : peut rester intact ou être déformé → on cherche "RIFF"
  *
- * On teste les 32 premiers caractères (assez pour toute signature).
+ * Les patterns sont ancrés en début de chaîne (un BOM optionnel est toléré).
  */
 const BINARY_PATTERNS: RegExp[] = [
-  /\u0089PNG/,   // PNG (décodage UTF-8 direct)
-  /臼NG/,        // PNG (0x89 décodé en U+81FC par Shift-JIS)
-  /RIFF/,        // RIFF container (WAV, etc.)
+  /^\uFEFF?\u0089PNG/,   // PNG (décodage UTF-8 direct)
+  /^\uFEFF?臼NG/,        // PNG (0x89 décodé en U+81FC par Shift-JIS)
+  /^\uFEFF?RIFF/,        // RIFF container (WAV, etc.)
 ];
 
 /**
@@ -107,12 +107,13 @@ export function isEncrypted(text: string): boolean {
     if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) {
       badBytes++;
     }
-    // Caractères très élevés : bytes > BMP ou samples audio 16-bit
-    // décodés comme caractères Unicode (0xFF00–0xFFEF = audio, > 0xFFFF = corrompu)
-    if (code >= 0xff00 && code <= 0xffef) {
+    // Katakana demi-chasse (U+FF61–FF9F) : très rares dans Mahoyo,
+    // typiques d'un décodage Shift-JIS de binaire audio.
+    if (code >= 0xff61 && code <= 0xff9f) {
       badBytes++;
     }
-    if (code > 0xffff) {
+    // Caractère de remplacement U+FFFD : signal fiable de binaire lu en UTF-8
+    if (code === 0xfffd) {
       badBytes++;
     }
   }
@@ -184,7 +185,7 @@ export async function auditScript(
   scriptTexts: Map<string, string>,
   maxSteps: number = DEFAULT_MAX_STEPS,
 ): Promise<ScriptAuditResult> {
-  const text = readFileSync(ksPath, "utf-8");
+  const text = scriptTexts.get(fileName) ?? readFileSync(ksPath, "utf-8");
   const script = parse(lex(text));
 
   const runtime = new Runtime(script, fileName);
@@ -259,9 +260,12 @@ export async function auditScript(
   const otherWarnings: Record<string, number> = {};
   for (const w of warnings) {
     if (!w.includes("commande non gérée")) {
-      // Simplifier le warning pour le groupement (retirer les valeurs dynamiques)
-      const simplified = w.replace(/:\s*\S+$/, "");
-      otherWarnings[simplified] = (otherWarnings[simplified] ?? 0) + 1;
+      // Ne pas simplifier les warnings de chargement de script :
+      // le nom du fichier est l'information utile.
+      const key = w.includes("failed to load script")
+        ? w
+        : w.replace(/:\s*\S+$/, "");
+      otherWarnings[key] = (otherWarnings[key] ?? 0) + 1;
     }
   }
 
@@ -340,6 +344,11 @@ function aggregateGlobal(results: ScriptAuditResult[]): {
 
 // ── Formatage du rapport Markdown ──
 
+/** Échappe les `|` pour les cellules de tableaux Markdown. */
+function escapeMdPipe(s: string): string {
+  return s.replace(/\|/g, "\\|");
+}
+
 export function formatMarkdownReport(report: AuditReport): string {
   const lines: string[] = [];
 
@@ -365,7 +374,7 @@ export function formatMarkdownReport(report: AuditReport): string {
     lines.push("| Commande | Occurrences |");
     lines.push("|---|---|");
     for (const [cmd, count] of sortedCmds) {
-      lines.push(`| @${cmd} | ${count} |`);
+      lines.push(`| @${escapeMdPipe(cmd)} | ${count} |`);
     }
   }
   lines.push("");
@@ -380,7 +389,7 @@ export function formatMarkdownReport(report: AuditReport): string {
     lines.push("| Warning | Occurrences |");
     lines.push("|---|---|");
     for (const [w, count] of sortedWarnings) {
-      lines.push(`| ${w} | ${count} |`);
+      lines.push(`| ${escapeMdPipe(w)} | ${count} |`);
     }
   }
   lines.push("");
@@ -395,7 +404,7 @@ export function formatMarkdownReport(report: AuditReport): string {
     lines.push("| Asset | Scripts |");
     lines.push("|---|---|");
     for (const [a, count] of sortedAssets) {
-      lines.push(`| ${a} | ${count} |`);
+      lines.push(`| ${escapeMdPipe(a)} | ${count} |`);
     }
   }
   lines.push("");
@@ -487,6 +496,8 @@ async function main(): Promise<void> {
     const content = scriptTexts.get(f);
     if (content && isEncrypted(content)) {
       encryptedScripts.push(f);
+      // Retirer du cache pour empêcher le chargement via @call/@jump
+      scriptTexts.delete(f);
     } else {
       auditableScripts.push(f);
     }
@@ -573,9 +584,9 @@ async function main(): Promise<void> {
 }
 
 // Permet l'import sans exécuter main (pour les tests)
-if (process.argv[1] && import.meta.dirname) {
-  const scriptPath = process.argv[1];
-  if (scriptPath.includes("audit-scenario")) {
+if (process.argv[1]) {
+  const { fileURLToPath } = await import("url");
+  if (process.argv[1] === fileURLToPath(import.meta.url)) {
     main().catch((err) => {
       console.error(err);
       process.exit(1);

@@ -155,6 +155,12 @@ describe("isEncrypted", () => {
     expect(isEncrypted("*start\nこんにちは世界。[l]\n@fg storage=テスト\n")).toBe(false);
   });
 
+  it("accepte un script avec ponctuation pleine chasse", () => {
+    // La ponctuation pleine chasse (！？（）) et l'alphanumérique pleine chasse (ＡＢＣ０１２)
+    // sont dans la plage U+FF01–U+FF5E, PAS dans U+FF61–U+FF9F (katakana demi-chasse)
+    expect(isEncrypted("*start\n「えっ！？」[l]\n「ＭＡＨＯＹＯ！」[p]\n")).toBe(false);
+  });
+
   it("rejette un script chiffré (caractères de contrôle)", () => {
     // Simule un script chiffré avec beaucoup de bytes de contrôle
     const encrypted = String.fromCharCode(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08)
@@ -164,11 +170,28 @@ describe("isEncrypted", () => {
   });
 
   it("rejette un script avec du binaire aléatoire", () => {
-    // 100 bytes de contrôle sur ~200 = 50% > 15% seuil
+    // 100 bytes de contrôle sur ~200 = 50% > 10% seuil
     let binary = "";
     for (let i = 0; i < 100; i++) binary += String.fromCharCode(i & 0x1f);
     binary += "aaaa".repeat(25);
     expect(isEncrypted(binary)).toBe(true);
+  });
+
+  it("rejette un script avec caractères de remplacement U+FFFD", () => {
+    // U+FFFD = caractère de remplacement, signal fiable de binaire lu en UTF-8
+    let text = "*start\n";
+    for (let i = 0; i < 60; i++) text += "\uFFFD";
+    text += "normal text here";
+    expect(isEncrypted(text)).toBe(true);
+  });
+
+  it("rejette un script avec katakana demi-chasse (audio Shift-JIS)", () => {
+    // U+FF61–FF9F = katakana demi-chasse, rares dans Mahoyo,
+    // typiques d'un décodage Shift-JIS de données audio binaires
+    let text = "*start\n";
+    for (let i = 0; i < 60; i++) text += String.fromCharCode(0xff61 + (i % 0x3f));
+    text += "some ascii padding";
+    expect(isEncrypted(text)).toBe(true);
   });
 
   it("rejette un fichier PNG déguisé en .ks (UTF-8 direct)", () => {
