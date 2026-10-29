@@ -5,7 +5,7 @@
  * Page boundaries are: @pg/[p] (page break), end of input.
  */
 
-import type { AnimationDef, CropSpec, Instruction, ParsedScript, TextSegment, Token } from "./types.js";
+import type { AnimationDef, CropSpec, Instruction, ParsedScript, TextSegment, TextStyle, Token } from "./types.js";
 import { storageKey } from "@/core/storage-key.js";
 import { parseActionKeys } from "./action.js";
 
@@ -16,6 +16,42 @@ function parseIntArg(value: string | undefined, fallback = 0): number {
 }
 
 /** Normalise un argument storage via storageKey. "" si absent. */
+/** `true`/`1` → true, `false`/`0` → false, autre → undefined (attribut ignoré). */
+function parseBoolArg(value: string | undefined): boolean | undefined {
+  if (value === "true" || value === "1") return true;
+  if (value === "false" || value === "0") return false;
+  return undefined;
+}
+
+/** `0xRRGGBB` ou `#rrggbb` → `#rrggbb` ; toute autre valeur → undefined. */
+function parseColorArg(value: string | undefined): string | undefined {
+  const m = value?.trim().match(/^(?:0x|#)([0-9a-f]{6})$/i);
+  return m ? `#${m[1].toLowerCase()}` : undefined;
+}
+
+/** Construit le style d'un @font : seuls les attributs valides sont retenus. */
+function parseFontStyle(args: Record<string, string>): TextStyle {
+  const style: TextStyle = {};
+  if (args.face) style.face = args.face;
+  const size = Number.parseInt(args.size ?? "", 10);
+  if (Number.isFinite(size) && size > 0) style.size = size;
+  const color = parseColorArg(args.color);
+  if (color) style.color = color;
+  const bold = parseBoolArg(args.bold);
+  if (bold !== undefined) style.bold = bold;
+  const italic = parseBoolArg(args.italic);
+  if (italic !== undefined) style.italic = italic;
+  const edge = parseBoolArg(args.edge);
+  if (edge !== undefined) style.edge = edge;
+  const edgeColor = parseColorArg(args.edgecolor);
+  if (edgeColor) style.edgeColor = edgeColor;
+  const shadow = parseBoolArg(args.shadow);
+  if (shadow !== undefined) style.shadow = shadow;
+  const shadowColor = parseColorArg(args.shadowcolor);
+  if (shadowColor) style.shadowColor = shadowColor;
+  return style;
+}
+
 function normStorage(value: string | undefined): string {
   return value ? storageKey(value) : "";
 }
@@ -351,6 +387,30 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       return { kind: "stoptrans" };
     case "beginploy":
       return { kind: "beginploy" };
+    case "endploy":
+      return { kind: "endploy" };
+    case "ploysay": {
+      // @ploysay mode=lu13 ox=50 oy=-30 : positionne une bulle « ploy » (omake).
+      // `mode` est conservé tel quel : sa sémantique vient d'un plugin TJS absent.
+      if (!args.mode) {
+        return { kind: "raw", command: "ploysay", args } as unknown as Instruction;
+      }
+      return {
+        kind: "ploysay",
+        mode: args.mode,
+        ox: parseIntArg(args.ox, 0),
+        oy: parseIntArg(args.oy, 0),
+      };
+    }
+    case "font":
+      return { kind: "font", style: parseFontStyle(args) };
+    case "italic":
+      // Macro de macro.ks (`@font italic=true`), gérée en natif pour fonctionner
+      // même si macro.ks n'est pas chargé.
+      return { kind: "font", style: { italic: true } };
+    case "resetfont":
+    case "rf":
+      return { kind: "resetfont" };
     case "staffrollinit":
       return { kind: "staffrollinit", face: args.face };
     case "staffrolltext":

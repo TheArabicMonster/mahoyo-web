@@ -4,6 +4,7 @@ import type {
   Awaitable,
   EffectState,
   Ms,
+  PloyState,
   RenderEvent,
   SceneState,
   SpriteState,
@@ -15,6 +16,10 @@ import type { AnimationDef, AnimKeyframe, TextSegment } from "@/kag/types.js";
 import type { DisplaySettings, RunOptions, StageRenderer, StageRendererDeps } from "./types.js";
 import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
 import { partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
+import { textStyleToCss } from "./text-style.js";
+
+/** Un caractère à afficher, avec son annotation ruby et son style CSS éventuels. */
+type TextUnit = { char: string; ruby?: string; css?: Record<string, string> };
 
 /**
  * Implémentation DOM de StageRenderer.
@@ -50,6 +55,8 @@ export class DomStageRenderer implements StageRenderer {
   private currentScene: SceneState = { bg: null, sprites: [], effect: null };
   private text: TextSegment[] = [];
   private textbox: TextboxState = { visible: true, frame: true };
+  /** Bulle « ploy » active (@ploysay) ; exposée sur la textbox en attributs data-*. */
+  private ploy: PloyState | null = null;
   private staffroll: StaffrollState | null = null;
 
   private typewriterTimer: ReturnType<typeof setTimeout> | null = null;
@@ -456,6 +463,11 @@ export class DomStageRenderer implements StageRenderer {
       case "textbox": {
         this.textbox = event.state;
         this.applyTextbox();
+        break;
+      }
+      case "ploy": {
+        this.ploy = event.ploy;
+        this.applyPloy();
         break;
       }
       case "effect": {
@@ -873,6 +885,24 @@ export class DomStageRenderer implements StageRenderer {
 
   private staffrollPromise: Promise<void> | null = null;
 
+  /**
+   * Expose la bulle « ploy » sur la textbox (data-ploy-mode, --ploy-ox, --ploy-oy).
+   * La géométrie de la bulle dépend d'un plugin d'origine non porté : on ne
+   * dessine rien, mais l'état est disponible pour le style.
+   */
+  private applyPloy(): void {
+    if (!this.textboxEl) return;
+    if (this.ploy) {
+      this.textboxEl.dataset.ployMode = this.ploy.mode;
+      this.textboxEl.style.setProperty("--ploy-ox", `${this.ploy.ox}px`);
+      this.textboxEl.style.setProperty("--ploy-oy", `${this.ploy.oy}px`);
+    } else {
+      delete this.textboxEl.dataset.ployMode;
+      this.textboxEl.style.removeProperty("--ploy-ox");
+      this.textboxEl.style.removeProperty("--ploy-oy");
+    }
+  }
+
   private applyTextbox(): void {
     if (!this.textboxEl || !this.textbox) return;
     const hidden = this.userHidden || !this.textbox.visible;
@@ -890,36 +920,46 @@ export class DomStageRenderer implements StageRenderer {
    * une unité par caractère (chacune portant le ruby), un segment plain
    * produit une unité par caractère sans ruby.
    */
-  private buildTextUnits(): Array<{ char: string; ruby?: string }> {
-    const units: Array<{ char: string; ruby?: string }> = [];
+  private buildTextUnits(): TextUnit[] {
+    const units: TextUnit[] = [];
     for (const seg of this.text) {
       if (!("text" in seg)) continue; // pause
       const text = seg.text;
       const ruby = "ruby" in seg ? seg.ruby : undefined;
+      const css = seg.style ? textStyleToCss(seg.style) : undefined;
       for (const char of Array.from(text)) {
-        units.push({ char, ruby });
+        units.push({ char, ruby, css });
       }
     }
     return units;
   }
 
   /** Reconstruit le DOM de la textbox jusqu'à n unités (inclu) avec ruby. */
-  private renderTextUpTo(units: Array<{ char: string; ruby?: string }>, n: number): void {
+  private renderTextUpTo(units: TextUnit[], n: number): void {
     if (!this.textEl) return;
     this.textEl.replaceChildren();
     const frag = document.createDocumentFragment();
     for (let i = 0; i < n && i < units.length; i++) {
       const u = units[i];
+      const hasCss = u.css !== undefined && Object.keys(u.css).length > 0;
+      let node: Node;
       if (u.ruby) {
         const ruby = document.createElement("ruby");
         ruby.textContent = u.char;
         const rt = document.createElement("rt");
         rt.textContent = u.ruby;
         ruby.appendChild(rt);
-        frag.appendChild(ruby);
+        node = ruby;
+      } else if (hasCss) {
+        node = document.createElement("span");
+        node.textContent = u.char;
       } else {
-        frag.appendChild(document.createTextNode(u.char));
+        node = document.createTextNode(u.char);
       }
+      if (hasCss && node instanceof HTMLElement) {
+        for (const [prop, value] of Object.entries(u.css!)) node.style.setProperty(prop, value);
+      }
+      frag.appendChild(node);
     }
     this.textEl.appendChild(frag);
   }

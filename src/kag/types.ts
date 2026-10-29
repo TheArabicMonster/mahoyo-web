@@ -6,10 +6,28 @@ export type Token =
   | { type: "comment"; content: string }
   | { type: "linebreak" };
 
-/** Segment de texte avec annotation ruby optionnelle */
+/**
+ * Style du texte posé par @font (sous-ensemble de la balise [font] de KAG3).
+ * Seuls les champs renseignés modifient le style courant.
+ */
+export type TextStyle = {
+  face?: string;
+  size?: number;
+  /** Couleur au format `#rrggbb`. */
+  color?: string;
+  bold?: boolean;
+  italic?: boolean;
+  edge?: boolean;
+  /** Couleur du contour au format `#rrggbb`. */
+  edgeColor?: string;
+  shadow?: boolean;
+  shadowColor?: string;
+};
+
+/** Segment de texte avec annotation ruby et style optionnels */
 export type TextSegment =
-  | { text: string; ruby?: undefined }
-  | { text: string; ruby: string }
+  | { text: string; ruby?: undefined; style?: TextStyle }
+  | { text: string; ruby: string; style?: TextStyle }
   | { pause: true };
 
 /** Métadonnées de crop pour un calque partbg (@partbg). */
@@ -121,6 +139,10 @@ export type Instruction =
   | { kind: "haze"; power: number; delta: number; omega: number; page?: PageLayer }
   | { kind: "stophaze"; page?: PageLayer }
   | { kind: "beginploy" }
+  | { kind: "endploy" }
+  | { kind: "ploysay"; mode: string; ox: number; oy: number }
+  | { kind: "font"; style: TextStyle }
+  | { kind: "resetfont" }
   | { kind: "staffrollinit"; face?: string }
   | { kind: "staffrolltext"; text: string; y: number; size: number; face?: string; cmx?: number }
   | { kind: "staffrollstart"; height: number; time: number }

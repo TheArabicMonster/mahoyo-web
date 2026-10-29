@@ -56,30 +56,30 @@ This is line 2.[p]
   it("détecte les commandes inconnues", async () => {
     const path = writeTmpKs("unknown.ks", `
 *start
-@ploysay storage=ploy01
-@rf storage=font01
-@playtimeline storage=tl01
+@commandefictive1 storage=a
+@commandefictive2 storage=b
+@commandefictive3 storage=c
 `);
     const cache = makeScriptCache({});
     const result = await auditScript(path, "unknown.ks", NO_MANIFEST, cache, TEST_MAX_STEPS);
 
     expect(result.rawCount).toBe(3);
-    expect(result.unknownCommands["ploysay"]).toBe(1);
-    expect(result.unknownCommands["rf"]).toBe(1);
-    expect(result.unknownCommands["playtimeline"]).toBe(1);
+    expect(result.unknownCommands["commandefictive1"]).toBe(1);
+    expect(result.unknownCommands["commandefictive2"]).toBe(1);
+    expect(result.unknownCommands["commandefictive3"]).toBe(1);
   });
 
   it("détecte les commandes inconnues répétées", async () => {
     const path = writeTmpKs("repeat.ks", `
 *start
-@ploysay storage=p1
-@ploysay storage=p2
-@ploysay storage=p3
+@commandefictive storage=p1
+@commandefictive storage=p2
+@commandefictive storage=p3
 `);
     const cache = makeScriptCache({});
     const result = await auditScript(path, "repeat.ks", NO_MANIFEST, cache, TEST_MAX_STEPS);
 
-    expect(result.unknownCommands["ploysay"]).toBe(3);
+    expect(result.unknownCommands["commandefictive"]).toBe(3);
   });
 
   it("suit un @call vers un autre script", async () => {

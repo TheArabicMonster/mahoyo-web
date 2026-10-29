@@ -124,6 +124,39 @@ Les noms de fichiers peuvent contenir des parenthèses :
 - `@visibleframe` / `@invisibleframe` : affiche/masque le cadre de la textbox.
 - `@cm4pg` : reset de mise en page pour le changement de page (à valider).
 
+### Style du texte (`@font`, `@italic`, `@rf`, `@resetfont`)
+
+- `@font` est la balise `[font]` de KAG3. Attributs retenus : `face`, `size`,
+  `color`, `bold`, `italic`, `edge`, `edgecolor`, `shadow`, `shadowcolor`. Les
+  couleurs s'écrivent `0xRRGGBB` (ou `#rrggbb`) ; les booléens `true`/`false`/`1`/`0`.
+  Une valeur invalide est ignorée sans invalider le reste de la commande.
+- Le style est **cumulatif** : chaque `@font` fusionne ses attributs dans le style
+  courant. Il s'applique au texte qui **suit** la commande (pas à celui d'avant), y
+  compris pour les balises en ligne (`a[font color=0xff0000]b[rf]c`).
+- `@resetfont` et `@rf` rétablissent le style par défaut ; sans `@font` préalable,
+  ils sont sans effet.
+- `@italic` et `@rf` sont des macros de `macro.ks` (`@italic` = `@font italic=true`,
+  `@rf` = `@resetfont`). Le moteur les gère en natif pour fonctionner même si
+  `macro.ks` n'est pas chargé ; une redéfinition différente dans un script serait
+  masquée (aucune n'existe dans le corpus).
+- Le style fait partie de l'état sauvegardé (`textStyle`).
+- **Hypothèse** : `edgecolor` seul active le contour (le corpus l'emploie ainsi, sans
+  `edge=true`) ; `edge=false` le désactive. Le contour est rendu par `text-shadow`.
+
+### Bulle « ploy » (`@beginploy`, `@ploysay`, `@endploy`)
+
+- `@ploysay` **n'affiche pas de texte** : ses attributs sont `mode` (`lu13`, `ru19`,
+  `lu192`…) et des décalages `ox`/`oy` en pixels. Il n'apparaît que dans les scripts
+  `nz1` à `nz6` (omake), juste après l'affichage d'un personnage (`@chgfg`).
+- Le moteur d'origine délègue cela à un plugin TJS absent du dossier `scenario/`. La
+  structure de `mode` (côté gauche/droit, taille de bulle…) n'est donc **pas
+  établie**. Les images `balloon01` et `balloon02` du manifest sont probablement les
+  bulles associées.
+- Implémenté : `mode` est conservé tel quel, avec `ox`/`oy`, dans l'état sauvegardé
+  (`ploy`) et dans l'événement `ploy` ; `@endploy` retire la bulle. Le renderer
+  l'expose sur la textbox (`data-ploy-mode`, `--ploy-ox`, `--ploy-oy`) mais **ne
+  dessine pas** la bulle.
+
 ## 7. Attentes (`@wt` / `@wact` / `@wm` / `nowait`)
 
 - `@trans nowait=0` (ou absent) : **bloquant** → le runtime émet
@@ -179,3 +212,6 @@ Les noms de fichiers peuvent contenir des parenthèses :
 - Valeur par défaut de `textoff=` (probablement : masquer la textbox pendant la
   commande).
 - Sémantique exacte de `accel` (formule d'accélération KAG).
+- Sens de `mode=` de `@ploysay` (côté, direction, taille de la bulle) et choix de
+  l'image (`balloon01`/`balloon02`) : à déduire du plugin TJS d'origine ou d'une
+  capture du jeu.

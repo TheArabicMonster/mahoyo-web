@@ -104,6 +104,12 @@ export type QuakeSpec = {
 /** État de la textbox et de sa bordure. */
 export type TextboxState = { visible: boolean; frame: boolean };
 
+/**
+ * Bulle « ploy » active (scripts omake). `mode` est la valeur brute de
+ * `@ploysay mode=...` ; `ox`/`oy` sont les décalages en pixels (repère 1024×576).
+ */
+export type PloyState = { mode: string; ox: number; oy: number };
+
 /** État du staffroll.
  *
  * `time` est la durée totale du défilement en millisecondes.
@@ -160,6 +166,8 @@ export type RenderEvent =
   | { kind: "staffroll"; state: StaffrollState }
   /** Effet visuel (noise / haze). `null` dans SceneState = aucun effet. */
   | { kind: "effect"; effect: EffectState | null }
+  /** Active (ou, avec `null`, retire) la bulle « ploy ». */
+  | { kind: "ploy"; ploy: PloyState | null }
   /** Événement audio. */
   | { kind: "audio"; event: AudioEvent };
 
