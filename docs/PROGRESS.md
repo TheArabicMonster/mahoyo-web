@@ -1,26 +1,27 @@
 # Progression du projet
 
-Barre de progression globale (mise à jour manuelle).
+> Ce fichier est **généré** par `npm run progress` à partir des milestones GitHub.
+> Ne pas l'éditer à la main : les modifications seraient écrasées.
+
+## Progression globale (v1.0)
 
 ```
-[████████░░░░░░░░░░░░░] ~58 %
+[███████████████░░░░░] 77 %
 ```
 
-## Détail par épic
+40 issue(s) fermée(s) sur 52.
 
-| Épic | Description | Progression | État |
-|---|---|---|---|
-| E0 — Gouvernance & socle | Repo, docs, CI, conventions | 95 % | 🟢 Avancé |
-| E1 — Extraction | `.xp3`, `.tlg`, scripts `.ks` | 60 % | 🟡 En cours (pipeline TS, wrappers OK, extracteurs externes requis) |
-| E2 — Parser KAG3 | Lexer, parser, types | 98 % | 🟢 Avancé (inline tags [chgfg]/[fg]/[se]/[wait] routés via parseCommand) |
-| E3 — Runtime & rendu web | Runtime, renderer, player | 98 % | 🟢 Avancé (prologue jouable en UI/jsdom, evalGlobal/timeline_object gérés) |
-| E4 — Pipeline d'assets | Conversion WebP/OGG, normalisation `.ks`, manifest, encodage, enchaînement | 100 % | 🟢 Terminé (pipeline génère 5.8 Go d'assets, manifest OK) |
-| E5 — UI/UX | Thème, accessibilité, PWA | 50 % | 🟡 En cours |
-| E6 — QA & optimisation | Tests, perfs, mobile, audit headless | 75 % | 🟡 En cours (audit corpus complet : 234 scripts, 0 erreur, <1s) |
-| E7 — Projet réel | Architecture propre, refactor | 95 % | 🟢 Avancé (agents A/B/C/D mergés) |
+## Détail par milestone
+
+| Milestone | Fermées | Ouvertes | Total | Progression | État |
+|---|---|---|---|---|---|
+| v1.0 | 40 | 12 | 52 | [████████░░] 77 % | 🟡 En cours |
+| v1.1 | 0 | 8 | 8 | [░░░░░░░░░░] 0 % | ⚪ Non commencé |
 
 ## Légende
 
-- 🟢 Avancé : principaux éléments en place.
+- 🟢 Terminé : toutes les issues de la milestone sont fermées.
 - 🟡 En cours : travail actif.
-- ⚪ Non commencé : à planifier.
+- ⚪ Non commencé : aucune issue fermée ou milestone vide.
+
+_Généré le 2026-10-29._
