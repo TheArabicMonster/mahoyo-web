@@ -293,4 +293,67 @@ describe("parse", () => {
       expect((evalToken as any)?.name).toBe("eval");
     }
   });
+
+  // ── Inline tags routed through parseCommand ──
+
+  it("parses [chgfg ...] inline tag as chgfg instruction", () => {
+    const script = parse(lex("texte[chgfg rule=crossfade time=300 storage=foo]suite"));
+    const page = script.pages[0];
+    const chgfg = page.instructions.find((i) => i.kind === "chgfg");
+    expect(chgfg).toBeDefined();
+    if (chgfg && chgfg.kind === "chgfg") {
+      expect(chgfg.storage).toBe("foo");
+    }
+    // No raw instruction should be produced
+    const raw = page.instructions.find((i) => i.kind === "raw");
+    expect(raw).toBeUndefined();
+  });
+
+  it("parses [fg ...] inline tag as fg instruction", () => {
+    const script = parse(lex("texte[fg storage=bar center=512 vcenter=288 index=1000]suite"));
+    const page = script.pages[0];
+    const fg = page.instructions.find((i) => i.kind === "fg");
+    expect(fg).toBeDefined();
+    if (fg && fg.kind === "fg") {
+      expect(fg.storage).toBe("bar");
+    }
+    const raw = page.instructions.find((i) => i.kind === "raw");
+    expect(raw).toBeUndefined();
+  });
+
+  it("parses [se ...] inline tag as se instruction", () => {
+    const script = parse(lex("texte[se storage=se01 volume=80]suite"));
+    const page = script.pages[0];
+    const se = page.instructions.find((i) => i.kind === "se");
+    expect(se).toBeDefined();
+    if (se && se.kind === "se") {
+      expect(se.storage).toBe("se01");
+      expect(se.volume).toBe(80);
+    }
+    const raw = page.instructions.find((i) => i.kind === "raw");
+    expect(raw).toBeUndefined();
+  });
+
+  it("parses [wait ...] inline tag as wait instruction", () => {
+    const script = parse(lex("texte[wait canskip=0 time=400]suite"));
+    const page = script.pages[0];
+    const wait = page.instructions.find((i) => i.kind === "wait");
+    expect(wait).toBeDefined();
+    if (wait && wait.kind === "wait") {
+      expect(wait.time).toBe(400);
+      expect(wait.skippable).toBe(false);
+    }
+    const raw = page.instructions.find((i) => i.kind === "raw");
+    expect(raw).toBeUndefined();
+  });
+
+  it("parses unknown inline tag [foo ...] as raw instruction", () => {
+    const script = parse(lex("texte[foo bar=baz]suite"));
+    const page = script.pages[0];
+    const raw = page.instructions.find((i) => i.kind === "raw");
+    expect(raw).toBeDefined();
+    if (raw && raw.kind === "raw") {
+      expect(raw.command).toBe("foo");
+    }
+  });
 });

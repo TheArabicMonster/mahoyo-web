@@ -369,6 +369,12 @@ export class Runtime {
             instructions.push({ kind: "text", segments: [{ pause: true }] });
           } else if (token.name === "r") {
             instructions.push({ kind: "break" });
+          } else {
+            // Inline tags like [chgfg ...], [fg ...], [se ...] are semantically
+            // identical to their @command forms. Route through parseCommand.
+            instructions.push(
+              parseCommand({ type: "command", name: token.name, args: token.args }),
+            );
           }
           i++;
           break;
@@ -457,6 +463,12 @@ export class Runtime {
             instructions.push({ kind: "text", segments: [{ pause: true }] });
           } else if (token.name === "r") {
             instructions.push({ kind: "break" });
+          } else {
+            // Inline tags like [chgfg ...], [fg ...], [se ...] are semantically
+            // identical to their @command forms. Route through parseCommand.
+            instructions.push(
+              parseCommand({ type: "command", name: token.name, args: token.args }),
+            );
           }
           i++;
           break;
