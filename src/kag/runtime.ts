@@ -18,6 +18,7 @@ import type {
   Page,
   ParsedScript,
   TextSegment,
+  TextStyle,
   Token,
 } from "./types.js";
 import { parseCommand } from "./parser.js";
@@ -28,6 +29,7 @@ import type {
   AudioEvent,
   EffectState,
   Ms,
+  PloyState,
   Position,
   QuakeSpec,
   RenderEvent,
@@ -91,6 +93,10 @@ export type RuntimeState = {
   textbox?: TextboxState;
   /** Effet visuel actuellement appliqué sur la scène. */
   effect?: EffectState | null;
+  /** Style courant du texte (@font) ; null/absent = style par défaut. */
+  textStyle?: TextStyle | null;
+  /** Bulle « ploy » active (@ploysay) ; null/absent = aucune. */
+  ploy?: PloyState | null;
 };
 
 export type ScriptContext = {
@@ -126,6 +132,8 @@ export function createRuntimeState(): RuntimeState {
     staffroll: { lines: [], running: false, height: 10000, time: 60000, elapsed: 0 },
     textbox: { visible: true, frame: true },
     effect: null,
+    textStyle: null,
+    ploy: null,
   };
 }
 
@@ -500,6 +508,13 @@ export class Runtime {
     });
   }
 
+  /** Applique le style courant (@font) aux segments de texte ; les pauses sont inchangées. */
+  private withTextStyle(segments: TextSegment[]): TextSegment[] {
+    const style = this.state.textStyle;
+    if (!style || Object.keys(style).length === 0) return segments;
+    return segments.map((seg) => ("text" in seg ? { ...seg, style: { ...style } } : seg));
+  }
+
   private processFrameText(
     frame: { instructions: Instruction[]; index: number; segmentIndex: number },
     instruction: Extract<Instruction, { kind: "text" }>,
@@ -518,7 +533,7 @@ export class Runtime {
     }
 
     if (pauseIndex === -1) {
-      const remaining = segments.slice(startIdx);
+      const remaining = this.withTextStyle(segments.slice(startIdx));
       if (remaining.length > 0) {
         events.push({ kind: "text", segments: remaining });
       }
@@ -527,7 +542,7 @@ export class Runtime {
       return { events };
     }
 
-    const before = segments.slice(startIdx, pauseIndex);
+    const before = this.withTextStyle(segments.slice(startIdx, pauseIndex));
     if (before.length > 0) {
       events.push({ kind: "text", segments: before });
     }
@@ -1315,7 +1330,25 @@ export class Runtime {
         events.push({ kind: "stopTransition" });
         break;
       case "beginploy":
-        // Ploy non supporté dans cette version.
+        // Le début d'une séquence ploy ne change rien : la bulle apparaît au @ploysay.
+        break;
+      case "endploy":
+        this.state.ploy = null;
+        events.push({ kind: "ploy", ploy: null });
+        break;
+      case "ploysay": {
+        const ploy: PloyState = { mode: instruction.mode, ox: instruction.ox, oy: instruction.oy };
+        this.state.ploy = ploy;
+        events.push({ kind: "ploy", ploy: { ...ploy } });
+        break;
+      }
+      case "font":
+        // Fusionne : seuls les attributs renseignés changent le style courant.
+        this.state.textStyle = { ...(this.state.textStyle ?? {}), ...instruction.style };
+        break;
+      case "resetfont":
+        // Sans @font préalable, aucun effet.
+        this.state.textStyle = null;
         break;
       case "staffrollinit":
       case "staffrolltext":
@@ -1418,7 +1451,7 @@ export class Runtime {
 
     if (pauseIndex === -1) {
       // No pause: consume all remaining text and move to next instruction.
-      const remaining = segments.slice(startIdx);
+      const remaining = this.withTextStyle(segments.slice(startIdx));
       if (remaining.length > 0) {
         events.push({ kind: "text", segments: remaining });
       }
@@ -1428,7 +1461,7 @@ export class Runtime {
     }
 
     // Emit text up to the pause [l], save position for next step.
-    const before = segments.slice(startIdx, pauseIndex);
+    const before = this.withTextStyle(segments.slice(startIdx, pauseIndex));
     if (before.length > 0) {
       events.push({ kind: "text", segments: before });
     }
@@ -1614,6 +1647,8 @@ export class Runtime {
         evalGlobal: structuredClone(this.state.evalGlobal),
         textbox: this.state.textbox ? { ...this.state.textbox } : undefined,
         effect: this.state.effect,
+        textStyle: this.state.textStyle ? { ...this.state.textStyle } : null,
+        ploy: this.state.ploy ? { ...this.state.ploy } : null,
         staffroll: this.state.staffroll
           ? structuredClone(this.state.staffroll)
           : undefined,
@@ -1653,6 +1688,8 @@ export class Runtime {
       variables: normalizedVars,
       evalGlobal: data.state.evalGlobal ?? {},
       effect: data.state.effect,
+      textStyle: data.state.textStyle ? { ...data.state.textStyle } : null,
+      ploy: data.state.ploy ? { ...data.state.ploy } : null,
       staffroll: data.state.staffroll
         ? structuredClone(data.state.staffroll)
         : undefined,
