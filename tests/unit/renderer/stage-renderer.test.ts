@@ -525,6 +525,40 @@ describe("DomStageRenderer", () => {
     expect(rt?.textContent).toBe("え");
   });
 
+  it("pose le ruby une seule fois sur une base de plusieurs caractères", async () => {
+    await renderer.apply([
+      { kind: "clearText" },
+      { kind: "text", segments: [{ text: "中腹", ruby: "ちゅうふく" }, { text: "に" }] },
+    ], { instant: true, signal: new AbortController().signal });
+    const textEl = root.querySelector(".mh-stage-text") as HTMLElement;
+    const rubies = textEl.querySelectorAll("ruby");
+    expect(rubies).toHaveLength(1);
+    expect(rubies[0]?.childNodes[0]?.textContent).toBe("中腹");
+    expect(rubies[0]?.querySelector("rt")?.textContent).toBe("ちゅうふく");
+    expect(textEl.textContent).toBe("中腹ちゅうふくに");
+  });
+
+  it("garde séparés deux ruby consécutifs de segments différents", async () => {
+    await renderer.apply([
+      { kind: "clearText" },
+      { kind: "text", segments: [{ text: "山", ruby: "やま" }, { text: "川", ruby: "かわ" }] },
+    ], { instant: true, signal: new AbortController().signal });
+    const rubies = root.querySelectorAll(".mh-stage-text ruby");
+    expect(rubies).toHaveLength(2);
+    expect(rubies[0]?.querySelector("rt")?.textContent).toBe("やま");
+    expect(rubies[1]?.querySelector("rt")?.textContent).toBe("かわ");
+  });
+
+  it("applique le style du segment à tout le groupe ruby", async () => {
+    await renderer.apply([
+      { kind: "clearText" },
+      { kind: "text", segments: [{ text: "中腹", ruby: "ちゅうふく", style: { bold: true } }] },
+    ], { instant: true, signal: new AbortController().signal });
+    const ruby = root.querySelector(".mh-stage-text ruby") as HTMLElement;
+    expect(ruby.style.fontWeight).toBe("bold");
+    expect(root.querySelectorAll(".mh-stage-text ruby")).toHaveLength(1);
+  });
+
   it("ne re-type pas le texte déjà révélé après un nouveau segment", async () => {
     // 1ʳᵐᵉ apply : texte court, instant.
     await renderer.apply(
