@@ -1,9 +1,13 @@
 # Fichiers autorisés (allowlist) pour le contrôle « aucun asset commité ».
 # Ce sont des placeholders ou créations originales du projet ; ils ne proviennent pas du jeu.
 #
-# Format : un chemin relatif à la racine du dépôt par ligne. Les lignes vides et les
+# Format de `sha256sum` : « <empreinte SHA-256>  <chemin relatif à la racine> » par ligne.
+# L'empreinte lie l'autorisation au contenu : remplacer un placeholder par un autre
+# fichier, même au même chemin, fait échouer le contrôle. Les lignes vides et les
 # commentaires (commençant par #) sont ignorés.
+#
+# Modifier un fichier autorisé : `npm run check:assets -- --update`, puis relire le diff.
 
 # Icônes PWA du player web, créées pour le projet.
-public/icon-192.png
-public/icon-512.png
+dbaa4c37e64f954734fea8934e275e19de8d40ef87b76af8c54866cbedf84d56  public/icon-192.png
+e7887c31b21ff283f4e88e2d5f30f3786f4acf2a4d206b90456266c80b9b37f4  public/icon-512.png

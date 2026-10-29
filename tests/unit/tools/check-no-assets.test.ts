@@ -6,10 +6,16 @@
 import { describe, it, expect } from "vitest";
 import {
   ASSET_EXTENSIONS,
+  MAX_BINARY_BYTES,
   findAssetViolations,
+  findHashMismatches,
+  findLargeBinaries,
   formatViolations,
   getAssetExtension,
+  looksBinary,
+  parseAllowlist,
   parseNulSeparated,
+  renderAllowlist,
 } from "../../../tools/check-no-assets-lib.js";
 
 describe("getAssetExtension", () => {
@@ -118,5 +124,107 @@ describe("parseNulSeparated", () => {
 
   it("ignore les entrées vides", () => {
     expect(parseNulSeparated("")).toEqual([]);
+  });
+});
+
+const H1 = "a".repeat(64);
+const H2 = "b".repeat(64);
+
+describe("parseAllowlist", () => {
+  it("lit le format sha256sum, en ignorant commentaires et lignes vides", () => {
+    const { entries, invalid } = parseAllowlist(`# titre\n\n${H1}  public/a.png  # icône\n${H2.toUpperCase()}   dir/b c.png\n`);
+    expect(invalid).toEqual([]);
+    expect([...entries]).toEqual([
+      ["public/a.png", H1],
+      ["dir/b c.png", H2],
+    ]);
+  });
+
+  it("signale les lignes sans empreinte valide", () => {
+    const { entries, invalid } = parseAllowlist(`public/a.png\n${"z".repeat(64)}  b.png\n${H1}  ok.png\n${"a".repeat(63)}  court.png`);
+    expect([...entries.keys()]).toEqual(["ok.png"]);
+    expect(invalid).toHaveLength(3);
+  });
+});
+
+describe("findHashMismatches", () => {
+  const allow = new Map([["public/a.png", H1]]);
+
+  it("détecte un fichier autorisé dont le contenu a changé", () => {
+    const v = findHashMismatches(["public/a.png"], allow, () => H2);
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({ path: "public/a.png", reason: "hash" });
+  });
+
+  it("accepte un contenu identique", () => {
+    expect(findHashMismatches(["public/a.png"], allow, () => H1)).toEqual([]);
+  });
+
+  it("ignore un fichier autorisé non suivi ou absent du disque", () => {
+    expect(findHashMismatches(["autre.ts"], allow, () => H2)).toEqual([]);
+    expect(findHashMismatches(["public/a.png"], allow, () => null)).toEqual([]);
+  });
+});
+
+describe("findLargeBinaries", () => {
+  const big = { size: MAX_BINARY_BYTES + 1, binary: true };
+
+  it("détecte un gros binaire à extension anodine ou absente", () => {
+    const info: Record<string, { size: number; binary: boolean }> = { "x.dat": big, DATA: big };
+    const v = findLargeBinaries(["x.dat", "DATA"], new Map(), (p) => info[p] ?? null);
+    expect(v.map((x) => x.path)).toEqual(["x.dat", "DATA"]);
+    expect(v[0]).toMatchObject({ reason: "binary" });
+  });
+
+  it("tolère un petit binaire, un gros fichier texte et le seuil exact", () => {
+    const info: Record<string, { size: number; binary: boolean }> = {
+      "petit.dat": { size: 100, binary: true },
+      "gros.txt": { size: 5_000_000, binary: false },
+      "seuil.dat": { size: MAX_BINARY_BYTES, binary: true },
+    };
+    expect(findLargeBinaries(Object.keys(info), new Map(), (p) => info[p] ?? null)).toEqual([]);
+  });
+
+  it("ignore les fichiers autorisés et ceux déjà signalés par leur extension", () => {
+    const allow = new Map([["ok.dat", H1]]);
+    expect(findLargeBinaries(["ok.dat", "image.png"], allow, () => big)).toEqual([]);
+  });
+
+  it("ignore un fichier absent du disque", () => {
+    expect(findLargeBinaries(["x.dat"], new Map(), () => null)).toEqual([]);
+  });
+});
+
+describe("looksBinary", () => {
+  it("un octet NUL signale un binaire", () => {
+    expect(looksBinary(new Uint8Array([104, 105, 0, 1]))).toBe(true);
+    expect(looksBinary(new TextEncoder().encode("texte é 背景"))).toBe(false);
+  });
+});
+
+describe("renderAllowlist", () => {
+  it("réécrit les empreintes en conservant commentaires et lignes vides", () => {
+    const text = `# titre\n\n${H1}  a.png  # note\nb.png\n`;
+    const out = renderAllowlist(text, new Map([["a.png", H2], ["b.png", H1]]));
+    expect(out).toBe(`# titre\n\n${H2}  a.png\n${H1}  b.png\n`);
+  });
+
+  it("laisse intacte une ligne sans nouvelle empreinte", () => {
+    const text = `${H1}  a.png\n`;
+    expect(renderAllowlist(text, new Map())).toBe(text);
+  });
+});
+
+describe("formatViolations — motifs", () => {
+  it("décrit le motif de chaque violation", () => {
+    const msg = formatViolations([
+      { path: "a.png", extension: ".png" },
+      { path: "b.png", extension: "", reason: "hash", detail: "contenu différent" },
+      { path: "c.dat", extension: "", reason: "binary", detail: "400 Kio" },
+    ]);
+    expect(msg).toContain("a.png (.png)");
+    expect(msg).toContain("b.png (contenu modifié : contenu différent)");
+    expect(msg).toContain("c.dat (gros binaire hors liste, 400 Kio)");
+    expect(msg).toContain("--update");
   });
 });
