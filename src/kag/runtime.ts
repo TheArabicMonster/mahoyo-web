@@ -100,6 +100,16 @@ export type ScriptContext = {
   scriptName: string;
   /** Position dans l'instruction texte courante (pour reprise après [l]). */
   segmentIndex: number;
+  /** Frames saved at the moment of @call, to be restored on @return. */
+  savedFrames?: Array<{
+    instructions: Instruction[];
+    index: number;
+    segmentIndex: number;
+    macroParams?: Record<string, unknown>;
+    returnIndex?: number;
+  }>;
+  /** Macro params saved at the moment of @call. */
+  savedMacroParams?: Record<string, unknown>;
 };
 
 /** Type guard : vérifie si les variables sont au format scoped ({f, sf, tf}). */
@@ -156,6 +166,12 @@ export class Runtime {
     con: { crashAction: "" },
     flags: {},
   };
+
+  /**
+   * Flag set by applyJump/applyCall/applyReturn to signal that the execution
+   * context has changed. More robust than comparing pc/instructionIndex.
+   */
+  private pendingContextChange = false;
 
   /**
    * Pile de frames d'exécution pour les branches conditionnelles et les
@@ -288,10 +304,11 @@ export class Runtime {
 
   /** Replace %param|default patterns in a single string. */
   private substituteMacroParams(value: string, callArgs: Record<string, string>): string {
-    // Replace %param|default and %param anywhere in the value.
-    // A lone "%" (e.g. JS modulo operator) is left untouched because it is not
-    // followed by a parameter name.
-    return value.replace(/%(\w+)(?:\|([^%]*))?/g, (_match, param, defaultVal) => {
+    // KAG only substitutes %param when the whole attribute value starts with %.
+    // So "f.r=7%x" (modulo) is left untouched, but "%x" or "%x|default" is substituted.
+    if (!value.startsWith("%")) return value;
+
+    return value.replace(/^%(\w+)(?:\|(.*))?$/, (_match, param, defaultVal) => {
       const provided = callArgs[param];
       if (provided !== undefined && provided !== "") return provided;
       if (defaultVal !== undefined) return defaultVal;
@@ -561,11 +578,7 @@ export class Runtime {
       const result = this.applyInstruction(instruction);
       events.push(...result.events);
 
-      if (
-        this.context.scriptName !== startScriptName ||
-        this.context.pc !== startPc ||
-        this.context.instructionIndex !== startInstructionIndex
-      ) {
+      if (this.pendingContextChange) {
         // Un jump/call a changé le contexte : on abandonne les frames.
         this.frames = [];
         this.macroParams = savedMacroParams;
@@ -1128,6 +1141,7 @@ export class Runtime {
         this.context.pc = pageIdx;
         this.context.instructionIndex = this.context.script.labelInstructionIndex[instruction.target] ?? 0;
         this.context.segmentIndex = 0;
+        this.pendingContextChange = true;
       } else {
         this.onWarning(`unknown label: ${instruction.target}`);
       }
@@ -1149,14 +1163,26 @@ export class Runtime {
         // after the @endif / macro) to avoid resuming inside the block.
         const currentFrame = this.frames.length > 0 ? this.frames[this.frames.length - 1] : undefined;
         const returnIndex = currentFrame?.returnIndex ?? this.context.instructionIndex + 1;
+        // Save current frames (advance last frame past the @call) and macro params
+        // so @return can resume execution inside the block / macro.
+        const savedFrames = this.frames.map((f, i) =>
+          i === this.frames.length - 1
+            ? { ...f, index: f.index + 1 }
+            : { ...f }
+        ) as NonNullable<ScriptContext["savedFrames"]>;
         this.callStack.push({
           ...this.context,
           instructionIndex: returnIndex,
           segmentIndex: 0,
+          savedFrames,
+          savedMacroParams: this.macroParams,
         });
+        this.frames = [];
+        this.macroParams = {};
         this.context.pc = pageIdx;
         this.context.instructionIndex = this.context.script.labelInstructionIndex[instruction.target] ?? 0;
         this.context.segmentIndex = 0;
+        this.pendingContextChange = true;
         return null;
       }
     }
@@ -1168,6 +1194,9 @@ export class Runtime {
     const prevContext = this.callStack.pop();
     if (prevContext !== undefined) {
       this.context = prevContext;
+      this.frames = (prevContext.savedFrames ?? []) as typeof this.frames;
+      this.macroParams = prevContext.savedMacroParams ?? {};
+      this.pendingContextChange = true;
     }
   }
 
@@ -1454,7 +1483,8 @@ export class Runtime {
         // recommence la boucle externe avec les nouvelles instructions.
         // On n'incrémente PAS instructionIndex : le nouveau contexte porte
         // déjà l'index de reprise (0 pour un call, l'index empilé pour un return).
-        if (this.context.scriptName !== startScriptName || this.context.pc !== startPc) {
+        if (this.pendingContextChange) {
+          this.pendingContextChange = false;
           contextChanged = true;
           break;
         }
@@ -1474,7 +1504,8 @@ export class Runtime {
         }
         // Si drainFrames a changé le contexte (jump/call depuis une frame),
         // on sort de la boucle interne pour recommencer avec les nouvelles instructions.
-        if (this.context.scriptName !== startScriptName || this.context.pc !== startPc) {
+        if (this.pendingContextChange) {
+          this.pendingContextChange = false;
           contextChanged = true;
           break;
         }

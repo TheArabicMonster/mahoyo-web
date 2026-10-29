@@ -518,8 +518,9 @@ export function parse(tokens: Token[]): ParsedScript {
             blockRuby = token.args.text ?? null;
             blockRubyCharCount = parseIntArg(token.args.char, 1);
           } else if (token.name === "p") {
-            // Page breaks are not supported inside blocks; ignore them.
+            // [p] = page break inside a block: flush pending text and emit a pause.
             flushBlockText();
+            instructions.push({ kind: "text", segments: [{ pause: true }] });
           } else {
             flushBlockText();
             instructions.push({ kind: "raw", command: token.name, args: token.args });

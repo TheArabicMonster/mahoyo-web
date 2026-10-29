@@ -540,27 +540,28 @@ describe("Runtime @macro/@endmacro", () => {
   });
 
   it("B4: %param n'est pas substitué au milieu d'une valeur", () => {
-    // Inside the macro body, "7 % 5" should remain the JS modulo expression,
-    // not be interpreted as a parameter substitution.
+    // Macro body contains "7%x". Since the whole value does not start with %,
+    // %x should NOT be substituted (it would turn into r=7 if it were).
     const runtime = new Runtime(
       script(
         `@macro name=calc`,
-        `@eval exp="f.r = 7 % 5"`,
+        `@eval exp="f.r = 7%x"`,
         `@endmacro`,
         `@calc`,
       ),
     );
     runtime.step();
-    expect(fvars(runtime).r).toBe(2);
+    expect(fvars(runtime).r).toBeUndefined();
   });
 
   it("B4bis: %param au début d'une valeur est substitué", () => {
+    // The whole value is "%1", which gets substituted by the call argument.
     const runtime = new Runtime(
       script(
         `@macro name=set_x`,
-        `@eval exp="f.x = %value"`,
+        `@eval exp="%1"`,
         `@endmacro`,
-        `@set_x value=42`,
+        `@set_x 1="f.x = 42"`,
       ),
     );
     runtime.step();
@@ -569,13 +570,70 @@ describe("Runtime @macro/@endmacro", () => {
 
   it("B5: [p] dans @if produit une pause clic", () => {
     const runtime = new Runtime(
-      script(
+      parse(lex([
+        `*page0|`,
         `@if exp="1"`,
         `texte avant[p]texte après`,
         `@endif`,
-      ),
+      ].join("\n")))
     );
     const step1 = runtime.step();
     expect(step1.stop?.kind).toBe("click");
+  });
+
+  it("B1bis: @call dans @if exécute les instructions suivantes dans la branche", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@if exp="1"`,
+      `@call target=sub`,
+      `@eval exp="f.afterCallInIf = 'yes'"`,
+      `@endif`,
+      `@eval exp="f.afterIf = 'yes'"`,
+      `@pg`,
+      `*sub|`,
+      `@eval exp="f.subCalled = 'yes'"`,
+      `@return`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).subCalled).toBe("yes");
+    expect(fvars(runtime).afterCallInIf).toBe("yes");
+    expect(fvars(runtime).afterIf).toBe("yes");
+  });
+
+  it("B3bis: @jump dans @if vers un label de la même page", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@if exp="1"`,
+      `@jump target=afterIf`,
+      `@eval exp="f.shouldNotRun = 'oops'"`,
+      `@endif`,
+      `*afterIf|`,
+      `@eval exp="f.reached = 'yes'"`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).shouldNotRun).toBeUndefined();
+    expect(fvars(runtime).reached).toBe("yes");
+  });
+
+  it("B5bis: [p] dans @if attend exactement un clic avant de continuer", () => {
+    const runtime = new Runtime(
+      parse(lex([
+        `*page0|`,
+        `@if exp="1"`,
+        `ligne 1[p]ligne 2`,
+        `@endif`,
+        `@eval exp="f.afterP = 'yes'"`,
+      ].join("\n")))
+    );
+    const step1 = runtime.step();
+    expect(step1.stop?.kind).toBe("click");
+    expect(fvars(runtime).afterP).toBeUndefined();
+    const step2 = runtime.step();
+    expect(step2.stop?.kind).toBe("click");
+    expect(fvars(runtime).afterP).toBe("yes");
   });
 });
