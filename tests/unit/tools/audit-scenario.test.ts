@@ -6,7 +6,7 @@
  * @vitest-environment node
  */
 import { describe, it, expect, afterAll } from "vitest";
-import { auditScript, formatMarkdownReport } from "../../../tools/audit-scenario.js";
+import { auditScript, formatMarkdownReport, isEncrypted } from "../../../tools/audit-scenario.js";
 import type { AuditReport } from "../../../tools/audit-scenario.js";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
@@ -117,7 +117,6 @@ Inside sub.[l]
   });
 
   it("détecte les assets manquants avec manifest", async () => {
-    // @bg page=fore émet un événement scene ; @play émet un événement audio.
     const path = writeTmpKs("assets.ks", `
 *start
 @bg storage=missing_bg page=fore
@@ -132,8 +131,6 @@ Inside sub.[l]
   });
 
   it("ne crash pas sur un script qui atteint maxSteps", async () => {
-    // Script avec un @jump conditionnel toujours vrai — chaque step
-    // contient un [l] donc step() revient au caller.
     const path = writeTmpKs("loop.ks", `
 *start
 Loop text.[l]
@@ -149,13 +146,60 @@ Loop text.[l]
   });
 });
 
+describe("isEncrypted", () => {
+  it("accepte un script KAG normal", () => {
+    expect(isEncrypted("; Comment\n*start\nHello.[l]\n@bg storage=test\n")).toBe(false);
+  });
+
+  it("accepte un script avec du japonais", () => {
+    expect(isEncrypted("*start\nこんにちは世界。[l]\n@fg storage=テスト\n")).toBe(false);
+  });
+
+  it("rejette un script chiffré (caractères de contrôle)", () => {
+    // Simule un script chiffré avec beaucoup de bytes de contrôle
+    const encrypted = String.fromCharCode(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08)
+      + String.fromCharCode(0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15)
+      + "some text";
+    expect(isEncrypted(encrypted)).toBe(true);
+  });
+
+  it("rejette un script avec du binaire aléatoire", () => {
+    // 100 bytes de contrôle sur ~200 = 50% > 15% seuil
+    let binary = "";
+    for (let i = 0; i < 100; i++) binary += String.fromCharCode(i & 0x1f);
+    binary += "aaaa".repeat(25);
+    expect(isEncrypted(binary)).toBe(true);
+  });
+
+  it("rejette un fichier PNG déguisé en .ks (UTF-8 direct)", () => {
+    const png = "\u0089PNG\r\n\u001a\nIHDR...rest of image data";
+    expect(isEncrypted(png)).toBe(true);
+  });
+
+  it("rejette un fichier PNG déguisé en .ks (Shift-JIS décodé)", () => {
+    // Après décodage Shift-JIS, 0x89→臼 (U+81FC), puis "NG" intact
+    const png = "臼NG\n\u001c\n\nIHDR...rest of image data";
+    expect(isEncrypted(png)).toBe(true);
+  });
+
+  it("rejette un fichier RIFF/WAVE déguisé en .ks", () => {
+    const wav = "RIFF\x00\x00\x00\x00WAVEfmt ...rest of audio data";
+    expect(isEncrypted(wav)).toBe(true);
+  });
+
+  it("accepte un script vide", () => {
+    expect(isEncrypted("")).toBe(false);
+  });
+});
+
 describe("formatMarkdownReport", () => {
   it("formate un rapport avec des commandes inconnues", () => {
     const report: AuditReport = {
       timestamp: "2026-10-29T12:00:00.000Z",
-      totalScriptsFound: 4,
+      totalScriptsFound: 6,
       skippedSystem: 2,
-      totalScripts: 2,
+      skippedEncrypted: 1,
+      totalScripts: 3,
       scriptsWithErrors: 0,
       scriptsWithMaxSteps: 0,
       totalDurationMs: 500,
@@ -200,6 +244,8 @@ describe("formatMarkdownReport", () => {
     expect(md).toContain("Détail par script");
     expect(md).toContain("a.ks");
     expect(md).toContain("b.ks");
+    expect(md).toContain("Scripts chiffrés ignorés");
+    expect(md).toContain("1");
   });
 
   it("gère un rapport vide", () => {
@@ -207,6 +253,7 @@ describe("formatMarkdownReport", () => {
       timestamp: "2026-10-29T12:00:00.000Z",
       totalScriptsFound: 0,
       skippedSystem: 0,
+      skippedEncrypted: 0,
       totalScripts: 0,
       scriptsWithErrors: 0,
       scriptsWithMaxSteps: 0,
@@ -229,6 +276,7 @@ describe("formatMarkdownReport", () => {
       timestamp: "2026-10-29T12:00:00.000Z",
       totalScriptsFound: 1,
       skippedSystem: 0,
+      skippedEncrypted: 0,
       totalScripts: 1,
       scriptsWithErrors: 1,
       scriptsWithMaxSteps: 0,

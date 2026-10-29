@@ -5,8 +5,8 @@
  * en mode auto-advance (franchit les pauses, clics et attentes
  * automatiquement). Produit un rapport JSON et Markdown dans reports/.
  *
- * Les scripts système (menus, config, plugins) sont ignorés car ils
- * dépendent de commandes non gérées et ne terminent pas normalement.
+ * Les scripts système (menus, config, plugins) et les scripts chiffrés
+ * sont ignorés automatiquement.
  *
  * Usage : npm run audit
  */
@@ -26,6 +26,15 @@ const REPORTS_DIR = join(import.meta.dirname, "../reports");
 
 /** Maximum de steps par script pour éviter les boucles infinies. */
 const DEFAULT_MAX_STEPS = 10_000;
+
+/**
+ * Seuil pour la détection de scripts chiffrés/binaires.
+ * Si plus de ce ratio de bytes dans les 512 premiers octets sont des
+ * caractères de contrôle (< 0x20, hors \t\n\r), des bytes > 0xFF,
+ * ou des caractères dans la plage 0xFF00–0xFFEF (samples audio 16-bit
+ * décodés comme caractères Unicode), le script est considéré chiffré.
+ */
+const ENCRYPTED_BYTE_THRESHOLD = 0.10;
 
 /**
  * Scripts système à ignorer : menus, config, plugins, etc.
@@ -55,6 +64,61 @@ const SKIP_SCRIPTS = new Set([
   "title.ks",
   "tracerplugin.ks",
 ]);
+
+/**
+ * Signatures magiques de fichiers binaires qui peuvent porter l'extension .ks
+ * dans l'archive KiriKiri XP3. Le décodeur les lit comme du texte mais ce
+ * sont en réalité des images ou des fichiers audio.
+ *
+ * Après décodage Shift-JIS→UTF-8, certaines signatures sont déformées :
+ * - PNG : 0x89→U+81FC (臼), puis "NG" intact → on cherche "臼NG"
+ * - RIFF : peut rester intact ou être déformé → on cherche "RIFF"
+ *
+ * On teste les 32 premiers caractères (assez pour toute signature).
+ */
+const BINARY_PATTERNS: RegExp[] = [
+  /\u0089PNG/,   // PNG (décodage UTF-8 direct)
+  /臼NG/,        // PNG (0x89 décodé en U+81FC par Shift-JIS)
+  /RIFF/,        // RIFF container (WAV, etc.)
+];
+
+/**
+ * Détecte un script chiffré/binaire en examinant les premiers octets.
+ *
+ * Les scripts KAG normaux commencent par du texte ASCII/Japonais (commentaires
+ * `;`, labels `*`, commandes `@`). Les scripts chiffrés contiennent des bytes
+ * de contrôle ou du binaire brut.
+ */
+export function isEncrypted(text: string): boolean {
+  // 1. Vérifier les signatures magiques de fichiers binaires
+  const head = text.slice(0, 32);
+  for (const pat of BINARY_PATTERNS) {
+    if (pat.test(head)) return true;
+  }
+
+  // 2. Examiner les 512 premiers caractères pour les bytes de contrôle
+  const sample = text.slice(0, 512);
+  if (sample.length === 0) return false;
+
+  let badBytes = 0;
+  for (let i = 0; i < sample.length; i++) {
+    const code = sample.charCodeAt(i);
+    // Caractères de contrôle (hors tab, LF, CR) = signal de chiffrage
+    if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) {
+      badBytes++;
+    }
+    // Caractères très élevés : bytes > BMP ou samples audio 16-bit
+    // décodés comme caractères Unicode (0xFF00–0xFFEF = audio, > 0xFFFF = corrompu)
+    if (code >= 0xff00 && code <= 0xffef) {
+      badBytes++;
+    }
+    if (code > 0xffff) {
+      badBytes++;
+    }
+  }
+
+  return badBytes / sample.length > ENCRYPTED_BYTE_THRESHOLD;
+}
 
 // ── Types du rapport ──
 
@@ -86,6 +150,8 @@ export interface AuditReport {
   totalScriptsFound: number;
   /** Nombre de scripts système ignorés. */
   skippedSystem: number;
+  /** Nombre de scripts chiffrés ignorés. */
+  skippedEncrypted: number;
   /** Nombre de scripts audités. */
   totalScripts: number;
   /** Nombre de scripts avec au moins une erreur fatale. */
@@ -282,6 +348,7 @@ export function formatMarkdownReport(report: AuditReport): string {
   lines.push(`- **Date** : ${report.timestamp}`);
   lines.push(`- **Scripts trouvés** : ${report.totalScriptsFound}`);
   lines.push(`- **Scripts système ignorés** : ${report.skippedSystem}`);
+  lines.push(`- **Scripts chiffrés ignorés** : ${report.skippedEncrypted}`);
   lines.push(`- **Scripts audités** : ${report.totalScripts}`);
   lines.push(`- **Scripts en erreur** : ${report.scriptsWithErrors}`);
   lines.push(`- **Scripts maxSteps atteint** : ${report.scriptsWithMaxSteps}`);
@@ -403,13 +470,7 @@ async function main(): Promise<void> {
   const storyScripts = allKsFiles.filter((f) => !SKIP_SCRIPTS.has(f));
   const systemScripts = allKsFiles.filter((f) => SKIP_SCRIPTS.has(f));
 
-  console.log(`Scripts trouvés : ${allKsFiles.length}`);
-  console.log(`Scripts système ignorés : ${systemScripts.length} (${systemScripts.join(", ")})`);
-  console.log(`Scripts narratifs à auditer : ${storyScripts.length}`);
-
-  // Pré-charger le contenu des scripts narratifs pour le scriptLoader
-  // (les scripts système sont aussi chargés car les scripts narratifs
-  // peuvent les référencer via @call)
+  // Pré-charger le contenu de tous les scripts pour le scriptLoader
   const scriptTexts = new Map<string, string>();
   for (const f of allKsFiles) {
     try {
@@ -419,9 +480,26 @@ async function main(): Promise<void> {
     }
   }
 
-  // Auditer chaque script narratif
-  const results: ScriptAuditResult[] = [];
+  // Détecter les scripts chiffrés/binaires
+  const encryptedScripts: string[] = [];
+  const auditableScripts: string[] = [];
   for (const f of storyScripts) {
+    const content = scriptTexts.get(f);
+    if (content && isEncrypted(content)) {
+      encryptedScripts.push(f);
+    } else {
+      auditableScripts.push(f);
+    }
+  }
+
+  console.log(`Scripts trouvés : ${allKsFiles.length}`);
+  console.log(`Scripts système ignorés : ${systemScripts.length}`);
+  console.log(`Scripts chiffrés ignorés : ${encryptedScripts.length} (${encryptedScripts.join(", ")})`);
+  console.log(`Scripts à auditer : ${auditableScripts.length}`);
+
+  // Auditer chaque script auditable
+  const results: ScriptAuditResult[] = [];
+  for (const f of auditableScripts) {
     process.stdout.write(`  ${f} ...`);
     try {
       const result = await auditScript(join(SCENARIO_DIR, f), f, manifest, scriptTexts);
@@ -455,7 +533,8 @@ async function main(): Promise<void> {
     timestamp: new Date().toISOString(),
     totalScriptsFound: allKsFiles.length,
     skippedSystem: systemScripts.length,
-    totalScripts: storyScripts.length,
+    skippedEncrypted: encryptedScripts.length,
+    totalScripts: auditableScripts.length,
     scriptsWithErrors,
     scriptsWithMaxSteps,
     totalDurationMs,
