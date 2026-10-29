@@ -104,6 +104,7 @@ export type Instruction =
   | { kind: "playstop"; time?: number }
   | { kind: "fadebgm"; time: number; volume?: number }
   | { kind: "se"; storage: string; volume?: number; loop?: boolean; delay?: number }
+  | { kind: "seact"; storage: string; delay: number; fadeIn: number; volume: number; loop: boolean }
   | { kind: "sestop"; storage?: string; time?: number }
   | { kind: "fadese"; storage?: string; time: number; volume: number }
   | { kind: "quake"; vmax: number; hmax: number; time: number; interval: number }

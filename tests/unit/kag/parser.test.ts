@@ -334,6 +334,62 @@ describe("parse", () => {
     expect(raw).toBeUndefined();
   });
 
+  it("parses @seact with delay, fadeIn, volume, and loop", () => {
+    const source = `@seact textoff=0 keys=(300,play,se01025,0,,,0,,60,-70)`;
+    const script = parse(lex(source));
+    const page = script.pages[0];
+    const seact = page.instructions.find((i) => i.kind === "seact");
+    expect(seact).toBeDefined();
+    if (seact && seact.kind === "seact") {
+      expect(seact.storage).toBe("se01025");
+      expect(seact.delay).toBe(300);
+      expect(seact.fadeIn).toBe(0);
+      expect(seact.volume).toBe(100); // valeur par défaut quand vide
+      expect(seact.loop).toBe(false);
+    }
+  });
+
+  it("parses @seact with fadeIn and volume", () => {
+    const source = `@seact textoff=0 keys=(0,play,se01016,2000,100,,0,100,100,-30)`;
+    const script = parse(lex(source));
+    const page = script.pages[0];
+    const seact = page.instructions.find((i) => i.kind === "seact");
+    expect(seact).toBeDefined();
+    if (seact && seact.kind === "seact") {
+      expect(seact.storage).toBe("se01016");
+      expect(seact.delay).toBe(0);
+      expect(seact.fadeIn).toBe(2000);
+      expect(seact.volume).toBe(100);
+      expect(seact.loop).toBe(false);
+    }
+  });
+
+  it("parses @seact with loop=1", () => {
+    const source = `@seact textoff=0 keys=(0,play,se01024,4000,60,,1,-60,10,-100)`;
+    const script = parse(lex(source));
+    const page = script.pages[0];
+    const seact = page.instructions.find((i) => i.kind === "seact");
+    expect(seact).toBeDefined();
+    if (seact && seact.kind === "seact") {
+      expect(seact.storage).toBe("se01024");
+      expect(seact.delay).toBe(0);
+      expect(seact.fadeIn).toBe(4000);
+      expect(seact.volume).toBe(60);
+      expect(seact.loop).toBe(true);
+    }
+  });
+
+  it("parses @seact with Japanese storage name", () => {
+    const source = `@seact keys=(0,play,se12宇宙の果て01,1500,100,,0,-100,80,100)`;
+    const script = parse(lex(source));
+    const page = script.pages[0];
+    const seact = page.instructions.find((i) => i.kind === "seact");
+    expect(seact).toBeDefined();
+    if (seact && seact.kind === "seact") {
+      expect(seact.storage).toBe("se12宇宙の果て01");
+    }
+  });
+
   it("parses [wait ...] inline tag as wait instruction", () => {
     const script = parse(lex("texte[wait canskip=0 time=400]suite"));
     const page = script.pages[0];

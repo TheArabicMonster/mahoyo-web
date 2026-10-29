@@ -57,7 +57,7 @@ This is line 2.[p]
     const path = writeTmpKs("unknown.ks", `
 *start
 @ploysay storage=ploy01
-@seact storage=se01
+@rf storage=font01
 @playtimeline storage=tl01
 `);
     const cache = makeScriptCache({});
@@ -65,7 +65,7 @@ This is line 2.[p]
 
     expect(result.rawCount).toBe(3);
     expect(result.unknownCommands["ploysay"]).toBe(1);
-    expect(result.unknownCommands["seact"]).toBe(1);
+    expect(result.unknownCommands["rf"]).toBe(1);
     expect(result.unknownCommands["playtimeline"]).toBe(1);
   });
 

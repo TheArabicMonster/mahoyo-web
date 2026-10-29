@@ -263,6 +263,32 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         loop: args.loop === "1" || args.loop === "true",
         delay: args.delay !== undefined ? parseIntArg(args.delay) : undefined,
       };
+    case "seact": {
+      // @seact = SE avec délai et fondu
+      // Format: keys=(delay,action,storage,fadein,vol,?,loop,pan,vol2,pan2)
+      // On ignore pan (non supporté par HTML5 audio).
+      const keys = args.keys;
+      if (!keys) {
+        return { kind: "seact", storage: "", delay: 0, fadeIn: 0, volume: 100, loop: false };
+      }
+      // Extraire le contenu entre parenthèses
+      const match = keys.match(/^\(([^)]+)\)$/);
+      if (!match) {
+        return { kind: "seact", storage: "", delay: 0, fadeIn: 0, volume: 100, loop: false };
+      }
+      const cells = match[1].split(",");
+      const delay = parseIntArg(cells[0], 0);
+      // cells[1] = action (toujours "play", ignoré)
+      const storage = normStorage(cells[2] ?? "");
+      const fadeIn = parseIntArg(cells[3], 0);
+      const volume = parseIntArg(cells[4], 100);
+      // cells[5] = ? (ignoré)
+      const loop = (cells[6] ?? "0") === "1";
+      // cells[7] = pan (ignoré)
+      // cells[8] = vol2 (cible du fondu, ignoré pour l'instant)
+      // cells[9] = pan2 (ignoré)
+      return { kind: "seact", storage, delay, fadeIn, volume, loop };
+    }
     case "sestop":
       return {
         kind: "sestop",
