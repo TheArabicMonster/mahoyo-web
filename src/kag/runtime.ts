@@ -100,16 +100,6 @@ export type ScriptContext = {
   scriptName: string;
   /** Position dans l'instruction texte courante (pour reprise après [l]). */
   segmentIndex: number;
-  /** Frames saved at the moment of @call, to be restored on @return. */
-  savedFrames?: Array<{
-    instructions: Instruction[];
-    index: number;
-    segmentIndex: number;
-    macroParams?: Record<string, unknown>;
-    returnIndex?: number;
-  }>;
-  /** Macro params saved at the moment of @call. */
-  savedMacroParams?: Record<string, unknown>;
 };
 
 /** Type guard : vérifie si les variables sont au format scoped ({f, sf, tf}). */
@@ -579,8 +569,8 @@ export class Runtime {
       events.push(...result.events);
 
       if (this.pendingContextChange) {
-        // Un jump/call a changé le contexte : on abandonne les frames.
-        this.frames = [];
+        // A jump/call/return changed the context. The caller (applyJump/
+        // applyCall/applyReturn) is responsible for managing the frames.
         this.macroParams = savedMacroParams;
         return null;
       }
@@ -1138,6 +1128,8 @@ export class Runtime {
     if (instruction.target) {
       const pageIdx = this.context.script.labels[instruction.target];
       if (pageIdx !== undefined) {
+        this.frames = [];
+        this.macroParams = {};
         this.context.pc = pageIdx;
         this.context.instructionIndex = this.context.script.labelInstructionIndex[instruction.target] ?? 0;
         this.context.segmentIndex = 0;
@@ -1163,19 +1155,10 @@ export class Runtime {
         // after the @endif / macro) to avoid resuming inside the block.
         const currentFrame = this.frames.length > 0 ? this.frames[this.frames.length - 1] : undefined;
         const returnIndex = currentFrame?.returnIndex ?? this.context.instructionIndex + 1;
-        // Save current frames (advance last frame past the @call) and macro params
-        // so @return can resume execution inside the block / macro.
-        const savedFrames = this.frames.map((f, i) =>
-          i === this.frames.length - 1
-            ? { ...f, index: f.index + 1 }
-            : { ...f }
-        ) as NonNullable<ScriptContext["savedFrames"]>;
         this.callStack.push({
           ...this.context,
           instructionIndex: returnIndex,
           segmentIndex: 0,
-          savedFrames,
-          savedMacroParams: this.macroParams,
         });
         this.frames = [];
         this.macroParams = {};
@@ -1194,8 +1177,6 @@ export class Runtime {
     const prevContext = this.callStack.pop();
     if (prevContext !== undefined) {
       this.context = prevContext;
-      this.frames = (prevContext.savedFrames ?? []) as typeof this.frames;
-      this.macroParams = prevContext.savedMacroParams ?? {};
       this.pendingContextChange = true;
     }
   }
@@ -1426,8 +1407,12 @@ export class Runtime {
   step(): Step {
     const events: RenderEvent[] = [];
 
+    // Consume any stale context-change flag from a previous step.
+    this.pendingContextChange = false;
+
     // Reprendre une éventuelle frame suspendue (branche @if ou macro).
     const initialFrameStop = this.drainFrames(events);
+    this.pendingContextChange = false;
     if (initialFrameStop) {
       return this.makeStep(events, initialFrameStop);
     }
@@ -1509,6 +1494,8 @@ export class Runtime {
           contextChanged = true;
           break;
         }
+        // The flag has been consumed by this point.
+        this.pendingContextChange = false;
       }
 
       // La boucle interne s'est terminée par un changement de contexte :
