@@ -157,6 +157,16 @@ Les noms de fichiers peuvent contenir des parenthèses :
   l'expose sur la textbox (`data-ploy-mode`, `--ploy-ox`, `--ploy-oy`) mais **ne
   dessine pas** la bulle.
 
+### `@return` sans appelant
+
+- Un script lancé par le player (ou, dans le jeu d'origine, par le plugin « tracer ») n'a
+  pas d'appelant. Son `@return` le **termine** et rend la main.
+- Avant, ce `@return` était ignoré et l'exécution continuait dans le code qui suit : un
+  script comme `teatime.ks`, dont des sections étiquetées suivent le `@return`, bouclait
+  indéfiniment. Effet de bord : le clic sur une page vide que le joueur devait faire après
+  le dernier `@return` d'un chapitre disparaît.
+- Les scripts qui s'enchaînent sont décrits dans [`ENCHAINEMENT_SCRIPTS.md`](ENCHAINEMENT_SCRIPTS.md).
+
 ## 7. Attentes (`@wt` / `@wact` / `@wm` / `nowait`)
 
 - `@trans nowait=0` (ou absent) : **bloquant** → le runtime émet

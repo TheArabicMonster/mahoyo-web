@@ -9,6 +9,7 @@ import type { RunOptions } from "@/renderer/types.js";
 import type { RenderEvent, Step } from "@/kag/events.js";
 import type { RuntimeSaveData } from "@/kag/runtime.js";
 import type { ParsedScript } from "@/kag/types.js";
+import type { StoryChain } from "@/core/story-chain.js";
 import prologue from "../../fixtures/prologue.json";
 import audioFixture from "../../fixtures/audio.json";
 
@@ -401,5 +402,142 @@ describe("Player", () => {
     await ctx.player.load(3);
     await until(() => ctx.player.currentState === "waiting-click");
     expect(ctx.stage.maxActive).toBe(1);
+  });
+});
+
+/** Runtime qui joue un petit script par fichier : un clic puis la fin. */
+class ChainRuntime implements RuntimeLike {
+  scriptLoader: RuntimeLike["scriptLoader"] = null;
+  loaded: string[] = [];
+  conditions: string[] = [];
+  private queue: Step[];
+  constructor(first: string, private readonly failOn: string | null = null, private readonly condResult = false) {
+    this.queue = ChainRuntime.script(first);
+  }
+  static script(name: string): Step[] {
+    return [
+      { position: { scriptName: name, page: 0, instruction: 0 }, events: [{ kind: "text", segments: [{ text: name }] }], stop: { kind: "click", style: "page" } },
+      { position: { scriptName: name, page: 1, instruction: 0 }, events: [], stop: { kind: "end" } },
+    ];
+  }
+  step(): Step {
+    return this.queue.shift() ?? { position: { scriptName: "x.ks", page: 9, instruction: 0 }, events: [], stop: { kind: "end" } };
+  }
+  async loadScript(storage: string): Promise<boolean> {
+    if (storage === this.failOn) return false;
+    this.loaded.push(storage);
+    this.queue = ChainRuntime.script(storage);
+    return true;
+  }
+  evaluateCondition(expression: string): boolean {
+    this.conditions.push(expression);
+    return this.condResult;
+  }
+  jump(): boolean {
+    return true;
+  }
+  getSaveData(): RuntimeSaveData {
+    return new ScriptedRuntime([]).getSaveData();
+  }
+  async loadSaveData(): Promise<boolean> {
+    return true;
+  }
+}
+
+function chainSetup(chain: StoryChain | null, makeRuntime: () => ChainRuntime) {
+  const runtimes: ChainRuntime[] = [];
+  const ctx = setup([], {
+    loadChain: async () => chain,
+    createRuntime: () => {
+      const rt = makeRuntime();
+      runtimes.push(rt);
+      return rt;
+    },
+  });
+  return { ...ctx, chainRuntimes: runtimes };
+}
+
+async function startChain(ctx: ReturnType<typeof chainSetup>, file = "a.ks") {
+  current = ctx.player;
+  await ctx.player.ready;
+  ctx.player.startScript(file);
+  await until(() => ctx.player.currentState === "waiting-click", "premier clic");
+}
+
+describe("Player — enchaînement des scripts", () => {
+  it("charge le script suivant à la fin du courant, sur deux chapitres consécutifs", async () => {
+    const chain: StoryChain = { version: 1, first: "a.ks", next: { "a.ks": [{ to: "b.ks" }], "b.ks": [] } };
+    const ctx = chainSetup(chain, () => new ChainRuntime("a.ks"));
+    await startChain(ctx);
+
+    ctx.player.advance();
+    await until(() => ctx.chainRuntimes[0]!.loaded.length === 1 && ctx.player.currentState === "waiting-click", "b.ks");
+    expect(ctx.chainRuntimes[0]!.loaded).toEqual(["b.ks"]);
+    expect(ctx.stage.events.filter((e) => e.kind === "text")).toHaveLength(2);
+
+    // Fin de b.ks : plus de suite, retour au titre.
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "title", "titre");
+  });
+
+  it("joue l'interlude puis le chapitre suivant (then)", async () => {
+    const chain: StoryChain = { version: 1, first: "a.ks", next: { "a.ks": [{ to: "tea.ks", then: ["b.ks"] }] } };
+    const ctx = chainSetup(chain, () => new ChainRuntime("a.ks"));
+    await startChain(ctx);
+
+    ctx.player.advance(); // fin de a.ks → tea.ks
+    await until(() => ctx.chainRuntimes[0]!.loaded.length === 1 && ctx.player.currentState === "waiting-click");
+    ctx.player.advance(); // fin de tea.ks → b.ks (file d'interlude, pas la table)
+    await until(() => ctx.chainRuntimes[0]!.loaded.length === 2 && ctx.player.currentState === "waiting-click");
+    expect(ctx.chainRuntimes[0]!.loaded).toEqual(["tea.ks", "b.ks"]);
+  });
+
+  it("propose un menu quand la suite est un choix, puis charge l'option retenue", async () => {
+    const chain: StoryChain = {
+      version: 1,
+      first: "a.ks",
+      next: { "a.ks": [{ to: "b.ks", choice: "Option B" }, { to: "c.ks", choice: "Option C" }] },
+    };
+    const ctx = chainSetup(chain, () => new ChainRuntime("a.ks"));
+    await startChain(ctx);
+
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "waiting-choice", "menu");
+    expect(ctx.ui.choices.at(-1)).toEqual(["Option B", "Option C"]);
+
+    ctx.player.choose(1);
+    await until(() => ctx.chainRuntimes[0]!.loaded.length === 1 && ctx.player.currentState === "waiting-click");
+    expect(ctx.chainRuntimes[0]!.loaded).toEqual(["c.ks"]);
+  });
+
+  it("évalue la condition d'une route avec le runtime", async () => {
+    const chain: StoryChain = {
+      version: 1,
+      first: "a.ks",
+      next: { "a.ks": [{ to: "x.ks", condition: "room>0" }, { to: "y.ks" }] },
+    };
+    const ctx = chainSetup(chain, () => new ChainRuntime("a.ks", null, true));
+    await startChain(ctx);
+    ctx.player.advance();
+    await until(() => ctx.chainRuntimes[0]!.loaded.length === 1 && ctx.player.currentState === "waiting-click");
+    expect(ctx.chainRuntimes[0]!.conditions).toEqual(["room>0"]);
+    expect(ctx.chainRuntimes[0]!.loaded).toEqual(["x.ks"]);
+  });
+
+  it("sans table d'enchaînement, revient au titre comme avant", async () => {
+    const ctx = chainSetup(null, () => new ChainRuntime("a.ks"));
+    await startChain(ctx);
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "title", "titre");
+    expect(ctx.chainRuntimes[0]!.loaded).toEqual([]);
+  });
+
+  it("signale un script suivant introuvable et revient au titre", async () => {
+    const chain: StoryChain = { version: 1, first: "a.ks", next: { "a.ks": [{ to: "absent.ks" }] } };
+    const ctx = chainSetup(chain, () => new ChainRuntime("a.ks", "absent.ks"));
+    await startChain(ctx);
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "title", "titre");
+    expect(ctx.ui.toasts.some((t) => t.message.includes("absent.ks"))).toBe(true);
   });
 });

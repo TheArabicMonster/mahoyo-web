@@ -262,7 +262,8 @@ export class Runtime {
     }
   }
 
-  private evaluateCondition(expression: string): boolean {
+  /** Évalue une condition dans la sandbox du runtime (utilisé aussi par le player). */
+  evaluateCondition(expression: string): boolean {
     return Boolean(this.evaluateExpression(expression));
   }
 
@@ -1227,7 +1228,17 @@ export class Runtime {
       this.frames = [];
       this.macroParams = {};
       this.pendingContextChange = true;
+      return;
     }
+    // Sans appelant, le script a été lancé par le player (ou, dans le jeu
+    // d'origine, par le plugin « tracer ») : @return le termine et lui rend la
+    // main. Sans cela, un @return au milieu d'un script laisse l'exécution
+    // continuer dans le code qui suit (ex. sections étiquetées d'un script système).
+    this.frames = [];
+    this.context.pc = this.context.script.pages.length;
+    this.context.instructionIndex = 0;
+    this.context.segmentIndex = 0;
+    this.pendingContextChange = true;
   }
 
   private applyInstruction(instruction: Instruction): { events: RenderEvent[]; stop?: StopReason } {
