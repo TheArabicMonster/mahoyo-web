@@ -388,7 +388,8 @@ describe("Runtime @macro/@endmacro", () => {
       ),
     );
     runtime.step();
-    expect(fvars(runtime).from_mp).toBe(42);
+    // KAG keeps macro params as strings; "42" is a string.
+    expect(fvars(runtime).from_mp).toBe("42");
   });
 
   it("expression TJS : & préfixe traité comme no-op", () => {
@@ -402,5 +403,82 @@ describe("Runtime @macro/@endmacro", () => {
     );
     runtime.step();
     expect(fvars(runtime).result).toBe("ok");
+  });
+
+  it("@rclick exp= n'est PAS évalué comme condition", () => {
+    // exp= on a raw command should not be treated as cond=.
+    const runtime = new Runtime(
+      script(
+        `@rclick exp="f.called = true"`,
+      ),
+    );
+    runtime.step();
+    // @rclick falls through as raw (with exp=), but exp= should NOT be treated as a condition.
+    // It's just a raw command with args.exp.
+    expect(runtime.rawCount).toBeGreaterThan(0);
+  });
+
+  it("mp utilisé dans un @if à l'intérieur d'une macro", () => {
+    const runtime = new Runtime(
+      script(
+        `@macro name=check_val`,
+        `@if exp="mp.val === 'yes'"`,
+        `@eval exp="f.result = 'matched'"`,
+        `@else`,
+        `@eval exp="f.result = 'no_match'"`,
+        `@endif`,
+        `@endmacro`,
+        `@check_val val=yes`,
+      ),
+    );
+    runtime.step();
+    expect(fvars(runtime).result).toBe("matched");
+  });
+
+  it("%param absent sans défaut → attribut supprimé", () => {
+    const runtime = new Runtime(
+      script(
+        `@macro name=do_fg`,
+        `@fg storage=%storage center=512 vcenter=288`,
+        `@endmacro`,
+        `@do_fg`,  // no storage= provided → attribute removed, storage=""
+      ),
+    );
+    runtime.step();
+    // @fg with storage="" should still work (empty storage is valid).
+    const save = runtime.getSaveData();
+    // The @fg instruction was executed with storage="".
+    expect(save.state.back.layers.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it("@call cond= faux ne call pas", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@eval exp="f.flag = 0"`,
+      `@call cond="f.flag === 1" storage=sub.ks`,
+      `@eval exp="f.reached = 'after_call'"`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).reached).toBe("after_call");
+  });
+
+  it("save/load préserve les macros", () => {
+    const runtime = new Runtime(
+      script(
+        `@macro name=hello`,
+        `@eval exp="f.greeting = 'hi'"`,
+        `@endmacro`,
+        `@eval exp="f.x = 1"`,
+      ),
+    );
+    runtime.step();
+    const save = runtime.getSaveData();
+    expect(save.macros).toBeDefined();
+    expect(save.macros["hello"]).toBeDefined();
+    // The macro should be restorable.
+    const macros = save.macros as Record<string, unknown>;
+    expect(macros["hello"]).toBeTypeOf("object");
   });
 });

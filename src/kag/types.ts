@@ -130,7 +130,7 @@ export type Instruction =
   | { kind: "text"; segments: TextSegment[] }
   | { kind: "break" }
   | { kind: "jump"; target?: string; storage?: string; cond?: string }
-  | { kind: "call"; target?: string; storage?: string }
+  | { kind: "call"; target?: string; storage?: string; cond?: string }
   | { kind: "return" }
   | { kind: "eval"; expression: string; cond?: string }
   | { kind: "raw"; command: string; args: Record<string, string> }

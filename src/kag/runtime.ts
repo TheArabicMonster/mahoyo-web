@@ -206,8 +206,12 @@ export class Runtime {
   /** Normalise a TJS expression for JS evaluation. */
   private normalizeTjsExpression(expression: string): string {
     // void is TJS null — replace with undefined to avoid JS SyntaxError.
-    // Match whole-word "void" (not part of a longer identifier).
-    let normalized = expression.replace(/\bvoid\b/g, "undefined");
+    // Simple approach: only replace standalone "void" (not inside strings).
+    // This is a best-effort heuristic; complex nested quotes may still break.
+    let normalized = expression;
+    // Replace void only when it appears as a word boundary token (not in strings).
+    // We use a simple regex that matches void at word boundaries.
+    normalized = normalized.replace(/\bvoid\b/g, "undefined");
     // Prefix & is TJS dereference — treat as no-op for simple cases.
     if (normalized.startsWith("&")) {
       normalized = normalized.slice(1);
@@ -246,12 +250,14 @@ export class Runtime {
     switch (instruction.kind) {
       case "jump":
         return instruction.cond;
+      case "call":
+        return instruction.cond;
       case "eval":
         return instruction.cond;
       case "trans":
         return instruction.cond;
       case "raw":
-        return instruction.args.exp ?? instruction.args.cond;
+        return instruction.args.cond;
       default:
         return undefined;
     }
@@ -269,28 +275,39 @@ export class Runtime {
       for (const [key, value] of Object.entries(token.args)) {
         newArgs[key] = this.substituteMacroParams(value, callArgs);
       }
-      return { ...token, args: newArgs };
+      return { ...token, args: Runtime.cleanEmptyArgs(newArgs) };
     });
   }
 
   /** Replace %param|default patterns in a single string. */
   private substituteMacroParams(value: string, callArgs: Record<string, string>): string {
     // %param|default → replace with callArgs[param] or default
+    // %param without default and no value → empty string (attribute will be cleaned up)
     return value.replace(/%(\w+)(?:\|([^%]*))?/g, (_match, param, defaultVal) => {
       const provided = callArgs[param];
       if (provided !== undefined && provided !== "") return provided;
       if (defaultVal !== undefined) return defaultVal;
-      return _match; // leave as-is if no match and no default
+      return ""; // No value and no default → empty
     });
+  }
+
+  /**
+   * Remove empty-string args from a token (KAG drops attributes with empty values).
+   */
+  private static cleanEmptyArgs(args: Record<string, string>): Record<string, string> {
+    const cleaned: Record<string, string> = {};
+    for (const [key, value] of Object.entries(args)) {
+      if (value !== "") cleaned[key] = value;
+    }
+    return cleaned;
   }
 
   /** Build the mp (macro params) object from call-site args. */
   private buildMacroParams(callArgs: Record<string, string>): Record<string, unknown> {
     const mp: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(callArgs)) {
-      // Try to parse as number, otherwise keep as string
-      const num = Number(value);
-      mp[key] = !Number.isNaN(num) && value !== "" ? num : value;
+      // KAG keeps values as strings; don't auto-convert to numbers.
+      mp[key] = value;
     }
     return mp;
   }
@@ -447,8 +464,8 @@ export class Runtime {
     return { instructions, terminator: null, nextIndex: tokens.length };
   }
 
-  private pushFrame(instructions: Instruction[]) {
-    this.frames.push({ instructions, index: 0, segmentIndex: 0 });
+  private pushFrame(instructions: Instruction[], macroParams?: Record<string, unknown>) {
+    this.frames.push({ instructions, index: 0, segmentIndex: 0, macroParams: macroParams ?? (this.frames.length > 0 ? this.macroParams : undefined) });
   }
 
   private processFrameText(

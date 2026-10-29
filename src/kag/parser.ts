@@ -88,7 +88,7 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         time: parseIntArg(args.time),
         nowait: args.nowait === "1",
         canskip: args.canskip !== "0",
-        cond: args.exp ?? args.cond,
+        cond: args.cond,
       };
     case "fgact":
     case "partbgact": {
@@ -367,7 +367,8 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       // storage est un nom de fichier : on garde la casse et l'extension.
       const target = (args.target ?? "").replace(/^\*/, "") || undefined;
       const storage = args.storage || undefined;
-      return { kind: "call", target, storage };
+      const cond = args.cond;
+      return { kind: "call", target, storage, cond };
     }
     case "return":
       return { kind: "return" };
@@ -375,13 +376,13 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       // @l en commande = pause texte (équivalent au tag [l]).
       return { kind: "text", segments: [{ pause: true }] };
     case "p":
-      // @p en commande = page break (équivalent à @pg).
-      return { kind: "break" };
+      // @p en commande = pause + page break (comme @pg avec [p]).
+      return { kind: "text", segments: [{ pause: true }] };
     case "r":
       // @r en commande = saut de ligne (équivalent au tag [r]).
       return { kind: "break" };
     case "eval": {
-      const cond = args.exp_cond ?? args.cond;
+      const cond = args.cond;
       return { kind: "eval", expression: args.exp ?? "", cond };
     }
     default:
