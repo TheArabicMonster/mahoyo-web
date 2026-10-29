@@ -562,9 +562,6 @@ export class Runtime {
         continue;
       }
 
-      const startScriptName = this.context.scriptName;
-      const startPc = this.context.pc;
-      const startInstructionIndex = this.context.instructionIndex;
       const result = this.applyInstruction(instruction);
       events.push(...result.events);
 
@@ -1154,6 +1151,9 @@ export class Runtime {
         // If called from a frame, use the frame's returnIndex (the instruction
         // after the @endif / macro) to avoid resuming inside the block.
         const currentFrame = this.frames.length > 0 ? this.frames[this.frames.length - 1] : undefined;
+        if (currentFrame && currentFrame.index < currentFrame.instructions.length - 1) {
+          this.onWarning("@call inside @if/macro skips remaining instructions until @endif/endmacro");
+        }
         const returnIndex = currentFrame?.returnIndex ?? this.context.instructionIndex + 1;
         this.callStack.push({
           ...this.context,
@@ -1177,6 +1177,8 @@ export class Runtime {
     const prevContext = this.callStack.pop();
     if (prevContext !== undefined) {
       this.context = prevContext;
+      this.frames = [];
+      this.macroParams = {};
       this.pendingContextChange = true;
     }
   }
@@ -1434,9 +1436,6 @@ export class Runtime {
 
       while (this.context.instructionIndex < instructions.length) {
         const instruction = instructions[this.context.instructionIndex];
-        const startScriptName = this.context.scriptName;
-        const startPc = this.context.pc;
-        const startInstructionIndex = this.context.instructionIndex;
 
         if (instruction.kind === "text") {
           const result = this.processText(instruction);
@@ -1472,12 +1471,6 @@ export class Runtime {
           this.pendingContextChange = false;
           contextChanged = true;
           break;
-        }
-
-        // Si une instruction (jump/call) a repositionné instructionIndex,
-        // on ne l'incrémente pas pour éviter de sauter la cible.
-        if (this.context.instructionIndex !== startInstructionIndex) {
-          continue;
         }
 
         this.context.instructionIndex += 1;

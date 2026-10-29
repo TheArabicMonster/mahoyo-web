@@ -621,6 +621,29 @@ describe("Runtime @macro/@endmacro", () => {
     expect(fvars(runtime).reached).toBe("yes");
   });
 
+  it("B8: @return dans un @if de la sous-routine ne fuit pas de frames", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@call target=sub`,
+      `@eval exp="f.caller1 = 'yes'"`,
+      `@eval exp="f.caller2 = 'yes'"`,
+      `@pg`,
+      `*sub|`,
+      `@if exp="1"`,
+      `@if exp="1"`,
+      `@return`,
+      `@endif`,
+      `@eval exp="f.leak += 1"`,
+      `@endif`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).caller1).toBe("yes");
+    expect(fvars(runtime).caller2).toBe("yes");
+    expect(fvars(runtime).leak).toBeUndefined();
+  });
+
   it("B5bis: [p] dans @if attend exactement un clic avant de continuer", () => {
     const runtime = new Runtime(
       parse(lex([
