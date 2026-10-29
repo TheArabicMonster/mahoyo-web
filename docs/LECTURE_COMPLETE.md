@@ -36,16 +36,25 @@ La console affiche uniquement un résumé chiffré (pas de texte original).
 - **Scripts système ignorés** : menus, config, plugins, etc. (ne font pas partie
   du corpus narratif).
 - **Scripts chiffrés ignorés** : fichiers `.ks` qui sont en réalité des données
-  binaires (audio, images déguisées) et ne peuvent pas être lus comme du texte.
+  binaires, illisibles comme du texte. Leur nature exacte n'est pas déterminée
+  (aucun script ne les cite par leur nom).
 - **Scripts narratifs audités** : scripts effectivement lus du début à la fin.
 - **Scripts en erreur fatale** : scripts qui ont provoqué une exception runtime.
 - **Scripts ayant atteint maxSteps** : scripts qui n'ont pas atteint la fin avant
   le plafond de steps (boucle probable).
 - **Commandes inconnues** : commandes KAG actuellement traitées comme no-op,
   avec leur effectif.
-- **Assets manquants** : références d'images/sons absentes du manifest.
+- **Assets manquants** : références d'images/sons absentes du manifest. Attention :
+  les références à variante (`nom|e`, `nom|b`…) sont comptées comme absentes alors
+  que l'image de base existe, ce qui gonfle ce chiffre. Sur le corpus de référence,
+  330 des 348 images signalées sont dans ce cas ; une vingtaine sont réellement
+  introuvables.
 
 ## Critère de réussite
 
-Le test vise à obtenir 234 scripts narratifs lus, 0 erreur fatale et 0 boucle
+Le test exige au moins 221 scripts narratifs lus, 0 erreur fatale et 0 boucle
 sans progression.
+
+Les 221 viennent de : 251 fichiers `.ks` trouvés, moins 17 scripts système
+(menus, configuration, plugins), moins 13 fichiers binaires. Le chiffre de 234
+utilisé auparavant (251 - 17) comptait ces 13 binaires comme des scripts.

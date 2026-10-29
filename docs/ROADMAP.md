@@ -61,7 +61,7 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
 
 ### v1.0 — Jeu complet jouable sur desktop
 
-Objectif : lecture complète des 234 scripts, du prologue à la dernière scène, sur Chrome et Firefox récents (desktop).
+Objectif : lecture complète des 221 scripts narratifs, du prologue à la dernière scène, sur Chrome et Firefox récents (desktop).
 
 - Complétude, commandes KAG, navigation par chapitres, persistance, pipeline, légal, qualité : voir la section « DoD — v1.0 » de [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md).
 - Épics concernés : E1 à E4, E7, et la part de E6 consacrée aux tests de non-régression et e2e.
