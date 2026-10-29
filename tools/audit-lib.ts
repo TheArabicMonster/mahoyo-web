@@ -9,7 +9,9 @@ import { join, extname } from "path";
 import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";
 import { Runtime } from "@/kag/runtime.js";
+import { lookupAudio, lookupImage } from "@/core/asset-manifest.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
+import { isSolidColor, storageKey } from "@/core/storage-key.js";
 import type { RenderEvent } from "@/kag/events.js";
 
 /** Maximum de steps par script pour éviter les boucles infinies. */
@@ -120,8 +122,15 @@ export interface ScriptAuditResult {
   unknownCommands: Record<string, number>;
   /** Warnings collectés (groupés). */
   warnings: Record<string, number>;
-  /** Assets référencés mais absents du manifest. */
+  /**
+   * Assets dont l'image/le son de base est absent du manifest (nom sans le
+   * suffixe de variante `|x`).
+   */
   missingAssets: string[];
+  /** Références à variante (`nom|x`) résolues via leur asset de base. */
+  resolvedVariantRefs?: number;
+  /** Références à un asset de nom vide (ex. effacement d'un calque). */
+  emptyAssetRefs?: number;
   /** Erreurs fatales (runtime crash). */
   errors: string[];
   /** Compteur rawCount du runtime. */
@@ -157,6 +166,10 @@ export interface AuditReport {
   warningsGlobal: Record<string, number>;
   /** Synthèse : assets manquants triés par fréquence. */
   missingAssetsGlobal: Record<string, number>;
+  /** Total des références à variante (`nom|x`) résolues. */
+  resolvedVariantRefsGlobal?: number;
+  /** Total des références d'asset de nom vide. */
+  emptyAssetRefsGlobal?: number;
 }
 
 // ── Logique d'audit d'un script ──
@@ -192,7 +205,7 @@ export async function auditScript(
     }
   };
 
-  const missingAssets = new Set<string>();
+  const assets = createAssetCollection();
   const errors: string[] = [];
   let steps = 0;
   let hitMaxSteps = false;
@@ -206,7 +219,7 @@ export async function auditScript(
 
       // Collecter les assets référencés
       if (manifest) {
-        collectAssets(step.events, manifest, missingAssets);
+        collectAssets(step.events, manifest, assets);
       }
 
       if (step.stop.kind === "end") break;
@@ -262,7 +275,9 @@ export async function auditScript(
     steps,
     unknownCommands,
     warnings: otherWarnings,
-    missingAssets: Array.from(missingAssets).sort(),
+    missingAssets: Array.from(assets.missing).sort(),
+    resolvedVariantRefs: assets.variantRefs,
+    emptyAssetRefs: assets.emptyRefs,
     errors,
     rawCount: runtime.rawCount,
     durationMs,
@@ -270,38 +285,69 @@ export async function auditScript(
   };
 }
 
-// ── Collecte d'assets (identique au test d'intégration) ──
+// ── Collecte d'assets ──
 
-function collectAssets(
+/** Résultat de la résolution des assets référencés par un script. */
+export interface AssetCollection {
+  /** `image:nom` / `audio:nom` dont l'asset de base est absent du manifest. */
+  missing: Set<string>;
+  /** Références `nom|x` résolues via l'asset de base `nom`. */
+  variantRefs: number;
+  /** Références de nom vide. */
+  emptyRefs: number;
+}
+
+export function createAssetCollection(): AssetCollection {
+  return { missing: new Set<string>(), variantRefs: 0, emptyRefs: 0 };
+}
+
+export function collectAssets(
   events: readonly RenderEvent[],
   manifest: AssetManifest,
-  missing: Set<string>,
+  assets: AssetCollection,
 ): void {
   for (const ev of events) {
     if (ev.kind === "scene") {
-      if (ev.scene.bg) checkImage(ev.scene.bg, manifest, missing);
+      if (ev.scene.bg) checkAsset("image", ev.scene.bg, manifest, assets);
       for (const sprite of ev.scene.sprites) {
-        checkImage(sprite.storage, manifest, missing);
+        checkAsset("image", sprite.storage, manifest, assets);
       }
     } else if (ev.kind === "audio") {
       const e = ev.event;
       if (e.kind === "play" && e.storage) {
-        checkAudio(e.storage, manifest, missing);
+        checkAsset("audio", e.storage, manifest, assets);
       }
     }
   }
 }
 
-function checkImage(storage: string, manifest: AssetManifest, missing: Set<string>): void {
-  if (!manifest.images[storage]) {
-    missing.add(`image:${storage}`);
+/**
+ * Vérifie une référence comme le fait le resolver du player : clé normalisée
+ * par `storageKey` (suffixe `|x` retiré, casse, dossier, extension), puis
+ * recherche dans le manifest. Les couleurs solides n'ont pas de fichier.
+ */
+function checkAsset(
+  kind: "image" | "audio",
+  storage: string,
+  manifest: AssetManifest,
+  assets: AssetCollection,
+): void {
+  const key = storageKey(storage);
+  if (key === "") {
+    assets.emptyRefs++;
+    return;
   }
-}
+  if (kind === "image" && isSolidColor(storage)) return;
 
-function checkAudio(storage: string, manifest: AssetManifest, missing: Set<string>): void {
-  if (!manifest.audio[storage]) {
-    missing.add(`audio:${storage}`);
+  const url = kind === "image" ? lookupImage(manifest, key) : lookupAudio(manifest, key);
+  if (url) {
+    if (storage.includes("|")) assets.variantRefs++;
+    return;
   }
+  // On rapporte le nom de base : toutes les variantes d'un même asset absent
+  // se regroupent en une seule entrée.
+  const base = (storage.split("|")[0] ?? storage).trim();
+  assets.missing.add(`${kind}:${base}`);
 }
 
 // ── Agrégation ──
@@ -310,12 +356,18 @@ export function aggregateGlobal(results: ScriptAuditResult[]): {
   unknownCommandsGlobal: Record<string, number>;
   warningsGlobal: Record<string, number>;
   missingAssetsGlobal: Record<string, number>;
+  resolvedVariantRefsGlobal: number;
+  emptyAssetRefsGlobal: number;
 } {
   const unknownCommandsGlobal: Record<string, number> = {};
   const warningsGlobal: Record<string, number> = {};
   const missingAssetsGlobal: Record<string, number> = {};
+  let resolvedVariantRefsGlobal = 0;
+  let emptyAssetRefsGlobal = 0;
 
   for (const r of results) {
+    resolvedVariantRefsGlobal += r.resolvedVariantRefs ?? 0;
+    emptyAssetRefsGlobal += r.emptyAssetRefs ?? 0;
     for (const [cmd, count] of Object.entries(r.unknownCommands)) {
       unknownCommandsGlobal[cmd] = (unknownCommandsGlobal[cmd] ?? 0) + count;
     }
@@ -327,7 +379,13 @@ export function aggregateGlobal(results: ScriptAuditResult[]): {
     }
   }
 
-  return { unknownCommandsGlobal, warningsGlobal, missingAssetsGlobal };
+  return {
+    unknownCommandsGlobal,
+    warningsGlobal,
+    missingAssetsGlobal,
+    resolvedVariantRefsGlobal,
+    emptyAssetRefsGlobal,
+  };
 }
 
 // ── Formatage du rapport Markdown ──
@@ -384,6 +442,11 @@ export function formatMarkdownReport(report: AuditReport): string {
 
   // Assets manquants
   lines.push("## Assets manquants dans le manifest");
+  lines.push("");
+  lines.push(
+    `- Références à variante (\`nom|x\`) résolues via l'asset de base : ${report.resolvedVariantRefsGlobal ?? 0}`,
+  );
+  lines.push(`- Références d'asset de nom vide : ${report.emptyAssetRefsGlobal ?? 0}`);
   lines.push("");
   const sortedAssets = Object.entries(report.missingAssetsGlobal).sort((a, b) => b[1] - a[1]);
   if (sortedAssets.length === 0) {

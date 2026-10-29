@@ -18,7 +18,8 @@
  * 2. Retire le suffixe d'expression (`山城01(近)|b` → `山城01(近)`)
  * 3. Ne garde que le nom de fichier sans dossier (`bg/night` → `night`)
  * 4. Retire l'extension (`.tlg`, `.png`, `.ogg`, `.ks`, etc.)
- * 5. Passe en minuscules
+ * 5. Retire les espaces restants en fin de nom (`nom .png` → `nom`)
+ * 6. Passe en minuscules
  */
 export function storageKey(raw: string): string {
   if (!raw) return "";
@@ -44,7 +45,11 @@ export function storageKey(raw: string): string {
   const dot = s.lastIndexOf(".");
   if (dot > 0) s = s.slice(0, dot);
 
-  // 5. Minuscules.
+  // 5. Espaces résiduels : un fichier peut porter un espace avant son extension
+  //    alors que les scripts le référencent sans espace.
+  s = s.trim();
+
+  // 6. Minuscules.
   return s.toLowerCase();
 }
 

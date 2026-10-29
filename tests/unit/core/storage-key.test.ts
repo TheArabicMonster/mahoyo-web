@@ -60,6 +60,20 @@ describe("storageKey", () => {
   });
 });
 
+describe("storageKey — espaces", () => {
+  it("retire l'espace avant l'extension (le fichier porte un espace, pas la référence)", () => {
+    expect(storageKey("bg/nuit (tempête) .png")).toBe("nuit (tempête)");
+  });
+
+  it("donne la même clé pour le nom de fichier et pour la référence du script", () => {
+    expect(storageKey("bg/nuit .png")).toBe(storageKey("nuit"));
+  });
+
+  it("retire les espaces autour de la référence", () => {
+    expect(storageKey("  nuit  ")).toBe("nuit");
+  });
+});
+
 describe("isSolidColor", () => {
   it("détecte les couleurs solides", () => {
     expect(isSolidColor("black")).toBe(true);

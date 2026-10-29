@@ -96,7 +96,13 @@ async function main(): Promise<void> {
   }
 
   // Agréger
-  const { unknownCommandsGlobal, warningsGlobal, missingAssetsGlobal } = aggregateGlobal(results);
+  const {
+    unknownCommandsGlobal,
+    warningsGlobal,
+    missingAssetsGlobal,
+    resolvedVariantRefsGlobal,
+    emptyAssetRefsGlobal,
+  } = aggregateGlobal(results);
 
   const totalDurationMs = results.reduce((acc, r) => acc + r.durationMs, 0);
   const scriptsWithErrors = results.filter((r) => r.errors.length > 0).length;
@@ -115,6 +121,8 @@ async function main(): Promise<void> {
     unknownCommandsGlobal,
     warningsGlobal,
     missingAssetsGlobal,
+    resolvedVariantRefsGlobal,
+    emptyAssetRefsGlobal,
   };
 
   // Écrire les rapports
