@@ -18,7 +18,9 @@ import type {
   Page,
   ParsedScript,
   TextSegment,
+  Token,
 } from "./types.js";
+import { parseCommand } from "./parser.js";
 import type { PageLayer } from "./types.js";
 import type {
   AssetRef,
@@ -45,6 +47,8 @@ export type RuntimeSaveData = {
   segmentIndex: number;
   state: RuntimeState;
   callStack: { scriptName: string; pc: number; instructionIndex: number; segmentIndex: number }[];
+  /** Serialized macro definitions (raw tokens). */
+  macros: Record<string, Token[]>;
 };
 
 export type PageState = {
@@ -141,6 +145,25 @@ export class Runtime {
    */
   public rawCount = 0;
 
+  /** Macros définies par @macro/@endmacro. */
+  private macros: Map<string, Token[]> = new Map();
+
+  /** Current macro parameter map (exposed as `mp` in expressions). */
+  private macroParams: Record<string, unknown> = {};
+
+  /** Minimal kag proxy for TJS expressions that reference kag.*. */
+  private kagProxy = {
+    con: { crashAction: "" },
+    flags: {},
+  };
+
+  /**
+   * Pile de frames d'exécution pour les branches conditionnelles et les
+   * expansions de macros. Chaque frame porte son index d'instruction et sa
+   * position dans un éventuel segment texte ([l]).
+   */
+  private frames: Array<{ instructions: Instruction[]; index: number; segmentIndex: number; macroParams?: Record<string, unknown> }> = [];
+
   constructor(
     script: ParsedScript,
     scriptName: string = "main",
@@ -173,6 +196,374 @@ export class Runtime {
       events,
       stop,
     };
+  }
+
+  /**
+   * Évalue une expression KAG comme @eval le ferait, avec accès aux variables
+   * f/sf/tf/global/timeline_object. Retourne la valeur évaluée ou undefined
+   * en cas d'erreur (warning émis).
+   */
+  /** Normalise a TJS expression for JS evaluation. */
+  private normalizeTjsExpression(expression: string): string {
+    // void is TJS null — replace with undefined to avoid JS SyntaxError.
+    // Simple approach: only replace standalone "void" (not inside strings).
+    // This is a best-effort heuristic; complex nested quotes may still break.
+    let normalized = expression;
+    // Replace void only when it appears as a word boundary token (not in strings).
+    // We use a simple regex that matches void at word boundaries.
+    normalized = normalized.replace(/\bvoid\b/g, "undefined");
+    // Prefix & is TJS dereference — treat as no-op for simple cases.
+    if (normalized.startsWith("&")) {
+      normalized = normalized.slice(1);
+    }
+    return normalized;
+  }
+
+  private evaluateExpression(expression: string): unknown {
+    const { f, sf, tf } = this.state.variables;
+    const normalized = this.normalizeTjsExpression(expression);
+    try {
+      const timeline_object = { loadByData: () => {} };
+      const fn = new Function(
+        "f",
+        "sf",
+        "tf",
+        "global",
+        "timeline_object",
+        "mp",
+        "kag",
+        `"use strict"; return (${normalized});`,
+      );
+      return fn(f, sf, tf, this.state.evalGlobal, timeline_object, this.macroParams, this.kagProxy);
+    } catch (err) {
+      this.onWarning(`eval failed: ${expression} — ${err}`);
+      return undefined;
+    }
+  }
+
+  private evaluateCondition(expression: string): boolean {
+    return Boolean(this.evaluateExpression(expression));
+  }
+
+  /** Extract the cond= / exp= attribute from an instruction that supports it. */
+  private getCond(instruction: Instruction): string | undefined {
+    switch (instruction.kind) {
+      case "jump":
+        return instruction.cond;
+      case "call":
+        return instruction.cond;
+      case "eval":
+        return instruction.cond;
+      case "trans":
+        return instruction.cond;
+      case "raw":
+        return instruction.args.cond;
+      default:
+        return undefined;
+    }
+  }
+
+  /**
+   * Substitute %param|default patterns in macro tokens with call-site args.
+   * Supports: %name (no default), %name|default (with default), * (all args pass-through).
+   */
+  private expandMacroTokens(rawTokens: Token[], callArgs: Record<string, string>): Token[] {
+    return rawTokens.map((token) => {
+      if (token.type !== "command") return token;
+      // Substitute in each arg value
+      const newArgs: Record<string, string> = {};
+      for (const [key, value] of Object.entries(token.args)) {
+        newArgs[key] = this.substituteMacroParams(value, callArgs);
+      }
+      return { ...token, args: Runtime.cleanEmptyArgs(newArgs) };
+    });
+  }
+
+  /** Replace %param|default patterns in a single string. */
+  private substituteMacroParams(value: string, callArgs: Record<string, string>): string {
+    // %param|default → replace with callArgs[param] or default
+    // %param without default and no value → empty string (attribute will be cleaned up)
+    return value.replace(/%(\w+)(?:\|([^%]*))?/g, (_match, param, defaultVal) => {
+      const provided = callArgs[param];
+      if (provided !== undefined && provided !== "") return provided;
+      if (defaultVal !== undefined) return defaultVal;
+      return ""; // No value and no default → empty
+    });
+  }
+
+  /**
+   * Remove empty-string args from a token (KAG drops attributes with empty values).
+   */
+  private static cleanEmptyArgs(args: Record<string, string>): Record<string, string> {
+    const cleaned: Record<string, string> = {};
+    for (const [key, value] of Object.entries(args)) {
+      if (value !== "") cleaned[key] = value;
+    }
+    return cleaned;
+  }
+
+  /** Build the mp (macro params) object from call-site args. */
+  private buildMacroParams(callArgs: Record<string, string>): Record<string, unknown> {
+    const mp: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(callArgs)) {
+      // KAG keeps values as strings; don't auto-convert to numbers.
+      mp[key] = value;
+    }
+    return mp;
+  }
+
+  /** Parse raw tokens (from macro body) into executable instructions. */
+  private parseRawTokens(tokens: Token[]): Instruction[] {
+    const instructions: Instruction[] = [];
+    let i = 0;
+
+    while (i < tokens.length) {
+      const token = tokens[i];
+      if (!token) { i++; continue; }
+
+      switch (token.type) {
+        case "command": {
+          if (token.name === "if") {
+            // Parse @if/@elsif/@else/@endif block
+            const { branches, nextIdx } = this.parseConditionalTokens(tokens, i);
+            instructions.push({ kind: "conditional", branches });
+            i = nextIdx;
+          } else if (token.name === "macro") {
+            // Nested @macro definition — skip the body
+            const name = token.args.name ?? "";
+            let depth = 1;
+            let j = i + 1;
+            while (j < tokens.length && depth > 0) {
+              const t = tokens[j];
+              if (t?.type === "command" && t.name === "macro") depth++;
+              if (t?.type === "command" && t.name === "endmacro") depth--;
+              j++;
+            }
+            // Store the nested macro as rawTokens
+            const body = tokens.slice(i + 1, j - 1);
+            instructions.push({ kind: "macrodef", name, rawTokens: body });
+            i = j;
+          } else {
+            instructions.push(parseCommand(token));
+            i++;
+          }
+          break;
+        }
+        case "tag": {
+          if (token.name === "l") {
+            instructions.push({ kind: "text", segments: [{ pause: true }] });
+          } else if (token.name === "r") {
+            instructions.push({ kind: "break" });
+          } else if (token.name === "p") {
+            instructions.push({ kind: "break" });
+          }
+          i++;
+          break;
+        }
+        case "text": {
+          instructions.push({ kind: "text", segments: [{ text: token.content }] });
+          i++;
+          break;
+        }
+        case "label":
+        case "comment":
+        case "linebreak": {
+          i++;
+          break;
+        }
+      }
+    }
+    return instructions;
+  }
+
+  /** Parse @if/@elsif/@else/@endif from a raw token stream. */
+  private parseConditionalTokens(
+    tokens: Token[],
+    start: number,
+  ): { branches: Array<{ cond?: string; instructions: Instruction[] }>; nextIdx: number } {
+    const branches: Array<{ cond?: string; instructions: Instruction[] }> = [];
+    const ifToken = tokens[start] as Extract<Token, { type: "command" }>;
+    let currentCond: string | undefined = ifToken.args.exp ?? ifToken.args.cond;
+    let i = start + 1;
+
+    while (i <= tokens.length) {
+      const { instructions, terminator, nextIndex } = this.parseBlockTokens(tokens, i, [
+        "elsif", "else", "endif",
+      ]);
+      branches.push({ cond: currentCond, instructions });
+
+      if (terminator === "elsif") {
+        const elsifToken = tokens[nextIndex] as Extract<Token, { type: "command" }>;
+        currentCond = elsifToken.args.exp ?? elsifToken.args.cond;
+        i = nextIndex + 1;
+      } else if (terminator === "else") {
+        const elseRes = this.parseBlockTokens(tokens, nextIndex + 1, ["endif"]);
+        branches.push({ cond: undefined, instructions: elseRes.instructions });
+        return { branches, nextIdx: elseRes.nextIndex + 1 };
+      } else if (terminator === "endif") {
+        return { branches, nextIdx: nextIndex + 1 };
+      } else {
+        // Missing @endif
+        return { branches, nextIdx: tokens.length };
+      }
+    }
+    return { branches, nextIdx: tokens.length };
+  }
+
+  /** Parse a flat block of instructions until a terminator command. */
+  private parseBlockTokens(
+    tokens: Token[],
+    start: number,
+    terminators: string[],
+  ): { instructions: Instruction[]; terminator: string | null; nextIndex: number } {
+    const instructions: Instruction[] = [];
+    let i = start;
+
+    while (i < tokens.length) {
+      const token = tokens[i];
+      if (!token) { i++; continue; }
+
+      if (token.type === "command" && terminators.includes(token.name)) {
+        return { instructions, terminator: token.name, nextIndex: i };
+      }
+
+      switch (token.type) {
+        case "command": {
+          if (token.name === "if") {
+            const { branches, nextIdx } = this.parseConditionalTokens(tokens, i);
+            instructions.push({ kind: "conditional", branches });
+            i = nextIdx;
+          } else {
+            instructions.push(parseCommand(token));
+            i++;
+          }
+          break;
+        }
+        case "tag": {
+          if (token.name === "l") {
+            instructions.push({ kind: "text", segments: [{ pause: true }] });
+          } else if (token.name === "r") {
+            instructions.push({ kind: "break" });
+          }
+          i++;
+          break;
+        }
+        case "text": {
+          instructions.push({ kind: "text", segments: [{ text: token.content }] });
+          i++;
+          break;
+        }
+        case "label":
+        case "comment":
+        case "linebreak": {
+          i++;
+          break;
+        }
+      }
+    }
+    return { instructions, terminator: null, nextIndex: tokens.length };
+  }
+
+  private pushFrame(instructions: Instruction[], macroParams?: Record<string, unknown>) {
+    this.frames.push({ instructions, index: 0, segmentIndex: 0, macroParams: macroParams ?? (this.frames.length > 0 ? this.macroParams : undefined) });
+  }
+
+  private processFrameText(
+    frame: { instructions: Instruction[]; index: number; segmentIndex: number },
+    instruction: Extract<Instruction, { kind: "text" }>,
+  ): { events: RenderEvent[]; stop?: StopReason } {
+    const events: RenderEvent[] = [];
+    const segments = instruction.segments;
+    const startIdx = frame.segmentIndex;
+
+    let pauseIndex = -1;
+    for (let i = startIdx; i < segments.length; i++) {
+      const seg = segments[i];
+      if (seg && "pause" in seg && (seg as { pause: boolean }).pause) {
+        pauseIndex = i;
+        break;
+      }
+    }
+
+    if (pauseIndex === -1) {
+      const remaining = segments.slice(startIdx);
+      if (remaining.length > 0) {
+        events.push({ kind: "text", segments: remaining });
+      }
+      frame.segmentIndex = 0;
+      frame.index += 1;
+      return { events };
+    }
+
+    const before = segments.slice(startIdx, pauseIndex);
+    if (before.length > 0) {
+      events.push({ kind: "text", segments: before });
+    }
+    frame.segmentIndex = pauseIndex + 1;
+    return { events, stop: { kind: "click", style: "line" } };
+  }
+
+  /**
+   * Exécute les frames empilées (branches @if ou expansions de macros) jusqu'à
+   * ce qu'elles soient vides ou qu'un point d'arrêt soit atteint. Si le
+   * contexte change (jump), les frames sont abandonnées.
+   */
+  private drainFrames(events: RenderEvent[]): StopReason | null {
+    while (this.frames.length > 0) {
+      const frame = this.frames[this.frames.length - 1];
+      if (frame.index >= frame.instructions.length) {
+        this.frames.pop();
+        continue;
+      }
+
+      // Activate macro params for this frame if present.
+      const savedMacroParams = this.macroParams;
+      if (frame.macroParams) {
+        this.macroParams = frame.macroParams;
+      }
+
+      const instruction = frame.instructions[frame.index];
+
+      if (instruction.kind === "text") {
+        const result = this.processFrameText(frame, instruction);
+        events.push(...result.events);
+        if (result.stop) {
+          this.macroParams = savedMacroParams;
+          return result.stop;
+        }
+        this.macroParams = savedMacroParams;
+        continue;
+      }
+
+      if (instruction.kind === "break") {
+        events.push({ kind: "lineBreak" });
+        frame.index += 1;
+        this.macroParams = savedMacroParams;
+        continue;
+      }
+
+      const startScriptName = this.context.scriptName;
+      const startPc = this.context.pc;
+      const result = this.applyInstruction(instruction);
+      events.push(...result.events);
+
+      if (this.context.scriptName !== startScriptName || this.context.pc !== startPc) {
+        // Un jump/call a changé le contexte : on abandonne les frames.
+        this.frames = [];
+        this.macroParams = savedMacroParams;
+        return null;
+      }
+
+      if (result.stop) {
+        frame.index += 1;
+        this.macroParams = savedMacroParams;
+        return result.stop;
+      }
+
+      frame.index += 1;
+    }
+
+    return null;
   }
 
   private getPageState(page?: PageLayer): PageState {
@@ -694,21 +1085,7 @@ export class Runtime {
   }
 
   private applyEval(instruction: Extract<Instruction, { kind: "eval" }>): RenderEvent[] {
-    const { f, sf, tf } = this.state.variables;
-    try {
-      const timeline_object = { loadByData: () => {} };
-      const fn = new Function(
-        "f",
-        "sf",
-        "tf",
-        "global",
-        "timeline_object",
-        `"use strict"; return (${instruction.expression});`,
-      );
-      fn(f, sf, tf, this.state.evalGlobal, timeline_object);
-    } catch (err) {
-      this.onWarning(`eval failed: ${instruction.expression} — ${err}`);
-    }
+    this.evaluateExpression(instruction.expression);
     return [];
   }
 
@@ -765,6 +1142,13 @@ export class Runtime {
 
   private applyInstruction(instruction: Instruction): { events: RenderEvent[]; stop?: StopReason } {
     const events: RenderEvent[] = [];
+
+    // Evaluate cond= on instructions that support it (early-return if false).
+    // @jump cond=, @eval cond=, @trans cond=, and raw commands with cond=.
+    const cond = this.getCond(instruction);
+    if (cond !== undefined && !this.evaluateCondition(cond)) {
+      return { events };
+    }
 
     switch (instruction.kind) {
       case "bg": {
@@ -892,12 +1276,46 @@ export class Runtime {
       case "break":
         // Traités dans step() car le texte peut s'arrêter sur [l].
         break;
-      case "raw":
+      case "conditional": {
+        // Évalue les branches dans l'ordre et empile la première dont la
+        // condition est vraie (ou la branche @else sans condition).
+        for (const branch of instruction.branches) {
+          if (branch.cond === undefined || this.evaluateCondition(branch.cond)) {
+            if (branch.instructions.length > 0) {
+              this.pushFrame(branch.instructions);
+            }
+            break;
+          }
+        }
+        break;
+      }
+      case "macrodef": {
+        // Enregistre la macro (raw tokens) pour une utilisation ultérieure.
+        this.macros.set(instruction.name, instruction.rawTokens);
+        break;
+      }
+      case "raw": {
+        // Si la commande correspond à une macro définie, on l'expanse sans
+        // compter comme une commande raw inconnue.
+        const macro = this.macros.get(instruction.command);
+        if (macro) {
+          // Substitute %param|default in macro tokens with call-site args.
+          const expanded = this.expandMacroTokens(macro, instruction.args);
+          // Parse the substituted tokens into instructions.
+          const instructions = this.parseRawTokens(expanded);
+          if (instructions.length > 0) {
+            // Build macro params for the duration of the frame.
+            const params = this.buildMacroParams(instruction.args);
+            this.frames.push({ instructions, index: 0, segmentIndex: 0, macroParams: params });
+          }
+          break;
+        }
         // Commande inconnue : tolérée mais bruyante (AGENTS.md §6).
         // On prévient via onWarning et on compte pour détecter les régressions.
         this.rawCount++;
         this.onWarning(`commande non gérée: @${instruction.command}`);
         break;
+      }
     }
 
     return { events };
@@ -943,6 +1361,12 @@ export class Runtime {
    */
   step(): Step {
     const events: RenderEvent[] = [];
+
+    // Reprendre une éventuelle frame suspendue (branche @if ou macro).
+    const initialFrameStop = this.drainFrames(events);
+    if (initialFrameStop) {
+      return this.makeStep(events, initialFrameStop);
+    }
 
     while (this.context.pc < this.context.script.pages.length) {
       const page = this.context.script.pages[this.context.pc];
@@ -1003,6 +1427,12 @@ export class Runtime {
         }
 
         this.context.instructionIndex += 1;
+
+        // Exécuter les éventuelles frames créées par @if ou une macro.
+        const frameStop = this.drainFrames(events);
+        if (frameStop) {
+          return this.makeStep(events, frameStop);
+        }
       }
 
       // La boucle interne s'est terminée par un changement de contexte :
@@ -1105,6 +1535,7 @@ export class Runtime {
         instructionIndex: ctx.instructionIndex,
         segmentIndex: ctx.segmentIndex,
       })),
+      macros: Object.fromEntries(this.macros),
     };
   }
 
@@ -1146,6 +1577,13 @@ export class Runtime {
         return { script: s, pc: entry.pc, instructionIndex: entry.instructionIndex, scriptName: entry.scriptName, segmentIndex: entry.segmentIndex };
       })
       .filter((ctx): ctx is ScriptContext => ctx !== null);
+
+    // Restore macro definitions.
+    if (data.macros) {
+      this.macros = new Map(Object.entries(data.macros));
+    } else {
+      this.macros = new Map();
+    }
 
     return true;
   }

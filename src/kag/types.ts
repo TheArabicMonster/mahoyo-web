@@ -99,7 +99,7 @@ export type Instruction =
   | { kind: "clall"; page?: PageLayer }
   | { kind: "clfg"; storage?: string; index?: number; id?: string; page?: PageLayer }
   | { kind: "backlay"; storage?: string }
-  | { kind: "trans"; rule?: string; time: number; nowait?: boolean; canskip?: boolean }
+  | { kind: "trans"; rule?: string; time: number; nowait?: boolean; canskip?: boolean; cond?: string }
   | { kind: "play"; storage: string; volume?: number }
   | { kind: "playstop"; time?: number }
   | { kind: "fadebgm"; time: number; volume?: number }
@@ -129,11 +129,13 @@ export type Instruction =
   | { kind: "waitfor"; what: "transition" | "animation" | "quake"; skippable?: boolean }
   | { kind: "text"; segments: TextSegment[] }
   | { kind: "break" }
-  | { kind: "jump"; target?: string; storage?: string }
-  | { kind: "call"; target?: string; storage?: string }
+  | { kind: "jump"; target?: string; storage?: string; cond?: string }
+  | { kind: "call"; target?: string; storage?: string; cond?: string }
   | { kind: "return" }
-  | { kind: "eval"; expression: string }
-  | { kind: "raw"; command: string; args: Record<string, string> };
+  | { kind: "eval"; expression: string; cond?: string }
+  | { kind: "raw"; command: string; args: Record<string, string> }
+  | { kind: "conditional"; branches: Array<{ cond?: string; instructions: Instruction[] }> }
+  | { kind: "macrodef"; name: string; rawTokens: Token[] };
 
 export type Page = {
   label?: string;
