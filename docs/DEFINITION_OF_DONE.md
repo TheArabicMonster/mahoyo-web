@@ -31,7 +31,7 @@ La v1.0 est atteinte quand **toutes** les cases ci-dessous sont cochées. Chaque
 
 ### Complétude
 
-- [ ] Une lecture automatisée traverse les **234 scripts**, du prologue à la dernière scène, sans blocage ni erreur (test d'intégration de lecture complète : 234/234 scripts lus, 0 exception, 0 boucle sans progression).
+- [ ] Une lecture automatisée traverse les **221 scripts narratifs** (251 fichiers - 17 système - 13 binaires), du prologue à la dernière scène, sans blocage ni erreur (test d'intégration de lecture complète : 221/221 scripts lus, 0 exception, 0 boucle sans progression). Voir [`docs/LECTURE_COMPLETE.md`](docs/LECTURE_COMPLETE.md) pour l'usage.
 - [ ] Ce test utilise les **vrais assets locaux** (non commités), dont le chemin est fourni par la variable d'environnement `MAHOYO_ASSETS_DIR` (aucun chemin absolu en dur ; le test est ignoré avec un message explicite si la variable est absente).
 - [ ] La CI exécute la même logique de lecture avec des **placeholders originaux** (aucun asset sous copyright) et reste verte.
 
