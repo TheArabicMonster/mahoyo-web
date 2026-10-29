@@ -481,4 +481,187 @@ describe("Runtime @macro/@endmacro", () => {
     const macros = save.macros as Record<string, unknown>;
     expect(macros["hello"]).toBeTypeOf("object");
   });
+
+  it("B1: @call dans @if reprend l'instruction après @endif", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@if exp="1"`,
+      `@call target=sub`,
+      `@endif`,
+      `@eval exp="f.afterIf = 'yes'"`,
+      `@pg`,
+      `*sub|`,
+      `@eval exp="f.subCalled = 'yes'"`,
+      `@return`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).subCalled).toBe("yes");
+    expect(fvars(runtime).afterIf).toBe("yes");
+  });
+
+  it("B2: @call dans macro reprend l'instruction après macro", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@macro name=do_call`,
+      `@call target=sub`,
+      `@endmacro`,
+      `@do_call`,
+      `@eval exp="f.afterMacro = 'yes'"`,
+      `@pg`,
+      `*sub|`,
+      `@eval exp="f.subCalled = 'yes'"`,
+      `@return`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).subCalled).toBe("yes");
+    expect(fvars(runtime).afterMacro).toBe("yes");
+  });
+
+  it("B3: @jump dans @if (même page) n'exécute pas les instructions suivantes", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@if exp="1"`,
+      `@jump target=target`,
+      `@eval exp="f.shouldNotRun = 'oops'"`,
+      `@endif`,
+      `@pg`,
+      `*target|`,
+      `@eval exp="f.reached = 'yes'"`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).shouldNotRun).toBeUndefined();
+    expect(fvars(runtime).reached).toBe("yes");
+  });
+
+  it("B4: %param n'est pas substitué au milieu d'une valeur", () => {
+    // Macro body contains "7%x". Since the whole value does not start with %,
+    // %x should NOT be substituted (it would turn into r=7 if it were).
+    const runtime = new Runtime(
+      script(
+        `@macro name=calc`,
+        `@eval exp="f.r = 7%x"`,
+        `@endmacro`,
+        `@calc`,
+      ),
+    );
+    runtime.step();
+    expect(fvars(runtime).r).toBeUndefined();
+  });
+
+  it("B4bis: %param au début d'une valeur est substitué", () => {
+    // The whole value is "%1", which gets substituted by the call argument.
+    const runtime = new Runtime(
+      script(
+        `@macro name=set_x`,
+        `@eval exp="%1"`,
+        `@endmacro`,
+        `@set_x 1="f.x = 42"`,
+      ),
+    );
+    runtime.step();
+    expect(fvars(runtime).x).toBe(42);
+  });
+
+  it("B5: [p] dans @if produit une pause clic", () => {
+    const runtime = new Runtime(
+      parse(lex([
+        `*page0|`,
+        `@if exp="1"`,
+        `texte avant[p]texte après`,
+        `@endif`,
+      ].join("\n")))
+    );
+    const step1 = runtime.step();
+    expect(step1.stop?.kind).toBe("click");
+  });
+
+  it("B1bis: @call dans @if reprend après @endif (limitation connue)", () => {
+    const warnings: string[] = [];
+    const s = parse(lex([
+      `*page0|`,
+      `@if exp="1"`,
+      `@call target=sub`,
+      `@eval exp="f.afterCallInIf = 'yes'"`,
+      `@endif`,
+      `@eval exp="f.afterIf = 'yes'"`,
+      `@pg`,
+      `*sub|`,
+      `@eval exp="f.subCalled = 'yes'"`,
+      `@return`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.onWarning = (msg) => warnings.push(msg);
+    runtime.step();
+    expect(fvars(runtime).subCalled).toBe("yes");
+    expect(fvars(runtime).afterIf).toBe("yes");
+    // Known limitation: with nested frames, @call returns after the @endif,
+    // so instructions between @call and @endif are skipped.
+    expect(fvars(runtime).afterCallInIf).toBeUndefined();
+    expect(warnings.some((w) => w.includes("@call inside @if/macro"))).toBe(true);
+  });
+
+  it("B3bis: @jump dans @if vers un label de la même page", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@if exp="1"`,
+      `@jump target=afterIf`,
+      `@eval exp="f.shouldNotRun = 'oops'"`,
+      `@endif`,
+      `*afterIf|`,
+      `@eval exp="f.reached = 'yes'"`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).shouldNotRun).toBeUndefined();
+    expect(fvars(runtime).reached).toBe("yes");
+  });
+
+  it("B8: @return dans un @if de la sous-routine ne fuit pas de frames", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@call target=sub`,
+      `@eval exp="f.caller1 = 'yes'"`,
+      `@eval exp="f.caller2 = 'yes'"`,
+      `@pg`,
+      `*sub|`,
+      `@if exp="1"`,
+      `@if exp="1"`,
+      `@return`,
+      `@endif`,
+      `@eval exp="f.leak += 1"`,
+      `@endif`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).caller1).toBe("yes");
+    expect(fvars(runtime).caller2).toBe("yes");
+    expect(fvars(runtime).leak).toBeUndefined();
+  });
+
+  it("B5bis: [p] dans @if attend exactement un clic avant de continuer", () => {
+    const runtime = new Runtime(
+      parse(lex([
+        `*page0|`,
+        `@if exp="1"`,
+        `ligne 1[p]ligne 2`,
+        `@endif`,
+        `@eval exp="f.afterP = 'yes'"`,
+      ].join("\n")))
+    );
+    const step1 = runtime.step();
+    expect(step1.stop?.kind).toBe("click");
+    expect(fvars(runtime).afterP).toBeUndefined();
+    const step2 = runtime.step();
+    expect(step2.stop?.kind).toBe("click");
+    expect(fvars(runtime).afterP).toBe("yes");
+  });
 });
