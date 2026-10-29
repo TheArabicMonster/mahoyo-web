@@ -9,6 +9,7 @@ import {
   findAssetViolations,
   formatViolations,
   getAssetExtension,
+  parseNulSeparated,
 } from "../../../tools/check-no-assets-lib.js";
 
 describe("getAssetExtension", () => {
@@ -105,5 +106,17 @@ describe("formatViolations", () => {
 
   it("retourne une chaîne vide si aucune violation", () => {
     expect(formatViolations([])).toBe("");
+  });
+});
+
+describe("parseNulSeparated", () => {
+  it("garde les noms non ASCII intacts (sinon l'extension serait masquée)", () => {
+    const files = parseNulSeparated("é.tlg\0背景.png\0a b.ks\0");
+    expect(files).toEqual(["é.tlg", "背景.png", "a b.ks"]);
+    expect(findAssetViolations(files, new Set()).map((v) => v.path)).toEqual(files);
+  });
+
+  it("ignore les entrées vides", () => {
+    expect(parseNulSeparated("")).toEqual([]);
   });
 });

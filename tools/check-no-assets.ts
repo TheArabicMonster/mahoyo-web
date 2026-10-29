@@ -10,7 +10,7 @@
 import { execFileSync } from "child_process";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { findAssetViolations, formatViolations } from "./check-no-assets-lib.js";
+import { findAssetViolations, formatViolations, parseNulSeparated } from "./check-no-assets-lib.js";
 
 const ALLOWLIST_PATH = join(import.meta.dirname, "allowed-assets.txt");
 
@@ -24,8 +24,10 @@ function loadAllowlist(): Set<string> {
 }
 
 function listTrackedFiles(): string[] {
-  const raw = execFileSync("git", ["ls-files"], { encoding: "utf-8" });
-  return raw.split("\n").filter((line) => line.length > 0);
+  // -z : sans cela git met entre guillemets et échappe en octal les noms non ASCII
+  // (ex. "\303\251.tlg"), ce qui masquerait l'extension.
+  const raw = execFileSync("git", ["ls-files", "-z"], { encoding: "utf-8" });
+  return parseNulSeparated(raw);
 }
 
 function main(): void {

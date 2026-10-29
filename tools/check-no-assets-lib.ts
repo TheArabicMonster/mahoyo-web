@@ -7,7 +7,7 @@
  */
 
 export const ASSET_EXTENSIONS = [
-  // Images/textures moteur KiriKari
+  // Images/textures moteur KiriKiri
   ".tlg",
   ".tft",
   // Archives et scripts
@@ -34,6 +34,11 @@ export const ASSET_EXTENSIONS = [
 export interface Violation {
   path: string;
   extension: string;
+}
+
+/** Découpe la sortie de `git ls-files -z` (chemins séparés par NUL). */
+export function parseNulSeparated(raw: string): string[] {
+  return raw.split("\0").filter((entry) => entry.length > 0);
 }
 
 /** Retourne l'extension interdite (minuscule) d'un chemin, ou null. */
