@@ -47,7 +47,9 @@ function buildSummary(report: AuditReport): string {
   const cmdCount = Object.values(report.unknownCommandsGlobal).reduce((a, b) => a + b, 0);
   lines.push(`Commandes inconnues : ${cmdCount}`);
   const assetCount = Object.values(report.missingAssetsGlobal).reduce((a, b) => a + b, 0);
-  lines.push(`Assets manquants : ${assetCount}`);
+  lines.push(`Assets de base manquants : ${assetCount}`);
+  lines.push(`Références à variante résolues : ${report.resolvedVariantRefsGlobal ?? 0}`);
+  lines.push(`Références d'asset de nom vide : ${report.emptyAssetRefsGlobal ?? 0}`);
 
   const topCommands = Object.entries(report.unknownCommandsGlobal)
     .sort((a, b) => b[1] - a[1])
@@ -100,7 +102,13 @@ describe.skipIf(!hasAssets)("Lecture complète du corpus KAG", () => {
       results.push(result);
     }
 
-    const { unknownCommandsGlobal, warningsGlobal, missingAssetsGlobal } = aggregateGlobal(results);
+    const {
+      unknownCommandsGlobal,
+      warningsGlobal,
+      missingAssetsGlobal,
+      resolvedVariantRefsGlobal,
+      emptyAssetRefsGlobal,
+    } = aggregateGlobal(results);
     const totalDurationMs = results.reduce((acc, r) => acc + r.durationMs, 0);
     const scriptsWithErrors = results.filter((r) => r.errors.length > 0).length;
     const scriptsWithMaxSteps = results.filter((r) => r.hitMaxSteps).length;
@@ -118,6 +126,8 @@ describe.skipIf(!hasAssets)("Lecture complète du corpus KAG", () => {
       unknownCommandsGlobal,
       warningsGlobal,
       missingAssetsGlobal,
+      resolvedVariantRefsGlobal,
+      emptyAssetRefsGlobal,
     };
 
     // Écrire le rapport (ignoré par git).
