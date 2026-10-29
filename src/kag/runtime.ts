@@ -1016,6 +1016,21 @@ export class Runtime {
         };
         break;
       }
+      case "seact": {
+        // @seact = SE avec délai et fondu
+        // On utilise se:0 pour l'instant (même limitation que @se).
+        this.state.se = instruction.storage;
+        event = {
+          kind: "play",
+          channel: "se:0",
+          storage: instruction.storage,
+          loop: instruction.loop,
+          volume: instruction.volume / 100,
+          fadeIn: instruction.fadeIn,
+          delay: instruction.delay,
+        };
+        break;
+      }
       case "sestop": {
         this.state.se = null;
         event = {
@@ -1259,6 +1274,7 @@ export class Runtime {
       case "playstop":
       case "fadebgm":
       case "se":
+      case "seact":
       case "sestop":
       case "fadese": {
         const ev = this.applyAudio(instruction);
