@@ -1150,8 +1150,13 @@ export class Runtime {
         // Push return address: same page, instruction AFTER the @call.
         // If called from a frame, use the frame's returnIndex (the instruction
         // after the @endif / macro) to avoid resuming inside the block.
-        const currentFrame = this.frames.length > 0 ? this.frames[this.frames.length - 1] : undefined;
-        if (currentFrame && currentFrame.index < currentFrame.instructions.length - 1) {
+        const currentFrame = this.frames.length > 0
+          ? this.frames[this.frames.length - 1]
+          : undefined;
+        const hasUnfinishedFrame = this.frames.some(
+          (f) => f.index < f.instructions.length - 1,
+        );
+        if (hasUnfinishedFrame) {
           this.onWarning("@call inside @if/macro skips remaining instructions until @endif/endmacro");
         }
         const returnIndex = currentFrame?.returnIndex ?? this.context.instructionIndex + 1;

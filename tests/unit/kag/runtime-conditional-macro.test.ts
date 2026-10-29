@@ -582,6 +582,7 @@ describe("Runtime @macro/@endmacro", () => {
   });
 
   it("B1bis: @call dans @if reprend après @endif (limitation connue)", () => {
+    const warnings: string[] = [];
     const s = parse(lex([
       `*page0|`,
       `@if exp="1"`,
@@ -596,12 +597,14 @@ describe("Runtime @macro/@endmacro", () => {
       `@pg`,
     ].join("\n")));
     const runtime = new Runtime(s);
+    runtime.onWarning = (msg) => warnings.push(msg);
     runtime.step();
     expect(fvars(runtime).subCalled).toBe("yes");
     expect(fvars(runtime).afterIf).toBe("yes");
     // Known limitation: with nested frames, @call returns after the @endif,
     // so instructions between @call and @endif are skipped.
     expect(fvars(runtime).afterCallInIf).toBeUndefined();
+    expect(warnings.some((w) => w.includes("@call inside @if/macro"))).toBe(true);
   });
 
   it("B3bis: @jump dans @if vers un label de la même page", () => {
