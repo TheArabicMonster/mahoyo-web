@@ -49,6 +49,7 @@ class ScriptedRuntime implements RuntimeLike {
         evalGlobal: {},
       },
       callStack: [],
+      macros: {},
     };
   }
   async loadSaveData(data: RuntimeSaveData): Promise<boolean> {

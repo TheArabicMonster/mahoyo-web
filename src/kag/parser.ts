@@ -31,7 +31,7 @@ function parsePageLayer(value: string | undefined): "fore" | "back" | undefined 
 }
 
 
-function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
+export function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
   const { name, args } = token;
 
   switch (name) {
@@ -88,6 +88,7 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
         time: parseIntArg(args.time),
         nowait: args.nowait === "1",
         canskip: args.canskip !== "0",
+        cond: args.exp ?? args.cond,
       };
     case "fgact":
     case "partbgact": {
@@ -358,7 +359,8 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
       // storage est un nom de fichier : on garde la casse et l'extension.
       const target = (args.target ?? "").replace(/^\*/, "") || undefined;
       const storage = args.storage || undefined;
-      return { kind: "jump", target, storage };
+      const cond = args.exp ?? args.cond;
+      return { kind: "jump", target, storage, cond };
     }
     case "call": {
       // @call target=*label (intra-script) ou @call storage=xxx.ks (inter-script)
@@ -369,11 +371,19 @@ function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
     }
     case "return":
       return { kind: "return" };
+    case "l":
+      // @l en commande = pause texte (équivalent au tag [l]).
+      return { kind: "text", segments: [{ pause: true }] };
+    case "p":
+      // @p en commande = page break (équivalent à @pg).
+      return { kind: "break" };
     case "r":
       // @r en commande = saut de ligne (équivalent au tag [r]).
       return { kind: "break" };
-    case "eval":
-      return { kind: "eval", expression: args.exp ?? "" };
+    case "eval": {
+      const cond = args.exp_cond ?? args.cond;
+      return { kind: "eval", expression: args.exp ?? "", cond };
+    }
     default:
       return { kind: "raw", command: name, args };
   }
@@ -546,7 +556,8 @@ export function parse(tokens: Token[]): ParsedScript {
   function parseConditional(tokens: Token[], start: number): { instruction: Instruction; nextIndex: number } {
     const ifToken = tokens[start] as Extract<Token, { type: "command" }>;
     const branches: Array<{ cond?: string; instructions: Instruction[] }> = [];
-    let currentCond: string | undefined = ifToken.args.cond;
+    // Le vrai script Mahoyo utilise exp=, pas cond=
+    let currentCond: string | undefined = ifToken.args.exp ?? ifToken.args.cond;
     let i = start + 1;
 
     while (i <= tokens.length) {
@@ -559,7 +570,7 @@ export function parse(tokens: Token[]): ParsedScript {
 
       if (terminator === "elsif") {
         const elsifToken = tokens[nextIndex] as Extract<Token, { type: "command" }>;
-        currentCond = elsifToken.args.cond;
+        currentCond = elsifToken.args.exp ?? elsifToken.args.cond;
         i = nextIndex + 1;
       } else if (terminator === "else") {
         const elseRes = parseBlockInstructions(tokens, nextIndex + 1, ["endif"]);
@@ -583,13 +594,27 @@ export function parse(tokens: Token[]): ParsedScript {
   function parseMacro(tokens: Token[], start: number): { instruction: Instruction; nextIndex: number } {
     const macroToken = tokens[start] as Extract<Token, { type: "command" }>;
     const name = macroToken.args.name ?? "";
-    const { instructions, terminator, nextIndex } = parseBlockInstructions(tokens, start + 1, ["endmacro"]);
-    if (terminator !== "endmacro") {
+    // Collect raw tokens between @macro and @endmacro for deferred parsing
+    // (substitution of %param|default must happen before parseCommand).
+    let i = start + 1;
+    const rawTokens: Token[] = [];
+    let depth = 1; // handle nested @macro
+    while (i < tokens.length) {
+      const t = tokens[i];
+      if (t.type === "command" && t.name === "macro") depth++;
+      if (t.type === "command" && t.name === "endmacro") {
+        depth--;
+        if (depth === 0) break;
+      }
+      rawTokens.push(t);
+      i++;
+    }
+    if (depth > 0) {
       console.warn(`Missing @endmacro for @macro starting at token ${start}`);
     }
     return {
-      instruction: { kind: "macrodef", name, instructions },
-      nextIndex: terminator === "endmacro" ? nextIndex + 1 : tokens.length,
+      instruction: { kind: "macrodef", name, rawTokens },
+      nextIndex: i < tokens.length ? i + 1 : tokens.length,
     };
   }
 

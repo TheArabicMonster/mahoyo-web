@@ -285,4 +285,122 @@ describe("Runtime @macro/@endmacro", () => {
     expect(fvars(runtime).macro_taken).toBe("yes");
     expect(runtime.rawCount).toBe(0);
   });
+
+  it("@if utilise exp= (syntaxe Mahoyo réelle)", () => {
+    const runtime = new Runtime(
+      script(
+        `@if exp="1"`,
+        `@eval exp="f.branch = 'then'"`,
+        `@else`,
+        `@eval exp="f.branch = 'else'"`,
+        `@endif`,
+      ),
+    );
+    runtime.step();
+    expect(fvars(runtime).branch).toBe("then");
+  });
+
+  it("@if exp= avec expression TJS (void → undefined)", () => {
+    const runtime = new Runtime(
+      script(
+        `@eval exp="f.val = void"`,
+        `@if exp="f.val === void"`,
+        `@eval exp="f.result = 'is_void'"`,
+        `@else`,
+        `@eval exp="f.result = 'not_void'"`,
+        `@endif`,
+      ),
+    );
+    runtime.step();
+    expect(fvars(runtime).result).toBe("is_void");
+  });
+
+  it("@jump cond= saute si condition vraie", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@eval exp="f.flag = 1"`,
+      `@jump cond="f.flag === 1" target=skipped`,
+      `@eval exp="f.reached = 'no'"`,
+      `@pg`,
+      `*skipped|`,
+      `@eval exp="f.reached = 'yes'"`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).reached).toBe("yes");
+    expect(fvars(runtime).flag).toBe(1);
+  });
+
+  it("@jump cond= ne saute pas si condition fausse", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@eval exp="f.flag = 0"`,
+      `@jump cond="f.flag === 1" target=skipped`,
+      `@eval exp="f.reached = 'after_jump'"`,
+      `@pg`,
+      `*skipped|`,
+      `@eval exp="f.reached = 'skipped'"`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).reached).toBe("after_jump");
+  });
+
+  it("@eval cond= n'évalue que si condition vraie", () => {
+    const runtime = new Runtime(
+      script(
+        `@eval exp="f.x = 10" cond="1"`,
+        `@eval exp="f.y = 20" cond="0"`,
+      ),
+    );
+    runtime.step();
+    expect(fvars(runtime).x).toBe(10);
+    expect(fvars(runtime).y).toBeUndefined();
+  });
+
+  it("macro avec paramètres %page|fore (substitution)", () => {
+    const runtime = new Runtime(
+      script(
+        `@macro name=do_clall`,
+        `@clall page=%page|fore`,
+        `@endmacro`,
+        `@do_clall page=back`,
+      ),
+    );
+    runtime.step();
+    // The macro expansion should have executed @clall page=back (not page=fore).
+    // We verify by checking that the page= was substituted correctly.
+    // @clall on back → no scene event (back operations emit no event).
+    const save = runtime.getSaveData();
+    // After @clall page=back, back.layers should be empty.
+    expect(save.state.back.layers.length).toBe(0);
+  });
+
+  it("macro : mp (macro params) accessible dans les expressions", () => {
+    const runtime = new Runtime(
+      script(
+        `@macro name=set_val`,
+        `@eval exp="f.from_mp = mp.myparam"`,
+        `@endmacro`,
+        `@set_val myparam=42`,
+      ),
+    );
+    runtime.step();
+    expect(fvars(runtime).from_mp).toBe(42);
+  });
+
+  it("expression TJS : & préfixe traité comme no-op", () => {
+    const runtime = new Runtime(
+      script(
+        `@eval exp="f.x = 5"`,
+        `@if exp="&f.x === 5"`,
+        `@eval exp="f.result = 'ok'"`,
+        `@endif`,
+      ),
+    );
+    runtime.step();
+    expect(fvars(runtime).result).toBe("ok");
+  });
 });

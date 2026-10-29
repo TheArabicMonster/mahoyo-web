@@ -285,8 +285,12 @@ describe("parse", () => {
     expect(macro).toBeDefined();
     if (macro && macro.kind === "macrodef") {
       expect(macro.name).toBe("toto");
-      expect(macro.instructions.length).toBe(1);
-      expect(macro.instructions[0].kind).toBe("eval");
+      // rawTokens contains all tokens between @macro and @endmacro
+      // (linebreaks, commands, etc.)
+      expect(macro.rawTokens.length).toBeGreaterThanOrEqual(1);
+      const evalToken = macro.rawTokens.find((t) => t.type === "command");
+      expect(evalToken).toBeDefined();
+      expect((evalToken as any)?.name).toBe("eval");
     }
   });
 });

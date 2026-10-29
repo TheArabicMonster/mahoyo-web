@@ -60,6 +60,7 @@ export class FakeRuntime {
         effect: null,
       },
       callStack: [],
+      macros: {},
     };
   }
 
