@@ -2,6 +2,8 @@
 
 Découpage en épics. Chaque épic est une milestone GitHub, et chaque ligne est portée par une issue.
 
+Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (voir la fin du document).
+
 ## E0 — Gouvernance & socle 🔄
 
 - Structure du repo, docs, templates, Project GitHub, backlog initial.
@@ -54,3 +56,24 @@ Découpage en épics. Chaque épic est une milestone GitHub, et chaque ligne est
 - Modules dédiés : audio, UI, input, rendering.
 - Sauvegardes robustes avec thumbnails.
 - Packaging et déploiement.
+
+## Jalons de livraison
+
+### v1.0 — Jeu complet jouable sur desktop
+
+Objectif : lecture complète des 234 scripts, du prologue à la dernière scène, sur Chrome et Firefox récents (desktop).
+
+- Complétude, commandes KAG, navigation par chapitres, persistance, pipeline, légal, qualité : voir la section « DoD — v1.0 » de [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md).
+- Épics concernés : E1 à E4, E7, et la part de E6 consacrée aux tests de non-régression et e2e.
+
+### v1.1 — Confort, accessibilité et finitions
+
+Reporté après la v1.0 :
+
+- Mobile et tablette (interface tactile, responsive).
+- PWA et mode hors ligne.
+- Accessibilité conforme WCAG AA.
+- Thème Mahoyo complet.
+- Objectifs de performance chiffrés (temps de chargement, fluidité), à définir dans l'issue dédiée.
+- Issues de priorité `p3`.
+- Épics concernés : E5 et le reste de E6.
