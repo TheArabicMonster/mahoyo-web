@@ -162,7 +162,14 @@ export class Runtime {
    * expansions de macros. Chaque frame porte son index d'instruction et sa
    * position dans un éventuel segment texte ([l]).
    */
-  private frames: Array<{ instructions: Instruction[]; index: number; segmentIndex: number; macroParams?: Record<string, unknown> }> = [];
+  private frames: Array<{
+    instructions: Instruction[];
+    index: number;
+    segmentIndex: number;
+    macroParams?: Record<string, unknown>;
+    /** Instruction index in the calling page to resume after this frame completes (for @call return). */
+    returnIndex?: number;
+  }> = [];
 
   constructor(
     script: ParsedScript,
@@ -281,8 +288,9 @@ export class Runtime {
 
   /** Replace %param|default patterns in a single string. */
   private substituteMacroParams(value: string, callArgs: Record<string, string>): string {
-    // %param|default → replace with callArgs[param] or default
-    // %param without default and no value → empty string (attribute will be cleaned up)
+    // Replace %param|default and %param anywhere in the value.
+    // A lone "%" (e.g. JS modulo operator) is left untouched because it is not
+    // followed by a parameter name.
     return value.replace(/%(\w+)(?:\|([^%]*))?/g, (_match, param, defaultVal) => {
       const provided = callArgs[param];
       if (provided !== undefined && provided !== "") return provided;
@@ -350,11 +358,9 @@ export class Runtime {
           break;
         }
         case "tag": {
-          if (token.name === "l") {
+          if (token.name === "l" || token.name === "p") {
             instructions.push({ kind: "text", segments: [{ pause: true }] });
           } else if (token.name === "r") {
-            instructions.push({ kind: "break" });
-          } else if (token.name === "p") {
             instructions.push({ kind: "break" });
           }
           i++;
@@ -440,7 +446,7 @@ export class Runtime {
           break;
         }
         case "tag": {
-          if (token.name === "l") {
+          if (token.name === "l" || token.name === "p") {
             instructions.push({ kind: "text", segments: [{ pause: true }] });
           } else if (token.name === "r") {
             instructions.push({ kind: "break" });
@@ -464,8 +470,15 @@ export class Runtime {
     return { instructions, terminator: null, nextIndex: tokens.length };
   }
 
-  private pushFrame(instructions: Instruction[], macroParams?: Record<string, unknown>) {
-    this.frames.push({ instructions, index: 0, segmentIndex: 0, macroParams: macroParams ?? (this.frames.length > 0 ? this.macroParams : undefined) });
+  private pushFrame(instructions: Instruction[], macroParams?: Record<string, unknown>, returnIndex?: number) {
+    const parentFrame = this.frames.length > 0 ? this.frames[this.frames.length - 1] : undefined;
+    this.frames.push({
+      instructions,
+      index: 0,
+      segmentIndex: 0,
+      macroParams: macroParams ?? (parentFrame ? parentFrame.macroParams : undefined),
+      returnIndex: returnIndex ?? parentFrame?.returnIndex,
+    });
   }
 
   private processFrameText(
@@ -544,10 +557,15 @@ export class Runtime {
 
       const startScriptName = this.context.scriptName;
       const startPc = this.context.pc;
+      const startInstructionIndex = this.context.instructionIndex;
       const result = this.applyInstruction(instruction);
       events.push(...result.events);
 
-      if (this.context.scriptName !== startScriptName || this.context.pc !== startPc) {
+      if (
+        this.context.scriptName !== startScriptName ||
+        this.context.pc !== startPc ||
+        this.context.instructionIndex !== startInstructionIndex
+      ) {
         // Un jump/call a changé le contexte : on abandonne les frames.
         this.frames = [];
         this.macroParams = savedMacroParams;
@@ -557,11 +575,20 @@ export class Runtime {
       if (result.stop) {
         frame.index += 1;
         this.macroParams = savedMacroParams;
+        // A loadScript discards pending frames so the new script starts clean (B7).
+        if (result.stop.kind === "loadScript") {
+          this.frames = [];
+        }
         return result.stop;
       }
 
       frame.index += 1;
+      // Restore macroParams at end of iteration to prevent leakage (B6).
+      this.macroParams = savedMacroParams;
     }
+
+    // Final restoration when drainFrames completes normally.
+    this.macroParams = this.frames.length > 0 ? this.macroParams : {};
 
     return null;
   }
@@ -1118,9 +1145,13 @@ export class Runtime {
       const pageIdx = this.context.script.labels[instruction.target];
       if (pageIdx !== undefined) {
         // Push return address: same page, instruction AFTER the @call.
+        // If called from a frame, use the frame's returnIndex (the instruction
+        // after the @endif / macro) to avoid resuming inside the block.
+        const currentFrame = this.frames.length > 0 ? this.frames[this.frames.length - 1] : undefined;
+        const returnIndex = currentFrame?.returnIndex ?? this.context.instructionIndex + 1;
         this.callStack.push({
           ...this.context,
-          instructionIndex: this.context.instructionIndex + 1,
+          instructionIndex: returnIndex,
           segmentIndex: 0,
         });
         this.context.pc = pageIdx;
@@ -1279,10 +1310,12 @@ export class Runtime {
       case "conditional": {
         // Évalue les branches dans l'ordre et empile la première dont la
         // condition est vraie (ou la branche @else sans condition).
+        // Top-level @if needs a return index for @call inside it (resume after @endif).
+        const returnIndex = this.frames.length === 0 ? this.context.instructionIndex + 1 : undefined;
         for (const branch of instruction.branches) {
           if (branch.cond === undefined || this.evaluateCondition(branch.cond)) {
             if (branch.instructions.length > 0) {
-              this.pushFrame(branch.instructions);
+              this.pushFrame(branch.instructions, undefined, returnIndex);
             }
             break;
           }
@@ -1306,7 +1339,9 @@ export class Runtime {
           if (instructions.length > 0) {
             // Build macro params for the duration of the frame.
             const params = this.buildMacroParams(instruction.args);
-            this.frames.push({ instructions, index: 0, segmentIndex: 0, macroParams: params });
+            // Top-level macros need a return index for @call inside them.
+            const returnIndex = this.frames.length === 0 ? this.context.instructionIndex + 1 : undefined;
+            this.pushFrame(instructions, params, returnIndex);
           }
           break;
         }
@@ -1408,6 +1443,10 @@ export class Runtime {
         events.push(...result.events);
         if (result.stop) {
           this.context.instructionIndex += 1;
+          // A loadScript from a top-level instruction must discard pending frames (B7).
+          if (result.stop.kind === "loadScript") {
+            this.frames = [];
+          }
           return this.makeStep(events, result.stop);
         }
 
@@ -1432,6 +1471,12 @@ export class Runtime {
         const frameStop = this.drainFrames(events);
         if (frameStop) {
           return this.makeStep(events, frameStop);
+        }
+        // Si drainFrames a changé le contexte (jump/call depuis une frame),
+        // on sort de la boucle interne pour recommencer avec les nouvelles instructions.
+        if (this.context.scriptName !== startScriptName || this.context.pc !== startPc) {
+          contextChanged = true;
+          break;
         }
       }
 

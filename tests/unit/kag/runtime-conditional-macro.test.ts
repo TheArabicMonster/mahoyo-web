@@ -481,4 +481,101 @@ describe("Runtime @macro/@endmacro", () => {
     const macros = save.macros as Record<string, unknown>;
     expect(macros["hello"]).toBeTypeOf("object");
   });
+
+  it("B1: @call dans @if reprend l'instruction après @endif", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@if exp="1"`,
+      `@call target=sub`,
+      `@endif`,
+      `@eval exp="f.afterIf = 'yes'"`,
+      `@pg`,
+      `*sub|`,
+      `@eval exp="f.subCalled = 'yes'"`,
+      `@return`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).subCalled).toBe("yes");
+    expect(fvars(runtime).afterIf).toBe("yes");
+  });
+
+  it("B2: @call dans macro reprend l'instruction après macro", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@macro name=do_call`,
+      `@call target=sub`,
+      `@endmacro`,
+      `@do_call`,
+      `@eval exp="f.afterMacro = 'yes'"`,
+      `@pg`,
+      `*sub|`,
+      `@eval exp="f.subCalled = 'yes'"`,
+      `@return`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).subCalled).toBe("yes");
+    expect(fvars(runtime).afterMacro).toBe("yes");
+  });
+
+  it("B3: @jump dans @if (même page) n'exécute pas les instructions suivantes", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@if exp="1"`,
+      `@jump target=target`,
+      `@eval exp="f.shouldNotRun = 'oops'"`,
+      `@endif`,
+      `@pg`,
+      `*target|`,
+      `@eval exp="f.reached = 'yes'"`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).shouldNotRun).toBeUndefined();
+    expect(fvars(runtime).reached).toBe("yes");
+  });
+
+  it("B4: %param n'est pas substitué au milieu d'une valeur", () => {
+    // Inside the macro body, "7 % 5" should remain the JS modulo expression,
+    // not be interpreted as a parameter substitution.
+    const runtime = new Runtime(
+      script(
+        `@macro name=calc`,
+        `@eval exp="f.r = 7 % 5"`,
+        `@endmacro`,
+        `@calc`,
+      ),
+    );
+    runtime.step();
+    expect(fvars(runtime).r).toBe(2);
+  });
+
+  it("B4bis: %param au début d'une valeur est substitué", () => {
+    const runtime = new Runtime(
+      script(
+        `@macro name=set_x`,
+        `@eval exp="f.x = %value"`,
+        `@endmacro`,
+        `@set_x value=42`,
+      ),
+    );
+    runtime.step();
+    expect(fvars(runtime).x).toBe(42);
+  });
+
+  it("B5: [p] dans @if produit une pause clic", () => {
+    const runtime = new Runtime(
+      script(
+        `@if exp="1"`,
+        `texte avant[p]texte après`,
+        `@endif`,
+      ),
+    );
+    const step1 = runtime.step();
+    expect(step1.stop?.kind).toBe("click");
+  });
 });
