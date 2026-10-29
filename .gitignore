@@ -40,3 +40,6 @@ public/assets/
 .pipeline-work/
 decrypted/
 tmp-*/
+
+# Rapports d'audit (citant des noms d'assets du jeu)
+reports/

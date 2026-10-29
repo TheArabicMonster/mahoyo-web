@@ -73,12 +73,12 @@ describe.skipIf(!hasAssets)("Prologue 1-0.ks", () => {
     //
     // Inventaire (issue #51) :
     // - @cm4pg : reset de mise en page texte (macro @pg le couvre structurellement).
-    // - [wait] : tag inline de pause texte (3 occurrences, lignes 58/107/248).
-    //   Le tag form n'est pas géré par le parser (seul @wait command l'est).
     // - timeline_object : @eval TLA animé (non essentiel).
+    //
+    // Note : les tags inline [chgfg], [fg], [se], [wait] étaient auparavant
+    // droppés comme raw mais sont maintenant routés via parseCommand (PR #82).
     const ALLOWED_RAW_PREFIXES = [
       "commande non gérée: @cm4pg",
-      "commande non gérée: @wait", // tag [wait] inline → raw avec command "wait"
       "timeline_object",
     ];
     const unexpectedWarnings = warnings.filter(
@@ -87,10 +87,11 @@ describe.skipIf(!hasAssets)("Prologue 1-0.ks", () => {
     expect(unexpectedWarnings).toEqual([]);
 
     // Le compteur rawCount du runtime doit refléter les commandes droppées
-    // (3 × [wait] + 1 × @cm4pg = 4). Si ce nombre change, c'est une régression
+    // (1 × @cm4pg). Les tags inline [chgfg]/[fg]/[se]/[wait] sont désormais
+    // parsés via parseCommand. Si ce nombre change, c'est une régression
     // de couverture de commandes — mettre à jour l'allowlist ci-dessus après
     // vérification.
-    expect(runtime.rawCount).toBe(4);
+    expect(runtime.rawCount).toBe(1);
   });
 });
 

@@ -522,8 +522,12 @@ export function parse(tokens: Token[]): ParsedScript {
             flushBlockText();
             instructions.push({ kind: "text", segments: [{ pause: true }] });
           } else {
+            // Inline tags like [chgfg ...], [fg ...], [se ...] are semantically
+            // identical to their @command forms. Route through parseCommand.
             flushBlockText();
-            instructions.push({ kind: "raw", command: token.name, args: token.args });
+            instructions.push(
+              parseCommand({ type: "command", name: token.name, args: token.args }),
+            );
           }
           i++;
           break;
@@ -658,8 +662,12 @@ export function parse(tokens: Token[]): ParsedScript {
           pendingRuby = token.args.text ?? null;
           pendingRubyCharCount = parseIntArg(token.args.char, 1);
         } else {
+          // Inline tags like [chgfg ...], [fg ...], [se ...] are semantically
+          // identical to their @command forms. Route through parseCommand.
           flushText();
-          current.instructions.push({ kind: "raw", command: token.name, args: token.args });
+          current.instructions.push(
+            parseCommand({ type: "command", name: token.name, args: token.args }),
+          );
         }
         break;
       }
