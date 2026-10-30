@@ -525,6 +525,19 @@ describe("DomStageRenderer", () => {
     expect(rt?.textContent).toBe("え");
   });
 
+  it("affiche un fond dont le nom contient des parenthèses ou des espaces", async () => {
+    for (const bg of ["bg01玄関-(雨)", "image avec espace", "山城01(近)"]) {
+      await renderer.apply(
+        [{ kind: "scene", scene: { bg, sprites: [], effect: null }, transition: { method: "none" } }],
+        { instant: true, signal: new AbortController().signal },
+      );
+      const el = root.querySelector("#stage-bg") as HTMLElement;
+      // Un url() sans guillemets serait rejeté par le navigateur : la propriété resterait vide.
+      expect(el.style.backgroundImage, bg).not.toBe("");
+      expect(el.style.backgroundImage).toContain("url(");
+    }
+  });
+
   it("pose le ruby une seule fois sur une base de plusieurs caractères", async () => {
     await renderer.apply([
       { kind: "clearText" },

@@ -17,6 +17,7 @@ import type { DisplaySettings, RunOptions, StageRenderer, StageRendererDeps } fr
 import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
 import { partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { textStyleToCss } from "./text-style.js";
+import { cssUrl } from "./css-url.js";
 
 /** Un caractère à afficher, avec son annotation ruby et son style CSS éventuels. */
 type TextUnit = {
@@ -536,7 +537,7 @@ export class DomStageRenderer implements StageRenderer {
   private renderScene(instant: boolean): void {
     if (!this.bgEl || !this.spritesEl) return;
     const bg = this.currentScene.bg;
-    this.bgEl.style.backgroundImage = bg ? `url(${this.resolver.background(bg)})` : "none";
+    this.bgEl.style.backgroundImage = bg ? cssUrl(this.resolver.background(bg)) : "none";
     this.bgEl.style.backgroundColor = bg ? "" : "#000";
     // Positionnement natif (repère 1024×576) : left/top explicites sinon centrage.
     if (bg) {
@@ -590,7 +591,7 @@ export class DomStageRenderer implements StageRenderer {
         wrapper.style.transform = partbgWrapperTransform();
         // Fond derrière le crop (bgstorage).
         if (crop.bgStorage) {
-          wrapper.style.backgroundImage = `url(${this.resolver.background(crop.bgStorage)})`;
+          wrapper.style.backgroundImage = cssUrl(this.resolver.background(crop.bgStorage));
           wrapper.style.backgroundSize = "auto";
           wrapper.style.backgroundPosition = "0 0";
         } else {
@@ -688,7 +689,7 @@ export class DomStageRenderer implements StageRenderer {
       const overlay = document.createElement("div");
       overlay.className = "mh-stage-bg mh-stage-bg-overlay";
       overlay.style.cssText = this.bgEl.style.cssText;
-      overlay.style.backgroundImage = `url(${this.resolver.background(oldBg)})`;
+      overlay.style.backgroundImage = cssUrl(this.resolver.background(oldBg));
       if (from.bgLeft !== undefined && from.bgTop !== undefined) {
         overlay.style.backgroundPosition = `${from.bgLeft}px ${from.bgTop}px`;
       }
