@@ -124,7 +124,8 @@ export type Instruction =
   | { kind: "playresume"; time: number; volume: number; storage?: string }
   | { kind: "fadebgm"; time: number; volume?: number }
   | { kind: "se"; storage: string; volume?: number; loop?: boolean; delay?: number }
-  | { kind: "seact"; storage: string; delay: number; fadeIn: number; volume: number; loop: boolean }
+  | { kind: "seact"; storage: string; delay: number; fadeIn: number; volume: number; loop: boolean; cond?: string }
+  | { kind: "playtimeline"; scene: number; next?: number }
   | { kind: "sestop"; storage?: string; time?: number }
   | { kind: "fadese"; storage?: string; time: number; volume: number }
   | { kind: "quake"; vmax: number; hmax: number; time: number; interval: number }

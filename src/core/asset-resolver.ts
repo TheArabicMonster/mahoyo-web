@@ -42,6 +42,8 @@ export type AssetResolver = {
   scenario(storage: string): string;
   /** URL de la table d'enchaînement des scripts (`story-chain.json`). */
   chain(): string;
+  /** URL des timelines d'animation extraites des scripts (`timelines.json`). */
+  timelines(): string;
 };
 
 export type AssetResolverOptions = {
@@ -105,6 +107,9 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
     },
     chain(): string {
       return `${baseUrl}/story-chain.json`;
+    },
+    timelines(): string {
+      return `${baseUrl}/timelines.json`;
     },
   };
 }

@@ -32,6 +32,11 @@ describe("parseTjs", () => {
     expect(parseTjs('%[ "t" => string "a\\"b\\nc é 背景" ]')).toEqual({ t: 'a"b\nc é 背景' });
   });
 
+  it("lit les littéraux nus de Scripts.eval : nombres, booléens, null, préfixe (const)", () => {
+    const v = parseTjs('(const) %[ "a" => 576, "b" => -3, "c" => 0.5, "d" => true, "e" => false, "f" => null, "g" => (const) [ 1, "x" ] ]');
+    expect(v).toEqual({ a: 576, b: -3, c: 0.5, d: true, e: false, f: null, g: [1, "x"] });
+  });
+
   it("signale une valeur inattendue avec sa position", () => {
     expect(() => parseTjs('%[ "a" => ??? ]')).toThrow(/position/);
   });
