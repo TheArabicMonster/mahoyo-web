@@ -52,6 +52,69 @@ describe("decodeGc", () => {
   });
 });
 
+/** Page du graphe : titre et blocs. */
+const page = (title: string, blocks: string[]): string => `%[ "title" => string "${title}", "blocks" => [ ${blocks.join(", ")} ] ]`;
+const pagedGraph = (first: number, pages: string[]): string => `%[ "first" => int ${first}, "pages" => [ ${pages.join(", ")} ] ]`;
+
+describe("buildStoryChain — chapitres", () => {
+  const chaptersOf = (first: number, pages: string[]) => buildStoryChain(parseTjs(pagedGraph(first, pages))).chain.chapters;
+
+  it("une page = un chapitre, titré, avec son script d'entrée", () => {
+    const chapters = chaptersOf(1, [
+      page("Un", [block(1, "a-1.ks", [{ to: 2 }]), block(2, "a-2.ks")]),
+      page("Deux", [block(3, "b-1.ks", [{ to: 4 }]), block(4, "b-2.ks")]),
+    ]);
+    expect(chapters).toEqual([
+      { id: "a-1", label: "Un", file: "a-1.ks", arc: "Un" },
+      { id: "b-1", label: "Deux", file: "b-1.ks", arc: "Deux" },
+    ]);
+  });
+
+  it("un interlude partagé n'est pas une entrée : le chapitre commence après lui", () => {
+    const chapters = chaptersOf(1, [
+      page("Un", [block(1, "a-1.ks", [{ to: 10 }])]),
+      page("Deux", [block(10, "tea.ks", [{ to: 3 }]), block(3, "b-1.ks", [{ to: 4 }]), block(4, "b-2.ks")]),
+      page("Trois", [block(11, "tea.ks", [{ to: 5 }]), block(5, "c-1.ks")]),
+    ]);
+    expect(chapters!.map((c) => c.file)).toEqual(["a-1.ks", "b-1.ks", "c-1.ks"]);
+  });
+
+  it("ignore une page sans script", () => {
+    const chapters = chaptersOf(2, [page("Vide", [block(1, "")]), page("Un", [block(2, "a-1.ks")])]);
+    expect(chapters!.map((c) => c.file)).toEqual(["a-1.ks"]);
+  });
+
+  it("une page à plusieurs entrées : l'histoire d'abord, les bonus portent le nom de leur script", () => {
+    const chapters = chaptersOf(1, [
+      page("Sept", [
+        block(1, "bonus.ks"),
+        block(10, "tea.ks", [{ to: 2 }]),
+        block(2, "s-1.ks"),
+      ]),
+      page("Fin", [block(11, "tea.ks")]),
+    ]);
+    expect(chapters!.map((c) => c.file)).toEqual(["s-1.ks", "bonus.ks"]);
+    expect(chapters![0]!.label).toBe("Sept");
+    expect(chapters![1]!.label).toBe("Sept (bonus)");
+  });
+
+  it("une page à trop d'entrées (embranchements) ne garde que la première", () => {
+    const blocks = Array.from({ length: 8 }, (_, i) => block(i + 1, `w-${i}.ks`));
+    const chapters = chaptersOf(1, [page("Wik", blocks)]);
+    expect(chapters!.map((c) => c.file)).toEqual(["w-0.ks"]);
+  });
+
+  it("sans titre de page, le nom du script sert de libellé", () => {
+    const chapters = chaptersOf(1, [`%[ "blocks" => [ ${block(1, "a-1.ks")} ] ]`]);
+    expect(chapters![0]!.label).toBe("a-1");
+  });
+
+  it("un script partagé par deux pages est un interlude : jamais un chapitre", () => {
+    const chapters = chaptersOf(1, [page("Un", [block(1, "a.ks", [{ to: 3 }])]), page("Deux", [block(2, "a.ks"), block(3, "b.ks")])]);
+    expect(chapters!.map((c) => c.file)).toEqual(["b.ks"]);
+  });
+});
+
 describe("buildStoryChain", () => {
   const build = (first: number, blocks: string[]) => buildStoryChain(parseTjs(graph(first, blocks)));
 

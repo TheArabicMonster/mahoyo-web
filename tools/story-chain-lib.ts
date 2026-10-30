@@ -8,7 +8,7 @@
  * Logique pure (sans disque ni réseau) : voir `story-chain.ts` pour l'I/O.
  */
 import { inflateSync } from "zlib";
-import type { ChainRoute, StoryChain } from "../src/core/story-chain.js";
+import type { ChainChapter, ChainRoute, StoryChain } from "../src/core/story-chain.js";
 
 // ── Lecture du format ──
 
@@ -254,17 +254,100 @@ export function buildStoryChain(graph: TjsValue): ChainBuild {
     }
   }
 
+  const chapters = buildChapters(graph, blocks, isInterlude, scriptsOf, routesOf);
+
   const firstId = typeof graph.first === "number" ? graph.first : undefined;
   const first = firstId === undefined ? undefined : entries(firstId, new Set())[0]?.files[0];
   if (!first) throw new Error("main.gc : premier script introuvable");
 
   return {
-    chain: { version: 1, first, next },
+    chain: { version: 1, first, next, ...(chapters.length > 0 ? { chapters } : {}) },
     blocks: blocks.size,
     scriptedBlocks,
     sharedScripts: [...shared].sort(),
     danglingRoutes,
   };
+}
+
+/** Au-delà de ce nombre d'entrées, une page n'est plus considérée comme un chapitre linéaire. */
+const MAX_CHAPTER_ENTRIES = 5;
+
+/**
+ * Chapitres de l'écran titre : une page du graphe = un chapitre.
+ *
+ * Le script d'entrée d'une page est celui qu'aucun script de la même page ne précède
+ * (les interludes partagés et les blocs sans script ne comptent pas comme
+ * prédécesseurs). Une page à plusieurs entrées (bonus) en donne plusieurs : celle que
+ * précède un interlude est l'entrée de l'histoire et passe en premier, les autres
+ * portent le nom de leur script.
+ */
+function buildChapters(
+  graph: TjsValue,
+  blocks: Map<number, { [key: string]: TjsValue }>,
+  isInterlude: (scripts: string[]) => boolean,
+  scriptsOf: (block: { [key: string]: TjsValue }) => string[],
+  routesOf: (block: { [key: string]: TjsValue }) => { [key: string]: TjsValue }[],
+): ChainChapter[] {
+  if (!isDict(graph) || !Array.isArray(graph.pages)) return [];
+
+  const pageOf = new Map<number, number>();
+  graph.pages.forEach((page, index) => {
+    if (!isDict(page) || !Array.isArray(page.blocks)) return;
+    for (const b of page.blocks) if (isDict(b) && typeof b.id === "number") pageOf.set(b.id, index);
+  });
+
+  const incoming = new Map<number, number[]>();
+  for (const [id, block] of blocks) {
+    for (const route of routesOf(block)) {
+      if (typeof route.arrival === "number") incoming.set(route.arrival, [...(incoming.get(route.arrival) ?? []), id]);
+    }
+  }
+
+  const real = (id: number): boolean => {
+    const b = blocks.get(id);
+    if (!b) return false;
+    const s = scriptsOf(b);
+    return s.length > 0 && !isInterlude(s);
+  };
+
+  const chapters: ChainChapter[] = [];
+  const seen = new Set<string>();
+  graph.pages.forEach((page, index) => {
+    if (!isDict(page) || !Array.isArray(page.blocks)) return;
+    const title = asString(page.title);
+    const entries = page.blocks
+      .filter((b): b is { [key: string]: TjsValue } => isDict(b) && typeof b.id === "number")
+      .filter((b) => real(b.id as number))
+      .filter((b) => !(incoming.get(b.id as number) ?? []).some((p) => real(p) && pageOf.get(p) === index));
+    // L'entrée de l'histoire (précédée d'un interlude) d'abord, puis par position sur la page.
+    const afterInterlude = (b: { [key: string]: TjsValue }): boolean =>
+      (incoming.get(b.id as number) ?? []).some((p) => {
+        const pb = blocks.get(p);
+        return pb !== undefined && isInterlude(scriptsOf(pb));
+      });
+    entries.sort(
+      (x, y) =>
+        Number(afterInterlude(y)) - Number(afterInterlude(x)) ||
+        (typeof x.top === "number" ? x.top : 0) - (typeof y.top === "number" ? y.top : 0),
+    );
+    // Une page à beaucoup d'entrées est un graphe d'embranchements, pas un chapitre linéaire :
+    // on n'en garde que la première (ex. la page des scripts « wik_* »).
+    const kept = entries.length > MAX_CHAPTER_ENTRIES ? entries.slice(0, 1) : entries;
+    kept.forEach((b, i) => {
+      const file = scriptsOf(b)[0]!;
+      const key = file.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      const base = file.replace(/\.ks$/i, "");
+      chapters.push({
+        id: key.replace(/\.ks$/, ""),
+        label: i === 0 && title ? title : title ? `${title} (${base})` : base,
+        file,
+        arc: title ?? `page ${index}`,
+      });
+    });
+  });
+  return chapters;
 }
 
 /** Lit `main.gc` (contenu binaire) et construit la table. */

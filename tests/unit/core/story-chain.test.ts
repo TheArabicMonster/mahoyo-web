@@ -21,6 +21,25 @@ describe("parseStoryChain", () => {
   });
 });
 
+describe("parseStoryChain — chapitres", () => {
+  const base = { version: 1, first: "a.ks", next: { "a.ks": [] } };
+  const chapter = { id: "1-0", label: "Un", file: "1-0.ks", arc: "Un" };
+
+  it("conserve les chapitres valides", () => {
+    expect(parseStoryChain({ ...base, chapters: [chapter] })?.chapters).toEqual([chapter]);
+  });
+
+  it("accepte une table sans chapitres (générée avant leur ajout)", () => {
+    expect(parseStoryChain(base)?.chapters).toBeUndefined();
+  });
+
+  it("refuse des chapitres mal formés", () => {
+    expect(parseStoryChain({ ...base, chapters: "x" })).toBeNull();
+    expect(parseStoryChain({ ...base, chapters: [{ ...chapter, label: "" }] })).toBeNull();
+    expect(parseStoryChain({ ...base, chapters: [{ id: "a", file: "a.ks" }] })).toBeNull();
+  });
+});
+
 describe("resolveNext", () => {
   it("fin de l'histoire pour un script sans suite ou inconnu", () => {
     const c = chain({ "a.ks": [] });

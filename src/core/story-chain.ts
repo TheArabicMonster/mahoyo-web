@@ -23,12 +23,26 @@ export type ChainRoute = {
   choice?: string;
 };
 
+/** Un chapitre proposé à l'écran titre : une page du graphe d'origine. */
+export type ChainChapter = {
+  /** Identifiant stable (nom du script d'entrée sans extension, en minuscules). */
+  id: string;
+  /** Titre du chapitre, tel que le donne le graphe d'origine. */
+  label: string;
+  /** Script d'entrée. */
+  file: string;
+  /** Regroupement (titre de la page du graphe). */
+  arc: string;
+};
+
 export type StoryChain = {
   version: 1;
   /** Premier script du jeu. */
   first: string;
   /** Sorties de chaque script, dans l'ordre du graphe d'origine. */
   next: Record<string, ChainRoute[]>;
+  /** Chapitres pour l'écran titre (absents des tables générées avant leur ajout). */
+  chapters?: ChainChapter[];
 };
 
 export type NextStep =
@@ -50,6 +64,12 @@ function isRoute(value: unknown): value is ChainRoute {
   );
 }
 
+function isChapter(value: unknown): value is ChainChapter {
+  if (typeof value !== "object" || value === null) return false;
+  const c = value as Record<string, unknown>;
+  return [c.id, c.label, c.file, c.arc].every((v) => typeof v === "string" && v.length > 0);
+}
+
 /** Valide une table désérialisée ; null si elle n'a pas la forme attendue. */
 export function parseStoryChain(data: unknown): StoryChain | null {
   if (typeof data !== "object" || data === null) return null;
@@ -62,7 +82,8 @@ export function parseStoryChain(data: unknown): StoryChain | null {
     if (!Array.isArray(routes) || !routes.every(isRoute)) return null;
     next[script] = routes;
   }
-  return { version: 1, first: d.first, next };
+  if (d.chapters !== undefined && (!Array.isArray(d.chapters) || !d.chapters.every(isChapter))) return null;
+  return { version: 1, first: d.first, next, ...(d.chapters ? { chapters: d.chapters as ChainChapter[] } : {}) };
 }
 
 /** Les noms de scripts se comparent sans tenir compte de la casse (comme KiriKiri). */

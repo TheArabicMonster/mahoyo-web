@@ -64,6 +64,23 @@ généré (`npm run chain` accepte n'importe quel dossier de sortie).
   l'emporte sur les routes sans condition.
 - `choice` : libellé d'une option proposée au joueur quand plusieurs suites sont possibles.
 
+## Chapitres et écran titre
+
+`story-chain.json` contient aussi `chapters` : une entrée par page du graphe d'origine (une page = un
+chapitre), avec le titre de la page et son script d'entrée. L'écran titre l'affiche en grille, sous
+« Nouvelle partie », « Continuer » (autosave), « Charger », « Réglages » et « Flowchart ».
+
+- Le script d'entrée d'une page est celui qu'aucun script de la même page ne précède ; les interludes
+  partagés (`teatime.ks`) et les blocs sans script ne comptent pas comme prédécesseurs. Le chapitre 2
+  commence donc à `2-1.ks`, pas au goûter qui le précède.
+- Une page à plusieurs entrées (bonus : `1.5-*`, `7-ex`, `8-ex`, `8.5`, `nz*`, `sp*`) en donne plusieurs : celle
+  que précède un interlude est l'entrée de l'histoire et passe en premier, les autres portent le nom de leur script.
+- Une page à plus de 5 entrées (la page des scripts `wik_*`) est un graphe d'embranchements, pas un chapitre
+  linéaire : seule sa première entrée est gardée.
+- Sans `chapters` (table générée avant leur ajout), le jeu se limite à son prologue : relancer `npm run chain`.
+- Choisir un chapitre lance son script d'entrée **avec un état initial vide** ; l'enchaînement reprend ensuite
+  normalement. Les variables que le jeu d'origine posait en entrant dans un chapitre (`operate`) ne sont pas appliquées.
+
 ## Règle de choix de la suite
 
 `resolveNext` (`src/core/story-chain.ts`) :
@@ -100,7 +117,6 @@ MAHOYO_ASSETS_DIR=/chemin/assets npx vitest run tests/integration/story-play.tes
   applique pas ; seuls l'ordre des scripts et les choix sont reproduits.
 - **Les conditions** (`room>0`, `Ｚ>0`…) portent sur des variables posées par `operate`, qui n'est
   pas repris : elles valent faux et produisent un avertissement « eval failed ».
-- **Menu de chapitres non fait** : l'accès direct à un chapitre (racines `1.5-*`, `8.5`,
-  bonus `nz*`, `sp*`) n'est pas couvert ici.
+- **État initial d'un chapitre choisi à l'écran titre** : vide (voir ci-dessus).
 - **Branches `wik_*`** : leurs options sont proposées par un menu, mais le comportement des
   variables qu'elles posent n'a pas été vérifié.
