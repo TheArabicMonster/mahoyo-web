@@ -40,6 +40,17 @@ describe.skipIf(!hasFr)("Traduction française installée", () => {
     }
   });
 
+  it("l'index expose les ressources supplémentaires sans texte", () => {
+    const raw = JSON.parse(readFileSync(LANG_FR_PATH, "utf-8"));
+    const index = parseLanguageIndex(raw)!;
+    expect(typeof index.extraAssets).toBe("object");
+    for (const file of index.scripts) {
+      const assets = index.extraAssets[file] ?? [];
+      // Aucun texte de jeu/traduction ne doit apparaître dans les noms d'assets.
+      expect(assets.every((a) => typeof a === "string")).toBe(true);
+    }
+  });
+
   it("les scripts traduits s'exécutent sans erreur bloquante", async () => {
     const raw = JSON.parse(readFileSync(LANG_FR_PATH, "utf-8"));
     const index = parseLanguageIndex(raw)!;

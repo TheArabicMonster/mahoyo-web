@@ -14,6 +14,8 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { decodeTranslationScript, installTranslation } from "./translation-lib.js";
 import { listFiles } from "./pipeline-utils.js";
+import { auditScript } from "./audit-lib.js";
+import type { AssetManifest } from "@/core/asset-manifest.js";
 
 const GITHUB_TREE_URL = "https://api.github.com/repos/IDerr/mahoyo-french/git/trees/master?recursive=1";
 const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/IDerr/mahoyo-french/master";
@@ -149,6 +151,42 @@ async function main(): Promise<void> {
     await writeFile(join(outDir, "scenario", file), text, "utf-8");
   }
 
+  // Chargement du manifest d'assets pour détecter les ressources supplémentaires
+  // référencées par la traduction mais absentes du manifest.
+  let manifest: AssetManifest | null = null;
+  try {
+    manifest = JSON.parse(readFileSync(join(assetsDir, "asset-manifest.json"), "utf-8")) as AssetManifest;
+  } catch {
+    // Pas de manifest : on continue sans extra assets.
+  }
+
+  const originalScriptTexts = new Map<string, string>(originalTexts);
+  const translatedScriptTexts = new Map<string, string>(originalTexts);
+  for (const [file, text] of installed) {
+    translatedScriptTexts.set(file, text);
+  }
+
+  const extraAssets: Record<string, string[]> = {};
+  const extraFrequency: Map<string, number> = new Map();
+
+  if (manifest) {
+    for (const file of index.scripts) {
+      const originalResult = await auditScript("/dev/null/original.ks", file, manifest, originalScriptTexts, 2_000);
+      const translatedResult = await auditScript("/dev/null/translated.ks", file, manifest, translatedScriptTexts, 2_000);
+
+      const originalSet = new Set(originalResult.missingAssets);
+      const extra = translatedResult.missingAssets.filter((a) => !originalSet.has(a));
+      if (extra.length > 0) {
+        extraAssets[file] = extra;
+        for (const a of extra) {
+          extraFrequency.set(a, (extraFrequency.get(a) ?? 0) + 1);
+        }
+      }
+    }
+  }
+
+  index.extraAssets = extraAssets;
+
   await writeFile(join(outDir, "index.json"), JSON.stringify(index, null, 2), "utf-8");
 
   console.log(`\nRapport d'installation de la traduction ${language} :`);
@@ -163,6 +201,20 @@ async function main(): Promise<void> {
     for (const { file, reason } of index.skipped) {
       console.log(`  - ${file} : ${reason}`);
     }
+  }
+
+  const totalExtra = [...extraFrequency.values()].reduce((a, b) => a + b, 0);
+  if (totalExtra > 0) {
+    const top10 = [...extraFrequency.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+    console.log(`\nRessources absentes du manifest mais référencées par la traduction : ${totalExtra}`);
+    console.log("Top 10 :");
+    for (const [asset, count] of top10) {
+      console.log(`  - ${asset} (${count} script${count > 1 ? "s" : ""})`);
+    }
+  } else {
+    console.log("\nAucune ressource supplémentaire absente du manifest n'a été détectée.");
   }
 
   const firstError = reports.find((r) => !r.installable);

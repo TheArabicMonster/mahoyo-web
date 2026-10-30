@@ -16,6 +16,8 @@ export type LanguageIndex = {
   strict: string[];
   /** Scripts ignorés avec la raison. */
   skipped: { file: string; reason: string }[];
+  /** Ressources supplémentaires référencées par la traduction et absentes du manifest. */
+  extraAssets: Record<string, string[]>;
 };
 
 const ALLOWED_LANGUAGES = ["ja", "en", "fr"] as const;
@@ -44,6 +46,16 @@ export function parseLanguageIndex(data: unknown): LanguageIndex | null {
   ) {
     return null;
   }
+  const rawExtraAssets = (d as { extraAssets?: unknown }).extraAssets;
+  const extraAssets: Record<string, string[]> = {};
+  if (typeof rawExtraAssets === "object" && rawExtraAssets !== null) {
+    for (const [file, assets] of Object.entries(rawExtraAssets)) {
+      if (Array.isArray(assets) && assets.every((a) => typeof a === "string")) {
+        extraAssets[file] = assets as string[];
+      }
+    }
+  }
+
   return {
     version: 1,
     language: d.language,
@@ -52,6 +64,7 @@ export function parseLanguageIndex(data: unknown): LanguageIndex | null {
     scripts: d.scripts as string[],
     strict: d.strict as string[],
     skipped: d.skipped as { file: string; reason: string }[],
+    extraAssets,
   };
 }
 

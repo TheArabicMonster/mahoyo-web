@@ -837,6 +837,7 @@ function makeIndex(language: string, scripts: string[]): LanguageIndex {
     scripts,
     strict: scripts,
     skipped: [],
+    extraAssets: {},
   };
 }
 
