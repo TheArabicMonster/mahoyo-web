@@ -405,6 +405,108 @@ describe("Player", () => {
   });
 });
 
+describe("Player — attente non interruptible (@wait canskip=0)", () => {
+  const at = (page: number) => ({ scriptName: "t.ks", page, instruction: 0 });
+  const lockedWait = (ms: number): Step => ({ position: at(0), events: [], stop: { kind: "wait", time: ms, skippable: false } });
+  const click = (): Step => ({
+    position: at(1),
+    events: [{ kind: "text", segments: [{ text: "page suivante" }] }],
+    stop: { kind: "click", style: "page" },
+  });
+
+  it("des clics répétés ne relancent pas le minuteur de l'attente", async () => {
+    const ctx = setup([lockedWait(80), click()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "attente");
+
+    // Un joueur impatient clique sans arrêt : l'attente doit quand même se terminer
+    // à son échéance, puis la page suivante est atteinte.
+    const spam = setInterval(() => ctx.player.advance(), 10);
+    try {
+      await until(() => ctx.player.currentState === "waiting-click" || ctx.player.currentState === "title", "fin de l'attente");
+    } finally {
+      clearInterval(spam);
+    }
+    expect(ctx.stage.events.some((e) => e.kind === "text")).toBe(true);
+  });
+
+  it("un clic pendant l'attente ne fait pas sauter la page de texte suivante", async () => {
+    const ctx = setup([lockedWait(60), click()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "attente");
+
+    ctx.player.advance();
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "waiting-click", "page suivante");
+    // Le clic fait pendant l'attente ne doit pas valoir pour cette page.
+    await wait(120);
+    expect(ctx.player.currentState).toBe("waiting-click");
+  });
+
+  it("un clic pendant une attente d'animation non interruptible ne saute pas la page suivante", async () => {
+    // @wact canskip=0 : le player attend la fin des animations. Les clics faits pendant
+    // l'attente ne doivent pas être mémorisés pour la page de texte qui suit.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    class GateStage extends TestStage {
+      async waitFor(): Promise<void> {
+        await gate;
+      }
+    }
+    const stage = new GateStage();
+    const waitAnim: Step = { position: at(0), events: [], stop: { kind: "waitFor", what: "animation", skippable: false } };
+    const ctx = setup([waitAnim, click()], { createStageRenderer: () => stage });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "attente d'animation");
+
+    ctx.player.advance();
+    ctx.player.advance();
+    ctx.player.advance();
+    release();
+    await until(() => ctx.player.currentState === "waiting-click", "page suivante");
+    await wait(120);
+    expect(ctx.player.currentState).toBe("waiting-click");
+  });
+
+  it("le skip continue après une attente non interruptible au lieu de s'arrêter", async () => {
+    const text = (page: number): Step => ({
+      position: at(page),
+      events: [{ kind: "text", segments: [{ text: `page ${page}` }] }],
+      stop: { kind: "click", style: "page" },
+    });
+    const ctx = setup([text(0), lockedWait(40), text(2), text(3)]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.updateSettings({ skipUnread: true });
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-click", "première page");
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "waiting-wait", "attente");
+
+    ctx.player.setMode("skip");
+    // Si l'attente coupait le skip, la page suivante attendrait un clic au lieu de défiler.
+    await until(() => ctx.player.currentState === "title", "fin du script en skip");
+    expect(ctx.ui.toasts.some((t) => t.message.includes("skip interrompu"))).toBe(false);
+  });
+
+  it("un clic reste pris en compte une fois l'attente terminée", async () => {
+    const ctx = setup([lockedWait(40), click()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-click", "page suivante");
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "title", "fin du script");
+  });
+});
+
+
 /** Runtime qui joue un petit script par fichier : un clic puis la fin. */
 class ChainRuntime implements RuntimeLike {
   scriptLoader: RuntimeLike["scriptLoader"] = null;

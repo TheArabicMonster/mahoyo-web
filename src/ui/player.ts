@@ -210,6 +210,12 @@ export class Player implements PlayerCommands {
   private rearm: (() => void) | null = null;
   /** Clic reçu avant que `waitUser` n'ait installé `onAdvance` (course test/state). */
   private pendingAdvance = false;
+  /**
+   * Une attente non interruptible est en cours (`@wait canskip=0`, `@wt`/`@wact canskip=0`) :
+   * les clics sont ignorés, comme dans le moteur d'origine. Sans cela un clic relançait
+   * le minuteur de l'attente et faisait sauter la page de texte suivante.
+   */
+  private lockedWait = false;
   private pendingChoice: ((index: number) => void) | null = null;
   /** Table d'enchaînement des scripts (null si le pipeline ne l'a pas générée). */
   private chain: StoryChain | null = null;
@@ -324,6 +330,7 @@ export class Player implements PlayerCommands {
       this.onAdvance();
       return;
     }
+    if (this.lockedWait) return;
     // Le clic est arrivé entre setState("waiting-*") et l'installation de onAdvance.
     if (this.state === "waiting-click" || this.state === "waiting-wait") {
       this.pendingAdvance = true;
@@ -709,6 +716,8 @@ export class Player implements PlayerCommands {
       this.rearm = () => {
         if (this.mode === "skip" && this.stopWasRead) interrupt();
       };
+    } else {
+      this.lockedWait = true;
     }
     try {
       if (stop.what === "audio") await this.audio.waitFor(toAudioChannel(stop.target), controller.signal);
@@ -717,6 +726,7 @@ export class Player implements PlayerCommands {
       dispose();
       this.onAdvance = null;
       this.rearm = null;
+      this.lockedWait = false;
     }
   }
 
@@ -734,6 +744,7 @@ export class Player implements PlayerCommands {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const finish = () => {
         clearTimeout(timer);
+        this.lockedWait = false;
         this.onAdvance = null;
         this.rearm = null;
         this.pendingAdvance = false;
@@ -746,6 +757,10 @@ export class Player implements PlayerCommands {
         if (this.mode === "skip") {
           if (opts.skipOk) {
             timer = setTimeout(finish, this.deps.skipDelay);
+          } else if (!opts.clickable && opts.fixedMs !== undefined) {
+            // Attente non interruptible (@wait canskip=0) : elle se déroule en entier,
+            // puis le skip reprend. Elle ne doit pas le couper.
+            timer = setTimeout(finish, opts.fixedMs);
           } else {
             this.ui.toast("Texte non lu : skip interrompu.");
             this.setMode("normal");
@@ -758,6 +773,7 @@ export class Player implements PlayerCommands {
         }
       };
       this.onAdvance = opts.clickable ? finish : null;
+      this.lockedWait = !opts.clickable;
       this.rearm = arm;
       signal.addEventListener("abort", finish, { once: true });
       if (signal.aborted) finish();
