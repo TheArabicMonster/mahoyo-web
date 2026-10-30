@@ -22,9 +22,12 @@
  *   --audio-cmd <template> Gabarit conversion audio (avec {in} {out})
  *   --strict             Code de sortie non nul si références manquantes
  *   --force              Ignorer le cache incrémental
+ *   --no-translation     Ne pas installer la traduction française (par défaut, installée
+ *                        après la conversion ; un échec réseau n'est qu'un avertissement)
  */
 import { mkdir, rm } from "fs/promises";
 import { existsSync } from "fs";
+import { spawnSync } from "child_process";
 import { join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { buildInventory } from "./inventory.js";
@@ -185,6 +188,19 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineReport
   };
 }
 
+/** Installe la traduction française (téléchargée en local, jamais versionnée) ; non bloquant. */
+function installFrenchTranslation(workDir: string, outputDir: string): void {
+  console.log("[pipeline] Installation de la traduction française (--no-translation pour l'ignorer)...");
+  const res = spawnSync(
+    "npx",
+    ["tsx", "tools/translation.ts", "fr", join(workDir, "translation-fr"), outputDir, "--fetch"],
+    { stdio: "inherit" },
+  );
+  if (res.status !== 0) {
+    console.warn("[pipeline] Traduction non installée (réseau ?). Relancer : npm run translation -- fr <dossier> <assets> --fetch");
+  }
+}
+
 // CLI
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -216,6 +232,7 @@ async function main() {
       strict,
       force,
     });
+    if (!dryRun && args["no-translation"] !== true) installFrenchTranslation(workDir, outputDir);
     process.exit(0);
   } catch (err) {
     console.error(err);

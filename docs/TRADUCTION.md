@@ -146,11 +146,17 @@ Top 10 des ressources les plus fréquentes (par nombre de scripts) :
 
 > **Limite** : ces ressources sont typiquement des assets de la version Steam (voix, images). Le player les tolère comme manquantes ; si elles sont fournies par l'utilisateur, elles seront résolues normalement. Si elles sont absentes, le jeu continuera sans ces assets.
 
+## Installation par défaut
+
+`npm run pipeline` installe la traduction française à la fin de la conversion (téléchargement depuis le dépôt public Moon-Trad vers `<sortie>/lang/fr/`). Un échec réseau n'est qu'un avertissement ; `--no-translation` désactive l'étape. Le texte traduit n'est jamais versionné : il reste un fichier local, comme le jeu.
+
 ## Utilisation dans le player
 
 1. Ouvrir les **Réglages** (bouton en jeu ou écran titre).
 2. Choisir la langue **Français** dans le sélecteur.
 3. La langue s'applique au prochain script chargé.
+
+Le **français est la langue par défaut** : dès qu'une traduction est installée, une première partie démarre en français. Sans traduction installée, le player retombe sur le japonais. Un choix déjà enregistré dans les réglages (par exemple `ja`) est conservé.
 
 Le japonais est toujours disponible ; les langues traduites apparaissent uniquement si leur `lang/<lang>/index.json` est présent dans les assets.
 
