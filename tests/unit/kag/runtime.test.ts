@@ -91,8 +91,28 @@ describe("Runtime", () => {
     const runtime = new Runtime(script);
 
     const step = runtime.step();
-    expectClick(step.stop, "page");
     expect(step.events.some((e) => e.kind === "scene" && e.scene.sprites.some((s) => s.storage === "red"))).toBe(true);
+    // Après le @return de la sous-routine, l'exécution retombe dans *target ;
+    // le second @return n'a plus d'appelant et termine le script (comme KAG).
+    expect(step.stop.kind).toBe("end");
+  });
+
+  it("@return sans appelant termine le script au lieu de continuer", () => {
+    const script = parse(lex("@fg page=fore storage=red center=512 vcenter=288 index=1000\n@return\n@fg page=fore storage=blue center=100 vcenter=100 index=2000\n@pg"));
+    const runtime = new Runtime(script);
+
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("end");
+    const sprites = step.events.flatMap((e) => (e.kind === "scene" ? e.scene.sprites.map((s) => s.storage) : []));
+    expect(sprites).toContain("red");
+    expect(sprites).not.toContain("blue");
+  });
+
+  it("@return sans appelant, au milieu d'un @if, termine aussi le script", () => {
+    const script = parse(lex("@if exp=true\n@return\n@endif\n@fg page=fore storage=blue center=100 vcenter=100 index=2000\n@pg"));
+    const step = new Runtime(script).step();
+    expect(step.stop.kind).toBe("end");
+    expect(step.events.some((e) => e.kind === "scene" && e.scene.sprites.some((s) => s.storage === "blue"))).toBe(false);
   });
 
   it("jumps to a label", () => {
