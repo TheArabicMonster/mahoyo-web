@@ -55,6 +55,7 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
 - Abstraction `Renderer` et événements de rendu.
 - Modules dédiés : audio, UI, input, rendering.
 - Sauvegardes robustes avec thumbnails.
+- Support de traductions fan (patch français Moon-Trad) : installation, vérification de compatibilité et sélecteur de langue.
 - Packaging et déploiement.
 
 ## Jalons de livraison

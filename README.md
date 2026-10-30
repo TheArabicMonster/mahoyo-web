@@ -10,6 +10,11 @@ Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour la barre de progression détail
 
 **Phase actuelle : E7 — Projet réel** 🔄 en cours. Le socle Vite + TypeScript + Vitest est en place, le moteur KAG3 et les tests du PoC ont été portés, le build et les tests passent.
 
+## Langues
+
+- **Japonais** : langue originale, toujours disponible.
+- **Français** : support du patch fan Moon-Trad, installable via `npm run translation`. Voir [`docs/TRADUCTION.md`](docs/TRADUCTION.md).
+
 ## ⚠️ Avertissement légal
 
 **Aucun asset original du jeu (images, sons, scripts, polices) n'est stocké ni redistribué dans ce dépôt.** Ce projet est un *player* + un *outillage de conversion* : l'utilisateur doit fournir ses propres fichiers, issus d'une copie qu'il possède. Ne commitez jamais d'asset sous copyright.
