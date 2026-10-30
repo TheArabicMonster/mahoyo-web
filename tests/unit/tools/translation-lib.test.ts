@@ -50,9 +50,9 @@ describe("translation-lib", () => {
     expect(report.reason).toContain("pages");
   });
 
-  it("juge incompatible quand un label est manquant", () => {
-    const originalText = "*start|\nTexte.[p]\n*next|\nSuite.[p]\n";
-    const translatedText = "*start|\nTexte.[p]\nSuite.[p]\n";
+  it("juge incompatible quand un label visé par un saut est manquant", () => {
+    const originalText = "*start|\n@jump target=*next\n*next|\nSuite.[p]\n";
+    const translatedText = "*start|\n@jump target=*next\nSuite.[p]\n";
     const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
     expect(report.level).toBe("incompatible");
     expect(report.installable).toBe(false);
@@ -60,14 +60,35 @@ describe("translation-lib", () => {
     expect(report.missingLabels).toContain("next");
   });
 
-  it("juge incompatible quand un label est ajouté", () => {
-    const originalText = "*start|\nTexte.[p]\n";
-    const translatedText = "*start|\n*extra|\nTexte.[p]\n";
+  it("tolère un label renommé quand aucun saut ne le vise (numérotation des pages différente)", () => {
+    const originalText = "*page1|\nTexte.[p]\n*page2|\nSuite.[p]\n";
+    const translatedText = "*page0|\nTexte.[p]\n*page1|\nSuite.[p]\n";
     const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
-    expect(report.level).toBe("incompatible");
+    expect(report.installable).toBe(true);
+    expect(report.missingLabels.length).toBeGreaterThan(0);
+  });
+
+  it("juge incompatible un label renommé que vise un saut", () => {
+    const originalText = "*page1|\n@jump target=*page2\n*page2|\nSuite.[p]\n";
+    const translatedText = "*page0|\n@jump target=*page2\n*page1|\nSuite.[p]\n";
+    const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
     expect(report.installable).toBe(false);
-    expect(report.reason).toContain("label");
+    expect(report.reason).toContain("visés par un saut");
+  });
+
+  it("tolère un label ajouté : il est signalé mais ne casse aucun saut", () => {
+    const originalText = "*start|\nTexte.[p]\n";
+    const translatedText = "*start|\n*extra\nTexte.[p]\n";
+    const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
+    expect(report.installable).toBe(true);
     expect(report.extraLabels).toContain("extra");
+  });
+
+  it("juge incompatible un label ajouté qui décale les pages de l'original", () => {
+    const originalText = "*start|\nTexte.[p]\n*suite|\nAutre.[p]\n";
+    const translatedText = "*start|\nTexte.[p]\n*extra|\nIntrus.[p]\n*suite|\nAutre.[p]\n";
+    const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
+    expect(report.installable).toBe(false);
   });
 
   it("juge incompatible quand une instruction de flux est ajoutée", () => {
