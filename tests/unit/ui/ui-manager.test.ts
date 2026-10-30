@@ -135,6 +135,20 @@ describe("DomUIManager", () => {
       q(".mh-ui-continue")!.click();
       expect(cmd.load).toHaveBeenCalledWith("auto");
     });
+    it("title : « Nouvelle partie » lance le premier script de la liste", () => {
+      ui.show(views[0]!);
+      q(".mh-ui-new-game")!.click();
+      expect(cmd.startScript).toHaveBeenCalledWith("a.ks");
+    });
+    it("title : sans « Continuer » quand il n'y a pas d'autosave, « Nouvelle partie » reste là", () => {
+      ui.show({ screen: "title", scripts, hasContinue: false });
+      expect(q(".mh-ui-continue")).toBeNull();
+      expect(q(".mh-ui-new-game")).not.toBeNull();
+    });
+    it("title : liste vide, pas de « Nouvelle partie »", () => {
+      ui.show({ screen: "title", scripts: [], hasContinue: false });
+      expect(q(".mh-ui-new-game")).toBeNull();
+    });
     it("pause : reprendre et ouvrir save", () => {
       ui.show({ screen: "pause" });
       q(".mh-ui-resume")!.click();

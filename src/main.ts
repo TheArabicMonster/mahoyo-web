@@ -5,6 +5,8 @@ import { createDomStageRenderer } from "./renderer/stage-renderer.js";
 import { DomUIManager } from "./ui/ui-manager.js";
 import { Player } from "./ui/player.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
+import { parseStoryChain, type StoryChain } from "@/core/story-chain.js";
+import { chaptersToScripts } from "./ui/chapter-list.js";
 
 const ASSET_BASE = "/assets";
 const MANIFEST_URL = `${ASSET_BASE}/asset-manifest.json`;
@@ -21,6 +23,17 @@ async function loadManifest(): Promise<AssetManifest | undefined> {
   } catch (err) {
     console.warn("[main] Impossible de charger le manifest:", err);
     return undefined;
+  }
+}
+
+/** Charge la table d'enchaînement générée par `npm run chain` (absente : le jeu se limite au prologue). */
+async function loadChain(resolver: AssetResolver): Promise<StoryChain | null> {
+  try {
+    const res = await fetch(resolver.chain());
+    if (!res.ok) return null;
+    return parseStoryChain(await res.json());
+  } catch {
+    return null;
   }
 }
 
@@ -44,20 +57,17 @@ async function main() {
   updateScale();
   window.addEventListener("resize", updateScale);
 
-  // Instancie le player avec les vraies factories
-  const player = new Player({
+  const chain = await loadChain(resolver);
+
+  // Instancie le player avec les vraies factories. L'écran titre propose « Nouvelle
+  // partie », « Continuer » (autosave) et la liste des chapitres.
+  new Player({
     root: viewport,
     resolver,
     createStageRenderer: createDomStageRenderer,
     createUIManager: () => new DomUIManager(),
-    scripts: [
-      { id: "1-0", label: "Prologue", file: "1-0.ks", x: 512, y: 80, arc: "Prologue" },
-    ],
-  });
-
-  // Lancer le prologue dès que le titre est prêt
-  player.ready.then(() => {
-    player.startScript("1-0.ks");
+    scripts: chaptersToScripts(chain),
+    loadChain: async () => chain,
   });
 }
 

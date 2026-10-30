@@ -317,6 +317,10 @@ export class DomUIManager implements UIManager {
   private renderTitle(scripts: readonly ScriptSummary[], hasContinue: boolean): El {
     const p = this.panel("Mahoutsukai no Yoru", "mh-ui-title-screen");
     const menu = h("div", "mh-ui-col");
+    const first = scripts[0];
+    if (first) {
+      menu.appendChild(this.button("Nouvelle partie", () => this.commands?.startScript(first.file), "mh-ui-new-game"));
+    }
     if (hasContinue) {
       menu.appendChild(this.button("Continuer", () => void this.commands?.load("auto"), "mh-ui-continue"));
     }
