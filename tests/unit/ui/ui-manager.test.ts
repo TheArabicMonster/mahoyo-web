@@ -80,7 +80,7 @@ describe("DomUIManager", () => {
       expect(cmd.openScreen).not.toHaveBeenCalled();
     });
     it("une répétition ne choisit pas d'option (B1)", () => {
-      ui.showChoices([{ text: "A" }, { text: "B" }] as never);
+      ui.showChoices(["A", "B"]);
       key("1", { repeat: true });
       expect(cmd.choose).not.toHaveBeenCalled();
       key("1");
@@ -96,7 +96,7 @@ describe("DomUIManager", () => {
     it("flèche gauche ignorée pendant un choix et dans un champ de saisie (B2)", () => {
       document.body.insertAdjacentHTML("beforeend", '<input id="f">');
       document.getElementById("f")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
-      ui.showChoices([{ text: "A" }] as never);
+      ui.showChoices(["A"]);
       key("ArrowLeft");
       expect(cmd.rollback).not.toHaveBeenCalled();
     });
