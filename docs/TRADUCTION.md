@@ -70,10 +70,10 @@ Exemple avec le patch Moon-Trad (dernier run) :
 ```text
 Scripts source : 205
 Scripts originaux correspondants : 205
-Scripts installés : 187
-Scripts stricts : 20
-Scripts ignorés : 18
-Ressources absentes du manifest mais référencées par la traduction : 7451
+Scripts installés : 204
+Scripts stricts : 21
+Scripts ignorés : 1
+Ressources absentes du manifest mais référencées par la traduction : 9028
 ```
 
 ## Vérification de compatibilité
@@ -81,17 +81,18 @@ Ressources absentes du manifest mais référencées par la traduction : 7451
 Pour qu'un script traduit soit installé, il doit être **compatible** avec l'original :
 
 1. Même nombre de pages.
-2. Mêmes labels aux mêmes indices de page.
+2. Mêmes labels **visés par un saut ou un appel** (`@jump`/`@call target=`), aux mêmes indices de page. Un label en trop, ou un label non visé renommé (la traduction numérote parfois ses pages `page0`, `page1`… au lieu de `page1`, `page2`…), est signalé dans le rapport mais **n'empêche pas l'installation** : il ne peut casser aucun saut.
 3. Même squelette de flux : instructions `jump`, `call`, `return`, `conditional`, `macrodef`, ainsi que les commandes `raw` qui pilotent le flux ou les choix (`s`, `link`, `endlink`, `button`, `select`, `waittrig`, `waitclick`, `cancelautomode`, `cancelskip`, `resetwait`).
 
 Un script est **strict** si, en plus, la séquence complète d'instructions (texte et break inclus) est identique à l'original. Un script strict garantit que les sauts de page et les pauses sont conservés ; un script compatible peut avoir des différences de texte, de son, d'image, d'animation, d'attente ou de sauts de ligne.
 
-Les scripts incompatibles sont ignorés avec une raison indiquant la nature exacte de l'écart (labels manquants/en trop, nombre de pages différent, etc.).
+Les scripts incompatibles sont ignorés avec une raison indiquant la nature exacte de l'écart (label visé par un saut manquant ou déplacé, nombre de pages différent, etc.).
 
 ### Chiffres obtenus avec le patch Moon-Trad
 
 - **Avant** (critère structurel strict) : 23 installés, 20 stricts, 182 ignorés.
 - **Après** (squelette de flux) : 187 installés, 20 stricts, 18 ignorés.
+- **Après** (labels bloquants limités à ceux que vise un saut) : **204 installés, 21 stricts, 1 ignoré**.
 
 ### Kinds d'instructions qui diffèrent le plus souvent
 
@@ -114,34 +115,19 @@ Agrégation sur les 182 scripts initialement ignorés (critère structurel stric
 
 `se` et `sestop` représentent la quasi-totalité des écarts : ils correspondent à des sons/effets ajoutés dans la version Steam (voix). Les autres kinds concernent des différences d'image, d'animation ou d'attente. Ces différences ne sont pas de flux et n'affectent pas le déroulement du script.
 
-### Scripts encore ignorés
+### Script encore ignoré
 
 | Script | Raison |
 |---|---|
-| 1-0.ks | label en trop : vroum* |
-| 1-4.ks | label en trop : page43 |
-| 1.5-2.ks | label en trop : tap* |
-| 1.5-3.ks | labels en trop : clac*.[l][r], tap |
-| 2-2.ks | label en trop : bruits |
-| 2-4.ks | labels manquants : page35–page53 ; label en trop : page54 |
-| 3-1.ks | labels manquants : page1–page46 ; label en trop : page0 |
-| 4-1.ks | labels manquants : page1–page60 ; label en trop : page0 |
-| 4-3.ks | labels manquants : page1–page44 ; label en trop : page0 |
-| 5a-5.ks | label en trop : allongement* |
-| 5a-8.ks | labels manquants : page38–page42 |
-| 6-1.ks | labels manquants : page1–page23 ; label en trop : page0 |
-| 6-2.ks | label en trop : tap* |
-| 8.5.ks | label en trop : page383 |
-| c-1.ks | nombre de pages différent (64 vs 63) |
-| sp1.ks | labels en trop : snif*, bruit |
-| wik_b-1.ks | label en trop : page77 |
-| wik_c-2.ks | label en trop : page76 |
+| c-1.ks | nombre de pages différent (64 vs 63) : la traduction a une page de plus |
+
+Les 6 scripts écartés par la règle précédente (`2-4`, `3-1`, `4-1`, `4-3`, `5a-8`, `6-1`) ont le même nombre de pages que l'original ; leurs labels `pageN` sont numérotés autrement et aucun saut ne les vise (le seul saut de chacun va vers `*tladata`, présent des deux côtés). Ils sont donc installés.
 
 ## Ressources supplémentaires absentes du manifest
 
 Le CLI compare, pour chaque script installé, les assets référencés par l'original et par la traduction. Les ressources absentes du manifest mais référencées uniquement par la traduction sont listées dans `index.json` sous `extraAssets` (clés `image:nom` ou `audio:nom`).
 
-Avec le patch Moon-Trad : **7451 ressources supplémentaires** référencées et absentes du manifest.
+Avec le patch Moon-Trad : **9028 références à des ressources supplémentaires**, absentes du manifest.
 
 Top 10 des ressources les plus fréquentes (par nombre de scripts) :
 
@@ -150,13 +136,13 @@ Top 10 des ressources les plus fréquentes (par nombre de scripts) :
 | image:ev0105青子あぐら_ソファのみ(曇) | 8 |
 | image:im14l青子背中(制服) | 3 |
 | image:ev青子汎用05私服a(オブジェ)a1 | 2 |
-| image:草十郎制服コート01a(大) | 2 |
 | image:草十郎制服コート01b(大) | 2 |
+| image:草十郎制服コート01a(大) | 2 |
 | image:草十郎制服コート02a(遠) | 2 |
-| audio:a10_1_1_0000 | 1 |
-| audio:a10_1_1_0001 | 1 |
-| audio:a10_1_1_0002 | 1 |
-| audio:a10_1_1_0003 | 1 |
+| audio:f60_1_0_0001 | 1 |
+| audio:f70_1_0_0001 | 1 |
+| audio:a11_1_0_0000 | 1 |
+| audio:f70_1_0_0002 | 1 |
 
 > **Limite** : ces ressources sont typiquement des assets de la version Steam (voix, images). Le player les tolère comme manquantes ; si elles sont fournies par l'utilisateur, elles seront résolues normalement. Si elles sont absentes, le jeu continuera sans ces assets.
 
