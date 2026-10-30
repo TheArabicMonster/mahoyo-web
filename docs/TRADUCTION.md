@@ -146,6 +146,10 @@ Top 10 des ressources les plus fréquentes (par nombre de scripts) :
 
 > **Limite** : ces ressources sont typiquement des assets de la version Steam (voix, images). Le player les tolère comme manquantes ; si elles sont fournies par l'utilisateur, elles seront résolues normalement. Si elles sont absentes, le jeu continuera sans ces assets.
 
+## Installation par défaut
+
+`npm run pipeline` installe la traduction française à la fin de la conversion (téléchargement depuis le dépôt public Moon-Trad vers `<sortie>/lang/fr/`). Un échec réseau n'est qu'un avertissement ; `--no-translation` désactive l'étape. Le texte traduit n'est jamais versionné : il reste un fichier local, comme le jeu.
+
 ## Utilisation dans le player
 
 1. Ouvrir les **Réglages** (bouton en jeu ou écran titre).
