@@ -1,6 +1,7 @@
 import type { Ms } from "@/kag/events.js";
 import type {
   BacklogEntry,
+  GameLanguage,
   GameSettings,
   OverlayScreen,
   PlayerCommands,
@@ -161,7 +162,7 @@ export class DomUIManager implements UIManager {
         break;
       case "settings":
         this.settings = view.settings;
-        this.menu.appendChild(this.renderSettings(view.settings));
+        this.menu.appendChild(this.renderSettings(view.settings, view.availableLanguages));
         break;
       case "backlog":
         this.menu.appendChild(this.renderBacklog(view.entries));
@@ -423,7 +424,7 @@ export class DomUIManager implements UIManager {
     if (await this.confirm(`Supprimer « ${slotLabel(id)} » ?`)) await this.commands?.deleteSave(id);
   }
 
-  private renderSettings(settings: Readonly<GameSettings>): El {
+  private renderSettings(settings: Readonly<GameSettings>, availableLanguages: readonly GameLanguage[]): El {
     const p = this.panel("Réglages", "mh-ui-settings-screen");
     const form = h("div", "mh-ui-form");
     // Copies locales : `Partial<GameSettings>` est superficiel, on renvoie les groupes entiers.
@@ -486,7 +487,14 @@ export class DomUIManager implements UIManager {
     lang.appendChild(h("span", "mh-ui-field-label", "Langue"));
     const select = h("select");
     select.name = "language";
-    for (const [value, text] of [["ja", "日本語"], ["en", "English"]] as const) {
+    const languageOptions: { value: GameLanguage; text: string }[] = [
+      { value: "ja", text: "日本語" },
+      { value: "en", text: "English" },
+      { value: "fr", text: "Français" },
+    ];
+    const available = new Set<GameLanguage>(availableLanguages);
+    for (const { value, text } of languageOptions) {
+      if (!available.has(value)) continue;
       const o = h("option", undefined, text);
       o.value = value;
       select.appendChild(o);

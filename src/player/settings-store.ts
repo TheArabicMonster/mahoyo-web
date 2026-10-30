@@ -2,6 +2,7 @@
  * Persistance des réglages et de la progression (localStorage).
  * Interface asynchrone pour pouvoir passer à IndexedDB sans toucher au player.
  */
+import { isGameLanguage, type GameLanguage } from "@/core/language.js";
 import type { GameSettings, ScriptProgress } from "@/ui/types.js";
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -23,9 +24,12 @@ export interface SettingsStore {
 
 /** Fusionne un patch partiel (y compris les sous-objets) dans des réglages. */
 export function mergeSettings(base: Readonly<GameSettings>, patch: Partial<GameSettings>): GameSettings {
+  const language: GameLanguage =
+    patch.language && isGameLanguage(patch.language) ? patch.language : base.language;
   return {
     ...base,
     ...patch,
+    language,
     display: { ...base.display, ...patch.display },
     audio: { ...base.audio, ...patch.audio },
   };
