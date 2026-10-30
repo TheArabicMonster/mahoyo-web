@@ -21,6 +21,7 @@
     "convert-tlg": "tsx tools/convert-tlg.ts",
     "convert-audio": "tsx tools/convert-audio.ts",
     "audit": "tsx tools/audit-scenario.ts",
+    "translation": "tsx tools/translation.ts",
     "progress": "tsx tools/progress.ts",
     "check:assets": "tsx tools/check-no-assets.ts",
     "chain": "tsx tools/story-chain.ts",

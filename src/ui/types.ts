@@ -6,12 +6,14 @@ import type { AudioSettings, DisplaySettings } from "@/renderer/types.js";
 
 // ── Réglages et état du player ──
 
+export type GameLanguage = "ja" | "en" | "fr";
+
 export type GameSettings = {
   display: DisplaySettings;
   audio: AudioSettings;
   /** false = le skip s'arrête sur le texte non lu. */
   skipUnread: boolean;
-  language: "ja" | "en";
+  language: GameLanguage;
 };
 
 export type PlayMode = "normal" | "auto" | "skip";
@@ -103,7 +105,7 @@ export type UIView =
   | { screen: "game" }
   | { screen: "pause" }
   | { screen: "save" | "load"; slots: readonly SaveSlot[] }
-  | { screen: "settings"; settings: Readonly<GameSettings> }
+  | { screen: "settings"; settings: Readonly<GameSettings>; availableLanguages: readonly GameLanguage[] }
   | { screen: "backlog"; entries: readonly BacklogEntry[] }
   | { screen: "flowchart"; scripts: readonly ScriptSummary[]; progress: ScriptProgress };
 

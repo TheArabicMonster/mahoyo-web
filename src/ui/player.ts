@@ -4,6 +4,7 @@ import { Runtime, type RuntimeSaveData } from "@/kag/runtime.js";
 import { applyStageSnapshot, reduceAudio } from "@/kag/stage-state.js";
 import { WebAudioPlayer } from "@/renderer/audio-manager.js";
 import { createAssetResolver, type AssetResolver } from "@/core/asset-resolver.js";
+import { hasTranslation, parseLanguageIndex, type LanguageIndex } from "@/core/language.js";
 import { parseStoryChain, resolveNext, type StoryChain } from "@/core/story-chain.js";
 import { parseTimelineData, type TimelineData } from "@/core/timeline.js";
 import { createLocalSaveStore, type SaveRecord, type SaveStore } from "@/player/save-store.js";
@@ -32,6 +33,7 @@ import type {
 } from "@/renderer/types.js";
 import type {
   BacklogEntry,
+  GameLanguage,
   GameSettings,
   OverlayScreen,
   PlayMode,
@@ -73,11 +75,13 @@ export type PlayerDeps = {
   createUIManager: () => UIManager;
   createRuntime: (script: ParsedScript, scriptName: string) => RuntimeLike;
   /** Charge et parse un script ; null si introuvable. */
-  loadScript: (file: string) => Promise<ParsedScript | null>;
+  loadScript: (file: string, language?: string) => Promise<ParsedScript | null>;
   /** Charge la table d'enchaînement des scripts ; null si absente (pas d'enchaînement). */
   loadChain: () => Promise<StoryChain | null>;
   /** Charge les timelines d'animation ; null si absentes (@playtimeline sans effet). */
   loadTimelines: () => Promise<TimelineData | null>;
+  /** Charge les index des langues traduites disponibles. */
+  loadLanguages: () => Promise<Map<string, LanguageIndex>>;
   scripts: readonly ScriptSummary[];
   saveStore: SaveStore;
   settingsStore: SettingsStore;
@@ -108,9 +112,10 @@ type HistoryEntry = {
   chainQueue: string[];
 };
 
-async function defaultLoadScript(resolver: AssetResolver, file: string): Promise<ParsedScript | null> {
+async function defaultLoadScript(resolver: AssetResolver, file: string, language?: string): Promise<ParsedScript | null> {
   try {
-    const res = await fetch(resolver.scenario(file));
+    const url = language ? resolver.translatedScenario(file, language) : resolver.scenario(file);
+    const res = await fetch(url);
     if (!res.ok) return null;
     return parse(lex(await res.text()));
   } catch {
@@ -136,6 +141,21 @@ async function defaultLoadChain(resolver: AssetResolver): Promise<StoryChain | n
   } catch {
     return null;
   }
+}
+
+async function defaultLoadLanguages(resolver: AssetResolver): Promise<Map<string, LanguageIndex>> {
+  const indexes = new Map<string, LanguageIndex>();
+  for (const language of ["fr", "en"]) {
+    try {
+      const res = await fetch(resolver.languageIndex(language));
+      if (!res.ok) continue;
+      const index = parseLanguageIndex(await res.json());
+      if (index) indexes.set(language, index);
+    } catch {
+      // Langue indisponible : on ignore silencieusement.
+    }
+  }
+  return indexes;
 }
 
 function toAudioChannel(target: string | undefined): AudioChannel {
@@ -236,6 +256,8 @@ export class Player implements PlayerCommands {
   private chain: StoryChain | null = null;
   /** Timelines d'animation (null si le pipeline ne les a pas générées). */
   private timelines: TimelineData | null = null;
+  /** Index des langues traduites disponibles. */
+  private languageIndexes: Map<string, LanguageIndex> = new Map();
   /** Scripts à jouer à la suite avant de consulter à nouveau la table (interludes). */
   private chainQueue: string[] = [];
   /** Le point d'arrêt courant n'avait pas encore été lu (pour le skip). */
@@ -261,9 +283,10 @@ export class Player implements PlayerCommands {
       createAudioPlayer: deps.createAudioPlayer ?? ((d) => new WebAudioPlayer(d)),
       createUIManager: deps.createUIManager,
       createRuntime: deps.createRuntime ?? ((script, name) => new Runtime(script, name)),
-      loadScript: deps.loadScript ?? ((file) => defaultLoadScript(resolver, file)),
+      loadScript: deps.loadScript ?? ((file, language) => defaultLoadScript(resolver, file, language)),
       loadChain: deps.loadChain ?? (() => defaultLoadChain(resolver)),
       loadTimelines: deps.loadTimelines ?? (() => defaultLoadTimelines(resolver)),
+      loadLanguages: deps.loadLanguages ?? (() => defaultLoadLanguages(resolver)),
       scripts: deps.scripts ?? DEFAULT_SCRIPTS,
       saveStore: deps.saveStore ?? createLocalSaveStore(),
       settingsStore: deps.settingsStore ?? createLocalSettingsStore(),
@@ -289,6 +312,10 @@ export class Player implements PlayerCommands {
     this.completed = (await store.loadProgress()).completed;
     this.chain = await this.deps.loadChain().catch(() => null);
     this.timelines = await this.deps.loadTimelines().catch(() => null);
+    this.languageIndexes = await this.deps.loadLanguages().catch(() => new Map());
+    if (this.settings.language !== "ja" && !this.languageIndexes.has(this.settings.language)) {
+      this.settings = { ...this.settings, language: "ja" };
+    }
     this.applySettings();
     await this.showTitle();
   }
@@ -522,10 +549,17 @@ export class Player implements PlayerCommands {
   // ── Commandes : système ──
 
   updateSettings(patch: Partial<GameSettings>): void {
+    const previousLanguage = this.settings.language;
     this.settings = mergeSettings(this.settings, patch);
+    if (this.settings.language !== "ja" && !this.languageIndexes.has(this.settings.language)) {
+      this.settings = { ...this.settings, language: "ja" };
+    }
     this.applySettings();
     void this.deps.settingsStore.saveSettings(this.settings).catch(() => {});
     if (this.overlays[this.overlays.length - 1] === "settings") void this.showOverlay("settings");
+    if (patch.language && this.settings.language !== previousLanguage && this.state !== "title") {
+      this.ui.toast("La langue s'appliquera au prochain chapitre.");
+    }
   }
 
   toggleFullscreen(): void {
@@ -976,10 +1010,22 @@ export class Player implements PlayerCommands {
   // ── Scripts ──
 
   private async getScript(file: string): Promise<ParsedScript | null> {
-    const cached = this.scriptCache.get(file);
+    const language = this.settings.language;
+    const cacheKey = `${language}:${file}`;
+    const cached = this.scriptCache.get(cacheKey);
     if (cached) return cached;
-    const script = await this.deps.loadScript(file);
-    if (script) this.scriptCache.set(file, script);
+
+    let script: ParsedScript | null = null;
+    if (language !== "ja") {
+      const index = this.languageIndexes.get(language);
+      if (index && hasTranslation(index, file)) {
+        script = await this.deps.loadScript(file, language);
+      }
+    }
+    if (!script) {
+      script = await this.deps.loadScript(file);
+    }
+    if (script) this.scriptCache.set(cacheKey, script);
     return script;
   }
 
@@ -1038,6 +1084,18 @@ export class Player implements PlayerCommands {
     return Promise.all(ids.map(async (id) => ({ id, data: await this.deps.saveStore.get(id) })));
   }
 
+  /** Langues disponibles : japonais toujours, plus celles dont l'index est chargé. */
+  private availableLanguages(): GameLanguage[] {
+    const languages: GameLanguage[] = ["ja"];
+    for (const language of this.languageIndexes.keys()) {
+      if (language === "ja") continue;
+      if (language === "en" || language === "fr") {
+        languages.push(language);
+      }
+    }
+    return languages;
+  }
+
   private async showOverlay(screen: OverlayScreen): Promise<void> {
     switch (screen) {
       case "pause":
@@ -1048,7 +1106,11 @@ export class Player implements PlayerCommands {
         this.ui.show({ screen, slots: await this.slots() });
         break;
       case "settings":
-        this.ui.show({ screen: "settings", settings: this.settings });
+        this.ui.show({
+          screen: "settings",
+          settings: this.settings,
+          availableLanguages: this.availableLanguages(),
+        });
         break;
       case "backlog":
         this.ui.show({ screen: "backlog", entries: this.backlog() });

@@ -116,7 +116,7 @@ describe("DomUIManager", () => {
       { screen: "pause" },
       { screen: "save", slots: [{ id: 1, data: slotData }, { id: 2, data: null }] },
       { screen: "load", slots: [{ id: 1, data: slotData }] },
-      { screen: "settings", settings },
+      { screen: "settings", settings, availableLanguages: ["ja", "fr"] },
       { screen: "backlog", entries: [{ text: "t1" }, { text: "t2", voice: "v" }] },
       { screen: "flowchart", scripts, progress: { unlocked: ["a"], completed: [] } },
     ];
@@ -178,11 +178,19 @@ describe("DomUIManager", () => {
       expect(cmd.load).toHaveBeenCalledWith(1);
     });
     it("settings : envoie le groupe complet", () => {
-      ui.show({ screen: "settings", settings });
+      ui.show({ screen: "settings", settings, availableLanguages: ["ja", "fr", "en"] });
       const input = q('input[name="bgm"]') as HTMLInputElement;
       input.value = "0.5";
       input.dispatchEvent(new Event("input"));
       expect(cmd.updateSettings).toHaveBeenCalledWith({ audio: { ...settings.audio, bgm: 0.5 } });
+    });
+    it("settings : le sélecteur de langue ne propose que les langues disponibles", () => {
+      ui.show({ screen: "settings", settings, availableLanguages: ["ja", "fr"] });
+      const options = [...root.querySelectorAll<HTMLOptionElement>('select[name="language"] option')].map(
+        (o) => o.value,
+      );
+      expect(options).toEqual(["ja", "fr"]);
+      expect(options).not.toContain("en");
     });
     it("flowchart : scripts verrouillés désactivés", () => {
       ui.show(views[6]!);

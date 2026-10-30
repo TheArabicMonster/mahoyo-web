@@ -10,6 +10,7 @@ import type { RenderEvent, Step } from "@/kag/events.js";
 import type { RuntimeSaveData } from "@/kag/runtime.js";
 import type { ParsedScript } from "@/kag/types.js";
 import type { StoryChain } from "@/core/story-chain.js";
+import type { LanguageIndex } from "@/core/language.js";
 import prologue from "../../fixtures/prologue.json";
 import audioFixture from "../../fixtures/audio.json";
 
@@ -824,6 +825,114 @@ describe("Player — séquence minutée (@playtimeline)", () => {
     current = null;
     await wait(150);
     expect(bgs(ctx)).not.toContain("tard");
+  });
+});
+
+function makeIndex(language: string, scripts: string[]): LanguageIndex {
+  return {
+    version: 1,
+    language,
+    label: language,
+    credits: "",
+    scripts,
+    strict: scripts,
+    skipped: [],
+    extraAssets: {},
+  };
+}
+
+describe("Player — langues", () => {
+  it("charge le script traduit quand la langue fr est disponible", async () => {
+    const calls: { file: string; language?: string }[] = [];
+    const index = makeIndex("fr", ["t.ks"]);
+    const ctx = setup([], {
+      loadLanguages: async () => new Map([["fr", index]]),
+      loadScript: async (file, language) => {
+        calls.push({ file, language });
+        return { pages: [], labels: {} } as unknown as ParsedScript;
+      },
+    });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.updateSettings({ language: "fr" });
+    ctx.player.startScript("t.ks");
+    await until(() => calls.some((c) => c.file === "t.ks" && c.language === "fr"), "load fr");
+    expect(calls.some((c) => c.file === "t.ks" && c.language === "fr")).toBe(true);
+  });
+
+  it("retombe sur le script japonais si le fichier n'est pas dans l'index fr", async () => {
+    const calls: { file: string; language?: string }[] = [];
+    const index = makeIndex("fr", ["other.ks"]);
+    const ctx = setup([], {
+      loadLanguages: async () => new Map([["fr", index]]),
+      loadScript: async (file, language) => {
+        calls.push({ file, language });
+        return { pages: [], labels: {} } as unknown as ParsedScript;
+      },
+    });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.updateSettings({ language: "fr" });
+    ctx.player.startScript("t.ks");
+    await until(() => calls.some((c) => c.file === "t.ks" && c.language === undefined), "load ja");
+    expect(calls.some((c) => c.file === "t.ks" && c.language === undefined)).toBe(true);
+    expect(calls.some((c) => c.file === "t.ks" && c.language === "fr")).toBe(false);
+  });
+
+  it("retombe sur ja si la langue sauvegardée n'est pas disponible", async () => {
+    const calls: { file: string; language?: string }[] = [];
+    const store = createMemorySettingsStore();
+    await store.saveSettings({
+      display: { textSpeed: 30, autoDelay: 1500, fontScale: 1, textboxOpacity: 0.8 },
+      audio: { master: 1, bgm: 0.8, se: 0.8, voice: 1, muted: false },
+      skipUnread: false,
+      language: "fr",
+    });
+    const ctx = setup([], {
+      settingsStore: store,
+      loadLanguages: async () => new Map(),
+      loadScript: async (file, language) => {
+        calls.push({ file, language });
+        return { pages: [], labels: {} } as unknown as ParsedScript;
+      },
+    });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => calls.some((c) => c.file === "t.ks" && c.language === undefined), "load ja");
+    expect(calls.some((c) => c.file === "t.ks" && c.language === undefined)).toBe(true);
+    expect(calls.some((c) => c.file === "t.ks" && c.language === "fr")).toBe(false);
+  });
+
+  it("affiche un toast au changement de langue en pleine partie", async () => {
+    const ctx = setup(prologue as Step[], {
+      loadLanguages: async () => new Map([["fr", makeIndex("fr", ["t.ks"])]]),
+    });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-click", "waiting-click");
+    ctx.player.updateSettings({ language: "fr" });
+    expect(ctx.ui.toasts.some((t) => t.message.includes("prochain chapitre"))).toBe(true);
+  });
+
+  it("casse les scripts par langue", async () => {
+    const calls: { file: string; language?: string }[] = [];
+    const ctx = setup([], {
+      loadLanguages: async () => new Map([["fr", makeIndex("fr", ["t.ks"])]]),
+      loadScript: async (file, language) => {
+        calls.push({ file, language });
+        return { pages: [], labels: {} } as unknown as ParsedScript;
+      },
+    });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.updateSettings({ language: "fr" });
+    ctx.player.startScript("t.ks");
+    await until(() => calls.some((c) => c.file === "t.ks" && c.language === "fr"), "load fr");
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "title", "titre");
+    expect(calls.filter((c) => c.file === "t.ks" && c.language === "fr")).toHaveLength(1);
   });
 });
 
