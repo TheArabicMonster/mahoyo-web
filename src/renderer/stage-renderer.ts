@@ -19,7 +19,13 @@ import { partbgInnerTransform, partbgWrapperTransform, spriteTransform } from ".
 import { textStyleToCss } from "./text-style.js";
 
 /** Un caractère à afficher, avec son annotation ruby et son style CSS éventuels. */
-type TextUnit = { char: string; ruby?: string; css?: Record<string, string> };
+type TextUnit = {
+  char: string;
+  ruby?: string;
+  css?: Record<string, string>;
+  /** Indice du segment d'origine : les caractères d'un même ruby partagent un groupe. */
+  group: number;
+};
 
 /**
  * Implémentation DOM de StageRenderer.
@@ -922,15 +928,14 @@ export class DomStageRenderer implements StageRenderer {
    */
   private buildTextUnits(): TextUnit[] {
     const units: TextUnit[] = [];
-    for (const seg of this.text) {
-      if (!("text" in seg)) continue; // pause
-      const text = seg.text;
+    this.text.forEach((seg, group) => {
+      if (!("text" in seg)) return; // pause
       const ruby = "ruby" in seg ? seg.ruby : undefined;
       const css = seg.style ? textStyleToCss(seg.style) : undefined;
-      for (const char of Array.from(text)) {
-        units.push({ char, ruby, css });
+      for (const char of Array.from(seg.text)) {
+        units.push({ char, ruby, css, group });
       }
-    }
+    });
     return units;
   }
 
@@ -939,13 +944,21 @@ export class DomStageRenderer implements StageRenderer {
     if (!this.textEl) return;
     this.textEl.replaceChildren();
     const frag = document.createDocumentFragment();
-    for (let i = 0; i < n && i < units.length; i++) {
+    const limit = Math.min(n, units.length);
+    for (let i = 0; i < limit; i++) {
       const u = units[i];
       const hasCss = u.css !== undefined && Object.keys(u.css).length > 0;
       let node: Node;
       if (u.ruby) {
+        // Un ruby couvre plusieurs caractères : une seule balise <ruby>, la lecture
+        // posée une fois sur le groupe (le typewriter n'en révèle qu'une partie au début).
+        let base = u.char;
+        while (i + 1 < limit && units[i + 1]!.ruby && units[i + 1]!.group === u.group) {
+          i++;
+          base += units[i]!.char;
+        }
         const ruby = document.createElement("ruby");
-        ruby.textContent = u.char;
+        ruby.textContent = base;
         const rt = document.createElement("rt");
         rt.textContent = u.ruby;
         ruby.appendChild(rt);
