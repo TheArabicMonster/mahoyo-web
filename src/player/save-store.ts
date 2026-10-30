@@ -15,6 +15,8 @@ export type SaveRecord = NonNullable<SaveSlot["data"]> & {
   position: Position;
   /** Point d'arrêt où la sauvegarde a été prise (click ou choice). */
   stop: StopReason;
+  /** Scripts d'interlude encore à jouer (absent des sauvegardes antérieures). */
+  chainQueue?: string[];
 };
 
 export interface SaveStore {

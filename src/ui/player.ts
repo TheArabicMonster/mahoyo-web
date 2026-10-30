@@ -4,6 +4,7 @@ import { Runtime, type RuntimeSaveData } from "@/kag/runtime.js";
 import { applyStageSnapshot, reduceAudio } from "@/kag/stage-state.js";
 import { WebAudioPlayer } from "@/renderer/audio-manager.js";
 import { createAssetResolver, type AssetResolver } from "@/core/asset-resolver.js";
+import { parseStoryChain, resolveNext, type StoryChain } from "@/core/story-chain.js";
 import { createLocalSaveStore, type SaveRecord, type SaveStore } from "@/player/save-store.js";
 import {
   DEFAULT_SETTINGS,
@@ -48,6 +49,8 @@ export interface RuntimeLike {
   jump(label: string): boolean;
   getSaveData(): RuntimeSaveData;
   loadSaveData(data: RuntimeSaveData, scripts: Map<string, ParsedScript>): Promise<boolean>;
+  /** Évalue une condition de la table d'enchaînement (absent : routes conditionnelles ignorées). */
+  evaluateCondition?(expression: string): boolean;
 }
 
 export type PlayerState =
@@ -68,6 +71,8 @@ export type PlayerDeps = {
   createRuntime: (script: ParsedScript, scriptName: string) => RuntimeLike;
   /** Charge et parse un script ; null si introuvable. */
   loadScript: (file: string) => Promise<ParsedScript | null>;
+  /** Charge la table d'enchaînement des scripts ; null si absente (pas d'enchaînement). */
+  loadChain: () => Promise<StoryChain | null>;
   scripts: readonly ScriptSummary[];
   saveStore: SaveStore;
   settingsStore: SettingsStore;
@@ -94,6 +99,8 @@ type HistoryEntry = {
   stage: StageSnapshot;
   audio: AudioSnapshot;
   text: string;
+  /** Scripts d'interlude encore à jouer (voir `chainQueue`) : à restaurer avec le point. */
+  chainQueue: string[];
 };
 
 async function defaultLoadScript(resolver: AssetResolver, file: string): Promise<ParsedScript | null> {
@@ -101,6 +108,16 @@ async function defaultLoadScript(resolver: AssetResolver, file: string): Promise
     const res = await fetch(resolver.scenario(file));
     if (!res.ok) return null;
     return parse(lex(await res.text()));
+  } catch {
+    return null;
+  }
+}
+
+async function defaultLoadChain(resolver: AssetResolver): Promise<StoryChain | null> {
+  try {
+    const res = await fetch(resolver.chain());
+    if (!res.ok) return null;
+    return parseStoryChain(await res.json());
   } catch {
     return null;
   }
@@ -200,6 +217,10 @@ export class Player implements PlayerCommands {
    */
   private lockedWait = false;
   private pendingChoice: ((index: number) => void) | null = null;
+  /** Table d'enchaînement des scripts (null si le pipeline ne l'a pas générée). */
+  private chain: StoryChain | null = null;
+  /** Scripts à jouer à la suite avant de consulter à nouveau la table (interludes). */
+  private chainQueue: string[] = [];
   /** Le point d'arrêt courant n'avait pas encore été lu (pour le skip). */
   private stopWasRead = true;
 
@@ -224,6 +245,7 @@ export class Player implements PlayerCommands {
       createUIManager: deps.createUIManager,
       createRuntime: deps.createRuntime ?? ((script, name) => new Runtime(script, name)),
       loadScript: deps.loadScript ?? ((file) => defaultLoadScript(resolver, file)),
+      loadChain: deps.loadChain ?? (() => defaultLoadChain(resolver)),
       scripts: deps.scripts ?? DEFAULT_SCRIPTS,
       saveStore: deps.saveStore ?? createLocalSaveStore(),
       settingsStore: deps.settingsStore ?? createLocalSettingsStore(),
@@ -247,6 +269,7 @@ export class Player implements PlayerCommands {
     this.settings = await store.loadSettings();
     this.readSet = await store.loadRead();
     this.completed = (await store.loadProgress()).completed;
+    this.chain = await this.deps.loadChain().catch(() => null);
     this.applySettings();
     await this.showTitle();
   }
@@ -369,6 +392,7 @@ export class Player implements PlayerCommands {
       if (label && !runtime.jump(label)) console.warn(`label introuvable : ${label}`);
       this.runtime = runtime;
       this.scriptFile = file;
+      this.chainQueue = [];
       this.resetStageState();
       this.stage.clear();
       this.audio.stopAll();
@@ -462,6 +486,7 @@ export class Player implements PlayerCommands {
         stage: record.stage,
         audio: record.audio,
         text: record.previewText,
+        chainQueue: record.chainQueue ?? [],
       },
     ];
     if (await this.restoreEntry(this.history[0])) this.overlays = [];
@@ -621,10 +646,57 @@ export class Player implements PlayerCommands {
       }
       case "end": {
         this.markCompleted();
+        if (await this.chainToNext(position.scriptName, signal)) return true;
+        if (signal.aborted) return false;
         void this.returnToTitle();
         return false;
       }
     }
+  }
+
+  /**
+   * Enchaîne sur le script suivant quand le courant se termine : d'abord la file
+   * d'interlude, puis la table d'enchaînement (menu si la suite est un choix).
+   * Retourne false s'il n'y a pas de suite (fin de l'histoire) ou si le chargement échoue.
+   */
+  private async chainToNext(current: string, signal: AbortSignal): Promise<boolean> {
+    let file: string | undefined = this.chainQueue.shift();
+
+    if (file === undefined && this.chain) {
+      const evalCondition = this.runtime?.evaluateCondition
+        ? (expr: string) => this.runtime!.evaluateCondition!(expr)
+        : undefined;
+      const next = resolveNext(this.chain, current, evalCondition);
+      if (next.kind === "script") {
+        file = next.file;
+        this.chainQueue = [...next.then];
+      } else if (next.kind === "choice") {
+        if (this.mode === "skip") this.setMode("normal");
+        this.setState("waiting-choice");
+        this.ui.showChoices(next.options.map((o) => o.label));
+        const index = await new Promise<number>((resolve) => {
+          this.pendingChoice = resolve;
+          signal.addEventListener("abort", () => resolve(-1), { once: true });
+        });
+        this.pendingChoice = null;
+        this.ui.hideChoices();
+        const option = next.options[index];
+        if (signal.aborted || !option) return false;
+        file = option.file;
+        this.chainQueue = [...option.then];
+      }
+    }
+    if (file === undefined) return false;
+
+    this.setState("loading");
+    const ok = await this.runtime!.loadScript(file, undefined, false);
+    if (signal.aborted) return false;
+    if (!ok) {
+      this.ui.toast(`Script introuvable : ${file}`);
+      return false;
+    }
+    this.scriptFile = file;
+    return true;
   }
 
   private async waitForEffect(stop: Extract<StopReason, { kind: "waitFor" }>, signal: AbortSignal): Promise<void> {
@@ -725,6 +797,7 @@ export class Player implements PlayerCommands {
       stage: this.stageSnap,
       audio: this.audioSnap,
       text: previewOf(this.stageSnap),
+      chainQueue: [...this.chainQueue],
     };
     this.history.push(entry);
     if (this.history.length > HISTORY_LIMIT) this.history.shift();
@@ -743,6 +816,7 @@ export class Player implements PlayerCommands {
       runtime: entry.runtime,
       audio: entry.audio,
       stop: entry.stop,
+      chainQueue: entry.chainQueue,
     };
   }
 
@@ -778,6 +852,8 @@ export class Player implements PlayerCommands {
       if (!(await runtime.loadSaveData(data, scripts))) throw new Error("Restauration du runtime refusée");
 
       this.runtime = runtime;
+      this.scriptFile = data.scriptName;
+      this.chainQueue = [...entry.chainQueue];
       this.stageSnap = entry.stage;
       this.audioSnap = entry.audio;
       this.audio.stopAll();

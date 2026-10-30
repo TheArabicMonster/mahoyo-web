@@ -91,8 +91,28 @@ describe("Runtime", () => {
     const runtime = new Runtime(script);
 
     const step = runtime.step();
-    expectClick(step.stop, "page");
     expect(step.events.some((e) => e.kind === "scene" && e.scene.sprites.some((s) => s.storage === "red"))).toBe(true);
+    // Après le @return de la sous-routine, l'exécution retombe dans *target ;
+    // le second @return n'a plus d'appelant et termine le script (comme KAG).
+    expect(step.stop.kind).toBe("end");
+  });
+
+  it("@return sans appelant termine le script au lieu de continuer", () => {
+    const script = parse(lex("@fg page=fore storage=red center=512 vcenter=288 index=1000\n@return\n@fg page=fore storage=blue center=100 vcenter=100 index=2000\n@pg"));
+    const runtime = new Runtime(script);
+
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("end");
+    const sprites = step.events.flatMap((e) => (e.kind === "scene" ? e.scene.sprites.map((s) => s.storage) : []));
+    expect(sprites).toContain("red");
+    expect(sprites).not.toContain("blue");
+  });
+
+  it("@return sans appelant, au milieu d'un @if, termine aussi le script", () => {
+    const script = parse(lex("@if exp=true\n@return\n@endif\n@fg page=fore storage=blue center=100 vcenter=100 index=2000\n@pg"));
+    const step = new Runtime(script).step();
+    expect(step.stop.kind).toBe("end");
+    expect(step.events.some((e) => e.kind === "scene" && e.scene.sprites.some((s) => s.storage === "blue"))).toBe(false);
   });
 
   it("jumps to a label", () => {
@@ -658,7 +678,9 @@ Deuxième ligne.
       expect(kf0.vcenter).toBe(288);
       expect(kf0.opacity).toBeCloseTo(50 / 255, 2);
       // kf1 : valeurs d'ARRIVÉE (instruction).
-      expect(kf1.center).toBe(0); // @movefg sans center= → parser met 0 (parseIntArg default)
+      // @movefg sans center= → indéfini (conserver la position), pas 0 (#65).
+      expect(kf1.center).toBeUndefined();
+      expect(kf1.vcenter).toBeUndefined();
       expect(kf1.opacity).toBeCloseTo(80 / 255, 2);
     }
   });
@@ -803,5 +825,22 @@ Deuxième ligne.
     // L'instruction originale ne doit pas avoir été modifiée.
     expect(animInstr?.def.id).toBe(originalId);
     expect(animInstr?.def.keyframes[0]).toEqual(originalKf0);
+  });
+});
+
+describe("Runtime — @movefg sans center (#65)", () => {
+  it("conserve la position du calque quand center/vcenter sont absents", () => {
+    const SRC = `
+*page0|
+@fg storage=red index=2000 opacity=50 center=300 vcenter=200
+@trans time=100 nowait=1
+@movefg storage=red time=100 opacity=80
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.step();
+    const layer = runtime.getSaveData().state.fore.layers.find((l) => l.storage === "red");
+    expect(layer?.center).toBe(300);
+    expect(layer?.vcenter).toBe(200);
   });
 });

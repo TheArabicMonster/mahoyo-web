@@ -40,6 +40,8 @@ export type AssetResolver = {
   se(storage: string): string;
   /** Résout un fichier de script .ks. */
   scenario(storage: string): string;
+  /** URL de la table d'enchaînement des scripts (`story-chain.json`). */
+  chain(): string;
 };
 
 export type AssetResolverOptions = {
@@ -100,6 +102,9 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
       if (url) return `${baseUrl}/${url}`;
       // Sans manifest, on garde le .ks.
       return `${baseUrl}/scenario/${key}.ks`;
+    },
+    chain(): string {
+      return `${baseUrl}/story-chain.json`;
     },
   };
 }
