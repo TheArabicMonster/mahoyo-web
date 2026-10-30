@@ -64,6 +64,8 @@ export type RuntimeState = {
   fore: PageState;
   back: PageState;
   bgm: string | null;
+  /** La BGM est en pause (@playpause) : une reprise (@playresume) la relance. */
+  bgmPaused?: boolean;
   se: string | null;
   /**
    * Variables KAG organisées en portées :
@@ -994,6 +996,7 @@ export class Runtime {
     switch (instruction.kind) {
       case "play": {
         this.state.bgm = instruction.storage;
+        this.state.bgmPaused = false;
         event = {
           kind: "play",
           channel: "bgm",
@@ -1005,7 +1008,28 @@ export class Runtime {
       }
       case "playstop": {
         this.state.bgm = null;
+        this.state.bgmPaused = false;
         event = { kind: "stop", channel: "bgm", fadeOut: instruction.time };
+        break;
+      }
+      case "playpause": {
+        // Sans BGM en cours, ou déjà en pause : sans effet.
+        if (this.state.bgm === null || this.state.bgmPaused) break;
+        this.state.bgmPaused = true;
+        event = { kind: "pause", channel: "bgm", fadeOut: instruction.time };
+        break;
+      }
+      case "playresume": {
+        const volume = instruction.volume / 100;
+        if (this.state.bgm !== null) {
+          this.state.bgmPaused = false;
+          event = { kind: "resume", channel: "bgm", volume, fadeIn: instruction.time };
+        } else if (instruction.storage) {
+          // Rien à reprendre mais la piste est nommée : on la lance en fondu.
+          this.state.bgm = instruction.storage;
+          this.state.bgmPaused = false;
+          event = { kind: "play", channel: "bgm", storage: instruction.storage, loop: true, volume, fadeIn: instruction.time };
+        }
         break;
       }
       case "fadebgm": {
@@ -1299,6 +1323,8 @@ export class Runtime {
       }
       case "play":
       case "playstop":
+      case "playpause":
+      case "playresume":
       case "fadebgm":
       case "se":
       case "seact":
@@ -1654,6 +1680,7 @@ export class Runtime {
         fore: structuredClone(this.state.fore),
         back: structuredClone(this.state.back),
         bgm: this.state.bgm,
+        bgmPaused: this.state.bgmPaused ?? false,
         se: this.state.se,
         variables: structuredClone(this.state.variables),
         evalGlobal: structuredClone(this.state.evalGlobal),

@@ -120,6 +120,8 @@ export type Instruction =
   | { kind: "trans"; rule?: string; time: number; nowait?: boolean; canskip?: boolean; cond?: string }
   | { kind: "play"; storage: string; volume?: number }
   | { kind: "playstop"; time?: number }
+  | { kind: "playpause"; time: number; storage?: string }
+  | { kind: "playresume"; time: number; volume: number; storage?: string }
   | { kind: "fadebgm"; time: number; volume?: number }
   | { kind: "se"; storage: string; volume?: number; loop?: boolean; delay?: number }
   | { kind: "seact"; storage: string; delay: number; fadeIn: number; volume: number; loop: boolean }

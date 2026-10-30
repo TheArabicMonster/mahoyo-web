@@ -131,7 +131,11 @@ export type AudioChannel = "bgm" | "voice" | `se:${number}`;
 export type AudioEvent =
   | { kind: "play"; channel: AudioChannel; storage: AssetRef; loop: boolean; volume: number; fadeIn?: Ms; delay?: Ms }
   | { kind: "stop"; channel: AudioChannel | "allSe"; fadeOut?: Ms }
-  | { kind: "fade"; channel: AudioChannel; volume: number; time: Ms };
+  | { kind: "fade"; channel: AudioChannel; volume: number; time: Ms }
+  /** Met un canal en pause (fondu vers le silence, puis la lecture est suspendue en gardant sa position). */
+  | { kind: "pause"; channel: AudioChannel; fadeOut?: Ms }
+  /** Reprend un canal en pause là où il s'était arrêté, avec un fondu d'entrée vers `volume`. */
+  | { kind: "resume"; channel: AudioChannel; volume: number; fadeIn?: Ms };
 
 /** Instantané audio utile pour les sauvegardes.
  *

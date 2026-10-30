@@ -197,6 +197,18 @@ export function reduceAudio(events: readonly RenderEvent[]): AudioSnapshot {
         }
         break;
       }
+      case "pause": {
+        // Une piste en pause reste dans l'instantané, silencieuse : une sauvegarde
+        // faite entre @playpause et @playresume retrouve la piste que la reprise réveille.
+        const current = loops.get(audio.channel);
+        if (current) loops.set(audio.channel, { ...current, volume: 0 });
+        break;
+      }
+      case "resume": {
+        const current = loops.get(audio.channel);
+        if (current) loops.set(audio.channel, { ...current, volume: audio.volume });
+        break;
+      }
     }
   }
 
