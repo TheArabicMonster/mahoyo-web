@@ -40,6 +40,10 @@ export type AssetResolver = {
   se(storage: string): string;
   /** Résout un fichier de script .ks. */
   scenario(storage: string): string;
+  /** Résout un fichier de script .ks dans une langue traduite. */
+  translatedScenario(storage: string, language: string): string;
+  /** URL de l'index d'une langue (`lang/<language>/index.json`). */
+  languageIndex(language: string): string;
   /** URL de la table d'enchaînement des scripts (`story-chain.json`). */
   chain(): string;
   /** URL des timelines d'animation extraites des scripts (`timelines.json`). */
@@ -104,6 +108,14 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
       if (url) return `${baseUrl}/${url}`;
       // Sans manifest, on garde le .ks.
       return `${baseUrl}/scenario/${key}.ks`;
+    },
+    translatedScenario(storage: string, language: string): string {
+      const key = storageKey(storage);
+      // Sans manifest, on garde le .ks.
+      return `${baseUrl}/lang/${language}/scenario/${key}.ks`;
+    },
+    languageIndex(language: string): string {
+      return `${baseUrl}/lang/${language}/index.json`;
     },
     chain(): string {
       return `${baseUrl}/story-chain.json`;

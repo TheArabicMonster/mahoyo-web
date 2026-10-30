@@ -10,6 +10,7 @@ import { parse } from "@/kag/parser.js";
 import { decodeKs } from "./ks-encoding.js";
 import { normalizeScriptText } from "./normalize-ks.js";
 import type { Instruction, ParsedScript } from "@/kag/types.js";
+import type { LanguageIndex } from "@/core/language.js";
 
 export type CompatibilityLevel = "compatible" | "strict" | "incompatible";
 
@@ -30,19 +31,6 @@ export type CompatibilityReport = {
   translatedLabels: number;
   /** Description de la première divergence, ou null. */
   reason: string | null;
-};
-
-export type TranslationIndex = {
-  version: 1;
-  language: string;
-  label: string;
-  credits: string;
-  /** Scripts retenus (chemins relatifs scenario/<file>). */
-  scripts: string[];
-  /** Scripts strictement identiques au squelette. */
-  strict: string[];
-  /** Scripts ignorés avec la raison. */
-  skipped: { file: string; reason: string }[];
 };
 
 export type InstallTranslationOptions = {
@@ -235,7 +223,7 @@ export function installTranslation(
   translatedTexts: Map<string, string>,
   opts: InstallTranslationOptions,
 ): {
-  index: TranslationIndex;
+  index: LanguageIndex;
   reports: CompatibilityReport[];
   installed: Map<string, string>;
 } {
@@ -299,7 +287,7 @@ export function installTranslation(
     }
   }
 
-  const index: TranslationIndex = {
+  const index: LanguageIndex = {
     version: 1,
     language: opts.language,
     label: opts.label,

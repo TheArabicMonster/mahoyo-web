@@ -84,4 +84,21 @@ describe("AssetResolver — avec manifest", () => {
     expect(resolver.background("black")).toBe("/assets/bg/black.webp");
     expect(resolver.background("white")).toBe("/assets/bg/white.webp");
   });
+
+  it("résout un script traduit via translatedScenario", () => {
+    const resolver = createAssetResolver();
+    expect(resolver.translatedScenario("1-0.ks", "fr")).toBe("/assets/lang/fr/scenario/1-0.ks");
+    expect(resolver.translatedScenario("1-0", "fr")).toBe("/assets/lang/fr/scenario/1-0.ks");
+  });
+
+  it("résout l'index d'une langue via languageIndex", () => {
+    const resolver = createAssetResolver();
+    expect(resolver.languageIndex("fr")).toBe("/assets/lang/fr/index.json");
+  });
+
+  it("accepte une baseUrl personnalisée pour les langues", () => {
+    const resolver = createAssetResolver({ baseUrl: "/static" });
+    expect(resolver.translatedScenario("1-0.ks", "en")).toBe("/static/lang/en/scenario/1-0.ks");
+    expect(resolver.languageIndex("en")).toBe("/static/lang/en/index.json");
+  });
 });
