@@ -473,6 +473,27 @@ describe("Player — attente non interruptible (@wait canskip=0)", () => {
     expect(ctx.player.currentState).toBe("waiting-click");
   });
 
+  it("le skip continue après une attente non interruptible au lieu de s'arrêter", async () => {
+    const text = (page: number): Step => ({
+      position: at(page),
+      events: [{ kind: "text", segments: [{ text: `page ${page}` }] }],
+      stop: { kind: "click", style: "page" },
+    });
+    const ctx = setup([text(0), lockedWait(40), text(2), text(3)]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.updateSettings({ skipUnread: true });
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-click", "première page");
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "waiting-wait", "attente");
+
+    ctx.player.setMode("skip");
+    // Si l'attente coupait le skip, la page suivante attendrait un clic au lieu de défiler.
+    await until(() => ctx.player.currentState === "title", "fin du script en skip");
+    expect(ctx.ui.toasts.some((t) => t.message.includes("skip interrompu"))).toBe(false);
+  });
+
   it("un clic reste pris en compte une fois l'attente terminée", async () => {
     const ctx = setup([lockedWait(40), click()]);
     current = ctx.player;

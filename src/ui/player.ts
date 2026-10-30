@@ -685,6 +685,10 @@ export class Player implements PlayerCommands {
         if (this.mode === "skip") {
           if (opts.skipOk) {
             timer = setTimeout(finish, this.deps.skipDelay);
+          } else if (!opts.clickable && opts.fixedMs !== undefined) {
+            // Attente non interruptible (@wait canskip=0) : elle se déroule en entier,
+            // puis le skip reprend. Elle ne doit pas le couper.
+            timer = setTimeout(finish, opts.fixedMs);
           } else {
             this.ui.toast("Texte non lu : skip interrompu.");
             this.setMode("normal");
