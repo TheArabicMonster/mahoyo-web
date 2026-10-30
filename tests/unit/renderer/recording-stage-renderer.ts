@@ -23,6 +23,8 @@ export class RecordingStageRenderer implements StageRenderer {
 
   hurry(): void {}
   setClickIndicator(): void {}
+  setWaitIndicator(_active: boolean): void {}
+  nudgeWaitIndicator(): void {}
   setUserHidden(): void {}
 
   async restore(_snapshot: StageSnapshot, _signal: AbortSignal): Promise<void> {

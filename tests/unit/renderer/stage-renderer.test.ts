@@ -103,6 +103,31 @@ describe("DomStageRenderer", () => {
     expect(indicator.style.visibility).toBe("hidden");
   });
 
+  it("affiche et retire l'indicateur d'attente non interruptible, hors de la boîte de texte (#134)", () => {
+    const wait = root.querySelector(".mh-stage-wait") as HTMLElement;
+    expect(wait).not.toBeNull();
+    // Hors de la textbox : visible même quand le script la masque (@textoff).
+    expect(wait.closest(".mh-stage-textbox")).toBeNull();
+    expect(wait.classList.contains("mh-stage-wait-on")).toBe(false);
+
+    renderer.setWaitIndicator(true);
+    expect(wait.classList.contains("mh-stage-wait-on")).toBe(true);
+    renderer.setWaitIndicator(false);
+    expect(wait.classList.contains("mh-stage-wait-on")).toBe(false);
+  });
+
+  it("nudgeWaitIndicator ne fait réagir que l'indicateur actif", () => {
+    const wait = root.querySelector(".mh-stage-wait") as HTMLElement;
+    renderer.nudgeWaitIndicator();
+    expect(wait.classList.contains("mh-stage-wait-nudge")).toBe(false);
+
+    renderer.setWaitIndicator(true);
+    renderer.nudgeWaitIndicator();
+    expect(wait.classList.contains("mh-stage-wait-nudge")).toBe(true);
+    renderer.setWaitIndicator(false);
+    expect(wait.classList.contains("mh-stage-wait-nudge")).toBe(false);
+  });
+
   it("masque la textbox utilisateur", async () => {
     renderer.setUserHidden(true);
     const textbox = root.querySelector(".mh-stage-textbox") as HTMLElement;
