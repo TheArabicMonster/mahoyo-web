@@ -117,6 +117,25 @@ function flowKey(instruction: Instruction): string {
   return instruction.kind;
 }
 
+/**
+ * Labels visés par un saut ou un appel (`@jump`/`@call target=`, y compris dans les
+ * branches `@if` et dans les commandes brutes qui portent un `target`). Seuls ces
+ * labels comptent pour le déroulement ; les autres ne servent qu'à nommer les pages.
+ */
+function flowTargets(script: ParsedScript): Set<string> {
+  const out = new Set<string>();
+  const clean = (t: string): string => t.replace(/^\*/, "").replace(/\|.*$/, "");
+  const walk = (instructions: readonly Instruction[]): void => {
+    for (const ins of instructions) {
+      if ((ins.kind === "jump" || ins.kind === "call") && ins.target) out.add(clean(ins.target));
+      else if (ins.kind === "raw" && ins.args.target) out.add(clean(ins.args.target));
+      else if (ins.kind === "conditional") for (const branch of ins.branches) walk(branch.instructions);
+    }
+  };
+  for (const page of script.pages) walk(page.instructions);
+  return out;
+}
+
 /** Extrait la liste des labels d'un script sous forme comparable. */
 function labelMap(script: ParsedScript): Map<string, number> {
   const map = new Map<string, number>();
@@ -171,9 +190,15 @@ export function compareScripts(
     }
   }
 
-  if (missingLabels.length > 0 || extraLabels.length > 0) {
-    const parts: string[] = [];
-    if (missingLabels.length > 0) parts.push(`labels manquants : ${missingLabels.join(", ")}`);
+  // Un label en trop ne peut casser aucun saut : tous ceux de l'original existent encore, à la
+  // même page. Il est signalé (extraLabels) mais n'empêche pas l'installation.
+  // Un label manquant (ou à une autre page) ne bloque que s'il est la cible d'un saut ou d'un
+  // appel : la traduction numérote parfois ses pages autrement (`page0` au lieu de `page1`),
+  // ce qui est sans effet tant que rien ne s'y réfère.
+  const referenced = new Set([...flowTargets(original), ...flowTargets(translated)]);
+  const blockingLabels = missingLabels.filter((name) => referenced.has(name));
+  if (blockingLabels.length > 0) {
+    const parts: string[] = [`labels visés par un saut, manquants ou déplacés : ${blockingLabels.join(", ")}`];
     if (extraLabels.length > 0) parts.push(`labels en trop : ${extraLabels.join(", ")}`);
     return {
       file,
@@ -187,23 +212,6 @@ export function compareScripts(
       reason: parts.join(" ; "),
       missingLabels,
       extraLabels,
-    };
-  }
-
-  if (originalLabels.size !== translatedLabels.size) {
-    // Sécurité : ne devrait plus arriver après le bloc précédent.
-    return {
-      file,
-      level: "incompatible",
-      installable: false,
-      originalPages,
-      translatedPages,
-      matchingLabels,
-      originalLabels: originalLabels.size,
-      translatedLabels: translatedLabels.size,
-      reason: "labels supplémentaires dans la traduction",
-      missingLabels: [],
-      extraLabels: [...translatedLabels.keys()].filter((n) => !originalLabels.has(n)),
     };
   }
 
@@ -226,8 +234,8 @@ export function compareScripts(
         originalLabels: originalLabels.size,
         translatedLabels: translatedLabels.size,
         reason: `page ${i} : nombre d'instructions de flux différent`,
-        missingLabels: [],
-        extraLabels: [],
+        missingLabels,
+        extraLabels,
       };
     }
 
@@ -243,8 +251,8 @@ export function compareScripts(
           originalLabels: originalLabels.size,
           translatedLabels: translatedLabels.size,
           reason: `page ${i}, instruction de flux ${j} : squelette différent`,
-          missingLabels: [],
-          extraLabels: [],
+          missingLabels,
+          extraLabels,
         };
       }
     }
@@ -275,8 +283,8 @@ export function compareScripts(
       originalLabels: originalLabels.size,
       translatedLabels: translatedLabels.size,
       reason: null,
-      missingLabels: [],
-      extraLabels: [],
+      missingLabels,
+      extraLabels,
     };
   }
 
@@ -290,8 +298,8 @@ export function compareScripts(
     originalLabels: originalLabels.size,
     translatedLabels: translatedLabels.size,
     reason: null,
-    missingLabels: [],
-    extraLabels: [],
+    missingLabels,
+    extraLabels,
   };
 }
 
