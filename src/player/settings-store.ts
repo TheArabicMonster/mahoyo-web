@@ -9,7 +9,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
   display: { textSpeed: 30, autoDelay: 2000, fontScale: 1, textboxOpacity: 0.8 },
   audio: { master: 1, bgm: 0.6, se: 0.5, voice: 1, muted: false },
   skipUnread: false,
-  language: "ja",
+  // Français par défaut ; le player retombe sur "ja" si aucune traduction n'est installée.
+  language: "fr",
 };
 
 export interface SettingsStore {
