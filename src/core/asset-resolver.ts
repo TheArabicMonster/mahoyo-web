@@ -14,7 +14,7 @@
  *   non standard.
  */
 
-import { storageKey, isSolidColor } from "./storage-key.js";
+import { storageKey } from "./storage-key.js";
 import type {
   AssetManifest,
   lookupImage,
@@ -63,15 +63,13 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
 
   /**
    * Résout une clé via le manifest, ou retombe sur la convention de dossiers.
-   * Les couleurs solides (black, white, red) retournent la convention car
-   * elles n'ont pas de fichier.
+   *
+   * Les couleurs unies (`black`, `white`, `red`…) passent aussi par le manifest : le pipeline
+   * en génère un fichier (`bg/white.png`). Les ignorer menait à `bg/white.webp`, inexistant :
+   * le fond blanc d'un flash s'affichait noir (#134).
    */
   function resolveImage(storage: string, kind: "bg" | "image" | "rule", ext: string): string {
     const key = storageKey(storage);
-    // Couleurs solides : pas de fichier, convention seulement.
-    if (isSolidColor(storage)) {
-      return `${baseUrl}/${kind}/${key}.${ext}`;
-    }
     // Manifest d'abord.
     const url = lookupImg(manifest, key);
     if (url) return `${baseUrl}/${url}`;

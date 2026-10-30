@@ -79,10 +79,27 @@ describe("AssetResolver — avec manifest", () => {
     expect(resolver.image("unknown")).toBe("/assets/image/unknown.webp");
   });
 
-  it("couleurs solides utilisent toujours la convention", () => {
+  it("couleurs solides absentes du manifest : convention de repli", () => {
     const resolver = createAssetResolver({ manifest });
     expect(resolver.background("black")).toBe("/assets/bg/black.webp");
     expect(resolver.background("white")).toBe("/assets/bg/white.webp");
+  });
+
+  it("couleurs solides présentes dans le manifest : le fichier généré est utilisé (#134)", () => {
+    // Le pipeline génère bg/white.png : ignorer le manifest donnait bg/white.webp, inexistant,
+    // et le flash blanc du prologue s'affichait noir.
+    const withSolids: AssetManifest = {
+      ...manifest,
+      images: {
+        ...manifest.images,
+        white: { url: "bg/white.png", source: "bg/white.png", kind: "bg" },
+        red: { url: "bg/red.png", source: "bg/red.png", kind: "bg" },
+      },
+    };
+    const resolver = createAssetResolver({ manifest: withSolids });
+    expect(resolver.background("white")).toBe("/assets/bg/white.png");
+    expect(resolver.image("red")).toBe("/assets/bg/red.png");
+    expect(resolver.background("white|x")).toBe("/assets/bg/white.png");
   });
 
   it("résout un script traduit via translatedScenario", () => {
