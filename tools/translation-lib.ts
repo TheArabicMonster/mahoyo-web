@@ -31,6 +31,10 @@ export type CompatibilityReport = {
   translatedLabels: number;
   /** Description de la première divergence, ou null. */
   reason: string | null;
+  /** Labels présents dans l'original mais absents ou mal placés dans la traduction. */
+  missingLabels: string[];
+  /** Labels présents dans la traduction mais absents dans l'original. */
+  extraLabels: string[];
 };
 
 export type InstallTranslationOptions = {
@@ -57,9 +61,38 @@ export function parseTranslationScript(text: string): ParsedScript {
   return parse(lex(text));
 }
 
-/** Construit le squelette d'une instruction pour comparaison. */
-function skeletonOf(instruction: Instruction): string {
-  // Pour les commandes de flux, on inclut les arguments qui déterminent la suite.
+/** Kinds d'instructions qui pilotent le flux du script. */
+const FLOW_KINDS = new Set<string>([
+  "jump",
+  "call",
+  "return",
+  "conditional",
+  "macrodef",
+]);
+
+/** Commandes @raw qui participent au flux ou aux choix du joueur. */
+const FLOW_RAW_COMMANDS = new Set<string>([
+  "s",
+  "link",
+  "endlink",
+  "button",
+  "select",
+  "waittrig",
+  "waitclick",
+  "cancelautomode",
+  "cancelskip",
+  "resetwait",
+]);
+
+/** true si l'instruction fait partie du squelette de flux. */
+function isFlow(instruction: Instruction): boolean {
+  if (FLOW_KINDS.has(instruction.kind)) return true;
+  if (instruction.kind === "raw" && FLOW_RAW_COMMANDS.has(instruction.command)) return true;
+  return false;
+}
+
+/** Représentation comparable d'une instruction de flux. */
+function flowKey(instruction: Instruction): string {
   if (instruction.kind === "jump" || instruction.kind === "call") {
     return JSON.stringify({
       kind: instruction.kind,
@@ -68,12 +101,20 @@ function skeletonOf(instruction: Instruction): string {
       cond: instruction.cond,
     });
   }
+  if (instruction.kind === "raw") {
+    // Pour les commandes de flux raw, les arguments (target, exp, etc.) comptent.
+    const entries = Object.entries(instruction.args).sort((a, b) => a[0].localeCompare(b[0]));
+    return JSON.stringify({ kind: "raw", command: instruction.command, args: entries });
+  }
+  if (instruction.kind === "conditional") {
+    // On ne compare pas le contenu des branches, juste le fait qu'il y ait
+    // une alternative : l'instruction elle-même est le point de flux.
+    return "conditional";
+  }
+  if (instruction.kind === "macrodef") {
+    return JSON.stringify({ kind: "macrodef", name: instruction.name });
+  }
   return instruction.kind;
-}
-
-/** true si l'instruction fait partie du squelette structurel (hors texte/break). */
-function isStructural(instruction: Instruction): boolean {
-  return instruction.kind !== "text" && instruction.kind !== "break";
 }
 
 /** Extrait la liste des labels d'un script sous forme comparable. */
@@ -105,31 +146,52 @@ export function compareScripts(
       originalLabels: Object.keys(original.labels).length,
       translatedLabels: Object.keys(translated.labels).length,
       reason: `nombre de pages différent (${translatedPages} vs ${originalPages})`,
+      missingLabels: [],
+      extraLabels: [],
     };
   }
 
   const originalLabels = labelMap(original);
   const translatedLabels = labelMap(translated);
   let matchingLabels = 0;
+  const missingLabels: string[] = [];
+  const extraLabels: string[] = [];
 
   for (const [name, pageIndex] of originalLabels) {
     if (translatedLabels.get(name) !== pageIndex) {
-      return {
-        file,
-        level: "incompatible",
-        installable: false,
-        originalPages,
-        translatedPages,
-        matchingLabels,
-        originalLabels: originalLabels.size,
-        translatedLabels: translatedLabels.size,
-        reason: `label "${name}" différent ou absent`,
-      };
+      missingLabels.push(name);
+    } else {
+      matchingLabels++;
     }
-    matchingLabels++;
+  }
+
+  for (const [name] of translatedLabels) {
+    if (!originalLabels.has(name)) {
+      extraLabels.push(name);
+    }
+  }
+
+  if (missingLabels.length > 0 || extraLabels.length > 0) {
+    const parts: string[] = [];
+    if (missingLabels.length > 0) parts.push(`labels manquants : ${missingLabels.join(", ")}`);
+    if (extraLabels.length > 0) parts.push(`labels en trop : ${extraLabels.join(", ")}`);
+    return {
+      file,
+      level: "incompatible",
+      installable: false,
+      originalPages,
+      translatedPages,
+      matchingLabels,
+      originalLabels: originalLabels.size,
+      translatedLabels: translatedLabels.size,
+      reason: parts.join(" ; "),
+      missingLabels,
+      extraLabels,
+    };
   }
 
   if (originalLabels.size !== translatedLabels.size) {
+    // Sécurité : ne devrait plus arriver après le bloc précédent.
     return {
       file,
       level: "incompatible",
@@ -140,19 +202,20 @@ export function compareScripts(
       originalLabels: originalLabels.size,
       translatedLabels: translatedLabels.size,
       reason: "labels supplémentaires dans la traduction",
+      missingLabels: [],
+      extraLabels: [...translatedLabels.keys()].filter((n) => !originalLabels.has(n)),
     };
   }
 
-  // Comparaison du squelette structurel (hors texte/break) page par page.
-  let hasStructuralDiff = false;
+  // Comparaison du squelette de flux page par page.
   for (let i = 0; i < originalPages; i++) {
     const orig = original.pages[i]!;
     const tran = translated.pages[i]!;
 
-    const origSkeleton = orig.instructions.filter(isStructural).map(skeletonOf);
-    const tranSkeleton = tran.instructions.filter(isStructural).map(skeletonOf);
+    const origFlow = orig.instructions.filter(isFlow).map(flowKey);
+    const tranFlow = tran.instructions.filter(isFlow).map(flowKey);
 
-    if (origSkeleton.length !== tranSkeleton.length) {
+    if (origFlow.length !== tranFlow.length) {
       return {
         file,
         level: "incompatible",
@@ -162,12 +225,14 @@ export function compareScripts(
         matchingLabels,
         originalLabels: originalLabels.size,
         translatedLabels: translatedLabels.size,
-        reason: `page ${i} : nombre d'instructions structurelles différent`,
+        reason: `page ${i} : nombre d'instructions de flux différent`,
+        missingLabels: [],
+        extraLabels: [],
       };
     }
 
-    for (let j = 0; j < origSkeleton.length; j++) {
-      if (origSkeleton[j] !== tranSkeleton[j]) {
+    for (let j = 0; j < origFlow.length; j++) {
+      if (origFlow[j] !== tranFlow[j]) {
         return {
           file,
           level: "incompatible",
@@ -177,20 +242,29 @@ export function compareScripts(
           matchingLabels,
           originalLabels: originalLabels.size,
           translatedLabels: translatedLabels.size,
-          reason: `page ${i}, instruction structurelle ${j} : squelette différent`,
+          reason: `page ${i}, instruction de flux ${j} : squelette différent`,
+          missingLabels: [],
+          extraLabels: [],
         };
       }
     }
+  }
 
-    // Détecter une différence dans la partie texte/break pour différencier compatible/strict.
+  // Détecter une différence dans la partie non-flux pour différencier compatible/strict.
+  let hasNonFlowDiff = false;
+  for (let i = 0; i < originalPages; i++) {
+    const orig = original.pages[i]!;
+    const tran = translated.pages[i]!;
+
     const origFull = orig.instructions.map((inst) => inst.kind);
     const tranFull = tran.instructions.map((inst) => inst.kind);
     if (origFull.length !== tranFull.length || origFull.some((k, idx) => k !== tranFull[idx])) {
-      hasStructuralDiff = true;
+      hasNonFlowDiff = true;
+      break;
     }
   }
 
-  if (hasStructuralDiff) {
+  if (hasNonFlowDiff) {
     return {
       file,
       level: "compatible",
@@ -201,6 +275,8 @@ export function compareScripts(
       originalLabels: originalLabels.size,
       translatedLabels: translatedLabels.size,
       reason: null,
+      missingLabels: [],
+      extraLabels: [],
     };
   }
 
@@ -214,6 +290,8 @@ export function compareScripts(
     originalLabels: originalLabels.size,
     translatedLabels: translatedLabels.size,
     reason: null,
+    missingLabels: [],
+    extraLabels: [],
   };
 }
 
@@ -248,6 +326,8 @@ export function installTranslation(
         originalLabels: 0,
         translatedLabels: 0,
         reason: "script original introuvable",
+        missingLabels: [],
+        extraLabels: [],
       };
     } else {
       let original: ParsedScript;
@@ -266,6 +346,8 @@ export function installTranslation(
           originalLabels: 0,
           translatedLabels: 0,
           reason: `erreur de parsing : ${err instanceof Error ? err.message : String(err)}`,
+          missingLabels: [],
+          extraLabels: [],
         };
         reports.push(report);
         skipped.push({ file, reason: report.reason ?? "incompatible" });
@@ -281,7 +363,7 @@ export function installTranslation(
       if (report.level === "strict") {
         strict.push(file);
       }
-      installed.set(file, translatedText);
+      installed.set(file, translatedTexts.get(file)!);
     } else {
       skipped.push({ file, reason: report.reason ?? "incompatible" });
     }
@@ -295,6 +377,7 @@ export function installTranslation(
     scripts,
     strict,
     skipped,
+    extraAssets: {},
   };
 
   return { index, reports, installed };

@@ -25,9 +25,17 @@ describe("translation-lib", () => {
     expect(report.reason).toBeNull();
   });
 
-  it("juge compatible quand les breaks texte diffèrent mais pas le squelette", () => {
+  it("juge compatible quand les breaks texte diffèrent mais pas le squelette de flux", () => {
     const originalText = "*start|\nTexte A.\n@r\nTexte B.[p]\n";
     const translatedText = "*start|\nTexte A. Texte B.[p]\n";
+    const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
+    expect(report.level).toBe("compatible");
+    expect(report.installable).toBe(true);
+  });
+
+  it("juge compatible quand seulement des commandes audio diffèrent", () => {
+    const originalText = "*start|\nTexte.[p]\n";
+    const translatedText = "*start|\n@se storage=a\nTexte.\n@sestop storage=a\n[p]\n";
     const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
     expect(report.level).toBe("compatible");
     expect(report.installable).toBe(true);
@@ -42,29 +50,42 @@ describe("translation-lib", () => {
     expect(report.reason).toContain("pages");
   });
 
-  it("juge incompatible quand les labels diffèrent", () => {
+  it("juge incompatible quand un label est manquant", () => {
     const originalText = "*start|\nTexte.[p]\n*next|\nSuite.[p]\n";
-    const translatedText = "*start|\nTexte.[p]\n*different|\nSuite.[p]\n";
+    const translatedText = "*start|\nTexte.[p]\nSuite.[p]\n";
     const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
     expect(report.level).toBe("incompatible");
     expect(report.installable).toBe(false);
     expect(report.reason).toContain("label");
+    expect(report.missingLabels).toContain("next");
   });
 
-  it("juge incompatible quand une commande est ajoutée", () => {
+  it("juge incompatible quand un label est ajouté", () => {
     const originalText = "*start|\nTexte.[p]\n";
-    const translatedText = "*start|\nTexte.\n@bg storage=room time=500\n[p]\n";
+    const translatedText = "*start|\n*extra|\nTexte.[p]\n";
     const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
     expect(report.level).toBe("incompatible");
     expect(report.installable).toBe(false);
+    expect(report.reason).toContain("label");
+    expect(report.extraLabels).toContain("extra");
+  });
+
+  it("juge incompatible quand une instruction de flux est ajoutée", () => {
+    const originalText = "*start|\nTexte.[p]\n";
+    const translatedText = "*start|\nTexte.\n@jump target=*start[p]\n";
+    const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
+    expect(report.level).toBe("incompatible");
+    expect(report.installable).toBe(false);
+    expect(report.reason).toContain("flux");
   });
 
   it("juge incompatible quand une commande de flux change de cible", () => {
-    const originalText = "*start|\n@jump target=*a[p]\n*a|\nTexte.[p]\n";
-    const translatedText = "*start|\n@jump target=*b[p]\n*b|\nTexte.[p]\n";
+    const originalText = "*start|\n@jump storage=a.ks[p]\n";
+    const translatedText = "*start|\n@jump storage=b.ks[p]\n";
     const report = compareScripts(makeOriginal(originalText), makeTranslated(translatedText), "t.ks");
     expect(report.level).toBe("incompatible");
     expect(report.installable).toBe(false);
+    expect(report.reason).toContain("flux");
   });
 
   it("installe uniquement les scripts compatibles", () => {
