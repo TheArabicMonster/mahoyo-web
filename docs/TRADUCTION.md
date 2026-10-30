@@ -152,6 +152,8 @@ Top 10 des ressources les plus fréquentes (par nombre de scripts) :
 2. Choisir la langue **Français** dans le sélecteur.
 3. La langue s'applique au prochain script chargé.
 
+Le **français est la langue par défaut** : dès qu'une traduction est installée, une première partie démarre en français. Sans traduction installée, le player retombe sur le japonais. Un choix déjà enregistré dans les réglages (par exemple `ja`) est conservé.
+
 Le japonais est toujours disponible ; les langues traduites apparaissent uniquement si leur `lang/<lang>/index.json` est présent dans les assets.
 
 ## Tests
