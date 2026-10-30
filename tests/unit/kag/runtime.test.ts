@@ -658,7 +658,9 @@ Deuxième ligne.
       expect(kf0.vcenter).toBe(288);
       expect(kf0.opacity).toBeCloseTo(50 / 255, 2);
       // kf1 : valeurs d'ARRIVÉE (instruction).
-      expect(kf1.center).toBe(0); // @movefg sans center= → parser met 0 (parseIntArg default)
+      // @movefg sans center= → indéfini (conserver la position), pas 0 (#65).
+      expect(kf1.center).toBeUndefined();
+      expect(kf1.vcenter).toBeUndefined();
       expect(kf1.opacity).toBeCloseTo(80 / 255, 2);
     }
   });
@@ -803,5 +805,22 @@ Deuxième ligne.
     // L'instruction originale ne doit pas avoir été modifiée.
     expect(animInstr?.def.id).toBe(originalId);
     expect(animInstr?.def.keyframes[0]).toEqual(originalKf0);
+  });
+});
+
+describe("Runtime — @movefg sans center (#65)", () => {
+  it("conserve la position du calque quand center/vcenter sont absents", () => {
+    const SRC = `
+*page0|
+@fg storage=red index=2000 opacity=50 center=300 vcenter=200
+@trans time=100 nowait=1
+@movefg storage=red time=100 opacity=80
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.step();
+    const layer = runtime.getSaveData().state.fore.layers.find((l) => l.storage === "red");
+    expect(layer?.center).toBe(300);
+    expect(layer?.vcenter).toBe(200);
   });
 });

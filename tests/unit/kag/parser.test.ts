@@ -413,3 +413,35 @@ describe("parse", () => {
     }
   });
 });
+
+describe("parse @movefg — center/vcenter absents (#65)", () => {
+  function moveKeyframes(src: string) {
+    const ins = parse(lex(src)).pages[0]?.instructions[0];
+    if (!ins || ins.kind !== "animate") throw new Error("animate attendu");
+    return ins.def.keyframes;
+  }
+
+  it("center et vcenter absents restent indéfinis (conserver la position)", () => {
+    const kf = moveKeyframes("@movefg storage=red time=100 opacity=80");
+    expect(kf[1]?.center).toBeUndefined();
+    expect(kf[1]?.vcenter).toBeUndefined();
+  });
+
+  it("center=0 explicite reste 0 : absent et nul sont distingués", () => {
+    const kf = moveKeyframes("@movefg storage=red time=100 center=0 vcenter=0");
+    expect(kf[1]?.center).toBe(0);
+    expect(kf[1]?.vcenter).toBe(0);
+  });
+
+  it("un seul des deux attributs fourni", () => {
+    const kf = moveKeyframes("@movefg storage=red time=100 center=300");
+    expect(kf[1]?.center).toBe(300);
+    expect(kf[1]?.vcenter).toBeUndefined();
+  });
+
+  it("même comportement pour @movepartbg", () => {
+    const kf = moveKeyframes("@movepartbg storage=im09 time=100 vcenter=200");
+    expect(kf[1]?.center).toBeUndefined();
+    expect(kf[1]?.vcenter).toBe(200);
+  });
+});

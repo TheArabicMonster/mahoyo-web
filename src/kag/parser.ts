@@ -241,8 +241,9 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       const storage = normStorage(args.storage);
       const page = parsePageLayer(args.page);
       const time = parseIntArg(args.time, 1000);
-      const center = parseIntArg(args.center);
-      const vcenter = parseIntArg(args.vcenter);
+      // Un attribut absent signifie « conserver la valeur courante » (≠ 0).
+      const centerOpt = args.center !== undefined ? parseIntArg(args.center) : undefined;
+      const vcenterOpt = args.vcenter !== undefined ? parseIntArg(args.vcenter) : undefined;
       const opacity = args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : undefined;
       const id = args.id;
 
@@ -257,18 +258,21 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
             isPartbg,
             keyframes: [
               { time: 0, duration: time, interp: "l", easing: "linear", accel: 0 },
-              { time, duration: time, interp: "l", easing: "linear", accel: 0, center, vcenter, opacity },
+              { time, duration: time, interp: "l", easing: "linear", accel: 0, center: centerOpt, vcenter: vcenterOpt, opacity },
             ],
             id,
           },
         };
       }
 
+      // Déplacement instantané : l'instruction `fg` exige une position, donc un
+      // attribut absent retombe sur 0 (cas absent du corpus, qui fournit toujours
+      // center et vcenter).
       return {
         kind: "fg",
         storage,
-        center,
-        vcenter,
+        center: centerOpt ?? 0,
+        vcenter: vcenterOpt ?? 0,
         index: parseIntArg(args.index) || 1,
         opacity,
         page,
