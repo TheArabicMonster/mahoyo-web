@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, mergeSettings } from "@/player/settings-store.js";
 describe("mergeSettings", () => {
   it("conserve la langue par défaut", () => {
     const merged = mergeSettings(DEFAULT_SETTINGS, {});
-    expect(merged.language).toBe("ja");
+    expect(merged.language).toBe("fr");
   });
 
   it("accepte fr", () => {
@@ -17,14 +17,14 @@ describe("mergeSettings", () => {
     expect(merged.language).toBe("en");
   });
 
-  it("retombe sur ja si la langue est inconnue", () => {
+  it("garde la langue de base si la langue est inconnue", () => {
     const merged = mergeSettings(DEFAULT_SETTINGS, { language: "de" as never });
-    expect(merged.language).toBe("ja");
+    expect(merged.language).toBe("fr");
   });
 
-  it("retombe sur ja si la langue est invalide dans le store", () => {
+  it("garde la langue par défaut si la langue est invalide dans le store", () => {
     const stored = { ...DEFAULT_SETTINGS, language: "xx" as never };
     const merged = mergeSettings(DEFAULT_SETTINGS, stored);
-    expect(merged.language).toBe("ja");
+    expect(merged.language).toBe("fr");
   });
 });

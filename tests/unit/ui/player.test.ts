@@ -912,7 +912,7 @@ describe("Player — langues", () => {
     await ctx.player.ready;
     ctx.player.startScript("t.ks");
     await until(() => ctx.player.currentState === "waiting-click", "waiting-click");
-    ctx.player.updateSettings({ language: "fr" });
+    ctx.player.updateSettings({ language: "ja" });
     expect(ctx.ui.toasts.some((t) => t.message.includes("prochain chapitre"))).toBe(true);
   });
 
