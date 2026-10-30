@@ -99,6 +99,8 @@ type HistoryEntry = {
   stage: StageSnapshot;
   audio: AudioSnapshot;
   text: string;
+  /** Scripts d'interlude encore à jouer (voir `chainQueue`) : à restaurer avec le point. */
+  chainQueue: string[];
 };
 
 async function defaultLoadScript(resolver: AssetResolver, file: string): Promise<ParsedScript | null> {
@@ -469,7 +471,6 @@ export class Player implements PlayerCommands {
       return;
     }
     this.scriptFile = record.scriptFile;
-    this.chainQueue = [];
     this.history = [
       {
         position: record.position,
@@ -478,6 +479,7 @@ export class Player implements PlayerCommands {
         stage: record.stage,
         audio: record.audio,
         text: record.previewText,
+        chainQueue: record.chainQueue ?? [],
       },
     ];
     if (await this.restoreEntry(this.history[0])) this.overlays = [];
@@ -779,6 +781,7 @@ export class Player implements PlayerCommands {
       stage: this.stageSnap,
       audio: this.audioSnap,
       text: previewOf(this.stageSnap),
+      chainQueue: [...this.chainQueue],
     };
     this.history.push(entry);
     if (this.history.length > HISTORY_LIMIT) this.history.shift();
@@ -797,6 +800,7 @@ export class Player implements PlayerCommands {
       runtime: entry.runtime,
       audio: entry.audio,
       stop: entry.stop,
+      chainQueue: entry.chainQueue,
     };
   }
 
@@ -832,6 +836,8 @@ export class Player implements PlayerCommands {
       if (!(await runtime.loadSaveData(data, scripts))) throw new Error("Restauration du runtime refusée");
 
       this.runtime = runtime;
+      this.scriptFile = data.scriptName;
+      this.chainQueue = [...entry.chainQueue];
       this.stageSnap = entry.stage;
       this.audioSnap = entry.audio;
       this.audio.stopAll();

@@ -79,11 +79,13 @@ function lookup(chain: StoryChain, script: string): ChainRoute[] {
 /**
  * Choisit la suite d'un script terminé.
  *
- * - Une route conditionnelle vraie l'emporte sur les routes sans condition ;
+ * - Toutes les routes libellées : c'est un menu. Une condition sert à afficher ou
+ *   masquer une option (fausse = masquée). Deux options ou plus : menu, même si
+ *   elles mènent au même script ; une seule : on l'enchaîne.
+ * - Sinon, une route conditionnelle vraie l'emporte sur les routes sans condition ;
  *   sans condition vraie, on garde les routes sans condition.
- * - Une seule suite (après dédoublonnage) : on l'enchaîne.
- * - Plusieurs suites toutes libellées : menu de choix.
- * - Plusieurs suites sans libellé : la première du graphe (déterministe).
+ * - Une seule suite (après dédoublonnage) : on l'enchaîne ; plusieurs sans libellé :
+ *   la première du graphe (déterministe).
  *
  * `evalCondition` évalue une condition ; sans lui, les routes conditionnelles
  * sont ignorées.
@@ -96,26 +98,34 @@ export function resolveNext(
   const routes = lookup(chain, script);
   if (routes.length === 0) return { kind: "end" };
 
+  const sequence = (r: ChainRoute): string => [r.to, ...(r.then ?? [])].join(">");
+  const dedupe = (list: ChainRoute[]): ChainRoute[] => {
+    const out: ChainRoute[] = [];
+    for (const route of list) {
+      if (!out.some((u) => sequence(u) === sequence(route) && u.choice === route.choice)) out.push(route);
+    }
+    return out;
+  };
+
+  // Menu : toutes les routes sont des options libellées.
+  if (routes.every((r) => r.choice)) {
+    const shown = dedupe(
+      routes.filter((r) => r.condition === undefined || (evalCondition !== undefined && evalCondition(r.condition))),
+    );
+    if (shown.length === 0) return { kind: "end" };
+    if (shown.length === 1) return { kind: "script", file: shown[0]!.to, then: shown[0]!.then ?? [] };
+    return {
+      kind: "choice",
+      options: shown.map((r) => ({ label: r.choice!, file: r.to, then: r.then ?? [] })),
+    };
+  }
+
   const conditionalTrue = routes.filter(
     (r) => r.condition !== undefined && evalCondition !== undefined && evalCondition(r.condition),
   );
   const candidates = conditionalTrue.length > 0 ? conditionalTrue : routes.filter((r) => r.condition === undefined);
 
-  const sequence = (r: ChainRoute): string => [r.to, ...(r.then ?? [])].join(">");
-  const unique: ChainRoute[] = [];
-  for (const route of candidates) {
-    if (!unique.some((u) => sequence(u) === sequence(route) && u.choice === route.choice)) unique.push(route);
-  }
+  const unique = dedupe(candidates);
   if (unique.length === 0) return { kind: "end" };
-
-  const targets = new Set(unique.map(sequence));
-  if (targets.size === 1) return { kind: "script", file: unique[0]!.to, then: unique[0]!.then ?? [] };
-
-  if (unique.every((r) => r.choice)) {
-    return {
-      kind: "choice",
-      options: unique.map((r) => ({ label: r.choice!, file: r.to, then: r.then ?? [] })),
-    };
-  }
   return { kind: "script", file: unique[0]!.to, then: unique[0]!.then ?? [] };
 }

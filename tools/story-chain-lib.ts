@@ -154,6 +154,13 @@ export type ChainBuild = {
 
 type Entry = { files: string[]; condition?: string; choice?: string };
 
+/** Combine deux conditions en ET (une route et le bloc qui la suit peuvent en porter chacun une). */
+function andCondition(a: string | undefined, b: string | undefined): string | undefined {
+  if (a === undefined) return b;
+  if (b === undefined || a === b) return a;
+  return `(${a})&&(${b})`;
+}
+
 /**
  * Construit la table à partir du graphe analysé.
  *
@@ -204,7 +211,7 @@ export function buildStoryChain(graph: TjsValue): ChainBuild {
       const condition = asString(route.condition);
       const choice = choiceOf(route.alternative);
       for (const e of entries(route.arrival, visited)) {
-        out.push({ files: [...scripts, ...e.files], condition: condition ?? e.condition, choice: choice ?? e.choice });
+        out.push({ files: [...scripts, ...e.files], condition: andCondition(condition, e.condition), choice: choice ?? e.choice });
       }
     }
     // Interlude sans suite : il se joue seul.
@@ -238,7 +245,7 @@ export function buildStoryChain(graph: TjsValue): ChainBuild {
       for (const e of entries(route.arrival, seen)) {
         const merged: ChainRoute = { to: e.files[0]! };
         if (e.files.length > 1) merged.then = e.files.slice(1);
-        const cond = condition ?? e.condition;
+        const cond = andCondition(condition, e.condition);
         const ch = choice ?? e.choice;
         if (cond !== undefined) merged.condition = cond;
         if (ch !== undefined) merged.choice = ch;

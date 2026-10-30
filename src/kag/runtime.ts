@@ -1235,6 +1235,7 @@ export class Runtime {
     // main. Sans cela, un @return au milieu d'un script laisse l'exécution
     // continuer dans le code qui suit (ex. sections étiquetées d'un script système).
     this.frames = [];
+    this.macroParams = {};
     this.context.pc = this.context.script.pages.length;
     this.context.instructionIndex = 0;
     this.context.segmentIndex = 0;

@@ -29,8 +29,9 @@ npm run chain -- ~/jeu/extrait/data/others/main.gc public/assets
 Le pipeline actuel **ignore** `data/others` (`tools/inventory.ts`) : l'outil se lance donc
 à part pour l'instant.
 
-`story-chain.json` dérive des fichiers de l'utilisateur (comme le manifest) : il est généré
-dans `public/assets/` (ignoré par git) et **ne doit jamais être commité**.
+`story-chain.json` dérive des fichiers de l'utilisateur (comme le manifest) et **contient les libellés
+de choix du jeu** : il ne doit jamais être commité. Le `.gitignore` l'exclut par son nom, où qu'il soit
+généré (`npm run chain` accepte n'importe quel dossier de sortie).
 
 ## Format
 
@@ -54,7 +55,9 @@ dans `public/assets/` (ignoré par git) et **ne doit jamais être commité**.
 ```
 
 - `to` : script suivant.
-- `then` : scripts joués ensuite, dans l'ordre, avant de reconsulter la table. Sert aux
+- `then` : scripts joués ensuite, dans l'ordre, avant de reconsulter la table. La file restante est
+  enregistrée avec chaque point d'historique et chaque sauvegarde : retour arrière et chargement
+  pendant un interlude reprennent au bon endroit. Sert aux
   **interludes partagés** : `teatime.ks` (le goûter) apparaît dans 13 blocs du graphe,
   chacun suivi d'un chapitre différent ; la suite dépend donc du chapitre qui précède.
 - `condition` : expression TJS évaluée par le runtime ; une route conditionnelle vraie
@@ -65,10 +68,13 @@ dans `public/assets/` (ignoré par git) et **ne doit jamais être commité**.
 
 `resolveNext` (`src/core/story-chain.ts`) :
 
-1. une route conditionnelle vraie l'emporte ; sinon on garde les routes sans condition ;
-2. une seule suite après dédoublonnage : on l'enchaîne ;
-3. plusieurs suites toutes libellées : menu de choix ;
-4. plusieurs suites sans libellé : la première du graphe.
+1. **toutes les routes libellées : c'est un menu.** Une condition y sert à afficher ou masquer une
+   option (fausse = masquée). Deux options ou plus : menu, même si elles mènent au même script ;
+   une seule : on l'enchaîne ;
+2. sinon, une route conditionnelle vraie l'emporte ; sans condition vraie, on garde les routes sans condition ;
+3. une seule suite après dédoublonnage : on l'enchaîne ; plusieurs sans libellé : la première du graphe.
+
+Quand une route et le bloc qui la suit portent chacun une condition, elles sont combinées en ET.
 
 ## Résultat sur le corpus de référence
 
@@ -92,8 +98,8 @@ MAHOYO_ASSETS_DIR=/chemin/assets npx vitest run tests/integration/story-play.tes
 - **`operate` non repris** : chaque bloc du graphe pose des variables à l'entrée (par
   exemple `chapter=2`, ou des indicateurs de déblocage des bonus). La table ne les
   applique pas ; seuls l'ordre des scripts et les choix sont reproduits.
-- **La file `then` n'est pas sauvegardée** : charger une sauvegarde faite pendant un
-  interlude perd la suite prévue (la table redonne la suite à la fin du script suivant).
+- **Les conditions** (`room>0`, `Ｚ>0`…) portent sur des variables posées par `operate`, qui n'est
+  pas repris : elles valent faux et produisent un avertissement « eval failed ».
 - **Menu de chapitres non fait** : l'accès direct à un chapitre (racines `1.5-*`, `8.5`,
   bonus `nz*`, `sp*`) n'est pas couvert ici.
 - **Branches `wik_*`** : leurs options sont proposées par un menu, mais le comportement des

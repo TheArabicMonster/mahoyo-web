@@ -42,3 +42,6 @@ tmp-*/
 
 # Rapports d'audit (citant des noms d'assets du jeu)
 reports/
+
+# Table d'enchaînement générée depuis main.gc : contient les libellés de choix du jeu
+story-chain.json

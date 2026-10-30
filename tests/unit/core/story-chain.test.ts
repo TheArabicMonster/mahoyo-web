@@ -85,4 +85,47 @@ describe("resolveNext", () => {
     const c = chain({ "a.ks": [{ to: "x.ks", condition: "ok" }] });
     expect(resolveNext(c, "a.ks", () => false)).toEqual({ kind: "end" });
   });
+
+  describe("menu avec options conditionnelles", () => {
+    const c = chain({
+      "a.ks": [
+        { to: "x.ks", choice: "Option 1" },
+        { to: "x.ks", choice: "Option 2" },
+        { to: "z.ks", choice: "Option cachée", condition: "flag>0" },
+      ],
+    });
+
+    it("masque une option dont la condition est fausse, mais garde le menu", () => {
+      const step = resolveNext(c, "a.ks", () => false);
+      expect(step).toEqual({
+        kind: "choice",
+        options: [
+          { label: "Option 1", file: "x.ks", then: [] },
+          { label: "Option 2", file: "x.ks", then: [] },
+        ],
+      });
+    });
+
+    it("affiche l'option quand sa condition est vraie", () => {
+      const step = resolveNext(c, "a.ks", () => true);
+      expect(step.kind).toBe("choice");
+      if (step.kind === "choice") expect(step.options.map((o) => o.label)).toEqual(["Option 1", "Option 2", "Option cachée"]);
+    });
+
+    it("sans évaluateur, une option conditionnelle est masquée", () => {
+      const step = resolveNext(c, "a.ks");
+      expect(step.kind).toBe("choice");
+      if (step.kind === "choice") expect(step.options).toHaveLength(2);
+    });
+
+    it("une seule option visible : on l'enchaîne sans menu", () => {
+      const one = chain({ "a.ks": [{ to: "x.ks", choice: "Seule" }, { to: "z.ks", choice: "Autre", condition: "ok" }] });
+      expect(resolveNext(one, "a.ks", () => false)).toEqual({ kind: "script", file: "x.ks", then: [] });
+    });
+
+    it("aucune option visible : fin", () => {
+      const none = chain({ "a.ks": [{ to: "x.ks", choice: "A", condition: "a" }, { to: "y.ks", choice: "B", condition: "b" }] });
+      expect(resolveNext(none, "a.ks", () => false)).toEqual({ kind: "end" });
+    });
+  });
 });

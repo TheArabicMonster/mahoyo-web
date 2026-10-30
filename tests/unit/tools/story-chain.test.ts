@@ -85,6 +85,15 @@ describe("buildStoryChain", () => {
     ]);
   });
 
+  it("combine en ET la condition d'une route et celle de la route suivante", () => {
+    const { chain } = build(1, [
+      block(1, "a.ks", [{ to: 2, cond: "x>0" }]),
+      block(2, "", [{ to: 3, cond: "y>0" }]),
+      block(3, "b.ks"),
+    ]);
+    expect(chain.next["a.ks"]).toEqual([{ to: "b.ks", condition: "(x>0)&&(y>0)" }]);
+  });
+
   it("représente un interlude partagé par then, sans entrée propre", () => {
     const { chain, sharedScripts } = build(1, [
       block(1, "ch1.ks", [{ to: 10 }]),
