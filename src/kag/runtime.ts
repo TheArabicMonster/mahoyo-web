@@ -124,6 +124,20 @@ function isScopedVariables(
   );
 }
 
+/**
+ * Événements qui n'apportent rien de nouveau à lire ou à voir : effacement de la
+ * textbox (émis à chaque début de page), sauts de ligne, audio, arrêt d'animation.
+ * Tout autre événement compte comme du contenu nouveau pour le joueur.
+ */
+function isVisibleEvent(event: RenderEvent): boolean {
+  return (
+    event.kind !== "clearText" &&
+    event.kind !== "lineBreak" &&
+    event.kind !== "audio" &&
+    event.kind !== "stopAnimation"
+  );
+}
+
 /** Durée des fondus enchaînés entre deux fonds d'une timeline (ms). */
 const TIMELINE_FADE_MS = 1500;
 
@@ -186,6 +200,21 @@ export class Runtime {
   private pendingContextChange = false;
 
   /**
+   * Le dernier step s'est arrêté sur un point d'arrêt (hors fin de script) :
+   * le prochain `step()` reprend juste après. Sert à ne pas confondre une page
+   * terminée par une pause (`text [wait] [p]`) avec un retour de @call après la
+   * dernière instruction (#136, B7).
+   */
+  private resumedAfterStop = false;
+
+  /**
+   * Du contenu lisible ou visible (texte, scène, animation…) a été émis depuis
+   * le dernier arrêt sur un clic. Sans lui, une pause `[l]` n'a rien à faire
+   * attendre au joueur (#136, B8).
+   */
+  private visibleSinceClick = false;
+
+  /**
    * Pile de frames d'exécution pour les branches conditionnelles et les
    * expansions de macros. Chaque frame porte son index d'instruction et sa
    * position dans un éventuel segment texte ([l]).
@@ -226,6 +255,12 @@ export class Runtime {
   }
 
   private makeStep(events: RenderEvent[], stop: StopReason, segment?: number): Step {
+    this.resumedAfterStop = stop.kind !== "end";
+    if (stop.kind === "click") {
+      this.visibleSinceClick = false;
+    } else if (events.some(isVisibleEvent)) {
+      this.visibleSinceClick = true;
+    }
     return {
       position: this.buildPosition(segment),
       events,
@@ -525,6 +560,17 @@ export class Runtime {
     });
   }
 
+  /**
+   * Une pause `[l]` est « morte » quand rien de lisible ni de visible n'a été
+   * affiché depuis le dernier clic : l'attendre ne ferait que bloquer le joueur
+   * (typiquement une ligne traduite vide, ou un `[l]` qui ne suit que des
+   * commandes audio). Les pauses de fin de page (`[p]`) ne sont pas concernées.
+   */
+  private isDeadPause(stop: StopReason | undefined, stepEvents: readonly RenderEvent[]): boolean {
+    if (!stop || stop.kind !== "click" || stop.style !== "line") return false;
+    return !this.visibleSinceClick && !stepEvents.some(isVisibleEvent);
+  }
+
   /** Applique le style courant (@font) aux segments de texte ; les pauses sont inchangées. */
   private withTextStyle(segments: TextSegment[]): TextSegment[] {
     const style = this.state.textStyle;
@@ -593,6 +639,8 @@ export class Runtime {
         events.push(...result.events);
         if (result.stop) {
           this.macroParams = savedMacroParams;
+          // Pause sans rien de nouveau à lire : on ne bloque pas (#136, B8).
+          if (this.isDeadPause(result.stop, events)) continue;
           return result.stop;
         }
         this.macroParams = savedMacroParams;
@@ -1595,6 +1643,11 @@ export class Runtime {
   step(): Step {
     const events: RenderEvent[] = [];
 
+    // Reprise après un arrêt : la fin de page qui suit reste à acquitter même
+    // si l'arrêt portait sur la dernière instruction de la page (#136, B7).
+    let resumedAfterStop = this.resumedAfterStop;
+    this.resumedAfterStop = false;
+
     // Consume any stale context-change flag from a previous step.
     this.pendingContextChange = false;
 
@@ -1618,7 +1671,9 @@ export class Runtime {
       // Track whether the inner loop has any instructions to process.
       // If not (e.g., returned from @call past the end of the page),
       // we should advance to the next page without stopping.
-      const hadInstructions = this.context.instructionIndex < instructions.length;
+      const hadInstructions =
+        this.context.instructionIndex < instructions.length || resumedAfterStop;
+      resumedAfterStop = false;
 
       while (this.context.instructionIndex < instructions.length) {
         const instruction = instructions[this.context.instructionIndex];
@@ -1627,6 +1682,8 @@ export class Runtime {
           const result = this.processText(instruction);
           events.push(...result.events);
           if (result.stop) {
+            // Pause sans rien de nouveau à lire : on ne bloque pas (#136, B8).
+            if (this.isDeadPause(result.stop, events)) continue;
             return this.makeStep(events, result.stop);
           }
           continue;
@@ -1738,12 +1795,15 @@ export class Runtime {
         this.onWarning(`label not found in ${storage}: ${label}`);
       }
     }
+    // Nouveau contexte : le stop loadScript ne compte pas comme un arrêt en fin de page.
+    this.resumedAfterStop = false;
     return true;
   }
 
   jump(label: string): boolean {
     const target = this.context.script.labels[label];
     if (target === undefined) return false;
+    this.resumedAfterStop = false;
     this.context.pc = target;
     this.context.instructionIndex = this.context.script.labelInstructionIndex[label] ?? 0;
     this.context.segmentIndex = 0;
