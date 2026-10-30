@@ -216,4 +216,77 @@ describe("WebAudioPlayer", () => {
     vi.advanceTimersByTime(3000);
     expect(created.length).toBeGreaterThan(0);
   });
+
+  describe("pause et reprise scriptées (@playpause / @playresume)", () => {
+    it("fond vers le silence puis suspend la lecture", () => {
+      player.apply(play("bgm", "m01", true, 1), { instant: false });
+      player.apply({ kind: "pause", channel: "bgm", fadeOut: 1000 }, { instant: false });
+      vi.advanceTimersByTime(500);
+      expect(created[0]!.volume).toBeLessThan(1);
+      expect(created[0]!.paused).toBe(false); // le fondu n'est pas terminé
+      vi.advanceTimersByTime(600);
+      expect(created[0]!.volume).toBe(0);
+      expect(created[0]!.paused).toBe(true);
+    });
+
+    it("sans durée, la pause est immédiate", () => {
+      player.apply(play("bgm", "m01", true, 1), { instant: false });
+      player.apply({ kind: "pause", channel: "bgm" }, { instant: false });
+      expect(created[0]!.paused).toBe(true);
+    });
+
+    it("la reprise relance la même piste avec un fondu d'entrée, sans la recréer", () => {
+      player.apply(play("bgm", "m01", true, 1), { instant: false });
+      player.apply({ kind: "pause", channel: "bgm", fadeOut: 100 }, { instant: false });
+      vi.advanceTimersByTime(200);
+      player.apply({ kind: "resume", channel: "bgm", volume: 0.8, fadeIn: 1000 }, { instant: false });
+      expect(created).toHaveLength(1);
+      expect(created[0]!.paused).toBe(false);
+      expect(created[0]!.volume).toBeLessThan(0.8);
+      vi.advanceTimersByTime(1100);
+      expect(created[0]!.volume).toBeCloseTo(0.8);
+    });
+
+    it("une reprise pendant le fondu de pause annule la suspension", () => {
+      player.apply(play("bgm", "m01", true, 1), { instant: false });
+      player.apply({ kind: "pause", channel: "bgm", fadeOut: 1000 }, { instant: false });
+      vi.advanceTimersByTime(300);
+      player.apply({ kind: "resume", channel: "bgm", volume: 1, fadeIn: 200 }, { instant: false });
+      vi.advanceTimersByTime(2000);
+      expect(created[0]!.paused).toBe(false);
+    });
+
+    it("la reprise de l'onglet ne relance pas une piste mise en pause par le script", () => {
+      player.apply(play("bgm", "m01", true, 1), { instant: false });
+      player.apply({ kind: "pause", channel: "bgm" }, { instant: false });
+      player.suspend();
+      player.resume();
+      expect(created[0]!.paused).toBe(true);
+    });
+
+    it("rejouer la même piste pendant la pause la relance", () => {
+      player.apply(play("bgm", "m01", true, 1), { instant: false });
+      player.apply({ kind: "pause", channel: "bgm" }, { instant: false });
+      player.apply(play("bgm", "m01", true, 1), { instant: false });
+      expect(created).toHaveLength(1);
+      expect(created[0]!.paused).toBe(false);
+    });
+
+    it("une pause ou une reprise sans piste est sans effet", () => {
+      expect(() => {
+        player.apply({ kind: "pause", channel: "bgm", fadeOut: 100 }, { instant: false });
+        player.apply({ kind: "resume", channel: "bgm", volume: 1 }, { instant: false });
+      }).not.toThrow();
+      expect(created).toHaveLength(0);
+    });
+
+    it("en mode instantané, pause et reprise s'appliquent sans fondu", () => {
+      player.apply(play("bgm", "m01", true, 1), { instant: true });
+      player.apply({ kind: "pause", channel: "bgm", fadeOut: 5000 }, { instant: true });
+      expect(created[0]!.paused).toBe(true);
+      player.apply({ kind: "resume", channel: "bgm", volume: 0.5, fadeIn: 5000 }, { instant: true });
+      expect(created[0]!.paused).toBe(false);
+      expect(created[0]!.volume).toBeCloseTo(0.5);
+    });
+  });
 });

@@ -284,6 +284,16 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         storage: normStorage(args.storage),
         volume: args.volume !== undefined ? parseIntArg(args.volume) : undefined,
       };
+    case "playpause":
+      // Pause de la BGM avec fondu ; `storage` désigne la piste concernée.
+      return { kind: "playpause", time: parseIntArg(args.time, 0), storage: normStorageOpt(args.storage) };
+    case "playresume":
+      return {
+        kind: "playresume",
+        time: parseIntArg(args.time, 0),
+        volume: args.volume !== undefined ? parseIntArg(args.volume, 100) : 100,
+        storage: normStorageOpt(args.storage),
+      };
     case "playstop":
       return {
         kind: "playstop",

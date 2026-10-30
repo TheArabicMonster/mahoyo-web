@@ -30,8 +30,10 @@ type Voice = {
   cancelRamp: (() => void) | null;
   /** Le play() a été refusé (autoplay) : à retenter dans unlock(). */
   blocked: boolean;
-  /** Pausé par suspend(). */
+  /** Pausé par suspend() (onglet masqué). */
   suspended: boolean;
+  /** Mis en pause par le script (@playpause) : ne repart qu'avec @playresume. */
+  paused: boolean;
   /** Appelé à la fin du son (naturelle, erreur ou arrêt). */
   waiters: Set<() => void>;
   onEnded: () => void;
@@ -65,7 +67,7 @@ export class WebAudioPlayer implements AudioPlayer {
     // Corps synchrone : on retente immédiatement les lectures bloquées par l'autoplay,
     // tant que l'on est encore dans le handler du geste utilisateur.
     for (const [channel, voice] of this.voices) {
-      if (voice.blocked && !voice.suspended) this.startPlayback(channel, voice);
+      if (voice.blocked && !voice.suspended && !voice.paused) this.startPlayback(channel, voice);
     }
     return Promise.resolve();
   }
@@ -102,6 +104,12 @@ export class WebAudioPlayer implements AudioPlayer {
         if (voice) this.ramp(voice, clamp01(event.volume), instant ? 0 : event.time);
         break;
       }
+      case "pause":
+        this.pause(event.channel, instant ? 0 : (event.fadeOut ?? 0));
+        break;
+      case "resume":
+        this.resumeChannel(event.channel, clamp01(event.volume), instant ? 0 : (event.fadeIn ?? 0));
+        break;
     }
   }
 
@@ -149,7 +157,7 @@ export class WebAudioPlayer implements AudioPlayer {
     this.suspended = false;
     for (const [channel, voice] of this.voices) {
       voice.suspended = false;
-      this.startPlayback(channel, voice);
+      if (!voice.paused) this.startPlayback(channel, voice);
     }
   }
 
@@ -199,6 +207,10 @@ export class WebAudioPlayer implements AudioPlayer {
     if (channel === "bgm" && existing && existing.storage === storage) {
       existing.loop = loop;
       existing.audio.loop = loop;
+      if (existing.paused) {
+        existing.paused = false;
+        if (!existing.suspended) this.startPlayback(channel, existing);
+      }
       this.ramp(existing, volume, fadeIn);
       return;
     }
@@ -218,6 +230,7 @@ export class WebAudioPlayer implements AudioPlayer {
       cancelRamp: null,
       blocked: false,
       suspended: this.suspended,
+      paused: false,
       waiters: new Set(),
       onEnded: () => this.finish(channel, voice),
       onError: () => {
@@ -298,6 +311,36 @@ export class WebAudioPlayer implements AudioPlayer {
         this.release(voice);
       },
     );
+  }
+
+  /** Pause scriptée : fondu vers le silence, puis la lecture est suspendue en gardant sa position. */
+  private pause(channel: AudioChannel, fadeOut: Ms): void {
+    const voice = this.voices.get(channel);
+    if (!voice || voice.paused) return;
+    voice.paused = true;
+    this.rampWith(
+      voice,
+      0,
+      fadeOut,
+      (level) => {
+        voice.level = level;
+        this.applyVolume(channel, voice);
+      },
+      () => {
+        if (voice.paused) voice.audio.pause();
+      },
+    );
+  }
+
+  /** Reprise scriptée : repart de la position de la pause, avec un fondu d'entrée vers `volume`. */
+  private resumeChannel(channel: AudioChannel, volume: number, fadeIn: Ms): void {
+    const voice = this.voices.get(channel);
+    if (!voice) return;
+    if (voice.paused) {
+      voice.paused = false;
+      if (!voice.suspended) this.startPlayback(channel, voice);
+    }
+    this.ramp(voice, volume, fadeIn);
   }
 
   private ramp(voice: Voice, target: number, time: Ms): void {
