@@ -167,6 +167,15 @@ Les noms de fichiers peuvent contenir des parenthèses :
   le dernier `@return` d'un chapitre disparaît.
 - Les scripts qui s'enchaînent sont décrits dans [`ENCHAINEMENT_SCRIPTS.md`](ENCHAINEMENT_SCRIPTS.md).
 
+### `@playtimeline`, `@seloop`
+
+- `@playtimeline scene=N next=ms` joue une timeline d'animation embarquée dans le script
+  (voir [`TIMELINES.md`](TIMELINES.md)). Seul `opening.ks` l'emploie dans l'histoire ; les autres
+  occurrences (96 au total) sont dans des scripts système jamais exécutés.
+- `@seloop storage=… time=… volume=…` est un SE en boucle avec fondu d'entrée (`time`) ; il accepte
+  `cond=`. `1-2.ks` l'emploie avec `cond=!kag.isplayingse('se01004')` pour la pluie d'ambiance.
+- `kag.isplayingse(storage)` est approximé par « le dernier SE lancé n'a pas été arrêté ».
+
 ## 7. Attentes (`@wt` / `@wact` / `@wm` / `nowait`)
 
 - `@trans nowait=0` (ou absent) : **bloquant** → le runtime émet

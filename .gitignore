@@ -45,3 +45,6 @@ reports/
 
 # Table d'enchaînement générée depuis main.gc : contient les libellés de choix du jeu
 story-chain.json
+
+# Timelines d'animation extraites des scripts du jeu (noms d'images et de pistes)
+timelines.json

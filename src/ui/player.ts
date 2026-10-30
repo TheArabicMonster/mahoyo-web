@@ -5,6 +5,7 @@ import { applyStageSnapshot, reduceAudio } from "@/kag/stage-state.js";
 import { WebAudioPlayer } from "@/renderer/audio-manager.js";
 import { createAssetResolver, type AssetResolver } from "@/core/asset-resolver.js";
 import { parseStoryChain, resolveNext, type StoryChain } from "@/core/story-chain.js";
+import { parseTimelineData, type TimelineData } from "@/core/timeline.js";
 import { createLocalSaveStore, type SaveRecord, type SaveStore } from "@/player/save-store.js";
 import {
   DEFAULT_SETTINGS,
@@ -51,6 +52,8 @@ export interface RuntimeLike {
   loadSaveData(data: RuntimeSaveData, scripts: Map<string, ParsedScript>): Promise<boolean>;
   /** Évalue une condition de la table d'enchaînement (absent : routes conditionnelles ignorées). */
   evaluateCondition?(expression: string): boolean;
+  /** Timelines d'animation pour @playtimeline (absentes : la commande est sans effet). */
+  timelines?: TimelineData | null;
 }
 
 export type PlayerState =
@@ -73,6 +76,8 @@ export type PlayerDeps = {
   loadScript: (file: string) => Promise<ParsedScript | null>;
   /** Charge la table d'enchaînement des scripts ; null si absente (pas d'enchaînement). */
   loadChain: () => Promise<StoryChain | null>;
+  /** Charge les timelines d'animation ; null si absentes (@playtimeline sans effet). */
+  loadTimelines: () => Promise<TimelineData | null>;
   scripts: readonly ScriptSummary[];
   saveStore: SaveStore;
   settingsStore: SettingsStore;
@@ -108,6 +113,16 @@ async function defaultLoadScript(resolver: AssetResolver, file: string): Promise
     const res = await fetch(resolver.scenario(file));
     if (!res.ok) return null;
     return parse(lex(await res.text()));
+  } catch {
+    return null;
+  }
+}
+
+async function defaultLoadTimelines(resolver: AssetResolver): Promise<TimelineData | null> {
+  try {
+    const res = await fetch(resolver.timelines());
+    if (!res.ok) return null;
+    return parseTimelineData(await res.json());
   } catch {
     return null;
   }
@@ -219,6 +234,8 @@ export class Player implements PlayerCommands {
   private pendingChoice: ((index: number) => void) | null = null;
   /** Table d'enchaînement des scripts (null si le pipeline ne l'a pas générée). */
   private chain: StoryChain | null = null;
+  /** Timelines d'animation (null si le pipeline ne les a pas générées). */
+  private timelines: TimelineData | null = null;
   /** Scripts à jouer à la suite avant de consulter à nouveau la table (interludes). */
   private chainQueue: string[] = [];
   /** Le point d'arrêt courant n'avait pas encore été lu (pour le skip). */
@@ -246,6 +263,7 @@ export class Player implements PlayerCommands {
       createRuntime: deps.createRuntime ?? ((script, name) => new Runtime(script, name)),
       loadScript: deps.loadScript ?? ((file) => defaultLoadScript(resolver, file)),
       loadChain: deps.loadChain ?? (() => defaultLoadChain(resolver)),
+      loadTimelines: deps.loadTimelines ?? (() => defaultLoadTimelines(resolver)),
       scripts: deps.scripts ?? DEFAULT_SCRIPTS,
       saveStore: deps.saveStore ?? createLocalSaveStore(),
       settingsStore: deps.settingsStore ?? createLocalSettingsStore(),
@@ -270,6 +288,7 @@ export class Player implements PlayerCommands {
     this.readSet = await store.loadRead();
     this.completed = (await store.loadProgress()).completed;
     this.chain = await this.deps.loadChain().catch(() => null);
+    this.timelines = await this.deps.loadTimelines().catch(() => null);
     this.applySettings();
     await this.showTitle();
   }
@@ -616,6 +635,11 @@ export class Player implements PlayerCommands {
         await this.waitForEffect(stop, signal);
         return !signal.aborted;
       }
+      case "timeline": {
+        this.setState("waiting-wait");
+        await this.playTimeline(step, stop, signal);
+        return !signal.aborted;
+      }
       case "choice": {
         if (record) this.recordPoint(step);
         if (this.mode === "skip") this.setMode("normal");
@@ -652,6 +676,74 @@ export class Player implements PlayerCommands {
         return false;
       }
     }
+  }
+
+  /**
+   * Joue une séquence minutée (@playtimeline) : chaque entrée du calendrier est
+   * appliquée à son instant, jusqu'à `duration`. Un clic (ou le mode skip) saute
+   * toute la séquence : les entrées restantes sont appliquées d'un coup, sans
+   * transition, pour que l'écran et le son rejoignent l'état final.
+   */
+  private playTimeline(step: Step, stop: Extract<StopReason, { kind: "timeline" }>, signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const timers = new Set<ReturnType<typeof setTimeout>>();
+      let applied = 0;
+      let ending = false;
+      let finished = false;
+
+      const apply = (index: number, instant: boolean): Promise<void> =>
+        this.applyStep({ position: step.position, events: stop.schedule[index]!.events, stop: step.stop }, instant, signal);
+
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        for (const t of timers) clearTimeout(t);
+        timers.clear();
+        this.onAdvance = null;
+        this.rearm = null;
+        this.pendingAdvance = false;
+        signal.removeEventListener("abort", finish);
+        resolve();
+      };
+
+      /** Applique d'un coup ce qui reste, puis termine. */
+      const skip = () => {
+        if (ending || finished) return;
+        ending = true;
+        for (const t of timers) clearTimeout(t);
+        timers.clear();
+        void (async () => {
+          for (let i = applied; i < stop.schedule.length && !signal.aborted; i++) {
+            applied = i + 1;
+            await apply(i, true);
+          }
+          finish();
+        })();
+      };
+
+      this.onAdvance = skip;
+      this.rearm = () => {
+        if (this.mode === "skip") skip();
+      };
+      signal.addEventListener("abort", finish, { once: true });
+      if (signal.aborted) return finish();
+      if (this.mode === "skip") return skip();
+
+      stop.schedule.forEach((entry, index) => {
+        const timer = setTimeout(() => {
+          timers.delete(timer);
+          if (ending || finished) return;
+          applied = index + 1;
+          void apply(index, false);
+        }, entry.at);
+        timers.add(timer);
+      });
+      const end = setTimeout(() => {
+        timers.delete(end);
+        skip();
+      }, stop.duration);
+      timers.add(end);
+    });
   }
 
   /**
@@ -894,6 +986,7 @@ export class Player implements PlayerCommands {
   private makeRuntime(script: ParsedScript, name: string): RuntimeLike {
     const runtime = this.deps.createRuntime(script, name);
     runtime.scriptLoader = (storage) => this.getScript(storage);
+    runtime.timelines = this.timelines;
     return runtime;
   }
 

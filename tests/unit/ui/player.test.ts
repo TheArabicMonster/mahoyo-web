@@ -715,3 +715,115 @@ describe("Player — enchaînement des scripts", () => {
     });
   });
 });
+
+describe("Player — séquence minutée (@playtimeline)", () => {
+  const pos = (page: number) => ({ scriptName: "t.ks", page, instruction: 0 });
+  const scene = (bg: string): RenderEvent => ({
+    kind: "scene",
+    scene: { bg, sprites: [], effect: null },
+    transition: { method: "none" },
+  });
+  const audio = (storage: string): RenderEvent => ({
+    kind: "audio",
+    event: { kind: "play", channel: "bgm", storage, loop: false, volume: 1 },
+  });
+  const timeline = (schedule: { at: number; events: RenderEvent[] }[], duration: number): Step => ({
+    position: pos(0),
+    events: [],
+    stop: { kind: "timeline", schedule, duration },
+  });
+  const after = (): Step => ({
+    position: pos(1),
+    events: [{ kind: "text", segments: [{ text: "après" }] }],
+    stop: { kind: "click", style: "page" },
+  });
+  const plays = (ctx: ReturnType<typeof setup>) => ctx.audio.events.filter((e) => e.kind === "play");
+  const bgs = (ctx: ReturnType<typeof setup>) =>
+    ctx.stage.applyCalls.flatMap((c) => c.events).filter((e) => e.kind === "scene").map((e) => (e as Extract<RenderEvent, { kind: "scene" }>).scene.bg);
+
+  it("applique chaque entrée à son instant puis rend la main à la fin", async () => {
+    const ctx = setup([timeline([{ at: 20, events: [scene("a")] }, { at: 90, events: [audio("m01"), scene("b")] }], 160), after()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "séquence");
+
+    await until(() => bgs(ctx).includes("a"), "première entrée");
+    expect(bgs(ctx)).not.toContain("b");
+    expect(plays(ctx)).toHaveLength(0);
+
+    await until(() => bgs(ctx).includes("b"), "seconde entrée");
+    expect(plays(ctx)).toHaveLength(1);
+    expect(ctx.player.currentState).toBe("waiting-wait");
+
+    await until(() => ctx.player.currentState === "waiting-click", "fin de la séquence");
+    expect(ctx.stage.applyCalls.every((c) => c.opts.instant === false || c.events.some((e) => e.kind === "text"))).toBe(true);
+  });
+
+  it("un clic saute la séquence et applique d'un coup les entrées restantes", async () => {
+    const ctx = setup([
+      timeline([{ at: 10, events: [scene("a")] }, { at: 5000, events: [audio("m01")] }, { at: 6000, events: [scene("z")] }], 8000),
+      after(),
+    ]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => bgs(ctx).includes("a"), "première entrée");
+
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "waiting-click", "séquence sautée");
+    expect(bgs(ctx)).toContain("z");
+    expect(plays(ctx)).toHaveLength(1);
+    // Les entrées sautées sont appliquées sans transition.
+    const skipped = ctx.stage.applyCalls.filter((c) => c.events.some((e) => e.kind === "scene" && e.scene.bg === "z"));
+    expect(skipped.every((c) => c.opts.instant)).toBe(true);
+  });
+
+  it("n'applique jamais deux fois la même entrée, même avec des clics répétés", async () => {
+    const ctx = setup([timeline([{ at: 10, events: [scene("a")] }, { at: 3000, events: [scene("b")] }], 5000), after()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => bgs(ctx).includes("a"), "première entrée");
+    ctx.player.advance();
+    ctx.player.advance();
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "waiting-click", "séquence sautée");
+    await wait(60);
+    expect(bgs(ctx).filter((b) => b === "a")).toHaveLength(1);
+    expect(bgs(ctx).filter((b) => b === "b")).toHaveLength(1);
+  });
+
+  it("passer en mode skip pendant la séquence la saute", async () => {
+    const ctx = setup([timeline([{ at: 4000, events: [scene("fin")] }], 6000), after()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "séquence");
+    ctx.player.setMode("skip");
+    await until(() => bgs(ctx).includes("fin"), "entrée appliquée par le skip");
+    await until(() => ctx.player.currentState === "waiting-click" || ctx.player.currentState === "title", "suite");
+  });
+
+  it("une séquence vide dure sa durée puis rend la main", async () => {
+    const ctx = setup([timeline([], 60), after()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "séquence");
+    await until(() => ctx.player.currentState === "waiting-click", "fin");
+  });
+
+  it("fermer le player pendant la séquence n'applique plus rien", async () => {
+    const ctx = setup([timeline([{ at: 80, events: [scene("tard")] }], 200), after()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "séquence");
+    await ctx.player.dispose();
+    current = null;
+    await wait(150);
+    expect(bgs(ctx)).not.toContain("tard");
+  });
+});
+

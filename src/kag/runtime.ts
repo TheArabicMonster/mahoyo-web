@@ -22,6 +22,7 @@ import type {
   Token,
 } from "./types.js";
 import { parseCommand } from "./parser.js";
+import { lookupTimeline, type TimelineData } from "@/core/timeline.js";
 import type { PageLayer } from "./types.js";
 import type {
   AssetRef,
@@ -121,6 +122,9 @@ function isScopedVariables(
   );
 }
 
+/** Durée des fondus enchaînés entre deux fonds d'une timeline (ms). */
+const TIMELINE_FADE_MS = 1500;
+
 export function createRuntimeState(): RuntimeState {
   return {
     fore: { background: "", layers: [] },
@@ -163,7 +167,15 @@ export class Runtime {
   private kagProxy = {
     con: { crashAction: "" },
     flags: {},
+    /** Un SE est-il en cours ? Approximation : le dernier SE lancé n'a pas été arrêté. */
+    isplayingse: (storage: string): boolean => this.state.se === storage,
   };
+
+  /**
+   * Timelines d'animation extraites des scripts (`timelines.json`), fournies par le
+   * player. Sans elles, @playtimeline est sans effet.
+   */
+  timelines: TimelineData | null = null;
 
   /**
    * Flag set by applyJump/applyCall/applyReturn to signal that the execution
@@ -277,6 +289,8 @@ export class Runtime {
       case "eval":
         return instruction.cond;
       case "trans":
+        return instruction.cond;
+      case "seact":
         return instruction.cond;
       case "raw":
         return instruction.args.cond;
@@ -989,6 +1003,68 @@ export class Runtime {
     return { kind: action, channel, ...args } as AudioEvent;
   }
 
+  /**
+   * @playtimeline : rejoue une timeline d'animation sous forme de calendrier.
+   *
+   * Seuls les fonds (fondus enchaînés) et les pistes audio sont repris. Les événements
+   * sont construits ici, une fois pour toutes, et l'état du runtime reçoit tout de
+   * suite le résultat final : le player les rejoue à leur instant, ou d'un coup si le
+   * joueur saute la séquence. Sans timeline connue, la commande est sans effet.
+   */
+  private applyPlaytimeline(instruction: Extract<Instruction, { kind: "playtimeline" }>): { events: RenderEvent[]; stop?: StopReason } {
+    const scene = lookupTimeline(this.timelines, this.context.scriptName, instruction.scene);
+    if (!scene) {
+      this.onWarning(`timeline introuvable : ${this.context.scriptName} scène ${instruction.scene}`);
+      return { events: [] };
+    }
+
+    const entries: { at: number; order: number; events: RenderEvent[] }[] = [];
+    let order = 0;
+
+    let previous: string | undefined;
+    for (const bg of scene.bg) {
+      // Deux fonds identiques de suite (les deux pages de la timeline) : un seul changement.
+      if (bg.storage === previous) continue;
+      previous = bg.storage;
+      const fade = bg.at === 0 ? 0 : TIMELINE_FADE_MS;
+      const res = this.applyBg({
+        kind: "bg",
+        storage: bg.storage,
+        time: fade,
+        page: "fore",
+        noclear: true,
+        nowait: true,
+        left: bg.left,
+        top: bg.top,
+      });
+      entries.push({ at: bg.at, order: order++, events: res.events });
+    }
+
+    for (const a of scene.audio) {
+      const channel = a.channel === "bgm" ? "bgm" : "se:0";
+      let event: AudioEvent;
+      if (a.action === "play" && a.storage) {
+        if (a.channel === "bgm") {
+          this.state.bgm = a.storage;
+        } else {
+          this.state.se = a.storage;
+        }
+        event = { kind: "play", channel, storage: a.storage, loop: a.loop, volume: a.volume };
+      } else {
+        event = { kind: "fade", channel, volume: a.volume, time: 0 };
+      }
+      entries.push({ at: a.at, order: order++, events: [{ kind: "audio", event }] });
+    }
+
+    // Ordre stable : par instant, puis dans l'ordre de construction (fonds avant audio).
+    entries.sort((x, y) => x.at - y.at || x.order - y.order);
+    const duration = instruction.next && instruction.next > 0 ? instruction.next : scene.duration;
+    return {
+      events: [],
+      stop: { kind: "timeline", schedule: entries.map(({ at, events }) => ({ at, events })), duration },
+    };
+  }
+
   private applyAudio(instruction: Instruction): RenderEvent | null {
     let event: AudioEvent | null = null;
     switch (instruction.kind) {
@@ -1306,6 +1382,12 @@ export class Runtime {
       case "fadese": {
         const ev = this.applyAudio(instruction);
         if (ev) events.push(ev);
+        break;
+      }
+      case "playtimeline": {
+        const res = this.applyPlaytimeline(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
         break;
       }
       case "quake":

@@ -175,6 +175,9 @@ export type RenderEvent =
 
 export type Awaitable = "transition" | "animation" | "quake" | "audio";
 
+/** Événements à appliquer à un instant donné d'une séquence minutée. */
+export type TimelineEntry = { at: Ms; events: readonly RenderEvent[] };
+
 export type StopReason =
   /** [l] = "line", [p] = "page". */
   | { kind: "click"; style: "line" | "page" }
@@ -182,6 +185,11 @@ export type StopReason =
   | { kind: "wait"; time: Ms; skippable: boolean }
   /** [wt] / [wa] / [wq] / [ws]. */
   | { kind: "waitFor"; what: Awaitable; target?: string; skippable: boolean }
+  /**
+   * Séquence minutée (@playtimeline) : le player joue le calendrier d'événements
+   * jusqu'à `duration`, ou d'un coup si le joueur la saute.
+   */
+  | { kind: "timeline"; schedule: readonly TimelineEntry[]; duration: Ms }
   /** Choix multiple. */
   | { kind: "choice"; options: readonly { label: string; target: string }[] }
   /** Le runtime a besoin d'un script non chargé. */

@@ -23,7 +23,8 @@
     "audit": "tsx tools/audit-scenario.ts",
     "progress": "tsx tools/progress.ts",
     "check:assets": "tsx tools/check-no-assets.ts",
-    "chain": "tsx tools/story-chain.ts"
+    "chain": "tsx tools/story-chain.ts",
+    "timelines": "tsx tools/timelines.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

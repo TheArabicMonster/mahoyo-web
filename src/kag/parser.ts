@@ -303,6 +303,26 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         loop: args.loop === "1" || args.loop === "true",
         delay: args.delay !== undefined ? parseIntArg(args.delay) : undefined,
       };
+    case "seloop": {
+      // @seloop = SE en boucle avec fondu d'entrée (time) ; accepte cond=.
+      const storage = normStorage(args.storage);
+      if (storage === "") return { kind: "raw", command: "seloop", args } as unknown as Instruction;
+      return {
+        kind: "seact",
+        storage,
+        delay: 0,
+        fadeIn: parseIntArg(args.time, 0),
+        volume: args.volume !== undefined ? parseIntArg(args.volume, 100) : 100,
+        loop: true,
+        cond: args.cond,
+      };
+    }
+    case "playtimeline": {
+      // @playtimeline scene=N next=ms : séquence minutée issue des données *tladata du script.
+      if (args.scene === undefined) return { kind: "raw", command: "playtimeline", args } as unknown as Instruction;
+      const next = args.next !== undefined ? parseIntArg(args.next, 0) : undefined;
+      return { kind: "playtimeline", scene: parseIntArg(args.scene, 0), next };
+    }
     case "seact": {
       // @seact = SE avec délai et fondu
       // Format: keys=(delay,action,storage,fadein,vol,?,loop,pan,vol2,pan2)

@@ -12,7 +12,7 @@ import type { ChainRoute, StoryChain } from "../src/core/story-chain.js";
 
 // ── Lecture du format ──
 
-export type TjsValue = string | number | null | TjsValue[] | { [key: string]: TjsValue };
+export type TjsValue = string | number | boolean | null | TjsValue[] | { [key: string]: TjsValue };
 
 /** En-tête des fichiers texte KiriKiri compressés : FE FE 02 FF FE (mode 2, UTF-16LE). */
 const GC_MAGIC = [0xfe, 0xfe, 0x02, 0xff, 0xfe];
@@ -74,6 +74,11 @@ class TjsReader {
   value(): TjsValue {
     this.skipSpace();
     const t = this.text;
+    // Littéraux écrits par Scripts.eval : « (const) %[ … ] ».
+    if (t.startsWith("(const)", this.i)) {
+      this.i += 7;
+      this.skipSpace();
+    }
     if (t.startsWith("%[", this.i)) {
       this.i += 2;
       const dict: { [key: string]: TjsValue } = {};
@@ -99,10 +104,14 @@ class TjsReader {
       }
     }
     if (t[this.i] === '"') return this.quoted();
-    const word = /[a-z]+/y;
+    // Nombres nus (littéraux Scripts.eval) : « 576 », « -3 », « 0.5 ».
+    if (t[this.i] === "-" || (t[this.i]! >= "0" && t[this.i]! <= "9")) return this.number();
+    const word = /[A-Za-z]+/y;
     word.lastIndex = this.i;
     const w = word.exec(t)?.[0];
-    if (w === "void") { this.i += 4; return null; }
+    if (w === "void" || w === "null") { this.i += 4; return null; }
+    if (w === "true") { this.i += 4; return true; }
+    if (w === "false") { this.i += 5; return false; }
     if (w === "string") { this.i += 6; this.skipSpace(); return this.quoted(); }
     if (w === "int" || w === "real") { this.i += w.length; this.skipSpace(); return this.number(); }
     return this.fail(`valeur inattendue « ${t.slice(this.i, this.i + 12)} »`);
