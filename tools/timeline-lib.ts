@@ -27,10 +27,15 @@
  * fondu enchaîné). Le fond affiché est donc celui de la page visible, pas le
  * dernier fond modifié : une page cachée prépare son image avant d'être montrée.
  *
+ * Les **calques** (`LayerObject`) sont les enfants d'un `BGObject` : ils appartiennent
+ * à sa page et s'effacent avec elle. Le 1er indicateur (indice 1) les masque (1) ou
+ * les montre (0) ; `center`/`vcenter` placent le centre de l'image, `opacity` va de 0
+ * à 255, `absolute` donne l'ordre d'empilement, `processing = "rain1"` ajoute la pluie.
+ *
  * Logique pure ; l'I/O est dans `timelines.ts`.
  */
 import { parseTjs, type TjsValue } from "./story-chain-lib.js";
-import type { TimelineAudio, TimelineBg, TimelineData, TimelineMove, TimelineScene } from "../src/core/timeline.js";
+import type { TimelineAudio, TimelineBg, TimelineData, TimelineLayerKey, TimelineMove, TimelineScene } from "../src/core/timeline.js";
 
 /** Durée d'une unité de temps de la timeline, en ms. */
 export const TIME_UNIT_MS = 50;
@@ -76,12 +81,12 @@ function timelineOf(obj: Obj): Track | null {
   return { props, rows, end: typeof tl[2] === "number" ? tl[2] : 0 };
 }
 
-function walk(objs: TjsValue, visit: (o: Obj) => void): void {
+function walk(objs: TjsValue, visit: (o: Obj, parent: Obj | null) => void, parent: Obj | null = null): void {
   if (!Array.isArray(objs)) return;
   for (const o of objs) {
     if (!isObj(o)) continue;
-    visit(o);
-    walk(o.children ?? null, visit);
+    visit(o, parent);
+    walk(o.children ?? null, visit, o);
   }
 }
 
@@ -135,7 +140,7 @@ export function valueAt(curve: Curve, t: number): number | undefined {
 }
 
 /** Valeur juste avant t (avant un éventuel saut à t) ; undefined si aucun point ne précède t. */
-function valueBefore(curve: Curve, t: number): number | undefined {
+export function valueBefore(curve: Curve, t: number): number | undefined {
   const j = curve.findIndex((p) => p.t >= t);
   if (j === 0) return undefined;
   if (j < 0) return curve[curve.length - 1]?.v;
@@ -153,6 +158,30 @@ function storageKeys(track: Track): { t: number; storage: string }[] {
     if (s && s !== out[out.length - 1]?.storage) out.push({ t: row[0] as number, storage: s });
   }
   return out;
+}
+
+/** Changements d'une propriété texte où « void » est une valeur (retour à « rien »). */
+function textKeys(track: Track, prop: string): { t: number; value: string }[] {
+  const out: { t: number; value: string }[] = [];
+  for (const row of track.rows) {
+    const v = cell(row, track.props, prop);
+    if (typeof v === "string" && v !== out[out.length - 1]?.value) out.push({ t: row[0] as number, value: v });
+  }
+  return out;
+}
+
+/** Courbe en escalier d'une colonne d'indicateur (`initial` avant la première ligne qui la précise). */
+function flagCurve(track: Track, column: number, initial: number): Curve {
+  const points: Curve = [{ t: 0, v: initial }];
+  let current = initial;
+  for (const row of track.rows) {
+    const v = num(row[column]);
+    if (v === undefined || v === current) continue;
+    const t = row[0] as number;
+    points.push({ t, v: current }, { t, v });
+    current = v;
+  }
+  return points;
 }
 
 function storageAt(keys: { t: number; storage: string }[], t: number): string | undefined {
@@ -277,6 +306,137 @@ function buildBg(pageTrack: Track | null, pages: Map<number, Page>, end: number)
   return { bg, moves };
 }
 
+// ── Calques ──
+
+/** Colonne de l'indicateur « calque masqué ». */
+const HIDDEN_COLUMN = 1;
+/** Centre de l'écran (repère 1024×576) : position d'un calque sans `center`/`vcenter`. */
+const CENTER_X = 512;
+const CENTER_Y = 288;
+
+type LayerSource = { id: string; track: Track; page: number };
+
+type LayerState = { storage: string | undefined; x: number; y: number; opacity: number; z: number; rain: boolean };
+
+/**
+ * Poids d'une page à l'instant t : 1 affichée, 0 cachée, intermédiaire pendant le
+ * fondu enchaîné du `PageObject` (sa propriété `page` passe de 0 à 1).
+ */
+function pageWeight(pageCurve: Curve | null, firstPage: number, page: number, t: number, before: boolean): number {
+  if (!pageCurve) return page === firstPage ? 1 : 0;
+  const p = (before ? valueBefore(pageCurve, t) : valueAt(pageCurve, t)) ?? pageCurve[0]?.v ?? firstPage;
+  return Math.max(0, 1 - Math.abs(p - page));
+}
+
+const round3 = (x: number): number => Math.round(x * 1000) / 1000;
+
+function sameState(a: LayerState, b: LayerState): boolean {
+  return a.storage === b.storage && a.x === b.x && a.y === b.y && a.opacity === b.opacity && a.z === b.z && a.rain === b.rain;
+}
+
+/** Vitesse (par unité de temps) de la position et de l'opacité entre deux états. */
+function rate(a: LayerState, b: LayerState, d: number): number[] {
+  return [(b.x - a.x) / d, (b.y - a.y) / d, (b.opacity - a.opacity) / d];
+}
+
+/**
+ * Changements d'état des calques. Chaque propriété est une courbe linéaire par
+ * morceaux ; entre deux instants clés consécutifs (union des points de toutes les
+ * courbes), le calque passe en ligne droite de l'état du début à celui de la fin.
+ * L'opacité est multipliée par le poids de la page : un calque s'efface avec la page
+ * qui le porte. Un segment où le calque reste invisible ne produit rien.
+ */
+function buildLayers(sources: LayerSource[], pageCurve: Curve | null, firstPage: number, end: number): TimelineLayerKey[] {
+  const keys: TimelineLayerKey[] = [];
+  for (const { id, track, page } of sources) {
+    const hidden = flagCurve(track, HIDDEN_COLUMN, 1);
+    const opacity = numericCurve(track, "opacity");
+    const x = numericCurve(track, "center");
+    const y = numericCurve(track, "vcenter");
+    const z = numericCurve(track, "absolute");
+    const storage = storageKeys(track);
+    const processing = textKeys(track, "processing");
+    const last = Math.max(end, track.end);
+
+    const curves = [hidden, opacity, x, y, z, pageCurve ?? []];
+    const times = [...new Set([0, ...curves.flatMap((c) => c.map((p) => p.t)), ...storage.map((k) => k.t), ...processing.map((k) => k.t)])]
+      .filter((t) => t >= 0 && t <= last)
+      .sort((a, b) => a - b);
+
+    const at = (curve: Curve, t: number, before: boolean, fallback: number): number =>
+      (before ? valueBefore(curve, t) : valueAt(curve, t)) ?? fallback;
+    /** État à t (après un saut à t) ; avec `base`, état juste avant t sur le segment commencé par `base`. */
+    const stateOf = (t: number, base?: LayerState): LayerState => {
+      const before = base !== undefined;
+      const img = base ? base.storage : storageAt(storage, t);
+      const visible = img !== undefined && at(hidden, t, before, 1) === 0;
+      const op = visible ? (at(opacity, t, before, 255) / 255) * pageWeight(pageCurve, firstPage, page, t, before) : 0;
+      let rain = false;
+      for (const k of processing) if (k.t <= t) rain = k.value === "rain1";
+      return {
+        storage: img,
+        x: round2(at(x, t, before, CENTER_X)),
+        y: round2(at(y, t, before, CENTER_Y)),
+        opacity: round3(Math.min(1, Math.max(0, op))),
+        z: base ? base.z : Math.round(at(z, t, false, 0)),
+        rain: base ? base.rain : rain,
+      };
+    };
+    const key = (t: number, s: LayerState, time: number): TimelineLayerKey => {
+      const k: TimelineLayerKey = { at: t * TIME_UNIT_MS, id, storage: s.storage!, x: s.x, y: s.y, opacity: s.opacity, z: s.z, time: time * TIME_UNIT_MS };
+      if (s.rain) k.rain = true;
+      return k;
+    };
+
+    /** État affiché (posé ou atteint) ; null tant que le calque n'a jamais été montré. */
+    let shown: LayerState | null = null;
+    /** Dernier mouvement émis, prolongé si le segment suivant va dans le même sens à la même vitesse. */
+    let lastMove: { key: TimelineLayerKey; u: number; w: number; from: LayerState; to: LayerState } | null = null;
+
+    times.forEach((u, i) => {
+      const start = stateOf(u);
+      const w = times[i + 1];
+      const finish = w === undefined ? start : stateOf(w, start);
+      if (start.opacity === 0 && finish.opacity === 0) {
+        // Invisible pendant tout le segment : il suffit de masquer ce qui est affiché.
+        if (shown && shown.opacity !== 0) {
+          shown = { ...shown, opacity: 0 };
+          keys.push(key(u, shown, 0));
+        }
+        lastMove = null;
+        return;
+      }
+      if (!shown || !sameState(shown, start)) {
+        keys.push(key(u, start, 0));
+        shown = start;
+        lastMove = null;
+      }
+      if (w === undefined || sameState(start, finish)) {
+        lastMove = null;
+        return;
+      }
+      const prev = lastMove;
+      if (prev && prev.w === u) {
+        const r1 = rate(prev.from, prev.to, prev.w - prev.u);
+        const r2 = rate(start, finish, w - u);
+        if (r1.every((v, j) => Math.abs(v - r2[j]!) < 1e-6)) {
+          Object.assign(prev.key, { x: finish.x, y: finish.y, opacity: finish.opacity, time: (w - prev.u) * TIME_UNIT_MS });
+          prev.w = w;
+          prev.to = finish;
+          shown = finish;
+          return;
+        }
+      }
+      const k = key(u, finish, w - u);
+      keys.push(k);
+      lastMove = { key: k, u, w, from: start, to: finish };
+      shown = finish;
+    });
+  }
+  // Tri stable : à instant égal, l'ordre de construction (pose avant mouvement) est gardé.
+  return keys.sort((a, b) => a.at - b.at);
+}
+
 /** Construit les scènes d'une timeline (identifiant de scène -> scène). */
 export function buildTimelineScenes(graph: TjsValue): Record<string, TimelineScene> {
   if (!isObj(graph) || !Array.isArray(graph.scenes)) throw new Error("timeline : liste de scènes absente");
@@ -292,16 +452,21 @@ export function buildTimelineScenes(graph: TjsValue): Record<string, TimelineSce
     const name = typeof scene[4] === "string" ? scene[4] : "";
     const audio: TimelineAudio[] = [];
     const pages = new Map<number, Page>();
+    const layerSources: LayerSource[] = [];
     let pageTrack: Track | null = null;
     let end = 0;
 
-    walk(roots ?? null, (obj) => {
+    walk(roots ?? null, (obj, parent) => {
       const tl = timelineOf(obj);
       if (!tl) return;
       end = Math.max(end, tl.end);
       const kind = String(obj.className);
 
-      if (kind === "PageObject") {
+      if (kind === "LayerObject") {
+        // Un calque appartient à la page de son BGObject parent (page 0 sans parent).
+        const page = parent && String(parent.className) === "BGObject" ? (num(parent.page) ?? 0) : 0;
+        layerSources.push({ id: `L${layerSources.length + 1}`, track: tl, page });
+      } else if (kind === "PageObject") {
         pageTrack ??= tl;
       } else if (kind === "BGObject") {
         // Une page par BGObject ; le premier rencontré l'emporte.
@@ -329,8 +494,12 @@ export function buildTimelineScenes(graph: TjsValue): Record<string, TimelineSce
     });
 
     const { bg, moves } = buildBg(pageTrack, pages, end);
+    const firstPage = pages.size > 0 ? (pages.keys().next().value as number) : 0;
+    const layers = buildLayers(layerSources, pageTrack ? numericCurve(pageTrack, "page") : null, firstPage, end);
     audio.sort((a, b) => a.at - b.at);
-    out[String(id)] = { name, duration: end * TIME_UNIT_MS, bg, moves, audio };
+    const built: TimelineScene = { name, duration: end * TIME_UNIT_MS, bg, moves, audio };
+    if (layers.length > 0) built.layers = layers;
+    out[String(id)] = built;
   }
   return out;
 }

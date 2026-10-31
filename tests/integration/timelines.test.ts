@@ -39,6 +39,15 @@ describe.skipIf(!hasTimelines)("Timelines (vrais assets)", () => {
     expect((opening.moves ?? []).filter((m) => m.time > 0).length).toBeGreaterThan(5);
   });
 
+  it("l'ouverture : calques avec fondus, triés, dont un avec pluie (#125)", () => {
+    const layers = lookupTimeline(data, "opening.ks", 4)!.layers ?? [];
+    expect(new Set(layers.map((l) => l.id)).size).toBeGreaterThan(10);
+    expect(layers.filter((l) => l.time > 0).length).toBeGreaterThan(50);
+    expect(layers.map((l) => l.at)).toEqual([...layers.map((l) => l.at)].sort((a, b) => a - b));
+    expect(layers.every((l) => l.opacity >= 0 && l.opacity <= 1)).toBe(true);
+    expect(layers.some((l) => l.rain)).toBe(true);
+  });
+
   it("l'ouverture ne cite que des images et des pistes présentes dans le manifest", () => {
     const images = new Set(Object.keys(manifest!.images).map((k) => k.toLowerCase()));
     const sounds = new Set(Object.keys(manifest!.audio).map((k) => k.toLowerCase()));
@@ -46,6 +55,7 @@ describe.skipIf(!hasTimelines)("Timelines (vrais assets)", () => {
       const out: string[] = [];
       for (const [id, scene] of Object.entries(data!.scripts[script] ?? {})) {
         for (const b of scene.bg) if (!images.has(b.storage.toLowerCase())) out.push(`${id} image ${b.storage}`);
+        for (const l of scene.layers ?? []) if (!images.has(l.storage.toLowerCase())) out.push(`${id} calque ${l.storage}`);
         for (const a of scene.audio) if (a.storage && !sounds.has(a.storage.toLowerCase())) out.push(`${id} audio ${a.storage}`);
       }
       return out;
