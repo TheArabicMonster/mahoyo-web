@@ -4,6 +4,7 @@ import {
   installTranslation,
   parseTranslationScript,
   decodeTranslationScript,
+  neutralizeEmptyPauses,
 } from "../../../tools/translation-lib.js";
 
 function makeOriginal(text: string) {
@@ -158,5 +159,97 @@ describe("translation-lib", () => {
     expect(index.label).toBe("Français");
     expect(index.credits).toBe("Moon-Trad");
     expect(index.scripts).toContain("a.ks");
+  });
+
+  describe("neutralizeEmptyPauses (#141)", () => {
+    it("retire les [l] vides quand le texte traduit tient sur la première ligne", () => {
+      const original =
+        "*start|\nAlpha.[l]\n@r\nBeta.[l]\n@r\nGamma.[l]\nFin.[p]\n";
+      const translated =
+        "*start|\nAlpha beta gamma.[l]\n@r\n[l]\n@r\n[l]\nFin.[p]\n";
+      const { text, removed } = neutralizeEmptyPauses(original, translated);
+      expect(removed).toBe(2);
+      expect(text).toBe("*start|\nAlpha beta gamma.[l]\n@r\n\n@r\n\nFin.[p]\n");
+    });
+
+    it("ne touche pas aux pauses vides qui existent aussi dans l'original", () => {
+      const original = "*start|\nAlpha.[l]\n@se storage=x\n[l]\nBeta.[p]\n";
+      const translated = "*start|\nAlpha prime.[l]\n@se storage=x\n[l]\nBeta prime.[p]\n";
+      const { text, removed } = neutralizeEmptyPauses(original, translated);
+      expect(removed).toBe(0);
+      expect(text).toBe(translated);
+    });
+
+    it("retire un [l] vide en trop au milieu de lignes toutes lisibles", () => {
+      const original = "*start|\nUn.[l]\nDeux.[l]\nTrois.[p]\n";
+      const translated = "*start|\nUn bis.[l]\n@se storage=x\n[l]\nDeux bis.[l]\nTrois bis.[p]\n";
+      const { text, removed } = neutralizeEmptyPauses(original, translated);
+      expect(removed).toBe(1);
+      expect(text).toBe("*start|\nUn bis.[l]\n@se storage=x\n\nDeux bis.[l]\nTrois bis.[p]\n");
+    });
+
+    it("ne retire que le [l] vide d'une ligne qui contient aussi du texte et d'autres tags", () => {
+      const original = "*start|\nUn.[l]\nDeux.[l]\nTrois.[p]\n";
+      const translated = "*start|\nUn bis.[l][r]\n[l]Deux bis.[l]\nTrois bis.[p]\n";
+      const { text, removed } = neutralizeEmptyPauses(original, translated);
+      expect(removed).toBe(1);
+      expect(text).toBe("*start|\nUn bis.[l][r]\nDeux bis.[l]\nTrois bis.[p]\n");
+    });
+
+    it("gère la commande @l et conserve les fins de ligne CRLF", () => {
+      const original = "*start|\r\nUn.[l]\r\nDeux.[l]\r\nFin.[p]\r\n";
+      const translated = "*start|\r\nUn deux.[l]\r\n@l\r\nFin bis.[p]\r\n";
+      const { text, removed } = neutralizeEmptyPauses(original, translated);
+      expect(removed).toBe(1);
+      expect(text).toBe("*start|\r\nUn deux.[l]\r\n\r\nFin bis.[p]\r\n");
+    });
+
+    it("ne touche jamais au texte traduit ni aux autres pages", () => {
+      const original = "*start|\nUn.[l]\nDeux.[p]\nTrois.[l]\nQuatre.[p]\n";
+      const translated = "*start|\nUn deux « é ».[l]\n[l]\n[p]\nTrois quatre.[l]\n[l]\n[p]\n";
+      const { text, removed } = neutralizeEmptyPauses(original, translated);
+      expect(removed).toBe(2);
+      expect(text.replace(/\n+/g, "\n")).toBe(
+        "*start|\nUn deux « é ».[l]\n[p]\nTrois quatre.[l]\n[p]\n".replace(/\n+/g, "\n"),
+      );
+    });
+
+    it("reste prudent face à un bloc @if qui peut émettre du texte", () => {
+      const original = "*start|\nUn.[l]\nDeux.[p]\n";
+      const translated =
+        "*start|\nUn deux.[l]\n@if exp=\"f.x==1\"\nSuite.\n@endif\n[l]\n[p]\n";
+      const { text, removed } = neutralizeEmptyPauses(original, translated);
+      expect(removed).toBe(0);
+      expect(text).toBe(translated);
+    });
+
+    it("ne modifie rien si le nombre de pages diffère", () => {
+      const original = "*start|\nUn.[l]\nDeux.[p]\nTrois.[p]\n";
+      const translated = "*start|\nUn deux.[l]\n[l]\n[p]\n";
+      const { text, removed } = neutralizeEmptyPauses(original, translated);
+      expect(removed).toBe(0);
+      expect(text).toBe(translated);
+    });
+
+    it("est appliqué à l'installation, sans changer le niveau de compatibilité", () => {
+      const originalTexts = new Map<string, string>([
+        ["a.ks", "*start|\nUn.[l]\nDeux.[p]\n"],
+        ["b.ks", "*start|\nUn.[p]\n"],
+      ]);
+      const translatedTexts = new Map<string, string>([
+        ["a.ks", "*start|\nUn deux.[l]\n[l]\n[p]\n"],
+        ["b.ks", "*start|\nUn bis.[p]\n"],
+      ]);
+      const { index, installed, neutralized } = installTranslation(originalTexts, translatedTexts, {
+        language: "fr",
+        label: "Français",
+        credits: "Moon-Trad",
+      });
+      expect(index.scripts).toEqual(["a.ks", "b.ks"]);
+      expect(installed.get("a.ks")).toBe("*start|\nUn deux.[l]\n\n[p]\n");
+      expect(installed.get("b.ks")).toBe("*start|\nUn bis.[p]\n");
+      expect(neutralized.get("a.ks")).toBe(1);
+      expect(neutralized.has("b.ks")).toBe(false);
+    });
   });
 });
