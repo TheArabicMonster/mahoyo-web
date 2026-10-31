@@ -138,7 +138,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const { index, reports, installed } = installTranslation(originalTexts, translatedTexts, {
+  const { index, reports, installed, neutralized } = installTranslation(originalTexts, translatedTexts, {
     language,
     label: `Traduction ${language}`,
     credits: CREDITS,
@@ -195,6 +195,11 @@ async function main(): Promise<void> {
   console.log(`  Scripts installés : ${index.scripts.length}`);
   console.log(`  Scripts stricts : ${index.strict.length}`);
   console.log(`  Scripts ignorés : ${index.skipped.length}`);
+  let neutralizedTotal = 0;
+  for (const n of neutralized.values()) neutralizedTotal += n;
+  console.log(
+    `  Pauses [l] vides retirées : ${neutralizedTotal} (dans ${neutralized.size} script(s))`,
+  );
 
   if (index.skipped.length > 0) {
     console.log("\nScripts ignorés :");

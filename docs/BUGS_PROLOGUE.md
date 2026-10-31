@@ -17,7 +17,7 @@ Diagnostic du 2026-10-30 sur `main` (080b2bf), assets réels, Chromium headless 
 | B5 | Les scènes de l'ouverture ne suivent pas l'ordre du film | ja, fr | `opening.ks` | `opening.ks` joue la scène 7 et non la 4 car `cf` n'existe pas dans la sandbox (déjà noté) ; ordre des calques à vérifier | Grave | Cause probable |
 | B6 | Au tout début, une image de nuages s'affiche petite (~640×360) et décalée vers la droite au lieu de remplir l'écran | ja, fr | `stage-renderer.ts` (sprite/partbg) | Dimensionnement ou position d'un sprite hors repère 1280×720 ; à isoler | Gênant | Observé (capture `fr-00`) |
 | B7 | Quelques textes sont effacés avant d'être lus (`clearText` sans clic) | ja, fr | `3-1`, `5a-3`, `5a-11`, `a-8`, `c-12`, `nz1`, `nz5`, `wik_o` | 10 occurrences en fr contre 11 en ja : défaut du moteur, pas de la traduction | Gênant | **Vérifié** (trace) |
-| B8 | 21 clics sans texte en français contre 2 en japonais | fr | `1.5-1`, `1.5-2`, `1.5-4`, `2-2`, `5a-7`, `5a-11`, `5a-12`, `5b-10`, `5b-14`, `wik_*` | La traduction ajoute des commandes (`@se`, `@sestop`…) qui créent des pauses sans texte | Gênant | **Vérifié** (trace) |
+| B8 | 21 clics sans texte en français contre 2 en japonais | fr | `1.5-1`, `1.5-2`, `1.5-4`, `2-2`, `5a-7`, `5a-11`, `5a-12`, `5b-10`, `5b-14`, `wik_*` | La traduction ajoute des commandes (`@se`, `@sestop`…) qui créent des pauses sans texte | Gênant | **Vérifié** (trace) ; les 12 clics restants après #138 sont neutralisés à l'installation (#141) |
 | B9 | Voix et sons manquants : 3 « Audio introuvable » dans `1-0` en fr ; ~9 000 références à des assets Steam absents en tout | fr | assets | Fichiers de la version Steam, absents du manifest (limite documentée) | Mineur | Connu |
 
 ## Non constaté (à ne pas chercher)

@@ -63,6 +63,7 @@ Le rapport final indique :
 - **Scripts installés** : scripts retenus après vérification de compatibilité.
 - **Scripts stricts** : scripts dont le squelette complet (texte et break inclus) est identique à l'original.
 - **Scripts ignorés** : scripts incompatibles (pages ou labels différents, etc.).
+- **Pauses [l] vides retirées** : nombre de `[l]` neutralisés à l'installation (voir « Pauses vides »).
 - **Ressources absentes du manifest** : ressources supplémentaires référencées par la traduction et absentes du manifest d'assets.
 
 Exemple avec le patch Moon-Trad (dernier run) :
@@ -73,6 +74,7 @@ Scripts originaux correspondants : 205
 Scripts installés : 204
 Scripts stricts : 21
 Scripts ignorés : 1
+Pauses [l] vides retirées : 21 (dans 13 script(s))
 Ressources absentes du manifest mais référencées par la traduction : 9028
 ```
 
@@ -122,6 +124,20 @@ Agrégation sur les 182 scripts initialement ignorés (critère structurel stric
 | c-1.ks | nombre de pages différent (64 vs 63) : la traduction a une page de plus |
 
 Les 6 scripts écartés par la règle précédente (`2-4`, `3-1`, `4-1`, `4-3`, `5a-8`, `6-1`) ont le même nombre de pages que l'original ; leurs labels `pageN` sont numérotés autrement et aucun saut ne les vise (le seul saut de chacun va vers `*tladata`, présent des deux côtés). Ils sont donc installés.
+
+## Pauses vides (`[l]` sans texte)
+
+La traduction regroupe parfois le texte de plusieurs lignes japonaises sur la première et laisse les suivantes vides, avec leur `[l]` : le joueur devait alors cliquer sur une boîte de texte sans rien lire (issue #141, suite du B8 de `docs/BUGS_PROLOGUE.md`). Le runtime ignore déjà les `[l]` où rien n'est affiché depuis le dernier clic (#136), mais pas ceux qui suivent une image ou une animation.
+
+À l'installation, `neutralizeEmptyPauses` (dans `tools/translation-lib.ts`, jamais dans le runtime) compare, page par page, les pauses `[l]` de l'original et de la traduction :
+
+1. Pour chaque pause, on note si du texte lisible la précède depuis le clic précédent.
+2. Les deux suites sont alignées (plus longue sous-suite commune). Une pause **vide** de la traduction sans pause correspondante dans l'original est un clic sans texte en trop.
+3. Seul ce `[l]` (ou la ligne `@l`) est retiré. Le texte traduit, les autres commandes et les sauts de ligne ne sont ni modifiés ni lus : le script installé ne diffère de la source que par ces `[l]`.
+
+Les pauses vides que l'original a aussi (attente volontaire) sont conservées. Par prudence, un bloc `@if`/`@macro` ou l'appel d'une macro compte comme du texte possible, et si l'original et la traduction n'ont pas le même nombre de pages au niveau des tokens, rien n'est modifié. Le niveau de compatibilité (strict ou compatible) n'est pas affecté.
+
+Avec le patch Moon-Trad : 21 `[l]` retirés dans 13 scripts. Sur la trace du runtime, les 12 clics sans texte restants (`5a-11`, `5a-12`, `5b-14`, `wik_chap4start`, `wik_f-a`, `wik_g-a`, `wik_q-a`) disparaissent : aucun script français n'a plus de clics sans texte que le japonais.
 
 ## Ressources supplémentaires absentes du manifest
 

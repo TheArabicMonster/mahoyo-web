@@ -9,7 +9,7 @@ import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";
 import { decodeKs } from "./ks-encoding.js";
 import { normalizeScriptText } from "./normalize-ks.js";
-import type { Instruction, ParsedScript } from "@/kag/types.js";
+import type { Instruction, ParsedScript, Token } from "@/kag/types.js";
 import type { LanguageIndex } from "@/core/language.js";
 
 export type CompatibilityLevel = "compatible" | "strict" | "incompatible";
@@ -303,6 +303,182 @@ export function compareScripts(
   };
 }
 
+// ── Pauses `[l]` vides (#141) ──
+
+/** Une pause de ligne repérée dans le script, avec sa position dans le texte source. */
+type PauseSite = {
+  /** Du texte lisible précède la pause depuis le clic précédent. */
+  hasText: boolean;
+  /** Pause `[l]` ou `@l` : seule celle-ci peut être retirée (pas `@p`). */
+  removable: boolean;
+  /** Numéro de ligne (0-based) dans le texte source. */
+  line: number;
+  /** Rang du tag `[...]` dans la ligne (pour `[l]`), -1 pour la commande `@l`. */
+  tagIndex: number;
+};
+
+/**
+ * Relève les pauses de ligne de chaque page d'un script, au niveau des tokens, avec leur
+ * emplacement dans le texte. Le bloc `@if` et les macros sont opaques : tout texte qu'ils
+ * contiennent (ou qu'une macro appelée pourrait émettre) compte comme lisible, pour ne jamais
+ * conclure à tort qu'une pause est vide.
+ */
+function collectPauseSites(text: string): PauseSite[][] {
+  const tokens: Token[] = lex(text);
+  const macroNames = new Set<string>();
+  for (const t of tokens) {
+    if (t.type === "command" && t.name === "macro" && t.args.name) macroNames.add(t.args.name);
+  }
+
+  const pages: PauseSite[][] = [[]];
+  let hasText = false;
+  let line = 0;
+  let tagIndex = 0;
+  let blockDepth = 0;
+
+  const isBlockOpen = (n: string): boolean => n === "if" || n === "macro";
+  const isBlockClose = (n: string): boolean => n === "endif" || n === "endmacro";
+
+  for (const t of tokens) {
+    if (t.type === "linebreak") {
+      line++;
+      tagIndex = 0;
+      continue;
+    }
+    if (t.type === "tag") {
+      const idx = tagIndex++;
+      if (blockDepth > 0) continue;
+      if (t.name === "p") {
+        pages.push([]);
+        hasText = false;
+      } else if (t.name === "l") {
+        pages[pages.length - 1]!.push({ hasText, removable: true, line, tagIndex: idx });
+        hasText = false;
+      } else if (macroNames.has(t.name)) {
+        hasText = true;
+      }
+      continue;
+    }
+    if (t.type === "command") {
+      if (isBlockClose(t.name)) {
+        if (blockDepth > 0) blockDepth--;
+        continue;
+      }
+      if (isBlockOpen(t.name)) {
+        blockDepth++;
+        // Un bloc conditionnel peut émettre du texte : on reste prudent.
+        if (t.name === "if") hasText = true;
+        continue;
+      }
+      if (blockDepth > 0) continue;
+      if (t.name === "pg") {
+        pages.push([]);
+        hasText = false;
+      } else if (t.name === "l") {
+        pages[pages.length - 1]!.push({ hasText, removable: true, line, tagIndex: -1 });
+        hasText = false;
+      } else if (t.name === "p") {
+        pages[pages.length - 1]!.push({ hasText, removable: false, line, tagIndex: -1 });
+        hasText = false;
+      } else if (macroNames.has(t.name)) {
+        hasText = true;
+      }
+      continue;
+    }
+    if (t.type === "text" && t.content.trim().length > 0) hasText = true;
+  }
+  return pages;
+}
+
+/**
+ * Alignement (plus longue sous-suite commune) des pauses d'une page entre l'original et la
+ * traduction, sur la présence de texte avant chaque pause. Retourne les indices des pauses
+ * de la traduction sans correspondance dans l'original.
+ */
+function unmatchedTranslatedPauses(original: boolean[], translated: boolean[]): Set<number> {
+  const n = original.length;
+  const m = translated.length;
+  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i]![j] =
+        original[i] === translated[j]
+          ? lcs[i + 1]![j + 1]! + 1
+          : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+    }
+  }
+  const matched = new Set<number>();
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (original[i] === translated[j]) {
+      matched.add(j);
+      i++;
+      j++;
+    } else if (lcs[i + 1]![j]! >= lcs[i]![j + 1]!) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  const unmatched = new Set<number>();
+  for (let k = 0; k < m; k++) if (!matched.has(k)) unmatched.add(k);
+  return unmatched;
+}
+
+/**
+ * Neutralise les pauses `[l]` vides de la traduction : une ligne traduite sans aucun texte
+ * lisible qui n'a pas de pause vide correspondante dans l'original (là où le japonais a du
+ * texte, le joueur devait cliquer sur du vide). Seul le `[l]` (ou la ligne `@l`) est retiré ;
+ * aucun texte, aucune autre commande n'est touché ni lu.
+ *
+ * La comparaison est structurelle, page par page. Si les deux scripts n'ont pas le même
+ * nombre de pages au niveau des tokens, rien n'est modifié.
+ */
+export function neutralizeEmptyPauses(
+  originalText: string,
+  translatedText: string,
+): { text: string; removed: number } {
+  const original = collectPauseSites(originalText);
+  const translated = collectPauseSites(translatedText);
+  if (original.length !== translated.length) return { text: translatedText, removed: 0 };
+
+  // Pauses à retirer, par ligne : rangs de tags `[...]`, ou -1 pour la ligne `@l` entière.
+  const toRemove = new Map<number, Set<number>>();
+  let removed = 0;
+  for (let p = 0; p < translated.length; p++) {
+    const tr = translated[p]!;
+    const unmatched = unmatchedTranslatedPauses(
+      original[p]!.map((s) => s.hasText),
+      tr.map((s) => s.hasText),
+    );
+    for (const k of unmatched) {
+      const site = tr[k]!;
+      if (site.hasText || !site.removable) continue;
+      let set = toRemove.get(site.line);
+      if (!set) toRemove.set(site.line, (set = new Set<number>()));
+      set.add(site.tagIndex);
+      removed++;
+    }
+  }
+  if (removed === 0) return { text: translatedText, removed: 0 };
+
+  // Réécriture ligne par ligne, séparateurs de ligne conservés.
+  const parts = translatedText.split(/(\r?\n)/);
+  for (const [lineNo, ranks] of toRemove) {
+    const idx = lineNo * 2;
+    const raw = parts[idx];
+    if (raw === undefined) continue;
+    if (ranks.has(-1)) {
+      parts[idx] = "";
+      continue;
+    }
+    let tag = 0;
+    parts[idx] = raw.replace(/\[([^\]]+)\]/g, (whole) => (ranks.has(tag++) ? "" : whole));
+  }
+  return { text: parts.join(""), removed };
+}
+
 /** Installe une traduction à partir d'un mapping fichiers originaux ↔ textes traduits. */
 export function installTranslation(
   originalTexts: Map<string, string>,
@@ -312,12 +488,15 @@ export function installTranslation(
   index: LanguageIndex;
   reports: CompatibilityReport[];
   installed: Map<string, string>;
+  /** Nombre de pauses `[l]` vides retirées, par script (uniquement ceux qui en ont). */
+  neutralized: Map<string, number>;
 } {
   const scripts: string[] = [];
   const strict: string[] = [];
   const skipped: { file: string; reason: string }[] = [];
   const reports: CompatibilityReport[] = [];
   const installed = new Map<string, string>();
+  const neutralized = new Map<string, number>();
 
   for (const [file, translatedText] of translatedTexts) {
     const originalText = originalTexts.get(file);
@@ -371,7 +550,9 @@ export function installTranslation(
       if (report.level === "strict") {
         strict.push(file);
       }
-      installed.set(file, translatedTexts.get(file)!);
+      const fixed = neutralizeEmptyPauses(originalTexts.get(file)!, translatedText);
+      if (fixed.removed > 0) neutralized.set(file, fixed.removed);
+      installed.set(file, fixed.text);
     } else {
       skipped.push({ file, reason: report.reason ?? "incompatible" });
     }
@@ -388,5 +569,5 @@ export function installTranslation(
     extraAssets: {},
   };
 
-  return { index, reports, installed };
+  return { index, reports, installed, neutralized };
 }
