@@ -36,12 +36,14 @@ describe("planTasks", () => {
     expect(tasks[0].internal).toBe(false);
   });
 
-  it("planifie l'échec .tlg sans convertisseur", () => {
+  it("planifie le décodeur TLG intégré (sortie .png) sans convertisseur externe", () => {
     const entries = [makeEntry("bg/night.tlg", "bg", ".tlg", "night")];
     const tasks = planTasks(entries, baseCtx);
     expect(tasks).toHaveLength(1);
     expect(tasks[0].action).toBe("convert-image");
     expect(tasks[0].commandTemplate).toBeUndefined();
+    expect(tasks[0].outputExt).toBe(".png");
+    expect(tasks[0].internal).toBe(true);
   });
 
   it("planifie la copie .png telle quelle", () => {

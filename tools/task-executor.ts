@@ -2,7 +2,8 @@
  * Exécuteur de tâches du pipeline.
  *
  * Chaque tâche est exécutée selon son action :
- * - convert-image : appelle l'outil externe (gabarit) pour convertir .tlg → .webp/.png
+ * - convert-image : appelle l'outil externe (gabarit) pour convertir .tlg → .webp/.png ;
+ *   sans gabarit, décode le .tlg avec le décodeur intégré (tlg-decode.ts) vers .png
  * - convert-audio : appelle l'outil externe pour convertir .wav → .ogg
  * - copy : copie le fichier tel quel
  * - transcode-ks : transcode le .ks en UTF-8 via normalize-ks
@@ -17,6 +18,7 @@ import { runCommand } from "./command-template.js";
 import { normalizeScriptText } from "./normalize-ks.js";
 import { decodeKs } from "./ks-encoding.js";
 import { readFileSync } from "fs";
+import { convertTlgFile } from "./convert-tlg.js";
 import type { Task, TaskResult } from "./plan.js";
 
 /**
@@ -42,6 +44,11 @@ export async function executeTask(task: Task, dryRun: boolean): Promise<TaskResu
 
       case "convert-image":
       case "convert-audio":
+        // TLG sans outil externe : décodeur intégré (TLG0.0 / TLG5), écriture PNG.
+        if (!task.commandTemplate && task.action === "convert-image" && task.entry.ext === ".tlg") {
+          await convertTlgFile(task.entry.source, task.outputPath);
+          break;
+        }
         if (!task.commandTemplate) {
           return {
             task,
