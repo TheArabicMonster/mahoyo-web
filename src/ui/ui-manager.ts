@@ -579,6 +579,9 @@ export class DomUIManager implements UIManager {
 
   private onKeyDown(e: KeyboardEvent): void {
     if (!this.commands) return;
+    // Une touche maintenue ne doit ni enchaîner les pages, ni faire clignoter une bascule (B1).
+    // Ctrl est exclu : il est déjà protégé par `ctrlSkip` et son relâchement doit rester fiable.
+    if (e.repeat && e.key !== "Control") return;
     if (e.key === "Escape") {
       this.onEscape();
       return;
@@ -616,6 +619,10 @@ export class DomUIManager implements UIManager {
         if (onButton) return; // le navigateur déclenchera le clic du bouton
         e.preventDefault();
         this.commands.advance();
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        this.commands.rollback();
         break;
       case "a":
         this.commands.setMode(this.status.mode === "auto" ? "normal" : "auto");

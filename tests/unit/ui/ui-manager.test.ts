@@ -63,6 +63,64 @@ describe("DomUIManager", () => {
       key("Enter");
       expect(cmd.advance).toHaveBeenCalledTimes(3);
     });
+    it("une répétition clavier n'avance pas (B1)", () => {
+      key(" ");
+      key(" ", { repeat: true });
+      key("Enter", { repeat: true });
+      key("Enter");
+      expect(cmd.advance).toHaveBeenCalledTimes(2);
+    });
+    it("les répétitions n'agissent pas sur A, S, flèche gauche ni Échap (B1)", () => {
+      key("a", { repeat: true });
+      key("s", { repeat: true });
+      key("ArrowLeft", { repeat: true });
+      key("Escape", { repeat: true });
+      expect(cmd.setMode).not.toHaveBeenCalled();
+      expect(cmd.rollback).not.toHaveBeenCalled();
+      expect(cmd.openScreen).not.toHaveBeenCalled();
+    });
+    it("une répétition ne choisit pas d'option (B1)", () => {
+      ui.showChoices(["A", "B"]);
+      key("1", { repeat: true });
+      expect(cmd.choose).not.toHaveBeenCalled();
+      key("1");
+      expect(cmd.choose).toHaveBeenCalledWith(0);
+    });
+    it("flèche gauche = rollback, sans advance (B2)", () => {
+      const ev = new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true });
+      document.dispatchEvent(ev);
+      expect(cmd.rollback).toHaveBeenCalledTimes(1);
+      expect(cmd.advance).not.toHaveBeenCalled();
+      expect(ev.defaultPrevented).toBe(true);
+    });
+    it("flèche gauche ignorée pendant un choix et dans un champ de saisie (B2)", () => {
+      document.body.insertAdjacentHTML("beforeend", '<input id="f">');
+      document.getElementById("f")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+      ui.showChoices(["A"]);
+      key("ArrowLeft");
+      expect(cmd.rollback).not.toHaveBeenCalled();
+    });
+    it("S bascule le skip, A bascule l'auto (B2)", () => {
+      key("s");
+      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
+      ui.setStatus(status({ mode: "skip" }));
+      key("s");
+      expect(cmd.setMode).toHaveBeenLastCalledWith("normal");
+      key("a");
+      expect(cmd.setMode).toHaveBeenLastCalledWith("auto");
+      ui.setStatus(status({ mode: "auto" }));
+      key("a");
+      expect(cmd.setMode).toHaveBeenLastCalledWith("normal");
+    });
+    it("Échap ouvre le menu de pause en jeu (B2)", () => {
+      key("Escape");
+      expect(cmd.openScreen).toHaveBeenCalledWith("pause");
+    });
+    it("Espace sur un bouton focalisé n'avance pas (le clic du bouton s'en charge)", () => {
+      document.body.insertAdjacentHTML("beforeend", "<button id=\"b\">x</button>");
+      document.getElementById("b")!.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+      expect(cmd.advance).not.toHaveBeenCalled();
+    });
     it("clic droit = toggleUserHide et preventDefault", () => {
       const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
       q("#ui-overlay")!.dispatchEvent(ev);

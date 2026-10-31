@@ -71,9 +71,11 @@ Le dépôt ne contient aucun asset du jeu : il faut posséder une copie du jeu e
 
 | Touche | Action |
 |---|---|
-| Clic, Espace, Entrée | Avancer |
-| Ctrl (maintenu) ou `S` | Passer le texte (le texte déjà lu ; le non lu se règle dans *Réglages*) |
-| `A` | Lecture automatique |
+| Clic, Espace, Entrée, molette bas | Avancer (une touche maintenue n'avance qu'une seule fois) |
+| Molette haut, flèche gauche | Retour arrière |
+| Ctrl (maintenu) | Passer le texte tant que la touche est tenue (le texte déjà lu ; le non lu se règle dans *Réglages*) |
+| `S` | Bascule du mode « passer » |
+| `A` | Bascule de la lecture automatique |
 | `1`…`9` | Choisir une option |
 | `F` | Plein écran |
 | Échap | Pause : sauvegarder, charger, réglages, historique, retour au titre |
