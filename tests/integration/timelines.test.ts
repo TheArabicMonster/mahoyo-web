@@ -30,6 +30,15 @@ describe.skipIf(!hasTimelines)("Timelines (vrais assets)", () => {
     expect(opening!.audio.some((a) => a.channel === "bgm" && a.action === "play")).toBe(true);
   });
 
+  it("l'ouverture : plans dans l'ordre du film, sans image répétée, avec panoramiques (#135)", () => {
+    const opening = lookupTimeline(data, "opening.ks", 4)!;
+    const times = opening.bg.map((b) => b.at);
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+    expect(new Set(opening.bg.map((b) => b.storage)).size).toBe(opening.bg.length);
+    expect(opening.bg.every((b) => b.left !== undefined && b.top !== undefined && b.fade !== undefined)).toBe(true);
+    expect((opening.moves ?? []).filter((m) => m.time > 0).length).toBeGreaterThan(5);
+  });
+
   it("l'ouverture ne cite que des images et des pistes présentes dans le manifest", () => {
     const images = new Set(Object.keys(manifest!.images).map((k) => k.toLowerCase()));
     const sounds = new Set(Object.keys(manifest!.audio).map((k) => k.toLowerCase()));
