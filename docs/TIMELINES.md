@@ -12,11 +12,13 @@ audio et des fonds animés. `@playtimeline scene=N next=ms` lance la scène `N`.
 Le projet n'en reproduit **qu'une version simplifiée** :
 
 1. **Extraction** : `npm run timelines -- <dossier d'assets>` lit les scripts et écrit
-   `timelines.json` (le fond visible plan par plan, ses panoramiques et les pistes audio
-   de chaque scène).
+   `timelines.json` (le fond visible plan par plan, ses panoramiques, les calques et les
+   pistes audio de chaque scène).
 2. **Lecture** : le runtime transforme la scène en calendrier d'événements (fonds en fondu
-   enchaîné ou en coupe, panoramiques `bgMove`, pistes audio) ; le player les joue à leur instant.
-3. **Saut** : **un seul clic**, ou le mode skip, applique d'un coup tout ce qui reste.
+   enchaîné ou en coupe, panoramiques `bgMove`, calques `timelineLayer`, pistes audio) ; le
+   player précharge les images des calques et joue chaque événement à son instant.
+3. **Saut** : **un seul clic**, ou le mode skip, applique d'un coup tout ce qui reste ; les
+   calques sont retirés à la fin de la séquence.
 
 Sans `timelines.json`, `@playtimeline` est sans effet (avertissement) et l'histoire enchaîne.
 
@@ -24,10 +26,12 @@ Sans `timelines.json`, `@playtimeline` est sans effet (avertissement) et l'histo
 
 | Repris | Non repris |
 |---|---|
-| Fond de la page visible, dans l'ordre où le `PageObject` le montre | Zooms, rotations |
-| Fondu enchaîné de la durée du changement de page ; coupe franche sinon | Calques (cartons de générique, personnages, images posées en calque) |
-| Panoramiques : `left`/`top` interpolés linéairement | Accélération des interpolations (3e indicateur) |
-| Pistes BGM et SE (lecture, boucle, volume), changements de volume | Effets (brume, tremblement, balancement) |
+| Fond de la page visible, dans l'ordre où le `PageObject` le montre | Zooms, rotations (inutilisés par l'ouverture, voir l'inventaire) |
+| Fondu enchaîné de la durée du changement de page ; coupe franche sinon | Accélération des interpolations (3e indicateur) |
+| Panoramiques : `left`/`top` interpolés linéairement | Effets brume, tremblement, balancement (paramètres présents mais jamais activés dans l'ouverture) |
+| Calques (#125) : image, position, opacité (fondus), ordre d'empilement, appartenance à une page | Point d'ancrage `afx`/`afy`, `effect` d'un calque |
+| Pluie animée d'un calque (`processing = "rain1"`), approchée par un motif CSS | Fidélité de la pluie (aucune vidéo de référence) |
+| Pistes BGM et SE (lecture, boucle, volume), changements de volume | Menus système (logo, titre…) : jamais joués |
 | Durée de la scène, ou `next` | |
 
 Une position `left`/`top` absente d'une keyframe garde sa valeur précédente (elle n'est pas
@@ -53,12 +57,54 @@ Règles d'extraction :
   plein panoramique, l'ancien fond poursuit son mouvement en s'effaçant ;
 - sans `PageObject`, seule la page du premier `BGObject` est montrée.
 
+### Calques (#125)
+
+Un `LayerObject` est l'enfant d'un `BGObject` : il appartient à sa page. Propriétés lues :
+
+| Propriété | Sens |
+|---|---|
+| 1er indicateur de la ligne | 1 = calque masqué, 0 = montré (garde sa valeur d'une ligne à l'autre ; masqué au départ) |
+| `storage` | image du calque |
+| `center` / `vcenter` | centre de l'image (repère 1024×576 ; 512/288 par défaut) |
+| `opacity` | 0..255, interpolée comme les panoramiques (2e indicateur) |
+| `absolute` | ordre d'empilement |
+| `processing` | `"rain1"` : pluie animée par-dessus l'image ; `"void"` l'arrête |
+
+Règles d'extraction (`buildLayers`) :
+
+- chaque propriété est une courbe linéaire par morceaux ; entre deux instants clés (union des
+  points de toutes les courbes et de la courbe de page), le calque va en ligne droite de l'état
+  du début à celui de la fin : une pose (`time` = 0) puis un mouvement (`time` > 0) ;
+- l'opacité est multipliée par le **poids de la page** (1 affichée, 0 cachée, intermédiaire
+  pendant le fondu du `PageObject`) : un calque s'efface avec sa page, comme dans le jeu ; un
+  produit de deux rampes est approché par une rampe ;
+- deux mouvements consécutifs à la même vitesse sont fusionnés ; un segment invisible ne produit rien.
+
+Au rendu, les calques sont des `<div>` (image + pluie éventuelle) placés entre le fond et les
+sprites, animés par transitions CSS linéaires. Ils sont **transitoires** : hors de `SceneState`
+(une sauvegarde ne les contient pas) et retirés à la fin de la séquence (rien n'est visible à la
+fin de l'ouverture).
+
+### Inventaire du corpus (#125)
+
+Relevé sur les 15 scripts à timeline (93 scènes) de la version de référence :
+
+| Objet | Ouverture, scène 4 | Ouverture, scène 7 | Ailleurs |
+|---|---|---|---|
+| `LayerObject` | 22 (416 valeurs d'opacité, 65 images posées, 194 positions) | 17 (127 opacités, 48 images) | 4 (logo) |
+| Zoom / rotation animés | aucun (valeurs par défaut 100 / 0) | aucun | logo (zoom ×3 valeurs, rotation) et menus (`MenuItemObject`) |
+| Brume, tremblement, balancement | paramètres par défaut, jamais modifiés | idem | idem |
+| `effect` d'un calque | `"none"` / `"void"` seulement | idem | — |
+| `processing = "rain1"` | 1 calque (≈ 19 s) | aucun | — |
+
+Extraits pour la scène 4 : 498 changements d'état sur 19 calques (dont 427 mouvements ou
+fondus, 52 images différentes) ; scène 7 : 196 sur 16 calques.
+
 ### Scène jouée : 4 plutôt que 7
 
 `opening.ks` choisit la scène 4 si `cf.speffect` est vrai, la 7 sinon. Le runtime expose
 désormais `cf` aux expressions avec `speffect` vrai (réglage par défaut du jeu, effets
-activés) : la scène 4 est jouée. C'est aussi la meilleure pour ce lecteur simplifié : ses fonds
-portent toutes les images du film, alors que la scène 7 en pose deux comme calques (non rendus).
+activés) : la scène 4 est jouée. Les calques étant rendus, la scène 7 serait aussi jouable.
 
 ## Écarts assumés
 
@@ -108,7 +154,18 @@ l'exclut par son nom).
 ## Régénérer après une mise à jour
 
 `timelines.json` généré avant #135 reste lisible (fondu par défaut de 1,5 s, pas de
-panoramique) mais garde l'ancien ordre des plans : relancer `npm run timelines`.
+panoramique) mais garde l'ancien ordre des plans ; généré avant #125, il n'a pas de calques
+(champ `layers` optionnel) : relancer `npm run timelines`.
+
+## Reste à faire (#125)
+
+- Accélération des interpolations (3e indicateur, valeur 20 observée) et 4e indicateur.
+- Zoom et rotation (logo et menus seulement : jamais joués aujourd'hui).
+- Effets brume, tremblement, balancement : non activés par l'ouverture ; à rendre si un autre
+  script les utilise.
+- Point d'ancrage `afx`/`afy` (2 calques sur 39 en dehors de la valeur par défaut).
+- `canskip` (non sautable à la première lecture) et synchronisation fine avec la musique.
+- Validation visuelle face à une capture du jeu d'origine.
 
 ## Test
 

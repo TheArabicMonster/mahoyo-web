@@ -99,6 +99,10 @@ function applyEvent(state: StageState, event: RenderEvent): void {
       state.fore = { ...state.fore, bgLeft: event.left, bgTop: event.top };
       break;
     }
+    case "timelineLayer":
+    case "timelineLayerClear":
+      // Calques transitoires d'une timeline : hors de l'état sauvegardé.
+      break;
     case "animate": {
       state.animations.set(event.target, event.def);
       break;

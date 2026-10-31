@@ -774,6 +774,13 @@ export class Player implements PlayerCommands {
       if (signal.aborted) return finish();
       if (this.mode === "skip") return skip();
 
+      // Précharge les images des calques pour qu'ils n'apparaissent pas avec un temps de retard.
+      const images = new Set<string>();
+      for (const entry of stop.schedule) {
+        for (const ev of entry.events) if (ev.kind === "timelineLayer") images.add(ev.layer.storage);
+      }
+      if (images.size > 0) void this.stage.preload([...images], signal).catch(() => {});
+
       stop.schedule.forEach((entry, index) => {
         const timer = setTimeout(() => {
           timers.delete(timer);

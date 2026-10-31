@@ -14,6 +14,14 @@ describe("parseTimelineData", () => {
     expect(parseTimelineData(valid)).toEqual(valid);
   });
 
+  it("accepte des calques (#125), optionnels", () => {
+    const layers = [{ at: 0, id: "L1", storage: "carton", x: 224, y: 217, opacity: 0.5, z: 3400, time: 0, rain: true }];
+    const withLayers = { version: 1, scripts: { "opening.ks": { "4": { ...scene, layers } } } };
+    expect(parseTimelineData(withLayers)).toEqual(withLayers);
+    const bad = { version: 1, scripts: { "opening.ks": { "4": { ...scene, layers: [{ ...layers[0], storage: "" }] } } } };
+    expect(parseTimelineData(bad)).toBeNull();
+  });
+
   it("refuse une forme inattendue", () => {
     expect(parseTimelineData(null)).toBeNull();
     expect(parseTimelineData({ version: 2, scripts: {} })).toBeNull();

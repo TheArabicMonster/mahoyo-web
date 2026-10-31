@@ -40,6 +40,7 @@ import type {
   Step,
   StopReason,
   TextboxState,
+  TimelineLayerState,
   TransitionSpec,
 } from "./events.js";
 
@@ -1064,8 +1065,8 @@ export class Runtime {
   /**
    * @playtimeline : rejoue une timeline d'animation sous forme de calendrier.
    *
-   * Sont repris les fonds (fondus enchaînés ou coupes), leurs panoramiques (`bgMove`)
-   * et les pistes audio ; ni les calques ni les effets. Les événements
+   * Sont repris les fonds (fondus enchaînés ou coupes), leurs panoramiques (`bgMove`),
+   * les calques (`timelineLayer`) et les pistes audio ; pas les effets. Les événements
    * sont construits ici, une fois pour toutes, et l'état du runtime reçoit tout de
    * suite le résultat final : le player les rejoue à leur instant, ou d'un coup si le
    * joueur saute la séquence. Sans timeline connue, la commande est sans effet.
@@ -1110,6 +1111,15 @@ export class Runtime {
       }
     }
 
+    // Calques : transitoires, ils ne touchent pas l'état du runtime et sont retirés à
+    // la fin de la séquence (après tout le reste, même si `next` raccourcit la durée).
+    const layers = scene.layers ?? [];
+    for (const k of layers) {
+      const layer: TimelineLayerState = { id: k.id, storage: k.storage, x: k.x, y: k.y, opacity: k.opacity, z: k.z };
+      if (k.rain) layer.rain = true;
+      entries.push({ at: k.at, order: order++, events: [{ kind: "timelineLayer", layer, time: k.time }] });
+    }
+
     for (const a of scene.audio) {
       const channel = a.channel === "bgm" ? "bgm" : "se:0";
       let event: AudioEvent;
@@ -1129,6 +1139,10 @@ export class Runtime {
     // Ordre stable : par instant, puis dans l'ordre de construction (fonds avant audio).
     entries.sort((x, y) => x.at - y.at || x.order - y.order);
     const duration = instruction.next && instruction.next > 0 ? instruction.next : scene.duration;
+    if (layers.length > 0) {
+      const lastAt = entries[entries.length - 1]?.at ?? 0;
+      entries.push({ at: Math.max(duration, lastAt), order: order++, events: [{ kind: "timelineLayerClear" }] });
+    }
     return {
       events: [],
       stop: { kind: "timeline", schedule: entries.map(({ at, events }) => ({ at, events })), duration },

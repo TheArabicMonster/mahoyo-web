@@ -3,7 +3,7 @@ import { createDomStageRenderer } from "@/renderer/stage-renderer.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import { compileAction } from "@/renderer/action-compiler.js";
 import { partbgInnerTransform } from "@/renderer/transform-helpers.js";
-import type { RenderEvent, StageSnapshot } from "@/kag/events.js";
+import type { RenderEvent, StageSnapshot, TimelineLayerState } from "@/kag/events.js";
 
 type MockAnim = {
   element: HTMLElement;
@@ -294,6 +294,56 @@ describe("DomStageRenderer", () => {
       expect(bgEl().style.backgroundPosition).toBe("-48px -300px");
       expect(bgEl().style.transition).toBe("");
       renderer.hurry();
+    });
+  });
+
+  describe("calques de timeline (#125)", () => {
+    const sig = () => new AbortController().signal;
+    const layer = (over: Partial<TimelineLayerState> = {}): TimelineLayerState => ({ id: "L1", storage: "carton", x: 224, y: 217, opacity: 0, z: 3400, ...over });
+    const layerEl = (id = "L1") => root.querySelector(`#stage-timeline [data-layer-id="${id}"]`) as HTMLElement | null;
+
+    it("pose un calque centré sur (x, y), avec son ordre et son opacité, entre le fond et les sprites", async () => {
+      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
+      const el = layerEl()!;
+      expect(el.style.left).toBe("224px");
+      expect(el.style.top).toBe("217px");
+      expect(el.style.opacity).toBe("0");
+      expect(el.style.zIndex).toBe("3400");
+      expect(el.querySelector("img")!.getAttribute("src")).toContain("carton");
+      const order = [...root.querySelector("#stage")!.children].map((c) => c.id);
+      expect(order.indexOf("stage-timeline")).toBeGreaterThan(order.indexOf("stage-bg"));
+      expect(order.indexOf("stage-timeline")).toBeLessThan(order.indexOf("stage-sprites"));
+    });
+
+    it("fondu : transition linéaire de l'opacité et de la position ; instantanée en cas de saut", async () => {
+      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
+      await renderer.apply([{ kind: "timelineLayer", layer: layer({ opacity: 1, x: 300 }), time: 1500 }], { instant: false, signal: sig() });
+      expect(layerEl()!.style.transition).toBe("left 1500ms linear, top 1500ms linear, opacity 1500ms linear");
+      expect(layerEl()!.style.opacity).toBe("1");
+      expect(layerEl()!.style.left).toBe("300px");
+      await renderer.apply([{ kind: "timelineLayer", layer: layer({ opacity: 0 }), time: 1000 }], { instant: true, signal: sig() });
+      expect(layerEl()!.style.transition).toBe("none");
+      expect(layerEl()!.style.opacity).toBe("0");
+    });
+
+    it("pluie : classe dédiée tant que le calque la demande", async () => {
+      await renderer.apply([{ kind: "timelineLayer", layer: layer({ rain: true }), time: 0 }], { instant: false, signal: sig() });
+      expect(layerEl()!.classList.contains("mh-stage-tl-rain")).toBe(true);
+      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
+      expect(layerEl()!.classList.contains("mh-stage-tl-rain")).toBe(false);
+    });
+
+    it("la fin de la séquence, clear() et restore() retirent les calques", async () => {
+      const add = () => renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }, { kind: "timelineLayer", layer: layer({ id: "L2" }), time: 0 }], { instant: false, signal: sig() });
+      await add();
+      await renderer.apply([{ kind: "timelineLayerClear" }], { instant: false, signal: sig() });
+      expect(root.querySelectorAll("#stage-timeline > *").length).toBe(0);
+      await add();
+      renderer.clear();
+      expect(root.querySelectorAll("#stage-timeline > *").length).toBe(0);
+      await add();
+      await renderer.restore({ scene: { bg: null, sprites: [], effect: null }, textbox: { visible: true, frame: true }, text: [], staffroll: null }, sig());
+      expect(root.querySelectorAll("#stage-timeline > *").length).toBe(0);
     });
   });
 

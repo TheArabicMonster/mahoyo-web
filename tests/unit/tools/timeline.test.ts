@@ -136,6 +136,68 @@ describe("buildTimelineScenes", () => {
     expect(scenesOf(a, b).bg.map((x) => x.storage)).toEqual(["black", "b1"]);
   });
 
+  /** Ligne de calque : instant, masqué (1er indicateur), interpolation (2e), puis les valeurs. */
+  const rowL = (at: number, hidden: number | null, interp: number | null, ...values: unknown[]): string =>
+    `[${[at, hidden ?? "null", interp ?? "null", "null", "null", ...values.map((v) => (v === null ? "null" : typeof v === "string" ? `"${v}"` : v))].join(",")}]`;
+  const LAYER_PROPS = ["storage", "processing", "center", "vcenter", "absolute", "opacity"];
+
+  describe("calques (#125)", () => {
+    it("aucun calque : pas de champ `layers` (format inchangé)", () => {
+      expect(scenesOf(obj("BGObject", "blue", ["storage"], [row(0, "black")], 10))).not.toHaveProperty("layers");
+    });
+
+    it("carton : apparaît en fondu, tient, puis s'efface ; position, ordre et opacité 0..1", () => {
+      const layer = obj("LayerObject", "carton", LAYER_PROPS, [
+        rowL(0, 1, 0, null, null, null, null, 3400, 0),
+        rowL(20, 0, 1, "carton", null, 224, 217, null, null),
+        rowL(50, null, 0, null, null, null, null, null, 255),
+        rowL(80, null, 1, null, null, null, null, null, null),
+        rowL(100, null, 0, null, null, null, null, null, 0),
+        rowL(101, 1, null, null, null, null, null, null, null),
+      ], 120);
+      const bg = obj("BGObject", "blue", ["storage"], [row(0, "black")], 120, layer, { page: 0 });
+      const base = { id: "L1", storage: "carton", x: 224, y: 217, z: 3400 };
+      expect(scenesOf(bg).layers).toEqual([
+        { ...base, at: 1000, opacity: 0, time: 0 },
+        { ...base, at: 1000, opacity: 1, time: 1500 },
+        { ...base, at: 4000, opacity: 0, time: 1000 },
+      ]);
+    });
+
+    it("un déplacement continu à vitesse constante ne donne qu'un mouvement", () => {
+      const layer = obj("LayerObject", "perso", LAYER_PROPS, [
+        rowL(0, 0, 1, "perso", null, 100, 288, 1000, 255),
+        rowL(10, null, null, null, null, 200, null, null, null),
+        rowL(20, null, 0, null, null, 300, null, null, null),
+      ], 30);
+      const bg = obj("BGObject", "blue", ["storage"], [row(0, "black")], 30, layer, { page: 0 });
+      expect(scenesOf(bg).layers).toEqual([
+        { at: 0, id: "L1", storage: "perso", x: 100, y: 288, opacity: 1, z: 1000, time: 0 },
+        { at: 0, id: "L1", storage: "perso", x: 300, y: 288, opacity: 1, z: 1000, time: 1000 },
+      ]);
+    });
+
+    it("un calque s'efface avec sa page pendant le fondu enchaîné du PageObject", () => {
+      const page = obj("PageObject", "page", ["page"], [rowI(0, 0, 0), rowI(20, 1), rowI(60, 0, 1)], 100);
+      const layer = obj("LayerObject", "carton", LAYER_PROPS, [rowL(0, 0, 0, "carton", null, 512, 288, 2000, 255)], 100);
+      const blue = obj("BGObject", "blue", ["storage"], [row(0, "black")], 100, layer, { page: 0 });
+      const white = obj("BGObject", "white", ["storage"], [row(0, "black")], 100, "", { page: 1 });
+      expect(scenesOf(page, blue, white).layers!.map((k) => [k.at, k.opacity, k.time])).toEqual([
+        [0, 1, 0],
+        [1000, 0, 2000],
+      ]);
+    });
+
+    it("pluie : `processing = rain1` marque le calque jusqu'à « void »", () => {
+      const layer = obj("LayerObject", "pluie", LAYER_PROPS, [
+        rowL(0, 0, 0, "ville", "rain1", 512, 288, 1100, 255),
+        rowL(10, null, null, null, "void", null, null, null, null),
+      ], 20);
+      const bg = obj("BGObject", "blue", ["storage"], [row(0, "black")], 20, layer, { page: 0 });
+      expect(scenesOf(bg).layers!.map((k) => [k.at, k.rain ?? false])).toEqual([[0, true], [500, false]]);
+    });
+  });
+
   it("ignore les lignes sans image, 'void' et le marqueur ~", () => {
     const bg = obj("BGObject", "blue", ["storage"], [row(0, "black"), row(10, null), row(20, "~"), row(30, "void"), row(40, "img")], 50);
     const scenes = buildTimelineScenes(extractTla(ks(`4, ${scene([bg])}`))!.graph);

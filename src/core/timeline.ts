@@ -7,8 +7,10 @@
  * rejoue sous forme d'un calendrier d'événements (voir `@playtimeline`).
  *
  * Sont repris : le fond visible (dans l'ordre où les pages de la timeline le
- * montrent), ses panoramiques (`left`/`top` animés) et les pistes audio. Les
- * calques, zooms, rotations et effets de la timeline d'origine ne le sont pas.
+ * montrent), ses panoramiques (`left`/`top` animés), les calques posés sur les pages
+ * (position, opacité et ordre, avec leurs fondus), la pluie animée d'un calque et les
+ * pistes audio. Les zooms, rotations et effets (brume, tremblement, balancement) ne
+ * le sont pas : l'ouverture ne les anime pas (voir `docs/TIMELINES.md`).
  */
 
 /** Une action audio de la timeline. */
@@ -49,6 +51,29 @@ export type TimelineMove = {
   time: number;
 };
 
+/**
+ * Changement d'état d'un calque de la timeline (carton de générique, personnage,
+ * image en surimpression). Avec `time` = 0, l'état est posé tout de suite ; sinon le
+ * calque glisse en ligne droite (position et opacité) jusqu'à cet état en `time` ms.
+ */
+export type TimelineLayerKey = {
+  at: number;
+  /** Identifiant stable du calque dans la scène. */
+  id: string;
+  storage: string;
+  /** Centre de l'image (px, repère 1024×576). */
+  x: number;
+  y: number;
+  /** Opacité 0..1, déjà multipliée par la visibilité de la page qui porte le calque. */
+  opacity: number;
+  /** Ordre d'empilement (plus grand = devant). */
+  z: number;
+  /** Durée du mouvement (ms) ; 0 = immédiat. */
+  time: number;
+  /** Pluie animée par-dessus l'image (traitement « rain1 » du jeu d'origine). */
+  rain?: boolean;
+};
+
 export type TimelineScene = {
   name: string;
   /** Durée totale (ms). */
@@ -56,6 +81,8 @@ export type TimelineScene = {
   bg: TimelineBg[];
   /** Panoramiques du fond affiché (absents des données extraites avant #135). */
   moves?: TimelineMove[];
+  /** Calques, triés par instant (absents des données extraites avant #125). */
+  layers?: TimelineLayerKey[];
   audio: TimelineAudio[];
 };
 
@@ -88,6 +115,24 @@ function isMove(v: unknown): v is TimelineMove {
   return isNum(m.at) && isNum(m.left) && isNum(m.top) && isNum(m.time) && m.time >= 0;
 }
 
+function isLayerKey(v: unknown): v is TimelineLayerKey {
+  if (typeof v !== "object" || v === null) return false;
+  const l = v as Record<string, unknown>;
+  return (
+    isNum(l.at) &&
+    typeof l.id === "string" &&
+    typeof l.storage === "string" &&
+    l.storage.length > 0 &&
+    isNum(l.x) &&
+    isNum(l.y) &&
+    isNum(l.opacity) &&
+    isNum(l.z) &&
+    isNum(l.time) &&
+    l.time >= 0 &&
+    (l.rain === undefined || typeof l.rain === "boolean")
+  );
+}
+
 function isAudio(v: unknown): v is TimelineAudio {
   if (typeof v !== "object" || v === null) return false;
   const a = v as Record<string, unknown>;
@@ -110,6 +155,7 @@ function isScene(v: unknown): v is TimelineScene {
     Array.isArray(s.bg) &&
     s.bg.every(isBg) &&
     (s.moves === undefined || (Array.isArray(s.moves) && s.moves.every(isMove))) &&
+    (s.layers === undefined || (Array.isArray(s.layers) && s.layers.every(isLayerKey))) &&
     Array.isArray(s.audio) &&
     s.audio.every(isAudio)
   );
