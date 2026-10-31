@@ -35,12 +35,12 @@ Méthode : recherche de chaque nom absent dans le manifest installé, dans les a
 | Cause | Images | État |
 |---|---|---|
 | Espace avant l'extension dans le nom du fichier (`…) .png`) : la clé du manifest installé garde l'espace, les scripts non | 1 (fond de la salle de verdure, orage de nuit) | **Corrigé** (#153) : le resolver retombe sur une clé repliée (NFKC, bordures, casse) |
-| Fichier présent dans l'archive mais jamais converti : conteneur `TLG0.0` enveloppant un `TLG5.0`, que le décodeur du POC (`tlg.py`) ne sait pas lire | 14 sprites d'Aoko, Sôjûrô et Alice (tenues « 全 », « 近 », « 大 ») | **Cause établie**, à corriger dans le convertisseur externe (décodeur TLG5) puis en régénérant le manifest. 32 fichiers de l'archive sont dans ce cas, dont 14 utilisés par le japonais |
+| Fichier présent dans l'archive mais jamais converti : conteneur `TLG0.0` enveloppant un `TLG5.0`, que le décodeur du POC (`tlg.py`) ne sait pas lire | 14 sprites d'Aoko, Sôjûrô et Alice (tenues « 全 », « 近 », « 大 ») | **Corrigé** (#155) : décodeur `TLG0.0`/`TLG5` intégré au convertisseur (`tools/tlg-decode.ts`). 32 fichiers de l'archive sont dans ce cas ; 15 n'avaient aucune image (les 14 absents du japonais et un autre), les 17 autres avaient déjà un PNG, que le nouveau décodeur reproduit au pixel près |
 | Absent de l'archive (son `bgm101`) | 1 son | Limite connue |
 
 **Autres images ajoutées par la traduction** (français) : 45 avant correction, 43 après. Les 2 images corrigées sont des silhouettes dont la traduction écrit une lettre pleine chasse (`ｌ`) alors que le fichier a un `l` ASCII (**corrigé** par le repli, #153). Les 43 restantes sont absentes de l'archive 2012 (sprites de tenues, fonds et événements de la version Steam), `im家絵02a/b/c` comprises. Mesure après correction sur les 221 scripts, avec les assets installés : 57 images absentes en français (60 avant), 14 en japonais (15 avant).
 
-Pour récupérer les 14 sprites TLG5, il faut ajouter le décodage `TLG5.0` au convertisseur (le format est un LZSS par blocs, plus simple que TLG6), reconvertir ces 32 fichiers, puis relancer `npm run pipeline` ; cela relève d'une issue séparée.
+Les sprites TLG5 sont récupérés par #155 : le convertisseur décode désormais `TLG0.0` enveloppant du `TLG5.0` (voir `docs/PIPELINE.md`). Après reconversion, la lecture complète ne signale plus que le son `bgm101`.
 
 ## Ouverture : vérification (2026-10-31, `main` + #150)
 

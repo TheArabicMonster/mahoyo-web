@@ -11,7 +11,7 @@ Le pipeline convertit les assets du jeu original (PC 2012, KiriKiri/KAG3) en fic
 | Node.js ≥ 18 | Exécution du pipeline | ✅ Oui |
 | `tsx` (installé via npm) | Exécution des scripts TypeScript | ✅ Oui (devDep) |
 | Extracteur XP3 (`xp3extract`, `krkrExtract`, etc.) | Extraction des archives `.xp3` | ⬚ Optionnel |
-| Convertisseur TLG (`tlg2png`, etc.) | Conversion `.tlg` → `.webp`/`.png` | ⬚ Optionnel |
+| Convertisseur TLG externe (`tlg2png`, etc.) | Conversion `.tlg` → `.webp` | ⬚ Optionnel (un décodeur `TLG0.0`/`TLG5` est intégré) |
 | `ffmpeg` (ou autre encodeur) | Re-encodage audio | ⬚ Optionnel |
 
 > Les outils optionnels sont des **wrappers** : le pipeline les appelle s'ils sont fournis, sinon il ignore l'étape correspondante avec un avertissement.
@@ -52,7 +52,7 @@ Chaque étape peut être lancée seule :
 # Extraction XP3
 npm run extract-xp3 -- <inputDir> <outputDir> [extractorPath]
 
-# Conversion TLG → WebP
+# Conversion TLG → PNG (décodeur intégré) ou WebP (convertisseur externe)
 npm run convert-tlg -- <inputDir> <outputDir> [converterPath]
 
 # Conversion/copie audio
@@ -73,8 +73,17 @@ npm run normalize-ks -- <input.ks>
 ### 2. convert-tlg
 
 - **Entrée** : fichiers `.tlg` (images KiriKiri)
-- **Sortie** : fichiers `.webp` dans la même arborescence relative
-- **Sans convertisseur** : liste les TLG trouvés et passe
+- **Sortie** : même arborescence relative
+  - **sans convertisseur** : `.png`, par le décodeur intégré `tools/tlg-decode.ts` ;
+  - **avec `--tlg-cmd`** (ou l'argument `converterPath`) : `.webp`, par l'outil externe, comme avant. L'outil externe prime toujours sur le décodeur intégré.
+- **Décodeur intégré** (écrit pour le projet d'après la spécification publique du format, sans dépendance, PNG via le zlib de Node) :
+  - `TLG0.0` (conteneur « sds », `TLG0.0\0sds\x1a` + taille) : l'image interne est décodée, les tags sont ignorés ;
+  - `TLG5.0` : bandes de `blockHeight` lignes ; chaque composante (B, G, R, éventuellement A) est compressée en LZSS (fenêtre de 4096 octets, qui se poursuit d'une bande à l'autre) ou stockée brute ; reconstruction par prédicteur vertical puis cumul horizontal, couleurs décorrélées autour du vert ;
+  - `TLG6.0` : reconnu mais **non décodé** (Golomb-Rice et prédicteurs, non nécessaire pour les assets utilisés). Le fichier est alors signalé en échec (« TLG6 non pris en charge »), absent du manifest, et les autres fichiers continuent : utiliser `--tlg-cmd` avec un convertisseur externe pour ceux-là ;
+  - fichier chiffré ou inconnu : échec avec « signature TLG inconnue ».
+- **Corpus de référence** : les 32 `TLG0.0` + `TLG5.0` de l'archive (dont 15 jamais convertis, #155) sont décodés ; pour les 17 qui avaient déjà un PNG, le décodeur le reproduit au pixel près.
+- **Réparer une installation existante** (assets déjà générés par l'ancien POC) : `npm run convert-tlg -- <dossier des .tlg restants> <dossier temporaire>`, copier les `.png` manquants dans `assets/image/`, puis ajouter au manifest, pour chacun, `"<nom en minuscules>": { "url": "image/<nom>.png", "source": "fg/<nom>.png", "kind": "image" }`. Sans ajout au manifest, le resolver ne les voit pas.
+- Le manifest généré ne prédit plus d'échec : un `.tlg` sans outil externe devient une tâche interne (`convert-image`, sortie `.png`).
 
 ### 3. convert-audio
 
@@ -144,6 +153,7 @@ type PipelineContext = {
 ## Tests
 
 Les fonctions pures de normalisation sont testées dans `tests/unit/tools/normalize-ks.test.ts` (17 tests).
+Le décodeur TLG est testé dans `tests/unit/tools/tlg-decode.test.ts` sur des `TLG5` **inventés** par un encodeur écrit dans le test (LZSS, RGB/RGBA, bandes partielles, composantes brutes, conteneur `TLG0.0`, TLG6/fichiers tronqués, PNG) : aucun asset du jeu n'est versionné.
 L'outil d'audit headless est testé dans `tests/unit/tools/audit-scenario.test.ts` (21 tests, dont 11 pour la détection de scripts chiffrés).
 Le parser KAG est testé dans `tests/unit/kag/parser.test.ts` (27 tests, dont 5 pour les inline tags).
 

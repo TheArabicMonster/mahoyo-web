@@ -21,7 +21,7 @@ export type Task = {
   outputExt: string;
   /** Gabarit de commande externe si applicable. */
   commandTemplate?: string;
-  /** true si la tâche ne nécessite pas d'outil externe (copie, transcodage). */
+  /** true si la tâche ne nécessite pas d'outil externe (copie, transcodage, décodeur TLG intégré). */
   internal: boolean;
 };
 
@@ -49,8 +49,9 @@ export type PlanContext = {
  * Construit le plan de tâches à partir de l'inventaire.
  *
  * Table de décision :
- * - .tlg + tlgCommand → convert-image (.webp)
- * - .tlg sans tlgCommand → échec (tâche skipped, absente du manifest)
+ * - .tlg + tlgCommand → convert-image (.webp, outil externe)
+ * - .tlg sans tlgCommand → convert-image (.png) par le décodeur intégré (tlg-decode.ts :
+ *   TLG0.0 et TLG5 ; un TLG6 échoue avec un message explicite et reste absent du manifest)
  * - .png/.jpg/.jpeg/.bmp → copy (garde l'extension)
  * - .ogg → copy (.ogg)
  * - .wav + audioCommand → convert-audio (.ogg)
@@ -78,8 +79,8 @@ function planEntry(entry: InventoryEntry, ctx: PlanContext): Task | null {
         const outputExt = kind === "rule" ? ".png" : ".webp";
         return makeTask(entry, ctx, "convert-image", outputExt, ctx.tlgCommand, false);
       }
-      // Pas de convertisseur : tâche échouée (sera marquée skipped)
-      return makeTask(entry, ctx, "convert-image", ".webp", undefined, false);
+      // Pas de convertisseur externe : décodeur intégré, sortie PNG (sans perte).
+      return makeTask(entry, ctx, "convert-image", ".png", undefined, true);
     }
     // PNG/JPG/BMP → copie
     if (ext === ".png" || ext === ".jpg" || ext === ".jpeg" || ext === ".bmp") {

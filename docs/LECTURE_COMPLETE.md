@@ -65,9 +65,9 @@ utilisé auparavant (251 - 17) comptait ces 13 binaires comme des scripts.
 
 ## Assets de base manquants sur le corpus de référence
 
-Après résolution des variantes et du repli de nom (#153) : 15 assets distincts
-(14 images, 1 son), 39 occurrences, contre 348 images signalées avant la correction
-(863 références à variante sont désormais résolues). État des causes :
+Après résolution des variantes, du repli de nom (#153) et du décodage des `TLG5` (#155) :
+**1 asset distinct** (1 son, `bgm101`), contre 15 avant #155 (14 images, 1 son) et 348 images
+signalées avant #153 (868 références à variante sont désormais résolues). État des causes :
 
 - **Espace final dans le nom du fichier** (1 image, `wik_f-a.ks`, `wik_x-2.ks`) :
   **résolu**. Le fichier source porte un espace avant son extension et le manifest
@@ -76,13 +76,12 @@ Après résolution des variantes et du repli de nom (#153) : 15 assets distincts
   une clé repliée (NFKC, espaces de bordure, casse) quand la clé exacte manque : le
   manifest déjà installé fonctionne sans régénération.
 - **Image présente dans l'archive mais non convertie** (14 images, sprites de
-  `5a-*`, `5b-*`, `8.5`, `9-*`, `d-*`) : **cause établie**. Ces fichiers sont des
-  conteneurs `TLG0.0` (`sds`) qui enveloppent une image `TLG5.0`. Le décodeur utilisé par
-  l'ancien POC (`tlg.py`) ne lit que du `TLG6` dans un conteneur `TLG0.0` et n'implémente
-  pas `TLG5` (« Unsupported tlg version ») : le `.tlg` est resté tel quel
-  dans le dossier de sortie et n'a pas de `.png`, donc pas d'entrée de manifest. Ce n'est
-  ni un défaut de nom ni une absence de l'archive. Le correctif est un décodeur `TLG5`
-  dans le convertisseur externe (hors périmètre ici, voir `docs/BUGS_PROLOGUE.md`).
+  `5a-*`, `5b-*`, `8.5`, `9-*`, `d-*`) : **résolu** (#155). Ces fichiers sont des
+  conteneurs `TLG0.0` (`sds`) qui enveloppent une image `TLG5.0`. Le décodeur de l'ancien
+  POC (`tlg.py`) ne lisait que du `TLG6` dans un conteneur `TLG0.0` : le `.tlg` était resté tel
+  quel, sans `.png` ni entrée de manifest. `tools/tlg-decode.ts` décode maintenant `TLG0.0` et
+  `TLG5` ; les fichiers sont convertis en PNG et ajoutés au manifest installé (les autres
+  entrées sont inchangées). Ce n'était ni un défaut de nom ni une absence de l'archive.
 - **Son `bgm101`** (1 son, `staffroll.ks`) : aucune clé audio proche.
 
 Les 188 références d'asset de nom vide sont presque toutes dans un seul script

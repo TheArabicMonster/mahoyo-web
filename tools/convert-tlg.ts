@@ -1,14 +1,18 @@
 /**
- * Conversion des images .tlg (KiriKiri) vers .webp.
+ * Conversion des images .tlg (KiriKiri).
  *
- * Wrapper autour d'un convertisseur externe (`tlg2png`, `krkrExtract`, etc.).
- * Si aucun convertisseur n'est fourni, les fichiers sont ignorés.
+ * - Avec un convertisseur externe (`tlg2png`, `krkrExtract`, etc.) : sortie .webp,
+ *   comme avant (`--tlg-cmd`).
+ * - Sans convertisseur : décodeur intégré (`tlg-decode.ts`, TLG0.0 et TLG5), sortie .png.
+ *   Un TLG6 ou un fichier chiffré est signalé en échec, sans bloquer les autres.
  */
 import { execFile } from "child_process";
-import { existsSync } from "fs";
+import { readFile, rename, writeFile } from "fs/promises";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
+import { dirname } from "path";
 import { ensureDir, listFiles, outputPathFor, type PipelineContext } from "./pipeline-utils.js";
+import { tlgToPng } from "./tlg-decode.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -19,39 +23,50 @@ export type ConvertTlgOptions = {
   dryRun?: boolean;
 };
 
-export async function convertTlg(options: ConvertTlgOptions): Promise<{ tlgs: string[]; converted: number }> {
+/** Convertit un .tlg en .png avec le décodeur intégré (écriture atomique). */
+export async function convertTlgFile(inputPath: string, outputPath: string): Promise<void> {
+  const png = tlgToPng(await readFile(inputPath));
+  ensureDir(dirname(outputPath));
+  const tmp = `${outputPath}.tmp`;
+  await writeFile(tmp, png);
+  await rename(tmp, outputPath);
+}
+
+export async function convertTlg(
+  options: ConvertTlgOptions,
+): Promise<{ tlgs: string[]; converted: number; failed: number }> {
   const tlgs = listFiles(options.inputDir, (p) => p.toLowerCase().endsWith(".tlg"));
   let converted = 0;
-
-  if (!options.converter) {
-    console.warn("[convert-tlg] Aucun convertisseur fourni. TLG trouvés :", tlgs.length);
-    return { tlgs, converted };
-  }
+  let failed = 0;
 
   for (const tlg of tlgs) {
-    const outPath = outputPathFor(options.inputDir, options.outputDir, tlg, ".webp");
-    ensureDir(outPath);
-    if (!options.dryRun) {
-      try {
+    const outPath = outputPathFor(options.inputDir, options.outputDir, tlg, options.converter ? ".webp" : ".png");
+    if (options.dryRun) continue;
+    try {
+      if (options.converter) {
+        ensureDir(dirname(outPath));
         await execFileAsync(options.converter, [tlg, outPath]);
-        converted++;
-      } catch (err) {
-        console.error(`[convert-tlg] Échec de ${tlg}:`, err);
+      } else {
+        await convertTlgFile(tlg, outPath);
       }
+      converted++;
+    } catch (err) {
+      failed++;
+      console.error(`[convert-tlg] Échec de ${tlg}:`, err instanceof Error ? err.message : err);
     }
   }
 
-  return { tlgs, converted };
+  return { tlgs, converted, failed };
 }
 
 export async function runConvertTlg(context: PipelineContext): Promise<void> {
-  const { tlgs, converted } = await convertTlg({
+  const { tlgs, converted, failed } = await convertTlg({
     inputDir: context.inputDir,
     outputDir: context.outputDir,
     converter: context.tlgConverter,
     dryRun: context.dryRun,
   });
-  console.log(`[convert-tlg] ${tlgs.length} TLG(s), ${converted} converti(s)`);
+  console.log(`[convert-tlg] ${tlgs.length} TLG(s), ${converted} converti(s), ${failed} échec(s)`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

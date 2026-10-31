@@ -171,7 +171,9 @@ Mesure du 2026-10-31 : lecture complète des 221 scripts narratifs par le runtim
 
 > **Mise à jour (#153)** : un repli de nom dans le resolver (clé repliée NFKC, espaces de bordure, casse) résout un fond au nom à espace final (japonais) et 2 silhouettes à lettre pleine chasse (français). Nouvelle mesure : japonais **15** absents (14 images, 1 son) ; français **57** images (60 avant) et 8 969 sons, soit 9 026 au total. Causes détaillées dans `docs/BUGS_PROLOGUE.md` (« Images absentes : causes »).
 
-Les 16 absents du japonais sont aussi absents en français : la traduction en ajoute **9 014** (8 969 sons, 45 images).
+> **Mise à jour (#155)** : le convertisseur décode maintenant les `TLG0.0` enveloppant du `TLG5.0`. Les 14 sprites japonais concernés (Aoko, Sôjûrô, Arisu) sont convertis : japonais **1** absent (0 image, 1 son : `bgm101`). Le français n'a pas été remesuré : les sprites TLG5 convertis y sont aussi cités, son total d'images absentes baisse donc d'autant.
+
+Les 16 absents du japonais (avant #153 et #155) sont aussi absents en français : la traduction en ajoute **9 014** (8 969 sons, 45 images).
 
 Répartition des absents en français, par type et préfixe de nom (préfixes seulement) :
 
