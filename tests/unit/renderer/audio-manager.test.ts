@@ -217,6 +217,28 @@ describe("WebAudioPlayer", () => {
     expect(created.length).toBeGreaterThan(0);
   });
 
+  describe("audio absent (#143)", () => {
+    it("un seul avertissement par asset, même rejoué ou en erreur plusieurs fois", () => {
+      const warnings: string[] = [];
+      const resolver = createAssetResolver({
+        manifest: { version: 1, generatedAt: "", images: {}, audio: {}, scenarios: {} },
+        onMissing: (kind, key) => warnings.push(`${kind}:${key}`),
+      });
+      const p = new WebAudioPlayer({ resolver }, (url) => {
+        const a = new FakeAudio(url);
+        created.push(a);
+        return a;
+      });
+      for (let i = 0; i < 5; i++) {
+        p.apply(play("voice", "a10_1_0_0001", false), { instant: false });
+        created[created.length - 1]!.emit("error");
+      }
+      p.apply(play("voice", "a10_1_0_0002", false), { instant: false });
+      created[created.length - 1]!.emit("error");
+      expect(warnings).toEqual(["audio:a10_1_0_0001", "audio:a10_1_0_0002"]);
+    });
+  });
+
   describe("pause et reprise scriptées (@playpause / @playresume)", () => {
     it("fond vers le silence puis suspend la lecture", () => {
       player.apply(play("bgm", "m01", true, 1), { instant: false });

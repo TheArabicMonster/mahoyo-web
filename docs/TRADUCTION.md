@@ -160,6 +160,34 @@ Top 10 des ressources les plus fréquentes (par nombre de scripts) :
 | audio:a11_1_0_0000 | 1 |
 | audio:f70_1_0_0002 | 1 |
 
+### Mesure des références absentes (japonais et français)
+
+Mesure du 2026-10-31 : lecture complète des 221 scripts narratifs par le runtime (trace jetable hors dépôt, noms d'assets seulement), puis comparaison au manifest avec la même normalisation que le player. Une « référence » est un asset distinct absent du manifest ; les variantes `nom|x` sont regroupées sous leur nom de base.
+
+| Version | Assets distincts absents | Images | Sons | Scripts concernés |
+|---|---|---|---|---|
+| Japonais (original) | 16 | 15 | 1 | 30 / 221 |
+| Français (Moon-Trad) | 9 030 | 60 | 8 970 | 181 (sons), 49 (images) |
+
+Les 16 absents du japonais sont aussi absents en français : la traduction en ajoute **9 014** (8 969 sons, 45 images).
+
+Répartition des absents en français, par type et préfixe de nom (préfixes seulement) :
+
+| Type | Préfixe | Nombre | Remarque |
+|---|---|---|---|
+| Son | `a10`, `a20`, `a30`, `a40`, `a50` | 6 371 | voix (nommage `xNN_n_n_NNNN`) |
+| Son | `b10` à `b90` (et `ba0`) | 2 324 | voix |
+| Son | `c20` à `c50`, `d30`, `e20`, `f60`, `g`, `h`, `x` | 275 | voix |
+| Image | `青子…` | 23 | sprites et évènements d'Aoko |
+| Image | `草十…` | 13 | sprites de Sôjûrô |
+| Image | `im04` à `im15`, `ev…`, `bg01`, `有珠…`, `鳶丸…`, `オブ…` | 24 | images d'évènement et sprites divers |
+
+Les sons absents suivent quasiment tous le même nommage de voix (identifiant de personnage et de scène suivi d'un numéro à 4 chiffres), à l'exception d'une BGM aussi absente en japonais : ce sont les voix de la version Steam, absentes du jeu de départ.
+
+### Comportement du player
+
+Le player tolère ces absents sans bruit : le resolver (`src/core/asset-resolver.ts`) émet **un seul `console.warn` par asset** absent du manifest (clé `image:` ou `audio:` dédoublonnée), même si l'asset est résolu à chaque étape, rejoué, ou signalé par le lecteur audio / le préchargement d'images. Les couleurs unies et les noms vides ne produisent aucun avertissement. L'URL de repli par convention reste utilisée au cas où le fichier existerait hors manifest ; le navigateur peut donc journaliser lui-même un 404 pour cette URL, ce que le code ne contrôle pas. Sans manifest (mode convention), aucun avertissement n'est émis.
+
 > **Limite** : ces ressources sont typiquement des assets de la version Steam (voix, images). Le player les tolère comme manquantes ; si elles sont fournies par l'utilisateur, elles seront résolues normalement. Si elles sont absentes, le jeu continuera sans ces assets.
 
 ## Installation par défaut

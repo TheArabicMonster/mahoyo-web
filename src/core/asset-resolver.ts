@@ -14,7 +14,7 @@
  *   non standard.
  */
 
-import { storageKey } from "./storage-key.js";
+import { isSolidColor, storageKey } from "./storage-key.js";
 import type {
   AssetManifest,
   lookupImage,
@@ -48,18 +48,49 @@ export type AssetResolver = {
   chain(): string;
   /** URL des timelines d'animation extraites des scripts (`timelines.json`). */
   timelines(): string;
+  /**
+   * Signale qu'un asset est introuvable (échec de chargement constaté côté
+   * navigateur). Un seul avertissement par asset, quel que soit le nombre
+   * d'appels (#143).
+   */
+  reportMissing(kind: MissingAssetKind, storage: string): void;
 };
+
+/** Type d'asset pour les avertissements d'assets absents. */
+export type MissingAssetKind = "image" | "audio";
 
 export type AssetResolverOptions = {
   /** Chemin de base pour tous les assets (défaut: "/assets"). */
   baseUrl: string;
   /** Manifest optionnel généré par le pipeline. */
   manifest?: AssetManifest;
+  /**
+   * Appelé une seule fois par asset absent (défaut : `console.warn`). Les
+   * ~9 000 voix et quelques images de la version Steam, absentes du manifest,
+   * ne doivent pas inonder la console à chaque étape (#143).
+   */
+  onMissing?: (kind: MissingAssetKind, key: string) => void;
 };
 
 export function createAssetResolver(options: Partial<AssetResolverOptions> = {}): AssetResolver {
   const baseUrl = options.baseUrl ?? "/assets";
   const manifest = options.manifest;
+  const reported = new Set<string>();
+  const onMissing =
+    options.onMissing ??
+    ((kind: MissingAssetKind, key: string) => {
+      console.warn(`Asset introuvable (${kind === "image" ? "image" : "audio"}) : ${key}`);
+    });
+
+  function reportMissing(kind: MissingAssetKind, storage: string): void {
+    const key = storageKey(storage);
+    if (key === "") return;
+    if (kind === "image" && isSolidColor(storage)) return;
+    const id = `${kind}:${key}`;
+    if (reported.has(id)) return;
+    reported.add(id);
+    onMissing(kind, key);
+  }
 
   /**
    * Résout une clé via le manifest, ou retombe sur la convention de dossiers.
@@ -73,7 +104,8 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
     // Manifest d'abord.
     const url = lookupImg(manifest, key);
     if (url) return `${baseUrl}/${url}`;
-    // Convention de repli.
+    // Absent du manifest : un seul avertissement, puis repli par convention.
+    if (manifest) reportMissing("image", storage);
     return `${baseUrl}/${kind}/${key}.${ext}`;
   }
 
@@ -81,6 +113,7 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
     const key = storageKey(storage);
     const url = lookupAud(manifest, key);
     if (url) return `${baseUrl}/${url}`;
+    if (manifest) reportMissing("audio", storage);
     return `${baseUrl}/${kind}/${key}.${ext}`;
   }
 
@@ -121,5 +154,6 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
     timelines(): string {
       return `${baseUrl}/timelines.json`;
     },
+    reportMissing,
   };
 }
