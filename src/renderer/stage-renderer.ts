@@ -77,6 +77,13 @@ export class DomStageRenderer implements StageRenderer {
   private transitionResolve: (() => void) | null = null;
   private transitionTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * Panoramique du fond en cours (`bgMove` d'une timeline) : positions de départ et
+   * d'arrivée, début (`performance.now()`) et durée. Sert à reprendre la position
+   * courante quand un fondu enchaîné commence avant la fin du mouvement.
+   */
+  private bgMotion: { fromLeft: number; fromTop: number; toLeft: number; toTop: number; start: number; time: number } | null = null;
+
   private animations = new Map<string, AnimationController>();
   /**
    * Animations en attente : démarrées quand le sprite cible est créé.
@@ -532,6 +539,10 @@ export class DomStageRenderer implements StageRenderer {
         this.renderEffect();
         break;
       }
+      case "bgMove": {
+        this.moveBackground(event.left, event.top, opts.instant ? 0 : event.time);
+        break;
+      }
       case "animate": {
         this.startAnimation(event.target, event.def, opts);
         break;
@@ -589,6 +600,9 @@ export class DomStageRenderer implements StageRenderer {
     const bg = this.currentScene.bg;
     this.bgEl.style.backgroundImage = bg ? cssUrl(this.resolver.background(bg)) : "none";
     this.bgEl.style.backgroundColor = bg ? "" : "#000";
+    // Un nouveau fond interrompt le panoramique en cours.
+    this.bgMotion = null;
+    this.bgEl.style.removeProperty("transition");
     // Positionnement natif (repère 1024×576) : left/top explicites sinon centrage.
     if (bg) {
       const left = this.currentScene.bgLeft;
@@ -721,6 +735,8 @@ export class DomStageRenderer implements StageRenderer {
   private startTransition(from: SceneState, to: SceneState, time: Ms, opts: RunOptions): void {
     // Termine une transition précédente éventuelle (clear timer + overlays).
     this.finishTransition();
+    // Position de l'ancien fond à cet instant (il peut être en plein panoramique).
+    const fromPos = this.bgPositionNow(from);
 
     this.currentScene = to;
 
@@ -740,17 +756,21 @@ export class DomStageRenderer implements StageRenderer {
       overlay.className = "mh-stage-bg mh-stage-bg-overlay";
       overlay.style.cssText = this.bgEl.style.cssText;
       overlay.style.backgroundImage = cssUrl(this.resolver.background(oldBg));
-      if (from.bgLeft !== undefined && from.bgTop !== undefined) {
-        overlay.style.backgroundPosition = `${from.bgLeft}px ${from.bgTop}px`;
-      }
+      overlay.style.transition = "none";
+      overlay.style.backgroundPosition = fromPos ? `${fromPos.left}px ${fromPos.top}px` : "50% 50%";
       overlay.style.zIndex = "5";
       overlay.style.opacity = "1";
       this.bgEl.parentElement?.appendChild(overlay);
       this.bgOverlays.push(overlay);
 
       requestAnimationFrame(() => {
-        overlay.style.transition = `opacity ${time}ms ease`;
+        // L'ancien fond poursuit son panoramique pendant qu'il s'efface.
+        const moving = fromPos && fromPos.remaining > 0;
+        overlay.style.transition = moving
+          ? `opacity ${time}ms ease, background-position ${fromPos.remaining}ms linear`
+          : `opacity ${time}ms ease`;
         overlay.style.opacity = "0";
+        if (moving) overlay.style.backgroundPosition = `${fromPos.toLeft}px ${fromPos.toTop}px`;
       });
     }
 
@@ -762,6 +782,47 @@ export class DomStageRenderer implements StageRenderer {
         resolve();
       }, time);
     });
+  }
+
+  /**
+   * Position du fond `scene` à cet instant : interpolée pendant un panoramique,
+   * sinon sa position explicite ; null si le fond est centré.
+   */
+  private bgPositionNow(scene: SceneState): { left: number; top: number; toLeft: number; toTop: number; remaining: number } | null {
+    const m = this.bgMotion;
+    if (m) {
+      const elapsed = Math.min(Math.max(performance.now() - m.start, 0), m.time);
+      const k = m.time > 0 ? elapsed / m.time : 1;
+      return {
+        left: m.fromLeft + (m.toLeft - m.fromLeft) * k,
+        top: m.fromTop + (m.toTop - m.fromTop) * k,
+        toLeft: m.toLeft,
+        toTop: m.toTop,
+        remaining: m.time - elapsed,
+      };
+    }
+    if (scene.bgLeft === undefined || scene.bgTop === undefined) return null;
+    return { left: scene.bgLeft, top: scene.bgTop, toLeft: scene.bgLeft, toTop: scene.bgTop, remaining: 0 };
+  }
+
+  /** Panoramique : fait glisser le fond affiché jusqu'à (left, top) en `time` ms. */
+  private moveBackground(left: number, top: number, time: Ms): void {
+    const from = this.bgPositionNow(this.currentScene);
+    this.currentScene = { ...this.currentScene, bgLeft: left, bgTop: top };
+    this.bgMotion = null;
+    const el = this.bgEl;
+    if (!el || !this.currentScene.bg) return;
+    el.style.transition = "none";
+    if (time <= 0 || !from) {
+      el.style.backgroundPosition = `${left}px ${top}px`;
+      return;
+    }
+    // Repart de la position courante (un panoramique précédent peut être en cours).
+    el.style.backgroundPosition = `${from.left}px ${from.top}px`;
+    void el.offsetHeight;
+    el.style.transition = `background-position ${time}ms linear`;
+    el.style.backgroundPosition = `${left}px ${top}px`;
+    this.bgMotion = { fromLeft: from.left, fromTop: from.top, toLeft: left, toTop: top, start: performance.now(), time };
   }
 
   private onTransitionEnd(): void {

@@ -95,6 +95,10 @@ function applyEvent(state: StageState, event: RenderEvent): void {
       state.fore = { ...event.scene };
       break;
     }
+    case "bgMove": {
+      state.fore = { ...state.fore, bgLeft: event.left, bgTop: event.top };
+      break;
+    }
     case "animate": {
       state.animations.set(event.target, event.def);
       break;

@@ -150,6 +150,11 @@ export type AudioSnapshot = {
 export type RenderEvent =
   /** Passe à la scène cible. */
   | { kind: "scene"; scene: SceneState; transition: TransitionSpec }
+  /**
+   * Déplace le fond affiché jusqu'à (left, top) en `time` ms, en ligne droite
+   * (panoramique d'une timeline). Repère 1024×576, comme `SceneState.bgLeft`.
+   */
+  | { kind: "bgMove"; left: number; top: number; time: Ms }
   /** Lance une animation sur un sprite. */
   | { kind: "animate"; target: string; def: AnimationDef }
   /** Arrête une animation. */

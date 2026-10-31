@@ -28,6 +28,23 @@ const DATA: TimelineData = {
           { at: 8000, channel: "se", loop: false, volume: 0.5, action: "volume" },
         ],
       },
+      // Extraction #135 : fondus fournis par les données, panoramiques.
+      "5": {
+        name: "panoramiques",
+        duration: 9000,
+        bg: [
+          { at: 0, storage: "black", left: -48, top: -48, fade: 0 },
+          { at: 1000, storage: "pano", left: -99, top: -48, fade: 2000 },
+          { at: 4000, storage: "pano", left: -99, top: -48, fade: 2000 },
+          { at: 6000, storage: "cut", left: -48, top: -300, fade: 0 },
+        ],
+        moves: [
+          { at: 1000, left: -167, top: -48, time: 5000 },
+          { at: 6000, left: -48, top: -100, time: 2000 },
+          { at: 8000, left: -48, top: -90, time: 0 },
+        ],
+        audio: [],
+      },
     },
   },
 };
@@ -142,6 +159,47 @@ describe("Runtime — @playtimeline", () => {
   it("n'est plus comptée comme commande inconnue", () => {
     const { warnings } = run("@playtimeline scene=4\n@pg\n");
     expect(warnings.filter((w) => w.includes("commande non gérée"))).toEqual([]);
+  });
+
+  describe("fondus et panoramiques (#135)", () => {
+    const stop5 = () => timelineStop(run("@playtimeline scene=5\n@pg\n").steps);
+    const scenesOf = (stop: ReturnType<typeof stop5>) =>
+      stop.schedule.flatMap((e) => e.events.filter((ev): ev is Extract<RenderEvent, { kind: "scene" }> => ev.kind === "scene").map((ev) => ({ at: e.at, ev })));
+
+    it("applique le fondu des données (0 = coupe franche) ; un plan identique au précédent est ignoré", () => {
+      const scenes = scenesOf(stop5());
+      expect(scenes.map((s) => [s.at, s.ev.scene.bg, s.ev.transition])).toEqual([
+        [0, "black", { method: "none" }],
+        [1000, "pano", { method: "crossfade", time: 2000 }],
+        [6000, "cut", { method: "none" }],
+      ]);
+      expect(scenes[2]!.ev.scene).toMatchObject({ bgLeft: -48, bgTop: -300 });
+    });
+
+    it("émet un bgMove par panoramique, à son instant, après le fond qu'il déplace", () => {
+      const stop = stop5();
+      const moves = stop.schedule.flatMap((e) => e.events.filter((ev) => ev.kind === "bgMove").map((ev) => ({ at: e.at, ev })));
+      expect(moves).toEqual([
+        { at: 1000, ev: { kind: "bgMove", left: -167, top: -48, time: 5000 } },
+        { at: 6000, ev: { kind: "bgMove", left: -48, top: -100, time: 2000 } },
+        { at: 8000, ev: { kind: "bgMove", left: -48, top: -90, time: 0 } },
+      ]);
+      const at6000 = stop.schedule.filter((e) => e.at === 6000).flatMap((e) => e.events.map((ev) => ev.kind));
+      expect(at6000).toEqual(["scene", "bgMove"]);
+    });
+
+    it("l'état final reçoit la position atteinte par le dernier panoramique", () => {
+      const { runtime } = run("@playtimeline scene=5\n@pg\n");
+      expect(runtime.getSaveData().state.fore).toMatchObject({ background: "cut", bgLeft: -48, bgTop: -90 });
+    });
+  });
+
+  it("cf.speffect vaut vrai par défaut : l'ouverture choisit la scène avec effets", () => {
+    const src = "@if exp=cf.speffect\n@playtimeline scene=4\n@else\n@playtimeline scene=5\n@endif\n@pg\n";
+    const { steps, warnings } = run(src);
+    expect(timelineStop(steps).duration).toBe(9000);
+    expect(timelineStop(steps).schedule.some((e) => e.events.some((ev) => ev.kind === "bgMove"))).toBe(false);
+    expect(warnings.filter((w) => w.includes("eval failed"))).toEqual([]);
   });
 
   it("la BGM lancée par la timeline peut être arrêtée ensuite par @playstop", () => {
