@@ -389,6 +389,14 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       };
     case "stopquake":
       return { kind: "stopquake" };
+    case "lockquickmenu":
+      return { kind: "lockquickmenu" };
+    case "unlockquickmenu":
+      return { kind: "unlockquickmenu" };
+    case "pauseautomode":
+      return { kind: "pauseautomode" };
+    case "resumeautomode":
+      return { kind: "resumeautomode" };
     case "textoff":
       return { kind: "textoff", time: parseIntArg(args.time, 300) };
     case "texton":

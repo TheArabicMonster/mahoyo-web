@@ -101,6 +101,10 @@ export type RuntimeState = {
   textStyle?: TextStyle | null;
   /** Bulle « ploy » active (@ploysay) ; null/absent = aucune. */
   ploy?: PloyState | null;
+  /** Menu rapide verrouillé (@lockquickmenu) ; absent = déverrouillé. */
+  quickMenuLocked?: boolean;
+  /** Avance automatique suspendue (@pauseautomode) ; absent = non suspendue. */
+  autoModePaused?: boolean;
 };
 
 export type ScriptContext = {
@@ -135,7 +139,9 @@ function isVisibleEvent(event: RenderEvent): boolean {
     event.kind !== "clearText" &&
     event.kind !== "lineBreak" &&
     event.kind !== "audio" &&
-    event.kind !== "stopAnimation"
+    event.kind !== "stopAnimation" &&
+    event.kind !== "quickMenu" &&
+    event.kind !== "autoMode"
   );
 }
 
@@ -155,6 +161,8 @@ export function createRuntimeState(): RuntimeState {
     effect: null,
     textStyle: null,
     ploy: null,
+    quickMenuLocked: false,
+    autoModePaused: false,
   };
 }
 
@@ -318,6 +326,16 @@ export class Runtime {
       this.onWarning(`eval failed: ${expression} — ${err}`);
       return undefined;
     }
+  }
+
+  /** Vrai entre @lockquickmenu et @unlockquickmenu (ou la fin du script). */
+  get quickMenuLocked(): boolean {
+    return this.state.quickMenuLocked ?? false;
+  }
+
+  /** Vrai entre @pauseautomode et @resumeautomode (ou la fin du script). */
+  get autoModePaused(): boolean {
+    return this.state.autoModePaused ?? false;
   }
 
   /** Évalue une condition dans la sandbox du runtime (utilisé aussi par le player). */
@@ -1504,6 +1522,20 @@ export class Runtime {
       case "stopquake":
         events.push({ kind: "quake", quake: null });
         break;
+      case "lockquickmenu":
+      case "unlockquickmenu": {
+        const locked = instruction.kind === "lockquickmenu";
+        this.state.quickMenuLocked = locked;
+        events.push({ kind: "quickMenu", locked });
+        break;
+      }
+      case "pauseautomode":
+      case "resumeautomode": {
+        const paused = instruction.kind === "pauseautomode";
+        this.state.autoModePaused = paused;
+        events.push({ kind: "autoMode", paused });
+        break;
+      }
       case "textoff":
       case "texton":
       case "position":
@@ -1795,6 +1827,16 @@ export class Runtime {
       return this.makeStep(events, { kind: "click", style: "page" });
     }
 
+    // Fin du script : le verrou du menu rapide et la suspension de l'auto ne survivent pas
+    // au script qui les a posés (dans le jeu d'origine, le prochain arrêt du tracer les lève).
+    if (this.state.quickMenuLocked) {
+      this.state.quickMenuLocked = false;
+      events.push({ kind: "quickMenu", locked: false });
+    }
+    if (this.state.autoModePaused) {
+      this.state.autoModePaused = false;
+      events.push({ kind: "autoMode", paused: false });
+    }
     return this.makeStep(events, { kind: "end" });
   }
 
@@ -1866,6 +1908,8 @@ export class Runtime {
         effect: this.state.effect,
         textStyle: this.state.textStyle ? { ...this.state.textStyle } : null,
         ploy: this.state.ploy ? { ...this.state.ploy } : null,
+        quickMenuLocked: this.state.quickMenuLocked ?? false,
+        autoModePaused: this.state.autoModePaused ?? false,
         staffroll: this.state.staffroll
           ? structuredClone(this.state.staffroll)
           : undefined,
@@ -1907,6 +1951,8 @@ export class Runtime {
       effect: data.state.effect,
       textStyle: data.state.textStyle ? { ...data.state.textStyle } : null,
       ploy: data.state.ploy ? { ...data.state.ploy } : null,
+      quickMenuLocked: data.state.quickMenuLocked ?? false,
+      autoModePaused: data.state.autoModePaused ?? false,
       staffroll: data.state.staffroll
         ? structuredClone(data.state.staffroll)
         : undefined,
