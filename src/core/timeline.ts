@@ -6,8 +6,9 @@
  * extrait `timelines.json` ; ce module décrit et valide ces données. Le runtime les
  * rejoue sous forme d'un calendrier d'événements (voir `@playtimeline`).
  *
- * Seuls les fonds et les pistes audio sont repris ; les calques, panoramiques,
- * zooms et effets de la timeline d'origine ne le sont pas.
+ * Sont repris : le fond visible (dans l'ordre où les pages de la timeline le
+ * montrent), ses panoramiques (`left`/`top` animés) et les pistes audio. Les
+ * calques, zooms, rotations et effets de la timeline d'origine ne le sont pas.
  */
 
 /** Une action audio de la timeline. */
@@ -24,13 +25,28 @@ export type TimelineAudio = {
   action: "play" | "volume";
 };
 
-/** Un changement d'image de fond. */
+/** Un changement d'image de fond (un « plan » de la séquence). */
 export type TimelineBg = {
   at: number;
   storage: string;
   /** Position du fond (px, repère 1024×576) ; absentes = centré. */
   left?: number;
   top?: number;
+  /**
+   * Durée du fondu enchaîné vers ce fond (ms) ; 0 = coupe franche. Absente (données
+   * extraites avant #135) : le runtime applique son fondu par défaut.
+   */
+  fade?: number;
+};
+
+/** Panoramique : le fond affiché glisse jusqu'à une position, en ligne droite. */
+export type TimelineMove = {
+  at: number;
+  /** Position atteinte (px, repère 1024×576). */
+  left: number;
+  top: number;
+  /** Durée du déplacement (ms) ; 0 = saut immédiat. */
+  time: number;
 };
 
 export type TimelineScene = {
@@ -38,6 +54,8 @@ export type TimelineScene = {
   /** Durée totale (ms). */
   duration: number;
   bg: TimelineBg[];
+  /** Panoramiques du fond affiché (absents des données extraites avant #135). */
+  moves?: TimelineMove[];
   audio: TimelineAudio[];
 };
 
@@ -59,8 +77,15 @@ function isBg(v: unknown): v is TimelineBg {
     typeof b.storage === "string" &&
     b.storage.length > 0 &&
     (b.left === undefined || isNum(b.left)) &&
-    (b.top === undefined || isNum(b.top))
+    (b.top === undefined || isNum(b.top)) &&
+    (b.fade === undefined || (isNum(b.fade) && b.fade >= 0))
   );
+}
+
+function isMove(v: unknown): v is TimelineMove {
+  if (typeof v !== "object" || v === null) return false;
+  const m = v as Record<string, unknown>;
+  return isNum(m.at) && isNum(m.left) && isNum(m.top) && isNum(m.time) && m.time >= 0;
 }
 
 function isAudio(v: unknown): v is TimelineAudio {
@@ -84,6 +109,7 @@ function isScene(v: unknown): v is TimelineScene {
     isNum(s.duration) &&
     Array.isArray(s.bg) &&
     s.bg.every(isBg) &&
+    (s.moves === undefined || (Array.isArray(s.moves) && s.moves.every(isMove))) &&
     Array.isArray(s.audio) &&
     s.audio.every(isAudio)
   );
