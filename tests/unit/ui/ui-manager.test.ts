@@ -19,7 +19,7 @@ const settings: GameSettings = {
   language: "ja",
 };
 const status = (p: Partial<PlayerStatus> = {}): PlayerStatus => ({
-  mode: "normal", inGame: true, userHidden: false, canRollback: false, ...p,
+  mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, autoPaused: false, ...p,
 });
 const scripts = [
   { id: "a", label: "A", file: "a.ks", arc: "X", x: 100, y: 100 },
@@ -313,6 +313,30 @@ describe("DomUIManager", () => {
     it("badge de mode", () => {
       ui.setStatus(status({ mode: "auto" }));
       expect(q(".mh-ui-badge-auto")).not.toBeNull();
+    });
+    it("auto suspendu par le script : le badge reste « auto » mais marqué en pause", () => {
+      ui.setStatus(status({ mode: "auto", autoPaused: true }));
+      const badge = q(".mh-ui-badge-auto")!;
+      expect(badge.classList.contains("mh-ui-badge-suspended")).toBe(true);
+      expect(badge.textContent).toContain("⏸");
+      ui.setStatus(status({ mode: "auto", autoPaused: false }));
+      expect(q(".mh-ui-badge-auto")!.classList.contains("mh-ui-badge-suspended")).toBe(false);
+    });
+    it("menu rapide verrouillé : Sauvegarder et Charger du menu pause sont désactivés", () => {
+      ui.setStatus(status({ quickMenuLocked: true }));
+      ui.show({ screen: "pause" });
+      const quick = qa("[data-quick-menu]") as HTMLButtonElement[];
+      expect(quick.map((b) => b.dataset.quickMenu)).toEqual(["save", "load"]);
+      expect(quick.every((b) => b.disabled)).toBe(true);
+      // Les autres entrées restent actives.
+      expect((q(".mh-ui-resume") as HTMLButtonElement).disabled).toBe(false);
+      expect((q(".mh-ui-to-title") as HTMLButtonElement).disabled).toBe(false);
+    });
+    it("le déverrouillage réactive les boutons sans rouvrir l'écran", () => {
+      ui.setStatus(status({ quickMenuLocked: true }));
+      ui.show({ screen: "pause" });
+      ui.setStatus(status({ quickMenuLocked: false }));
+      expect((qa("[data-quick-menu]") as HTMLButtonElement[]).every((b) => !b.disabled)).toBe(true);
     });
   });
 

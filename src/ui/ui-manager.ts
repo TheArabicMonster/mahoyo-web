@@ -25,6 +25,8 @@ const DEFAULT_STATUS: PlayerStatus = {
   inGame: false,
   userHidden: false,
   canRollback: false,
+  quickMenuLocked: false,
+  autoPaused: false,
 };
 
 type El = HTMLElement;
@@ -304,9 +306,19 @@ export class DomUIManager implements UIManager {
     this.statusEl.replaceChildren();
     this.statusEl.hidden = !inGame || hidden;
     if (this.status.mode !== "normal") {
-      this.statusEl.appendChild(
-        h("span", `mh-ui-badge mh-ui-badge-${this.status.mode}`, this.status.mode.toUpperCase()),
+      // Auto suspendu par le script : le choix du joueur reste affiché, marqué « en pause ».
+      const suspended = this.status.mode === "auto" && this.status.autoPaused;
+      const badge = h(
+        "span",
+        `mh-ui-badge mh-ui-badge-${this.status.mode}${suspended ? " mh-ui-badge-suspended" : ""}`,
+        suspended ? "AUTO ⏸" : this.status.mode.toUpperCase(),
       );
+      this.statusEl.appendChild(badge);
+    }
+    // Menu rapide verrouillé : Sauvegarder et Charger du menu pause ne sont plus utilisables.
+    for (const btn of this.overlay.querySelectorAll<HTMLButtonElement>("[data-quick-menu]")) {
+      btn.disabled = this.status.quickMenuLocked;
+      btn.title = this.status.quickMenuLocked ? "Indisponible pendant cette séquence" : "";
     }
     if (inGame && this.status.canRollback) {
       this.statusEl.appendChild(h("span", "mh-ui-badge mh-ui-badge-rollback", "↶"));
@@ -348,10 +360,18 @@ export class DomUIManager implements UIManager {
     const p = this.panel("Pause", "mh-ui-pause-screen");
     const col = h("div", "mh-ui-col");
     const open = (s: OverlayScreen) => () => this.commands?.openScreen(s);
+    // Sauvegarder et Charger appartiennent au menu rapide : verrouillés par @lockquickmenu.
+    const quick = (label: string, screen: OverlayScreen): El => {
+      const btn = this.button(label, open(screen));
+      btn.dataset.quickMenu = screen;
+      btn.disabled = this.status.quickMenuLocked;
+      if (btn.disabled) btn.title = "Indisponible pendant cette séquence";
+      return btn;
+    };
     col.append(
       this.button("Reprendre", () => this.commands?.closeScreen(), "mh-ui-resume"),
-      this.button("Sauvegarder", open("save")),
-      this.button("Charger", open("load")),
+      quick("Sauvegarder", "save"),
+      quick("Charger", "load"),
       this.button("Réglages", open("settings")),
       this.button("Historique", open("backlog")),
       this.button("Flowchart", open("flowchart")),
