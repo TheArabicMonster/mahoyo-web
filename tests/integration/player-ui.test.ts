@@ -17,6 +17,7 @@ describe.skipIf(!hasAssets)("Player UI — prologue", () => {
   const SCENARIO_1_0 = hasAssets ? readFileSync(join(scenarioDir, "1-0.ks"), "utf-8") : "";
 
   beforeEach(() => {
+    // L'index de langue répond 404 : le player retombe sur le japonais malgré le français par défaut.
     // Nettoie le DOM entre les tests.
     document.body.innerHTML = '<div id="app"></div>';
 
@@ -37,6 +38,15 @@ describe.skipIf(!hasAssets)("Player UI — prologue", () => {
   it("démarre le prologue et affiche du texte", async () => {
     // Importe main.ts qui démarre automatiquement le player.
     await import("@/main.js");
+
+    // Depuis l'écran titre, le prologue démarre sur « Nouvelle partie ».
+    let newGame: HTMLElement | null = null;
+    for (let i = 0; i < 50 && !newGame; i++) {
+      newGame = document.querySelector<HTMLElement>(".mh-ui-new-game");
+      if (!newGame) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(newGame).toBeTruthy();
+    newGame!.click();
 
     // Attendre que le runtime produise du texte (plusieurs steps async).
     await new Promise((resolve) => setTimeout(resolve, 3000));
