@@ -40,16 +40,53 @@ export type AssetManifest = {
 };
 
 /**
+ * Clé « repliée » : forme Unicode compatible (NFKC), sans espace en bordure, en minuscules.
+ *
+ * Les noms de fichiers du jeu et les références des scripts ne s'accordent pas toujours au
+ * caractère près : un `ｌ` pleine chasse d'un côté et `l` de l'autre, ou un espace avant
+ * l'extension (`nom .png`) conservé dans une clé de manifest générée avant que `storageKey`
+ * ne le retire. Le repli rapproche ces deux cas sans toucher aux clés du manifest.
+ */
+export function foldKey(key: string): string {
+  return key.normalize("NFKC").trim().toLowerCase();
+}
+
+/** Index replié (clé repliée -> clé du manifest) par section, construit à la première recherche. */
+const foldedIndexes = new WeakMap<object, Map<string, string>>();
+
+function lookupEntry<T extends { url: string }>(
+  section: Record<string, T>,
+  key: string,
+): string | null {
+  const direct = section[key];
+  if (direct?.url) return direct.url;
+
+  let index = foldedIndexes.get(section);
+  if (!index) {
+    index = new Map();
+    for (const k of Object.keys(section)) {
+      const folded = foldKey(k);
+      // En cas de collision, la première clé gagne (aucune dans les assets connus).
+      if (!index.has(folded)) index.set(folded, k);
+    }
+    foldedIndexes.set(section, index);
+  }
+  const match = index.get(foldKey(key));
+  return match !== undefined ? (section[match]?.url ?? null) : null;
+}
+
+/**
  * Recherche un asset dans le manifest par clé normalisée.
  * Retourne l'URL relative, ou null si non trouvé.
+ *
+ * Une clé absente est cherchée une seconde fois sous sa forme repliée (voir `foldKey`).
  */
 export function lookupImage(
   manifest: AssetManifest | undefined,
   key: string,
 ): string | null {
   if (!manifest) return null;
-  const entry = manifest.images[key];
-  return entry?.url ?? null;
+  return lookupEntry(manifest.images, key);
 }
 
 export function lookupAudio(
@@ -57,8 +94,7 @@ export function lookupAudio(
   key: string,
 ): string | null {
   if (!manifest) return null;
-  const entry = manifest.audio[key];
-  return entry?.url ?? null;
+  return lookupEntry(manifest.audio, key);
 }
 
 export function lookupScenario(
