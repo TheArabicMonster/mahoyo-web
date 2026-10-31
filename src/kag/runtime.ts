@@ -1682,8 +1682,10 @@ export class Runtime {
       const page = this.context.script.pages[this.context.pc];
       const instructions = page.instructions;
 
-      // Début de page : vider la textbox.
-      if (this.context.instructionIndex === 0) {
+      // Début de page : vider la textbox. Si le texte est la première instruction
+      // et qu'on reprend après un [l] (segmentIndex > 0), la page est déjà
+      // commencée : ne rien effacer (#142).
+      if (this.context.instructionIndex === 0 && this.context.segmentIndex === 0) {
         events.push({ kind: "clearText" });
       }
 
