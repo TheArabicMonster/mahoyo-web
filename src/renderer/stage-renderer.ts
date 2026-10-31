@@ -11,6 +11,7 @@ import type {
   StaffrollState,
   StageSnapshot,
   TextboxState,
+  TimelineLayerState,
 } from "@/kag/events.js";
 import type { AnimationDef, AnimKeyframe, TextSegment } from "@/kag/types.js";
 import type { DisplaySettings, RunOptions, StageRenderer, StageRendererDeps } from "./types.js";
@@ -25,6 +26,21 @@ import { cssUrl } from "./css-url.js";
  * à 1024×576 (80 %), collé en haut à gauche, avec des bandes noires à droite et en bas.
  */
 const STAGE_SCALE = 1.25;
+
+/**
+ * Motif de pluie (traitement « rain1 » d'un calque de timeline) : traits obliques
+ * clairsemés, dessinés ici (aucun asset du jeu), qui défilent vers le bas en boucle.
+ * Deux motifs de tailles différentes donnent un peu de profondeur.
+ */
+function rainTile(width: number, height: number, drops: readonly [number, number][], length: number, alpha: number): string {
+  const lines = drops
+    .map(([x, y]) => `<line x1='${x}' y1='${y}' x2='${x - length / 5}' y2='${y + length}'/>`)
+    .join("");
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}'><g stroke='rgba(225,235,255,${alpha})' stroke-width='1'>${lines}</g></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+const RAIN_TILE_NEAR = rainTile(160, 200, [[20, 10], [70, 60], [130, 25], [45, 120], [100, 140], [150, 95], [10, 170]], 26, 0.45);
+const RAIN_TILE_FAR = rainTile(96, 120, [[12, 8], [50, 40], [80, 85], [30, 95]], 14, 0.3);
 
 /** Un caractère à afficher, avec son annotation ruby et son style CSS éventuels. */
 type TextUnit = {
@@ -106,6 +122,10 @@ export class DomStageRenderer implements StageRenderer {
    * CSS/WAAPI qui y tournent).
    */
   private spriteEls = new Map<string, HTMLElement>();
+  /** Conteneur des calques de timeline (entre le fond et les sprites). */
+  private timelineEl: HTMLElement | null = null;
+  /** Calques de timeline par id : `<div>` positionné qui contient l'`<img>`. */
+  private timelineLayerEls = new Map<string, HTMLElement>();
   private quakeTimer: ReturnType<typeof setTimeout> | null = null;
   private quakeResolve: (() => void) | null = null;
 
@@ -132,6 +152,10 @@ export class DomStageRenderer implements StageRenderer {
     this.bgEl.className = "mh-stage-bg";
     this.bgEl.id = "stage-bg";
 
+    this.timelineEl = document.createElement("div");
+    this.timelineEl.className = "mh-stage-tl";
+    this.timelineEl.id = "stage-timeline";
+
     this.spritesEl = document.createElement("div");
     this.spritesEl.className = "mh-stage-sprites";
     this.spritesEl.id = "stage-sprites";
@@ -140,7 +164,7 @@ export class DomStageRenderer implements StageRenderer {
     this.effectsEl.className = "mh-stage-effects";
     this.effectsEl.id = "stage-effects";
 
-    stage.append(this.bgEl, this.spritesEl, this.effectsEl);
+    stage.append(this.bgEl, this.timelineEl, this.spritesEl, this.effectsEl);
 
     this.textboxEl = document.createElement("div");
     this.textboxEl.className = "mh-stage-textbox";
@@ -273,6 +297,7 @@ export class DomStageRenderer implements StageRenderer {
     this.spriteEls.clear();
     this.pendingAnimations.clear();
     this.spritesEl!.innerHTML = "";
+    this.clearTimelineLayers();
     this.currentScene = snapshot.scene;
     this.text = [...snapshot.text];
     this.typedUnits = this.buildTextUnits().length;
@@ -335,6 +360,7 @@ export class DomStageRenderer implements StageRenderer {
     this.spriteEls.clear();
     this.pendingAnimations.clear();
     this.spritesEl!.innerHTML = "";
+    this.clearTimelineLayers();
     this.currentScene = { bg: null, sprites: [], effect: null };
     this.text = [];
     this.typedUnits = 0;
@@ -350,6 +376,7 @@ export class DomStageRenderer implements StageRenderer {
     this.finishTransition();
     this.clearBgOverlays();
     this.spriteEls.clear();
+    this.clearTimelineLayers();
     if (this.container && this.root) {
       this.root.removeChild(this.container);
     }
@@ -400,6 +427,32 @@ export class DomStageRenderer implements StageRenderer {
         background-position: 50% 50%;
         background-repeat: no-repeat;
         z-index: 0;
+      }
+      .mh-stage-tl {
+        position: absolute;
+        inset: 0;
+        z-index: 8;
+        pointer-events: none;
+      }
+      .mh-stage-tl-layer {
+        position: absolute;
+        transform: translate(-50%, -50%);
+      }
+      .mh-stage-tl-layer > img {
+        display: block;
+      }
+      .mh-stage-tl-rain::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background-image: url("${RAIN_TILE_NEAR}"), url("${RAIN_TILE_FAR}");
+        background-size: 160px 200px, 96px 120px;
+        animation: mh-tl-rain 0.6s linear infinite;
+      }
+      @keyframes mh-tl-rain {
+        from { background-position: 0 0, 0 0; }
+        to { background-position: -40px 200px, -12px 120px; }
       }
       .mh-stage-sprites {
         position: absolute;
@@ -548,6 +601,14 @@ export class DomStageRenderer implements StageRenderer {
       }
       case "bgMove": {
         this.moveBackground(event.left, event.top, opts.instant ? 0 : event.time);
+        break;
+      }
+      case "timelineLayer": {
+        this.applyTimelineLayer(event.layer, opts.instant ? 0 : event.time);
+        break;
+      }
+      case "timelineLayerClear": {
+        this.clearTimelineLayers();
         break;
       }
       case "animate": {
@@ -830,6 +891,47 @@ export class DomStageRenderer implements StageRenderer {
     el.style.transition = `background-position ${time}ms linear`;
     el.style.backgroundPosition = `${left}px ${top}px`;
     this.bgMotion = { fromLeft: from.left, fromTop: from.top, toLeft: left, toTop: top, start: performance.now(), time };
+  }
+
+  /**
+   * Calque de timeline : pose son état (`time` = 0) ou le fait glisser en ligne droite
+   * (position et opacité) par une transition CSS. Une transition interrompue repart de
+   * la valeur affichée à cet instant.
+   */
+  private applyTimelineLayer(layer: TimelineLayerState, time: Ms): void {
+    if (!this.timelineEl) return;
+    let el = this.timelineLayerEls.get(layer.id);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "mh-stage-tl-layer";
+      el.dataset.layerId = layer.id;
+      const img = document.createElement("img");
+      img.alt = "";
+      img.draggable = false;
+      el.appendChild(img);
+      this.timelineEl.appendChild(el);
+      this.timelineLayerEls.set(layer.id, el);
+    }
+    const img = el.firstElementChild as HTMLImageElement;
+    const src = this.resolver.image(layer.storage);
+    if (img.getAttribute("src") !== src) img.src = src;
+    el.style.zIndex = String(layer.z);
+    el.classList.toggle("mh-stage-tl-rain", layer.rain === true);
+    if (time > 0) {
+      // Fige d'abord l'état courant (posé juste avant, au même instant) comme départ.
+      void el.offsetWidth;
+      el.style.transition = `left ${time}ms linear, top ${time}ms linear, opacity ${time}ms linear`;
+    } else {
+      el.style.transition = "none";
+    }
+    el.style.left = `${layer.x}px`;
+    el.style.top = `${layer.y}px`;
+    el.style.opacity = String(layer.opacity);
+  }
+
+  private clearTimelineLayers(): void {
+    for (const el of this.timelineLayerEls.values()) el.remove();
+    this.timelineLayerEls.clear();
   }
 
   private onTransitionEnd(): void {
