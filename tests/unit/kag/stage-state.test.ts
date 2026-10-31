@@ -21,6 +21,14 @@ describe("stage-state reducers", () => {
     expect(snapshot.scene.sprites[0]?.storage).toBe("青子");
   });
 
+  it("un panoramique (bgMove) met à jour la position du fond", () => {
+    const snapshot = reduceStage([
+      { kind: "scene", scene: { bg: "pano", bgLeft: -99, bgTop: -48, sprites: [], effect: null }, transition: { method: "none" } },
+      { kind: "bgMove", left: -167, top: -48, time: 5000 },
+    ]);
+    expect(snapshot.scene).toMatchObject({ bg: "pano", bgLeft: -167, bgTop: -48 });
+  });
+
   it("tracks text across clearText and text events", () => {
     const events: RenderEvent[] = [
       { kind: "clearText" },
