@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
 
@@ -117,5 +117,62 @@ describe("AssetResolver — avec manifest", () => {
     const resolver = createAssetResolver({ baseUrl: "/static" });
     expect(resolver.translatedScenario("1-0.ks", "en")).toBe("/static/lang/en/scenario/1-0.ks");
     expect(resolver.languageIndex("en")).toBe("/static/lang/en/index.json");
+  });
+});
+
+describe("AssetResolver — assets absents du manifest (#143)", () => {
+  const manifest: AssetManifest = {
+    version: 1,
+    generatedAt: "2026-01-01T00:00:00Z",
+    images: { aoko: { url: "image/aoko.webp", source: "fg/aoko.tlg", kind: "image" } },
+    audio: { m19: { url: "bgm/m19.ogg", source: "bgm/m19.ogg", kind: "bgm" } },
+    scenarios: {},
+  };
+
+  it("n'avertit qu'une fois par asset absent, même résolu à chaque étape", () => {
+    const calls: string[] = [];
+    const resolver = createAssetResolver({ manifest, onMissing: (kind, key) => calls.push(`${kind}:${key}`) });
+    for (let i = 0; i < 50; i++) {
+      resolver.image("inconnu|a");
+      resolver.image("inconnu|b");
+      resolver.se("voix_inconnue");
+      resolver.se("VOIX_INCONNUE");
+      resolver.reportMissing("audio", "voix_inconnue");
+    }
+    expect(calls).toEqual(["image:inconnu", "audio:voix_inconnue"]);
+  });
+
+  it("garde l'URL de repli (le fichier peut exister hors manifest)", () => {
+    const resolver = createAssetResolver({ manifest, onMissing: () => {} });
+    expect(resolver.se("voix_inconnue")).toBe("/assets/se/voix_inconnue.ogg");
+  });
+
+  it("n'avertit pas pour un asset présent, une couleur solide ou un nom vide", () => {
+    const calls: string[] = [];
+    const resolver = createAssetResolver({ manifest, onMissing: (k, n) => calls.push(`${k}:${n}`) });
+    resolver.image("aoko");
+    resolver.bgm("m19");
+    resolver.background("black");
+    resolver.image("");
+    expect(calls).toEqual([]);
+  });
+
+  it("n'avertit pas sans manifest (mode convention)", () => {
+    const calls: string[] = [];
+    const resolver = createAssetResolver({ onMissing: (k, n) => calls.push(`${k}:${n}`) });
+    resolver.image("inconnu");
+    expect(calls).toEqual([]);
+  });
+
+  it("par défaut, avertit via console.warn une seule fois", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const resolver = createAssetResolver({ manifest });
+      resolver.image("inconnu");
+      resolver.image("inconnu");
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

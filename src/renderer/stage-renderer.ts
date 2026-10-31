@@ -281,12 +281,12 @@ export class DomStageRenderer implements StageRenderer {
     const urls = assets.map((a) => this.resolveAsset(a));
     await Promise.all(
       urls.map(
-        (url) =>
+        (url, i) =>
           new Promise<void>((resolve) => {
             const img = new Image();
             img.onload = () => resolve();
             img.onerror = () => {
-              console.warn("preload failed", url);
+              this.resolver.reportMissing("image", assets[i]!);
               resolve();
             };
             if (signal?.aborted) return resolve();

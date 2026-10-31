@@ -234,7 +234,8 @@ export class WebAudioPlayer implements AudioPlayer {
       waiters: new Set(),
       onEnded: () => this.finish(channel, voice),
       onError: () => {
-        console.warn(`Audio introuvable: ${storage}`);
+        // Dédoublonné par le résolveur : un seul avertissement par asset (#143).
+        this.resolver.reportMissing("audio", storage);
         this.finish(channel, voice);
       },
     };
