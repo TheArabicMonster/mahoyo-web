@@ -45,6 +45,18 @@ const DATA: TimelineData = {
         ],
         audio: [],
       },
+      // Extraction #125 : calques.
+      "6": {
+        name: "calques",
+        duration: 5000,
+        bg: [{ at: 0, storage: "black", fade: 0 }],
+        layers: [
+          { at: 1000, id: "L1", storage: "carton", x: 224, y: 217, opacity: 0, z: 3400, time: 0 },
+          { at: 1000, id: "L1", storage: "carton", x: 224, y: 217, opacity: 1, z: 3400, time: 1500 },
+          { at: 6000, id: "L2", storage: "pluie", x: 512, y: 288, opacity: 1, z: 1100, time: 0, rain: true },
+        ],
+        audio: [],
+      },
     },
   },
 };
@@ -191,6 +203,30 @@ describe("Runtime — @playtimeline", () => {
     it("l'état final reçoit la position atteinte par le dernier panoramique", () => {
       const { runtime } = run("@playtimeline scene=5\n@pg\n");
       expect(runtime.getSaveData().state.fore).toMatchObject({ background: "cut", bgLeft: -48, bgTop: -90 });
+    });
+  });
+
+  describe("calques (#125)", () => {
+    it("émet un timelineLayer par changement, puis les retire après tout le reste", () => {
+      const stop = timelineStop(run("@playtimeline scene=6\n@pg\n").steps);
+      const kinds = stop.schedule.flatMap((e) => e.events.map((ev) => [e.at, ev.kind]));
+      expect(kinds).toEqual([
+        [0, "scene"],
+        [1000, "timelineLayer"],
+        [1000, "timelineLayer"],
+        [6000, "timelineLayer"],
+        [6000, "timelineLayerClear"],
+      ]);
+      const layers = stop.schedule.flatMap((e) => e.events).filter((ev): ev is Extract<RenderEvent, { kind: "timelineLayer" }> => ev.kind === "timelineLayer");
+      expect(layers[1]).toEqual({ kind: "timelineLayer", layer: { id: "L1", storage: "carton", x: 224, y: 217, opacity: 1, z: 3400 }, time: 1500 });
+      expect(layers[2]!.layer.rain).toBe(true);
+    });
+
+    it("les calques ne touchent pas l'état sauvegardé ; sans calque, aucun retrait n'est émis", () => {
+      const { runtime } = run("@playtimeline scene=6\n@pg\n");
+      expect(runtime.getSaveData().state.fore.background).toBe("black");
+      const stop = timelineStop(run("@playtimeline scene=5\n@pg\n").steps);
+      expect(stop.schedule.some((e) => e.events.some((ev) => ev.kind === "timelineLayerClear"))).toBe(false);
     });
   });
 

@@ -101,6 +101,25 @@ export type QuakeSpec = {
   vmax: number;
 };
 
+/**
+ * Calque d'une timeline (@playtimeline) : carton de générique, personnage, image en
+ * surimpression. Coordonnées du centre de l'image dans le repère 1024×576.
+ * Ces calques sont transitoires : ils n'appartiennent pas à `SceneState` et
+ * disparaissent à la fin de la séquence.
+ */
+export type TimelineLayerState = {
+  id: string;
+  storage: AssetRef;
+  x: number;
+  y: number;
+  /** Opacité 0..1. */
+  opacity: number;
+  /** Ordre d'empilement, plus grand = devant. */
+  z: number;
+  /** Pluie animée par-dessus l'image. */
+  rain?: boolean;
+};
+
 /** État de la textbox et de sa bordure. */
 export type TextboxState = { visible: boolean; frame: boolean };
 
@@ -155,6 +174,13 @@ export type RenderEvent =
    * (panoramique d'une timeline). Repère 1024×576, comme `SceneState.bgLeft`.
    */
   | { kind: "bgMove"; left: number; top: number; time: Ms }
+  /**
+   * Pose un calque de timeline (`time` = 0) ou le fait glisser en ligne droite
+   * (position et opacité) jusqu'à cet état en `time` ms.
+   */
+  | { kind: "timelineLayer"; layer: TimelineLayerState; time: Ms }
+  /** Retire tous les calques de timeline (fin de la séquence). */
+  | { kind: "timelineLayerClear" }
   /** Lance une animation sur un sprite. */
   | { kind: "animate"; target: string; def: AnimationDef }
   /** Arrête une animation. */
