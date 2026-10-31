@@ -24,6 +24,10 @@ export type PlayerStatus = {
   inGame: boolean;
   userHidden: boolean;
   canRollback: boolean;
+  /** Menu rapide verrouillé par le script (@lockquickmenu) : pas de sauvegarde ni de chargement. */
+  quickMenuLocked: boolean;
+  /** Avance automatique suspendue par le script (@pauseautomode) ; `mode` reste le choix du joueur. */
+  autoPaused: boolean;
 };
 
 export type SlotId = number | "quick" | "auto";

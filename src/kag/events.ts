@@ -203,6 +203,16 @@ export type RenderEvent =
   | { kind: "effect"; effect: EffectState | null }
   /** Active (ou, avec `null`, retire) la bulle « ploy ». */
   | { kind: "ploy"; ploy: PloyState | null }
+  /**
+   * Verrouille (@lockquickmenu) ou déverrouille le menu rapide : sauvegarde, chargement et
+   * leurs boutons. Sans effet sur l'écran : c'est le player qui l'applique.
+   */
+  | { kind: "quickMenu"; locked: boolean }
+  /**
+   * Suspend (@pauseautomode) ou reprend (@resumeautomode) l'avance automatique. Le mode choisi
+   * par le joueur ne change pas : seul le déclenchement automatique est suspendu.
+   */
+  | { kind: "autoMode"; paused: boolean }
   /** Événement audio. */
   | { kind: "audio"; event: AudioEvent };
 

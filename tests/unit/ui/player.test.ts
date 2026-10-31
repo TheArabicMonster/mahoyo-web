@@ -1007,3 +1007,81 @@ describe("Player — langues", () => {
   });
 });
 
+describe("Player — menu rapide verrouillé et auto suspendu", () => {
+  const pos = (n: number) => ({ scriptName: "t.ks", page: 0, instruction: n });
+  const click = (n: number, events: RenderEvent[] = []): Step => ({
+    position: pos(n),
+    events,
+    stop: { kind: "click", style: "page" },
+  });
+
+  it("verrouille sauvegarde et chargement tant que le script ne déverrouille pas", async () => {
+    const ctx = setup([
+      click(0, [{ kind: "quickMenu", locked: true }]),
+      click(1, [{ kind: "quickMenu", locked: false }]),
+    ]);
+    await start(ctx);
+    expect(ctx.ui.statuses.at(-1)?.quickMenuLocked).toBe(true);
+
+    await ctx.player.save(1);
+    expect(ctx.saveStore.records.has("1")).toBe(false);
+    expect(ctx.ui.toasts.at(-1)?.message).toContain("indisponibles");
+
+    const viewsBefore = ctx.ui.views.length;
+    ctx.player.openScreen("save");
+    ctx.player.openScreen("load");
+    expect(ctx.ui.views.length).toBe(viewsBefore);
+
+    // La pause (réglages, retour au titre) reste accessible.
+    ctx.player.openScreen("pause");
+    await until(() => ctx.ui.views.at(-1)?.screen === "pause", "pause");
+    ctx.player.closeScreen();
+    await until(() => ctx.player.currentState === "waiting-click", "reprise");
+
+    ctx.player.advance();
+    await until(() => ctx.ui.statuses.at(-1)?.quickMenuLocked === false, "déverrouillé");
+    await ctx.player.save(1);
+    expect(ctx.saveStore.records.has("1")).toBe(true);
+  });
+
+  it("refuse aussi le chargement d'une sauvegarde pendant le verrou", async () => {
+    const ctx = setup([click(0), click(1, [{ kind: "quickMenu", locked: true }])]);
+    await start(ctx);
+    await ctx.player.save("quick");
+    ctx.player.advance();
+    await until(() => ctx.ui.statuses.at(-1)?.quickMenuLocked === true, "verrouillé");
+    const restores = ctx.stage.restores;
+    await ctx.player.load("quick");
+    expect(ctx.stage.restores).toBe(restores);
+  });
+
+  it("le verrou est levé au retour au titre, où le chargement reste possible", async () => {
+    const ctx = setup([click(0, [{ kind: "quickMenu", locked: true }])]);
+    await start(ctx);
+    await ctx.player.returnToTitle();
+    expect(ctx.ui.statuses.at(-1)?.quickMenuLocked).toBe(false);
+    ctx.player.openScreen("load");
+    await until(() => ctx.ui.views.at(-1)?.screen === "load", "écran de chargement");
+  });
+
+  it("suspend l'auto sans changer le mode choisi, puis le reprend", async () => {
+    const ctx = setup([
+      click(0, [{ kind: "autoMode", paused: true }]),
+      click(1, [{ kind: "autoMode", paused: false }]),
+    ]);
+    await start(ctx);
+    ctx.player.updateSettings({ display: { textSpeed: 30, autoDelay: 10, fontScale: 1, textboxOpacity: 1 } });
+    ctx.player.setMode("auto");
+    expect(ctx.ui.statuses.at(-1)).toMatchObject({ mode: "auto", autoPaused: true });
+
+    // Suspendu : aucun enchaînement automatique, le mode reste « auto ».
+    await wait(80);
+    expect(ctx.player.currentState).toBe("waiting-click");
+    expect(ctx.player.currentMode).toBe("auto");
+
+    // Un clic avance ; la reprise relance l'auto, qui mène à la fin.
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "title", "auto repris");
+  });
+});
+

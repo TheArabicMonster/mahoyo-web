@@ -176,6 +176,45 @@ Les noms de fichiers peuvent contenir des parenthèses :
   `cond=`. `1-2.ks` l'emploie avec `cond=!kag.isplayingse('se01004')` pour la pluie d'ambiance.
 - `kag.isplayingse(storage)` est approximé par « le dernier SE lancé n'a pas été arrêté ».
 
+### `@lockquickmenu`, `@pauseautomode`, `@resumeautomode`
+
+Ces trois commandes ne sont pas des macros : le moteur d'origine les fournit par un plugin
+TJS (le « tracer ») absent du dossier `scenario/`. Leur sens est déduit des appels et des
+commentaires du corpus (`opening.ks`, `first.ks`, `call.ks`, `tracerplugin.ks`).
+
+| Commande | Où | Sens retenu |
+|---|---|---|
+| `@lockquickmenu` | `first.ks` (début de partie, avec `@rclick enabled=false`), `call.ks` (chargement, retour au titre), `opening.ks` (film d'ouverture) | verrouille le **menu rapide** : sauvegarde et chargement rapides, plus le clic droit |
+| `@pauseautomode` / `@resumeautomode` | `opening.ks`, de part et d'autre de `@playtimeline` | suspend puis reprend l'**avance automatique** pendant le film |
+
+Indices du corpus : `call.ks` commente « `lockquickmenu` する » dans la routine de chargement, et « `lockquickmenu` を維持するため, `onceIgnoreUnlockQuickMenu=true` »
+avant un retour au titre ; `tracerplugin.ks` pose `onceIgnoreUnlockQuickMenu=true` pour que
+« le prochain arrêt (`@s`) » ne déverrouille pas. Le déverrouillage se fait donc au prochain
+arrêt du tracer, c'est-à-dire en fin de séquence. Aucun script du corpus n'écrit de commande
+de déverrouillage ni de reprise sans suspension préalable.
+
+Sémantique implémentée (la plus simple compatible avec ces indices) :
+
+- `@lockquickmenu` pose un verrou dans l'état du runtime et émet `{ kind: "quickMenu", locked: true }`.
+  Le player refuse alors `save`, `load` et l'ouverture des écrans Sauvegarder et Charger en
+  cours de partie (toast explicatif) ; les boutons correspondants du menu pause sont
+  désactivés. Les autres entrées du menu pause (Reprendre, Réglages, Historique, Retour au
+  titre) restent disponibles : la pause est la seule sortie. Le clavier n'a pas de raccourci
+  de sauvegarde ou de chargement, il n'y a donc pas de touche à verrouiller. L'autosave
+  interne n'est pas concernée. Depuis l'écran-titre, le chargement reste possible.
+- `@unlockquickmenu` (non employée dans le corpus, ajoutée par symétrie) lève le verrou. Le
+  verrou est aussi levé **à la fin du script** qui l'a posé (`@return` sans appelant, fin de
+  fichier), ce qui remplace le « prochain arrêt » du tracer. Un `@call` ne le lève pas.
+- `@pauseautomode` suspend le déclenchement automatique (`{ kind: "autoMode", paused: true }`) ;
+  `@resumeautomode` le reprend. Le **mode choisi par le joueur ne change pas** : s'il avait
+  activé « auto », il le retrouve à la reprise, et le badge affiche `AUTO ⏸` pendant la
+  suspension. La suspension est aussi levée à la fin du script. `@cancelautomode`, qui
+  annule le mode lui-même, n'est pas traité ici.
+- Les deux états font partie de l'état sauvegardé (`quickMenuLocked`, `autoModePaused`) ;
+  une ancienne sauvegarde sans ces champs se restaure déverrouillée. Les événements ne
+  comptent pas comme du contenu visible : une pause `[l]` qui ne suit qu'eux reste « morte ».
+- Pas d'effet sur le déroulement du script, qui ne s'arrête sur aucune de ces commandes.
+
 ## 7. Attentes (`@wt` / `@wact` / `@wm` / `nowait`)
 
 - `@trans nowait=0` (ou absent) : **bloquant** → le runtime émet

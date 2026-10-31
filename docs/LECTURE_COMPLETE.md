@@ -65,19 +65,24 @@ utilisé auparavant (251 - 17) comptait ces 13 binaires comme des scripts.
 
 ## Assets de base manquants sur le corpus de référence
 
-Après résolution des variantes : 16 assets distincts (15 images, 1 son), 41 occurrences,
-contre 348 images signalées avant la correction (863 références à variante sont
-désormais résolues). État des causes :
+Après résolution des variantes et du repli de nom (#153) : 15 assets distincts
+(14 images, 1 son), 39 occurrences, contre 348 images signalées avant la correction
+(863 références à variante sont désormais résolues). État des causes :
 
-- **Espace final dans le nom du fichier** (1 image, `wik_f-a.ks`, `wik_x-2.ks`) : le
-  fichier source porte un espace avant son extension, la clé du manifest aussi,
-  alors que les scripts le référencent sans espace. `storageKey` retire désormais cet
-  espace ; le manifest doit être régénéré (`npm run pipeline`) pour que la clé
-  corresponde.
-- **Variantes précises absentes du manifest** (14 images, surtout des sprites de
-  `5a-*`, `5b-*`, `8.5`, `9-*`, `d-*`) : des variantes voisines existent (autre
-  numéro ou autre cadrage) mais pas celle-ci. Il reste à vérifier si le fichier est
-  absent de l'archive d'origine ou perdu à la conversion.
+- **Espace final dans le nom du fichier** (1 image, `wik_f-a.ks`, `wik_x-2.ks`) :
+  **résolu**. Le fichier source porte un espace avant son extension et le manifest
+  installé a gardé cette clé avec l'espace, alors que les scripts la référencent sans
+  espace. `storageKey` le retire à la génération, et le resolver retombe désormais sur
+  une clé repliée (NFKC, espaces de bordure, casse) quand la clé exacte manque : le
+  manifest déjà installé fonctionne sans régénération.
+- **Image présente dans l'archive mais non convertie** (14 images, sprites de
+  `5a-*`, `5b-*`, `8.5`, `9-*`, `d-*`) : **cause établie**. Ces fichiers sont des
+  conteneurs `TLG0.0` (`sds`) qui enveloppent une image `TLG5.0`. Le décodeur utilisé par
+  l'ancien POC (`tlg.py`) ne lit que du `TLG6` dans un conteneur `TLG0.0` et n'implémente
+  pas `TLG5` (« Unsupported tlg version ») : le `.tlg` est resté tel quel
+  dans le dossier de sortie et n'a pas de `.png`, donc pas d'entrée de manifest. Ce n'est
+  ni un défaut de nom ni une absence de l'archive. Le correctif est un décodeur `TLG5`
+  dans le convertisseur externe (hors périmètre ici, voir `docs/BUGS_PROLOGUE.md`).
 - **Son `bgm101`** (1 son, `staffroll.ks`) : aucune clé audio proche.
 
 Les 188 références d'asset de nom vide sont presque toutes dans un seul script

@@ -224,6 +224,10 @@ export class Player implements PlayerCommands {
 
   private state: PlayerState = "title";
   private mode: PlayMode = "normal";
+  /** Menu rapide verrouillé par le script (@lockquickmenu). */
+  private quickMenuLocked = false;
+  /** Avance automatique suspendue par le script (@pauseautomode) ; `mode` n'est pas touché. */
+  private autoPaused = false;
   private userHidden = false;
   private overlays: OverlayScreen[] = [];
   private stateBeforePause: PlayerState = "playing";
@@ -403,6 +407,31 @@ export class Player implements PlayerCommands {
     this.rearm?.();
   }
 
+  /** @lockquickmenu / @unlockquickmenu : appliqué par le script, pas par le joueur. */
+  private setQuickMenuLocked(locked: boolean): void {
+    if (this.quickMenuLocked === locked) return;
+    this.quickMenuLocked = locked;
+    this.pushStatus();
+  }
+
+  /**
+   * @pauseautomode / @resumeautomode : suspend le déclenchement automatique sans toucher à
+   * `mode` (le joueur garde « auto » et le retrouve à la reprise).
+   */
+  private setAutoPaused(paused: boolean): void {
+    if (this.autoPaused === paused) return;
+    this.autoPaused = paused;
+    this.pushStatus();
+    this.rearm?.();
+  }
+
+  /** Vrai (avec un message) si le script a verrouillé le menu rapide pendant la partie. */
+  private quickMenuRefused(): boolean {
+    if (!this.quickMenuLocked || this.state === "title") return false;
+    this.ui.toast("Sauvegarde et chargement indisponibles pendant cette séquence.");
+    return true;
+  }
+
   toggleUserHide(): void {
     if (this.state === "title" || this.state === "loading") return;
     this.userHidden = !this.userHidden;
@@ -450,6 +479,8 @@ export class Player implements PlayerCommands {
       this.runtime = runtime;
       this.scriptFile = file;
       this.chainQueue = [];
+      this.quickMenuLocked = false;
+      this.autoPaused = false;
       this.resetStageState();
       this.stage.clear();
       this.audio.stopAll();
@@ -464,6 +495,7 @@ export class Player implements PlayerCommands {
     if (this.state === "loading") return;
     const inGame = this.state !== "title";
     if (!inGame && (screen === "pause" || screen === "save" || screen === "backlog")) return;
+    if ((screen === "save" || screen === "load") && this.quickMenuRefused()) return;
     if (inGame && this.overlays.length === 0) {
       this.stateBeforePause = this.state;
       this.setState("paused");
@@ -494,6 +526,8 @@ export class Player implements PlayerCommands {
     this.runtime = null;
     this.history = [];
     this.mode = "normal";
+    this.quickMenuLocked = false;
+    this.autoPaused = false;
     this.userHidden = false;
     this.stage.setUserHidden(false);
     this.stage.clear();
@@ -505,6 +539,7 @@ export class Player implements PlayerCommands {
   // ── Commandes : sauvegardes ──
 
   async save(slot: SlotId): Promise<void> {
+    if (this.quickMenuRefused()) return;
     const entry = this.history[this.history.length - 1];
     if (!entry || !this.runtime) {
       this.ui.toast("Impossible de sauvegarder à cet instant.");
@@ -529,6 +564,7 @@ export class Player implements PlayerCommands {
     // Synchrone, avant le premier await : politique autoplay.
     void this.audio.unlock().catch(() => {});
     if (this.state === "loading") return;
+    if (this.quickMenuRefused()) return;
     const record = await this.deps.saveStore.get(slot);
     if (!record) {
       this.ui.toast("Sauvegarde vide.");
@@ -633,6 +669,8 @@ export class Player implements PlayerCommands {
     const visual: RenderEvent[] = [];
     for (const event of step.events) {
       if (event.kind === "audio") this.audio.apply(event.event, { instant });
+      else if (event.kind === "quickMenu") this.setQuickMenuLocked(event.locked);
+      else if (event.kind === "autoMode") this.setAutoPaused(event.paused);
       else visual.push(event);
     }
     this.stageSnap = applyStageSnapshot(this.stageSnap, step.events);
@@ -912,7 +950,7 @@ export class Player implements PlayerCommands {
           return;
         }
         if (opts.fixedMs !== undefined) timer = setTimeout(finish, opts.fixedMs);
-        else if (this.mode === "auto") {
+        else if (this.mode === "auto" && !this.autoPaused) {
           timer = setTimeout(finish, this.settings.display.autoDelay);
         }
       };
@@ -997,6 +1035,8 @@ export class Player implements PlayerCommands {
 
       this.runtime = runtime;
       this.scriptFile = data.scriptName;
+      this.quickMenuLocked = data.state.quickMenuLocked ?? false;
+      this.autoPaused = data.state.autoModePaused ?? false;
       this.chainQueue = [...entry.chainQueue];
       this.stageSnap = entry.stage;
       this.audioSnap = entry.audio;
@@ -1087,6 +1127,8 @@ export class Player implements PlayerCommands {
       inGame: this.state !== "title",
       userHidden: this.userHidden,
       canRollback: this.canRollback(),
+      quickMenuLocked: this.quickMenuLocked,
+      autoPaused: this.autoPaused,
     });
   }
 

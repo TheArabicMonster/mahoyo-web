@@ -130,6 +130,10 @@ export type Instruction =
   | { kind: "fadese"; storage?: string; time: number; volume: number }
   | { kind: "quake"; vmax: number; hmax: number; time: number; interval: number }
   | { kind: "stopquake" }
+  | { kind: "lockquickmenu" }
+  | { kind: "unlockquickmenu" }
+  | { kind: "pauseautomode" }
+  | { kind: "resumeautomode" }
   | { kind: "textoff"; time: number }
   | { kind: "texton" }
   | { kind: "position"; visible?: boolean }

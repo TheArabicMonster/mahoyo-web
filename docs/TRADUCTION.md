@@ -169,6 +169,8 @@ Mesure du 2026-10-31 : lecture complète des 221 scripts narratifs par le runtim
 | Japonais (original) | 16 | 15 | 1 | 30 / 221 |
 | Français (Moon-Trad) | 9 030 | 60 | 8 970 | 181 (sons), 49 (images) |
 
+> **Mise à jour (#153)** : un repli de nom dans le resolver (clé repliée NFKC, espaces de bordure, casse) résout un fond au nom à espace final (japonais) et 2 silhouettes à lettre pleine chasse (français). Nouvelle mesure : japonais **15** absents (14 images, 1 son) ; français **57** images (60 avant) et 8 969 sons, soit 9 026 au total. Causes détaillées dans `docs/BUGS_PROLOGUE.md` (« Images absentes : causes »).
+
 Les 16 absents du japonais sont aussi absents en français : la traduction en ajoute **9 014** (8 969 sons, 45 images).
 
 Répartition des absents en français, par type et préfixe de nom (préfixes seulement) :
