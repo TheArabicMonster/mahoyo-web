@@ -21,6 +21,26 @@ Diagnostic du 2026-10-30 sur `main` (080b2bf), assets réels, Chromium headless 
 | B9 | Voix et sons manquants : 3 « Audio introuvable » dans `1-0` en fr ; ~9 000 références à des assets Steam absents en tout | fr | assets | Fichiers de la version Steam, absents du manifest (limite documentée) | Mineur | Connu |
 | B10 | Pendant un tremblement d'écran (`@quake`), l'image (par exemple la maison sous la pluie, fin de `1-0`) tombe à 1024×576 : collée en haut à gauche, bandes noires à droite et en bas | ja, fr | `stage-renderer.ts` `startQuake` | Le tremblement posait `transform: translate(…)` en ligne sur `.mh-stage` et écrasait le `scale(1.25)` du CSS ; corrigé en `translate(…) scale(1.25)` (#148) | Gênant | **Corrigé** |
 | B11 | Bande sombre d'environ 29 px à gauche de l'écran, avec le badge ↶ (rollback) en haut, même sur une image claire | ja, fr | `ui-manager.css` `.mh-ui-status` | `.mh-ui-overlay > div { inset: 0 }` (0,1,1) l'emportait sur `.mh-ui-status { top; right }` (0,1,0) : la barre d'état couvrait tout l'écran en flex et son badge s'étirait sur 29×720 px (fond noir 60 %). Corrigé par `.mh-ui-overlay > .mh-ui-status { inset: 0.5rem 0.5rem auto auto; align-items: flex-start }` (#150) ; le badge fait désormais 29×22 px en haut à droite | Gênant | **Corrigé** |
+| B12 | `@lockquickmenu`, `@pauseautomode`, `@resumeautomode` ignorées avec un avertissement (`opening.ks`, `first.ks`, `call.ks`) | ja, fr | `src/kag/`, `src/ui/player.ts` | Le registre les croyait « sans sens dans le player » : elles verrouillent le menu rapide et suspendent l'auto pendant le film d'ouverture. Sémantique dans `KAG_MAHOYO_SEMANTICS.md` (§6) | Gênant | **Corrigé** (#153) |
+| B13 | Images `im家絵02a/b/c` « Asset introuvable » dans `1-0` (français) ; autres images absentes | fr (a/b/c), ja et fr (autres) | assets | Voir « Images absentes : causes » | Mineur | **Documenté** ; nommage **corrigé** (#153) |
+
+## Images absentes : causes (2026-10-31, #153)
+
+Méthode : recherche de chaque nom absent dans le manifest installé, dans les assets installés et dans les sources extraites de l'archive 2012 (dossiers `decrypted/` et `xp3/` de l'ancien POC), avec comparaison insensible à la casse et à la forme Unicode (NFKC).
+
+**`im家絵02a`, `im家絵02b`, `im家絵02c`** : références **ajoutées par la traduction française** (5 occurrences, lignes de `1-0.ks` autour du fond de la maison, avec `zoom=120`). Le script japonais de `1-0.ks` ne cite que `im家絵a`, `im家絵b`, `im家絵c`, qui sont dans le manifest. Les fichiers `02a/b/c` n'existent **nulle part** dans l'archive 2012 (ni `.tlg`, ni `.png`, aucun nom voisin) : ce sont des images de la version Steam, comme les voix (B9). Ce n'est donc pas un défaut de nom ni de manifest, et aucune image n'est fabriquée ni substituée (un repli vers `im家絵a` changerait le cadrage voulu par la traduction). Le player les tolère : un seul avertissement par image.
+
+**Autres images absentes du japonais** (14 images, après correction) : trois causes distinctes.
+
+| Cause | Images | État |
+|---|---|---|
+| Espace avant l'extension dans le nom du fichier (`…) .png`) : la clé du manifest installé garde l'espace, les scripts non | 1 (fond de la salle de verdure, orage de nuit) | **Corrigé** (#153) : le resolver retombe sur une clé repliée (NFKC, bordures, casse) |
+| Fichier présent dans l'archive mais jamais converti : conteneur `TLG0.0` enveloppant un `TLG5.0`, que le décodeur du POC (`tlg.py`) ne sait pas lire | 14 sprites d'Aoko, Sôjûrô et Alice (tenues « 全 », « 近 », « 大 ») | **Cause établie**, à corriger dans le convertisseur externe (décodeur TLG5) puis en régénérant le manifest. 32 fichiers de l'archive sont dans ce cas, dont 14 utilisés par le japonais |
+| Absent de l'archive (son `bgm101`) | 1 son | Limite connue |
+
+**Autres images ajoutées par la traduction** (français) : 45 avant correction, 43 après. Les 2 images corrigées sont des silhouettes dont la traduction écrit une lettre pleine chasse (`ｌ`) alors que le fichier a un `l` ASCII (**corrigé** par le repli, #153). Les 43 restantes sont absentes de l'archive 2012 (sprites de tenues, fonds et événements de la version Steam), `im家絵02a/b/c` comprises. Mesure après correction sur les 221 scripts, avec les assets installés : 57 images absentes en français (60 avant), 14 en japonais (15 avant).
+
+Pour récupérer les 14 sprites TLG5, il faut ajouter le décodage `TLG5.0` au convertisseur (le format est un LZSS par blocs, plus simple que TLG6), reconvertir ces 32 fichiers, puis relancer `npm run pipeline` ; cela relève d'une issue séparée.
 
 ## Ouverture : vérification (2026-10-31, `main` + #150)
 
@@ -38,8 +58,8 @@ Défauts restants (tous liés à #125, non corrigés ici) :
 
 - Aucun calque n'est rendu (0 sprite pendant toute la timeline) : le plan 01 « miroir » apparaît **flou** (le calque net manque), les cartons et personnages posés en calque sont absents.
 - Pas de zooms ni d'effets (brume, tremblement).
-- Console : `@lockquickmenu`, `@pauseautomode` et `@resumeautomode` sont ignorées avec un avertissement (sans effet voulu, la commande n'a pas de sens dans le player).
-- Les voix et sons manquants de la version Steam restent muets (B9) ; dans `1-0` et `1-1`, trois images `im家絵02a/b/c` sont aussi absentes des assets installés (avertissement « Asset introuvable »).
+- Console : `@lockquickmenu`, `@pauseautomode` et `@resumeautomode` étaient ignorées avec un avertissement. **Corrigé (#153)** : voir B12 ci-dessous.
+- Les voix et sons manquants de la version Steam restent muets (B9) ; dans le script français de `1-0`, trois images `im家絵02a/b/c` sont aussi absentes des assets installés (avertissement « Asset introuvable »). Cause établie : voir B13 ci-dessous.
 - Stage : seul écart relevé hors ouverture, 1 px de décalage pendant un `@quake` de `1-0` (attendu, c'est le tremblement).
 
 ## Non constaté (à ne pas chercher)
