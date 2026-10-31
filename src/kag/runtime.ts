@@ -22,7 +22,7 @@ import type {
   Token,
 } from "./types.js";
 import { parseCommand } from "./parser.js";
-import { lookupTimeline, type TimelineData } from "@/core/timeline.js";
+import { lookupTimeline, type TimelineBg, type TimelineData } from "@/core/timeline.js";
 import type { PageLayer } from "./types.js";
 import type {
   AssetRef,
@@ -180,6 +180,13 @@ export class Runtime {
   timelines: TimelineData | null = null;
 
   /**
+   * Réglages du jeu d'origine exposés aux scripts sous le nom `cf` (TJS). Valeurs
+   * par défaut du jeu : `speffect` (effets visuels activés) choisit la scène 4 de
+   * l'ouverture, celle dont les fonds portent toutes les images (#135).
+   */
+  cf: Record<string, unknown> = { speffect: 1 };
+
+  /**
    * Flag set by applyJump/applyCall/applyReturn to signal that the execution
    * context has changed. More robust than comparing pc/instructionIndex.
    */
@@ -235,7 +242,7 @@ export class Runtime {
 
   /**
    * Évalue une expression KAG comme @eval le ferait, avec accès aux variables
-   * f/sf/tf/global/timeline_object. Retourne la valeur évaluée ou undefined
+   * f/sf/tf/global/timeline_object/cf. Retourne la valeur évaluée ou undefined
    * en cas d'erreur (warning émis).
    */
   /** Normalise a TJS expression for JS evaluation. */
@@ -267,9 +274,10 @@ export class Runtime {
         "timeline_object",
         "mp",
         "kag",
+        "cf",
         `"use strict"; return (${normalized});`,
       );
-      return fn(f, sf, tf, this.state.evalGlobal, timeline_object, this.macroParams, this.kagProxy);
+      return fn(f, sf, tf, this.state.evalGlobal, timeline_object, this.macroParams, this.kagProxy, this.cf);
     } catch (err) {
       this.onWarning(`eval failed: ${expression} — ${err}`);
       return undefined;
@@ -1008,7 +1016,8 @@ export class Runtime {
   /**
    * @playtimeline : rejoue une timeline d'animation sous forme de calendrier.
    *
-   * Seuls les fonds (fondus enchaînés) et les pistes audio sont repris. Les événements
+   * Sont repris les fonds (fondus enchaînés ou coupes), leurs panoramiques (`bgMove`)
+   * et les pistes audio ; ni les calques ni les effets. Les événements
    * sont construits ici, une fois pour toutes, et l'état du runtime reçoit tout de
    * suite le résultat final : le player les rejoue à leur instant, ou d'un coup si le
    * joueur saute la séquence. Sans timeline connue, la commande est sans effet.
@@ -1023,12 +1032,12 @@ export class Runtime {
     const entries: { at: number; order: number; events: RenderEvent[] }[] = [];
     let order = 0;
 
-    let previous: string | undefined;
+    let previous: TimelineBg | undefined;
     for (const bg of scene.bg) {
-      // Deux fonds identiques de suite (les deux pages de la timeline) : un seul changement.
-      if (bg.storage === previous) continue;
-      previous = bg.storage;
-      const fade = bg.at === 0 ? 0 : TIMELINE_FADE_MS;
+      // Deux fonds identiques de suite (même image, même position) : un seul changement.
+      if (previous && bg.storage === previous.storage && bg.left === previous.left && bg.top === previous.top) continue;
+      previous = bg;
+      const fade = bg.fade ?? (bg.at === 0 ? 0 : TIMELINE_FADE_MS);
       const res = this.applyBg({
         kind: "bg",
         storage: bg.storage,
@@ -1040,6 +1049,17 @@ export class Runtime {
         top: bg.top,
       });
       entries.push({ at: bg.at, order: order++, events: res.events });
+    }
+
+    // Panoramiques : chacun déplace le fond affiché à son instant. L'état final reçoit
+    // la position atteinte par le dernier panoramique du dernier fond.
+    const lastBgAt = previous?.at ?? 0;
+    for (const m of scene.moves ?? []) {
+      entries.push({ at: m.at, order: order++, events: [{ kind: "bgMove", left: m.left, top: m.top, time: m.time }] });
+      if (previous && previous.left !== undefined && m.at >= lastBgAt) {
+        this.state.fore.bgLeft = m.left;
+        this.state.fore.bgTop = m.top;
+      }
     }
 
     for (const a of scene.audio) {
