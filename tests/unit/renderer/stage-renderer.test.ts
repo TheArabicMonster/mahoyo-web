@@ -227,6 +227,51 @@ describe("DomStageRenderer", () => {
     expect(root.querySelectorAll(".mh-stage-bg-overlay").length).toBe(0);
   });
 
+  describe("panoramique du fond (bgMove, #135)", () => {
+    const sig = () => new AbortController().signal;
+    const bgEl = () => root.querySelector("#stage-bg") as HTMLElement;
+    const showPano = () =>
+      renderer.apply(
+        [{ kind: "scene", scene: { bg: "pano", bgLeft: -99, bgTop: -48, sprites: [], effect: null }, transition: { method: "none" } }],
+        { instant: true, signal: sig() },
+      );
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it("fait glisser le fond en ligne droite jusqu'à la position cible", async () => {
+      await showPano();
+      expect(bgEl().style.backgroundPosition).toBe("-99px -48px");
+      await renderer.apply([{ kind: "bgMove", left: -167, top: -48, time: 5000 }], { instant: false, signal: sig() });
+      expect(bgEl().style.transition).toBe("background-position 5000ms linear");
+      expect(bgEl().style.backgroundPosition).toBe("-167px -48px");
+    });
+
+    it("en mode instantané (saut de la séquence), pose directement la position finale", async () => {
+      await showPano();
+      await renderer.apply([{ kind: "bgMove", left: -167, top: -48, time: 5000 }], { instant: true, signal: sig() });
+      expect(bgEl().style.transition).toBe("none");
+      expect(bgEl().style.backgroundPosition).toBe("-167px -48px");
+    });
+
+    it("un fondu commencé en plein panoramique part de la position courante de l'ancien fond", async () => {
+      const now = vi.spyOn(performance, "now").mockReturnValue(1000);
+      await showPano();
+      await renderer.apply([{ kind: "bgMove", left: -167, top: -48, time: 5000 }], { instant: false, signal: sig() });
+      now.mockReturnValue(3500); // à mi-chemin
+      await renderer.apply(
+        [{ kind: "scene", scene: { bg: "next", bgLeft: -48, bgTop: -300, sprites: [], effect: null }, transition: { method: "crossfade", time: 2000 } }],
+        { instant: false, signal: sig() },
+      );
+      const overlay = root.querySelector(".mh-stage-bg-overlay") as HTMLElement;
+      expect(overlay.style.backgroundImage).toContain("pano");
+      expect(overlay.style.backgroundPosition).toBe("-133px -48px");
+      // Le nouveau fond est posé à sa propre position, sans mouvement hérité.
+      expect(bgEl().style.backgroundPosition).toBe("-48px -300px");
+      expect(bgEl().style.transition).toBe("");
+      renderer.hurry();
+    });
+  });
+
   it("hurry termine la transition immédiatement", async () => {
     const sig = () => new AbortController().signal;
     await renderer.apply(
