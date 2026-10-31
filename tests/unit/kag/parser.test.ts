@@ -445,3 +445,34 @@ describe("parse @movefg — center/vcenter absents (#65)", () => {
     expect(kf[1]?.vcenter).toBe(200);
   });
 });
+
+describe("parse — position par défaut des calques (#134)", () => {
+  const first = (source: string) => parse(lex(source)).pages[0]!.instructions.find((i) => i.kind === "partbg" || i.kind === "fg");
+
+  it("un @partbg sans vcenter est centré verticalement sur l'écran 1024×576", () => {
+    // Forme du prologue : bande de 522×576 centrée en x=748, sans vcenter.
+    const ins = first("@partbg storage=nuages srcleft=542 index=1000 width=522 height=576 center=748 id=pb1");
+    expect(ins?.kind).toBe("partbg");
+    if (ins?.kind === "partbg") {
+      expect(ins.center).toBe(748);
+      expect(ins.vcenter).toBe(288);
+      // Une bande de 576 de haut centrée en 288 occupe tout l'écran, de 0 à 576.
+      expect(ins.vcenter - ins.crop.height / 2).toBe(0);
+    }
+  });
+
+  it("un @partbg sans center ni vcenter est centré sur l'écran", () => {
+    const ins = first("@partbg storage=pano width=1024 height=576");
+    expect(ins).toMatchObject({ kind: "partbg", center: 512, vcenter: 288 });
+  });
+
+  it("un @fg sans center ni vcenter est centré sur l'écran, un axe donné est respecté", () => {
+    expect(first("@fg storage=a index=10")).toMatchObject({ kind: "fg", center: 512, vcenter: 288 });
+    expect(first("@fg storage=a center=285 index=10")).toMatchObject({ center: 285, vcenter: 288 });
+    expect(first("@fg storage=a vcenter=-570 index=10")).toMatchObject({ center: 512, vcenter: -570 });
+  });
+
+  it("un centre explicite à 0 reste à 0", () => {
+    expect(first("@fg storage=a center=0 vcenter=0")).toMatchObject({ center: 0, vcenter: 0 });
+  });
+});

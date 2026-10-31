@@ -88,6 +88,15 @@ export interface StageRenderer {
   /** Indicateur d'attente de clic, null = masqué. */
   setClickIndicator(style: "line" | "page" | null): void;
 
+  /**
+   * Indicateur d'attente non interruptible (`@wait canskip=0`…) : un petit anneau discret, visible même
+   * quand la boîte de texte est masquée, pour que l'écran ne paraisse pas figé.
+   */
+  setWaitIndicator(active: boolean): void;
+
+  /** Un clic a été ignoré par une attente non interruptible : fait réagir l'indicateur (un « pouls »). */
+  nudgeWaitIndicator(): void;
+
   /** Masquage par l'utilisateur (clic droit), indépendant de l'état `textbox` du script. */
   setUserHidden(hidden: boolean): void;
 

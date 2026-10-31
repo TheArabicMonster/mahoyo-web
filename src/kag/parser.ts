@@ -9,6 +9,10 @@ import type { AnimationDef, CropSpec, Instruction, ParsedScript, TextSegment, Te
 import { storageKey } from "@/core/storage-key.js";
 import { parseActionKeys } from "./action.js";
 
+/** Centre de l'écran dans le repère logique 1024×576 : position d'un calque sans `center`/`vcenter`. */
+const SCREEN_CENTER_X = 512;
+const SCREEN_CENTER_Y = 288;
+
 function parseIntArg(value: string | undefined, fallback = 0): number {
   if (value === undefined) return fallback;
   const parsed = parseInt(value, 10);
@@ -88,8 +92,8 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       return {
         kind: "fg",
         storage: normStorage(args.storage),
-        center: parseIntArg(args.center),
-        vcenter: parseIntArg(args.vcenter),
+        center: parseIntArg(args.center, SCREEN_CENTER_X),
+        vcenter: parseIntArg(args.vcenter, SCREEN_CENTER_Y),
         index: parseIntArg(args.index),
         opacity: args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : undefined,
         page: parsePageLayer(args.page),
@@ -148,8 +152,8 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
 
       // Fallback: traiter comme un @fg statique (position initiale de la 1ère keyframe)
       const firstFrame = keyframes[0];
-      const center = firstFrame?.center ?? parseIntArg(args.center);
-      const vcenter = firstFrame?.vcenter ?? parseIntArg(args.vcenter);
+      const center = firstFrame?.center ?? parseIntArg(args.center, SCREEN_CENTER_X);
+      const vcenter = firstFrame?.vcenter ?? parseIntArg(args.vcenter, SCREEN_CENTER_Y);
       const index = parseIntArg(args.index);
       const opacity = firstFrame?.opacity ?? (args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : undefined);
       if (isPartbg) {
@@ -188,8 +192,10 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       // Rendu : un div width×height overflow:hidden positionné à center/vcenter,
       // contenant un <img> translaté de (-srcleft,-srctop) et scalé srczoom/100.
       const storage = normStorage(args.storage);
-      const center = parseIntArg(args.center);
-      const vcenter = parseIntArg(args.vcenter);
+      // Un axe omis vaut le centre de l'écran (KAG : calque centré par défaut), pas 0 : sans cela
+      // un partbg sans `vcenter` était à moitié hors cadre (#134).
+      const center = parseIntArg(args.center, SCREEN_CENTER_X);
+      const vcenter = parseIntArg(args.vcenter, SCREEN_CENTER_Y);
       const index = parseIntArg(args.index, 1000);
       const opacity = args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : undefined;
       const page = parsePageLayer(args.page);

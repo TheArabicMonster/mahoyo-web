@@ -251,6 +251,13 @@ export class Player implements PlayerCommands {
    * le minuteur de l'attente et faisait sauter la page de texte suivante.
    */
   private lockedWait = false;
+
+  /** Pose ou lève l'attente non interruptible, avec son indicateur à l'écran. */
+  private setLockedWait(locked: boolean): void {
+    if (this.lockedWait === locked) return;
+    this.lockedWait = locked;
+    this.stage.setWaitIndicator(locked);
+  }
   private pendingChoice: ((index: number) => void) | null = null;
   /** Table d'enchaînement des scripts (null si le pipeline ne l'a pas générée). */
   private chain: StoryChain | null = null;
@@ -376,7 +383,11 @@ export class Player implements PlayerCommands {
       this.onAdvance();
       return;
     }
-    if (this.lockedWait) return;
+    if (this.lockedWait) {
+      // Attente non interruptible : le clic est ignoré, mais pas en silence (#134).
+      this.stage.nudgeWaitIndicator();
+      return;
+    }
     // Le clic est arrivé entre setState("waiting-*") et l'installation de onAdvance.
     if (this.state === "waiting-click" || this.state === "waiting-wait") {
       this.pendingAdvance = true;
@@ -843,7 +854,7 @@ export class Player implements PlayerCommands {
         if (this.mode === "skip" && this.stopWasRead) interrupt();
       };
     } else {
-      this.lockedWait = true;
+      this.setLockedWait(true);
     }
     try {
       if (stop.what === "audio") await this.audio.waitFor(toAudioChannel(stop.target), controller.signal);
@@ -852,7 +863,7 @@ export class Player implements PlayerCommands {
       dispose();
       this.onAdvance = null;
       this.rearm = null;
-      this.lockedWait = false;
+      this.setLockedWait(false);
     }
   }
 
@@ -870,7 +881,7 @@ export class Player implements PlayerCommands {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const finish = () => {
         clearTimeout(timer);
-        this.lockedWait = false;
+        this.setLockedWait(false);
         this.onAdvance = null;
         this.rearm = null;
         this.pendingAdvance = false;
@@ -899,7 +910,7 @@ export class Player implements PlayerCommands {
         }
       };
       this.onAdvance = opts.clickable ? finish : null;
-      this.lockedWait = !opts.clickable;
+      this.setLockedWait(!opts.clickable);
       this.rearm = arm;
       signal.addEventListener("abort", finish, { once: true });
       if (signal.aborted) finish();

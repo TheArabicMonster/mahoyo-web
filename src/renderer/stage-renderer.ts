@@ -50,6 +50,7 @@ export class DomStageRenderer implements StageRenderer {
   private textboxEl: HTMLElement | null = null;
   private textEl: HTMLElement | null = null;
   private indicatorEl: HTMLElement | null = null;
+  private waitEl: HTMLElement | null = null;
 
   private settings: DisplaySettings = {
     textSpeed: 30,
@@ -145,7 +146,11 @@ export class DomStageRenderer implements StageRenderer {
 
     this.textboxEl.append(frame, this.textEl, this.indicatorEl);
 
-    this.container.append(stage, this.textboxEl);
+    this.waitEl = document.createElement("div");
+    this.waitEl.className = "mh-stage-wait";
+    this.waitEl.setAttribute("aria-hidden", "true");
+
+    this.container.append(stage, this.textboxEl, this.waitEl);
     root.appendChild(this.container);
 
     this.applyTextbox();
@@ -225,6 +230,21 @@ export class DomStageRenderer implements StageRenderer {
     if (!this.indicatorEl) return;
     this.indicatorEl.textContent = style === "page" ? "▼" : style === "line" ? "▽" : "";
     this.indicatorEl.style.visibility = style ? "visible" : "hidden";
+  }
+
+  setWaitIndicator(active: boolean): void {
+    if (!this.waitEl) return;
+    this.waitEl.classList.toggle("mh-stage-wait-on", active);
+    if (!active) this.waitEl.classList.remove("mh-stage-wait-nudge");
+  }
+
+  nudgeWaitIndicator(): void {
+    const el = this.waitEl;
+    if (!el || !el.classList.contains("mh-stage-wait-on")) return;
+    // Relance l'animation même si un clic précédent l'a déjà déclenchée.
+    el.classList.remove("mh-stage-wait-nudge");
+    void el.offsetWidth;
+    el.classList.add("mh-stage-wait-nudge");
   }
 
   setUserHidden(hidden: boolean): void {
@@ -434,6 +454,36 @@ export class DomStageRenderer implements StageRenderer {
         color: #fff;
         font-size: 1.2rem;
         animation: mh-indicator-blink 1s infinite;
+      }
+      .mh-stage-wait {
+        position: absolute;
+        right: 20px;
+        bottom: 20px;
+        width: 18px;
+        height: 18px;
+        box-sizing: border-box;
+        border-radius: 50%;
+        border: 2px solid rgba(255,255,255,0.85);
+        border-top-color: transparent;
+        mix-blend-mode: difference;
+        z-index: 40;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      .mh-stage-wait-on {
+        opacity: 0.7;
+        animation: mh-wait-spin 1.2s linear infinite;
+      }
+      .mh-stage-wait-on.mh-stage-wait-nudge {
+        animation: mh-wait-spin 1.2s linear infinite, mh-wait-nudge 0.35s ease-out;
+      }
+      @keyframes mh-wait-spin {
+        to { rotate: 360deg; }
+      }
+      @keyframes mh-wait-nudge {
+        0% { scale: 1.9; opacity: 1; }
+        100% { scale: 1; opacity: 0.7; }
       }
       @keyframes mh-indicator-blink {
         0%, 100% { opacity: 1; }

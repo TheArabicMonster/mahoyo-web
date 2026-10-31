@@ -68,6 +68,15 @@ class TestStage extends RecordingStageRenderer {
   maxActive = 0;
   gate: Promise<void> | null = null;
   indicators: (string | null)[] = [];
+  /** Historique de l'indicateur d'attente non interruptible. */
+  waitIndicator: boolean[] = [];
+  nudges = 0;
+  setWaitIndicator(active: boolean): void {
+    this.waitIndicator.push(active);
+  }
+  nudgeWaitIndicator(): void {
+    this.nudges++;
+  }
   async apply(events: readonly RenderEvent[], opts: RunOptions): Promise<void> {
     this.active++;
     this.maxActive = Math.max(this.maxActive, this.active);
@@ -494,6 +503,68 @@ describe("Player — attente non interruptible (@wait canskip=0)", () => {
     // Si l'attente coupait le skip, la page suivante attendrait un clic au lieu de défiler.
     await until(() => ctx.player.currentState === "title", "fin du script en skip");
     expect(ctx.ui.toasts.some((t) => t.message.includes("skip interrompu"))).toBe(false);
+  });
+
+  it("affiche un indicateur pendant l'attente et le retire à la fin (#134)", async () => {
+    const ctx = setup([lockedWait(50), click()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "attente");
+    expect(ctx.stage.waitIndicator.at(-1)).toBe(true);
+
+    await until(() => ctx.player.currentState === "waiting-click", "page suivante");
+    expect(ctx.stage.waitIndicator.at(-1)).toBe(false);
+  });
+
+  it("un clic ignoré par l'attente fait réagir l'indicateur, sans avancer (#134)", async () => {
+    const ctx = setup([lockedWait(80), click()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "attente");
+
+    ctx.player.advance();
+    ctx.player.advance();
+    ctx.player.advance();
+    expect(ctx.stage.nudges).toBe(3);
+    expect(ctx.player.currentState).toBe("waiting-wait");
+  });
+
+  it("l'indicateur couvre aussi une attente d'animation non interruptible (#134)", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    class GateStage extends TestStage {
+      async waitFor(): Promise<void> {
+        await gate;
+      }
+    }
+    const stage = new GateStage();
+    const waitAnim: Step = { position: at(0), events: [], stop: { kind: "waitFor", what: "animation", skippable: false } };
+    const ctx = setup([waitAnim, click()], { createStageRenderer: () => stage });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "attente d'animation");
+    expect(stage.waitIndicator.at(-1)).toBe(true);
+    ctx.player.advance();
+    expect(stage.nudges).toBe(1);
+
+    release();
+    await until(() => ctx.player.currentState === "waiting-click", "page suivante");
+    expect(stage.waitIndicator.at(-1)).toBe(false);
+  });
+
+  it("une attente interruptible n'affiche pas l'indicateur et un clic la coupe", async () => {
+    const ctx = setup([{ position: at(0), events: [], stop: { kind: "wait", time: 5000, skippable: true } }, click()]);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait", "attente");
+    expect(ctx.stage.waitIndicator.includes(true)).toBe(false);
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "waiting-click", "page suivante");
+    expect(ctx.stage.nudges).toBe(0);
   });
 
   it("un clic reste pris en compte une fois l'attente terminée", async () => {
