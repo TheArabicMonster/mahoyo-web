@@ -297,6 +297,25 @@ describe("DomStageRenderer", () => {
     });
   });
 
+  describe("tremblement d'écran (#148)", () => {
+    const sig = () => new AbortController().signal;
+    const container = () => root.querySelector(".mh-stage") as HTMLElement;
+
+    it("garde l'agrandissement 1.25 du stage pendant le tremblement (sinon l'écran tombe à 1024×576)", async () => {
+      expect(document.getElementById("mh-stage-styles")!.textContent).toContain("transform: scale(1.25)");
+      await renderer.apply([{ kind: "quake", quake: { hmax: 6, vmax: 4, time: null } }], { instant: false, signal: sig() });
+      const t = container().style.transform;
+      expect(t).toMatch(/^translate\(-?[\d.e-]+px, -?[\d.e-]+px\) scale\(1\.25\)$/);
+      await renderer.apply([{ kind: "quake", quake: null }], { instant: false, signal: sig() });
+    });
+
+    it("l'arrêt du tremblement rend la transformation au CSS (agrandissement seul)", async () => {
+      await renderer.apply([{ kind: "quake", quake: { hmax: 6, vmax: 4, time: null } }], { instant: false, signal: sig() });
+      await renderer.apply([{ kind: "quake", quake: null }], { instant: false, signal: sig() });
+      expect(container().style.transform).toBe("");
+    });
+  });
+
   it("hurry termine la transition immédiatement", async () => {
     const sig = () => new AbortController().signal;
     await renderer.apply(

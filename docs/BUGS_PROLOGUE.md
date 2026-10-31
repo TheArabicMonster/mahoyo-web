@@ -19,6 +19,7 @@ Diagnostic du 2026-10-30 sur `main` (080b2bf), assets réels, Chromium headless 
 | B7 | Quelques textes sont effacés avant d'être lus (`clearText` sans clic) | ja, fr | `3-1`, `5a-3`, `5a-11`, `a-8`, `c-12`, `nz1`, `nz5`, `wik_o` | 10 occurrences en fr contre 11 en ja : défaut du moteur, pas de la traduction | Gênant | **Vérifié** (trace) |
 | B8 | 21 clics sans texte en français contre 2 en japonais | fr | `1.5-1`, `1.5-2`, `1.5-4`, `2-2`, `5a-7`, `5a-11`, `5a-12`, `5b-10`, `5b-14`, `wik_*` | La traduction ajoute des commandes (`@se`, `@sestop`…) qui créent des pauses sans texte | Gênant | **Vérifié** (trace) ; les 12 clics restants après #138 sont neutralisés à l'installation (#141) |
 | B9 | Voix et sons manquants : 3 « Audio introuvable » dans `1-0` en fr ; ~9 000 références à des assets Steam absents en tout | fr | assets | Fichiers de la version Steam, absents du manifest (limite documentée) | Mineur | Connu |
+| B10 | Pendant un tremblement d'écran (`@quake`), l'image (par exemple la maison sous la pluie, fin de `1-0`) tombe à 1024×576 : collée en haut à gauche, bandes noires à droite et en bas | ja, fr | `stage-renderer.ts` `startQuake` | Le tremblement posait `transform: translate(…)` en ligne sur `.mh-stage` et écrasait le `scale(1.25)` du CSS ; corrigé en `translate(…) scale(1.25)` (#148) | Gênant | **Corrigé** |
 
 ## Non constaté (à ne pas chercher)
 

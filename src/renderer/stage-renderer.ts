@@ -19,6 +19,13 @@ import { partbgInnerTransform, partbgWrapperTransform, spriteTransform } from ".
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
 
+/**
+ * Facteur d'agrandissement du stage : le jeu travaille en 1024×576, le viewport fait 1280×720.
+ * Toute `transform` posée en ligne sur `.mh-stage` doit le conserver, sinon l'écran retombe
+ * à 1024×576 (80 %), collé en haut à gauche, avec des bandes noires à droite et en bas.
+ */
+const STAGE_SCALE = 1.25;
+
 /** Un caractère à afficher, avec son annotation ruby et son style CSS éventuels. */
 type TextUnit = {
   char: string;
@@ -376,7 +383,7 @@ export class DomStageRenderer implements StageRenderer {
         top: 0;
         width: 1024px;
         height: 576px;
-        transform: scale(1.25);
+        transform: scale(${STAGE_SCALE});
         transform-origin: 0 0;
         overflow: hidden;
         font-family: inherit;
@@ -946,7 +953,8 @@ export class DomStageRenderer implements StageRenderer {
           if (!this.container) return;
           const dx = (Math.random() - 0.5) * 2 * spec.hmax;
           const dy = (Math.random() - 0.5) * 2 * spec.vmax;
-          this.container.style.transform = `translate(${dx}px, ${dy}px)`;
+          // Décalage en pixels écran (1280×720), puis agrandissement : `scale` reste obligatoire.
+          this.container.style.transform = `translate(${dx}px, ${dy}px) scale(${STAGE_SCALE})`;
           const elapsed = performance.now() - start;
           if (duration !== null && elapsed >= duration) {
             this.stopQuake();
