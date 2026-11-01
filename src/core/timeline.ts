@@ -8,9 +8,13 @@
  *
  * Sont repris : le fond visible (dans l'ordre où les pages de la timeline le
  * montrent), ses panoramiques (`left`/`top` animés), les calques posés sur les pages
- * (position, opacité et ordre, avec leurs fondus), la pluie animée d'un calque et les
- * pistes audio. Les zooms, rotations et effets (brume, tremblement, balancement) ne
- * le sont pas : l'ouverture ne les anime pas (voir `docs/TIMELINES.md`).
+ * (position, opacité et ordre, avec leurs fondus), la pluie animée d'un calque, l'accélération
+ * des interpolations, le zoom et la rotation (avec point d'ancrage pour les calques) et les
+ * pistes audio. Les effets brume, tremblement et balancement ne le sont pas : aucun script
+ * ne les active (voir `docs/TIMELINES.md`).
+ *
+ * Tous les champs ajoutés après la phase 1 sont optionnels : un ancien `timelines.json`
+ * reste lisible (accélération nulle, zoom 100 %, rotation 0, ancrage au centre).
  */
 
 /** Une action audio de la timeline. */
@@ -27,8 +31,18 @@ export type TimelineAudio = {
   action: "play" | "volume";
 };
 
+/** Transformation d'un fond ou d'un calque : zoom en %, rotation en degrés. */
+export type TimelineTransform = {
+  /** Zoom horizontal en % (100 = taille d'origine ; négatif = miroir). */
+  zoomx?: number;
+  /** Zoom vertical en %. */
+  zoomy?: number;
+  /** Rotation en degrés (sens horaire à l'écran). */
+  rotate?: number;
+};
+
 /** Un changement d'image de fond (un « plan » de la séquence). */
-export type TimelineBg = {
+export type TimelineBg = TimelineTransform & {
   at: number;
   storage: string;
   /** Position du fond (px, repère 1024×576) ; absentes = centré. */
@@ -42,13 +56,15 @@ export type TimelineBg = {
 };
 
 /** Panoramique : le fond affiché glisse jusqu'à une position, en ligne droite. */
-export type TimelineMove = {
+export type TimelineMove = TimelineTransform & {
   at: number;
   /** Position atteinte (px, repère 1024×576). */
   left: number;
   top: number;
   /** Durée du déplacement (ms) ; 0 = saut immédiat. */
   time: number;
+  /** Accélération (3e indicateur) ; absente ou 0 = vitesse constante. Voir `easing.ts`. */
+  accel?: number;
 };
 
 /**
@@ -56,7 +72,7 @@ export type TimelineMove = {
  * image en surimpression). Avec `time` = 0, l'état est posé tout de suite ; sinon le
  * calque glisse en ligne droite (position et opacité) jusqu'à cet état en `time` ms.
  */
-export type TimelineLayerKey = {
+export type TimelineLayerKey = TimelineTransform & {
   at: number;
   /** Identifiant stable du calque dans la scène. */
   id: string;
@@ -72,6 +88,16 @@ export type TimelineLayerKey = {
   time: number;
   /** Pluie animée par-dessus l'image (traitement « rain1 » du jeu d'origine). */
   rain?: boolean;
+  /** Accélération du mouvement (position, opacité, zoom, rotation) ; absente ou 0 = constante. */
+  accel?: number;
+  /**
+   * Point d'ancrage du zoom et de la rotation, en px dans l'image depuis son coin haut gauche
+   * (`afx`/`afy`) ; absent = centre de l'image.
+   */
+  afx?: number;
+  afy?: number;
+  /** Effet actif du calque (autre que `none`/`void`) : haze, quake, shake ou swing (non rendus). */
+  effect?: string;
 };
 
 export type TimelineScene = {
@@ -105,14 +131,23 @@ function isBg(v: unknown): v is TimelineBg {
     b.storage.length > 0 &&
     (b.left === undefined || isNum(b.left)) &&
     (b.top === undefined || isNum(b.top)) &&
-    (b.fade === undefined || (isNum(b.fade) && b.fade >= 0))
+    (b.fade === undefined || (isNum(b.fade) && b.fade >= 0)) &&
+    isTransform(b)
   );
+}
+
+function optNum(v: unknown): boolean {
+  return v === undefined || isNum(v);
+}
+
+function isTransform(t: Record<string, unknown>): boolean {
+  return optNum(t.zoomx) && optNum(t.zoomy) && optNum(t.rotate);
 }
 
 function isMove(v: unknown): v is TimelineMove {
   if (typeof v !== "object" || v === null) return false;
   const m = v as Record<string, unknown>;
-  return isNum(m.at) && isNum(m.left) && isNum(m.top) && isNum(m.time) && m.time >= 0;
+  return isNum(m.at) && isNum(m.left) && isNum(m.top) && isNum(m.time) && m.time >= 0 && optNum(m.accel) && isTransform(m);
 }
 
 function isLayerKey(v: unknown): v is TimelineLayerKey {
@@ -129,7 +164,12 @@ function isLayerKey(v: unknown): v is TimelineLayerKey {
     isNum(l.z) &&
     isNum(l.time) &&
     l.time >= 0 &&
-    (l.rain === undefined || typeof l.rain === "boolean")
+    (l.rain === undefined || typeof l.rain === "boolean") &&
+    optNum(l.accel) &&
+    optNum(l.afx) &&
+    optNum(l.afy) &&
+    (l.effect === undefined || typeof l.effect === "string") &&
+    isTransform(l)
   );
 }
 

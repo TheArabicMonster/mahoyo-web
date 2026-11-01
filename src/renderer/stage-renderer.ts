@@ -19,6 +19,7 @@ import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-c
 import { partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
+import { cssEasing, easeProgress } from "@/core/easing.js";
 
 /**
  * Facteur d'agrandissement du stage : le jeu travaille en 1024×576, le viewport fait 1280×720.
@@ -105,7 +106,19 @@ export class DomStageRenderer implements StageRenderer {
    * d'arrivée, début (`performance.now()`) et durée. Sert à reprendre la position
    * courante quand un fondu enchaîné commence avant la fin du mouvement.
    */
-  private bgMotion: { fromLeft: number; fromTop: number; toLeft: number; toTop: number; start: number; time: number } | null = null;
+  private bgMotion: {
+    fromLeft: number;
+    fromTop: number;
+    toLeft: number;
+    toTop: number;
+    start: number;
+    time: number;
+    accel: number;
+  } | null = null;
+  /** Fin (`performance.now()`) de la transition de zoom/rotation du fond en cours. */
+  private bgTransformEnd = 0;
+  /** Tailles des images de fond déjà chargées (pivot du zoom/rotation), par URL. */
+  private bgSizes = new Map<string, { w: number; h: number }>();
 
   private animations = new Map<string, AnimationController>();
   /**
@@ -600,11 +613,11 @@ export class DomStageRenderer implements StageRenderer {
         break;
       }
       case "bgMove": {
-        this.moveBackground(event.left, event.top, opts.instant ? 0 : event.time);
+        this.moveBackground(event.left, event.top, opts.instant ? 0 : event.time, event);
         break;
       }
       case "timelineLayer": {
-        this.applyTimelineLayer(event.layer, opts.instant ? 0 : event.time);
+        this.applyTimelineLayer(event.layer, opts.instant ? 0 : event.time, event.accel ?? 0);
         break;
       }
       case "timelineLayerClear": {
@@ -668,9 +681,12 @@ export class DomStageRenderer implements StageRenderer {
     const bg = this.currentScene.bg;
     this.bgEl.style.backgroundImage = bg ? cssUrl(this.resolver.background(bg)) : "none";
     this.bgEl.style.backgroundColor = bg ? "" : "#000";
-    // Un nouveau fond interrompt le panoramique en cours.
+    // Un nouveau fond interrompt le panoramique en cours et perd le zoom/la rotation du précédent.
     this.bgMotion = null;
+    this.bgTransformEnd = 0;
     this.bgEl.style.removeProperty("transition");
+    this.bgEl.style.removeProperty("transform");
+    this.bgEl.style.removeProperty("transform-origin");
     // Positionnement natif (repère 1024×576) : left/top explicites sinon centrage.
     if (bg) {
       const left = this.currentScene.bgLeft;
@@ -805,6 +821,8 @@ export class DomStageRenderer implements StageRenderer {
     this.finishTransition();
     // Position de l'ancien fond à cet instant (il peut être en plein panoramique).
     const fromPos = this.bgPositionNow(from);
+    // Zoom et rotation de l'ancien fond (renderScene les remet à zéro pour le nouveau).
+    const fromTransform = this.bgEl ? { transform: this.bgEl.style.transform, origin: this.bgEl.style.transformOrigin } : null;
 
     this.currentScene = to;
 
@@ -826,6 +844,8 @@ export class DomStageRenderer implements StageRenderer {
       overlay.style.backgroundImage = cssUrl(this.resolver.background(oldBg));
       overlay.style.transition = "none";
       overlay.style.backgroundPosition = fromPos ? `${fromPos.left}px ${fromPos.top}px` : "50% 50%";
+      overlay.style.transform = fromTransform?.transform ?? "";
+      overlay.style.transformOrigin = fromTransform?.origin ?? "";
       overlay.style.zIndex = "5";
       overlay.style.opacity = "1";
       this.bgEl.parentElement?.appendChild(overlay);
@@ -835,7 +855,7 @@ export class DomStageRenderer implements StageRenderer {
         // L'ancien fond poursuit son panoramique pendant qu'il s'efface.
         const moving = fromPos && fromPos.remaining > 0;
         overlay.style.transition = moving
-          ? `opacity ${time}ms ease, background-position ${fromPos.remaining}ms linear`
+          ? `opacity ${time}ms ease, background-position ${fromPos.remaining}ms ${cssEasing(fromPos.accel, fromPos.progress)}`
           : `opacity ${time}ms ease`;
         overlay.style.opacity = "0";
         if (moving) overlay.style.backgroundPosition = `${fromPos.toLeft}px ${fromPos.toTop}px`;
@@ -856,49 +876,124 @@ export class DomStageRenderer implements StageRenderer {
    * Position du fond `scene` à cet instant : interpolée pendant un panoramique,
    * sinon sa position explicite ; null si le fond est centré.
    */
-  private bgPositionNow(scene: SceneState): { left: number; top: number; toLeft: number; toTop: number; remaining: number } | null {
+  private bgPositionNow(scene: SceneState): {
+    left: number;
+    top: number;
+    toLeft: number;
+    toTop: number;
+    remaining: number;
+    accel: number;
+    /** Fraction (0..1) du temps déjà écoulée. */
+    progress: number;
+  } | null {
     const m = this.bgMotion;
     if (m) {
       const elapsed = Math.min(Math.max(performance.now() - m.start, 0), m.time);
       const k = m.time > 0 ? elapsed / m.time : 1;
+      const e = easeProgress(m.accel, k);
       return {
-        left: m.fromLeft + (m.toLeft - m.fromLeft) * k,
-        top: m.fromTop + (m.toTop - m.fromTop) * k,
+        left: m.fromLeft + (m.toLeft - m.fromLeft) * e,
+        top: m.fromTop + (m.toTop - m.fromTop) * e,
         toLeft: m.toLeft,
         toTop: m.toTop,
         remaining: m.time - elapsed,
+        accel: m.accel,
+        progress: k,
       };
     }
     if (scene.bgLeft === undefined || scene.bgTop === undefined) return null;
-    return { left: scene.bgLeft, top: scene.bgTop, toLeft: scene.bgLeft, toTop: scene.bgTop, remaining: 0 };
+    return { left: scene.bgLeft, top: scene.bgTop, toLeft: scene.bgLeft, toTop: scene.bgTop, remaining: 0, accel: 0, progress: 1 };
   }
 
-  /** Panoramique : fait glisser le fond affiché jusqu'à (left, top) en `time` ms. */
-  private moveBackground(left: number, top: number, time: Ms): void {
+  /**
+   * Zoom (%) et rotation (degrés) du fond : transform CSS autour du centre de l'image, placée
+   * en (left, top). La taille de l'image vient du cache (chargée à la demande) ; en attendant,
+   * le centre de l'écran sert de pivot, ce qui convient aux fonds de la taille de l'écran.
+   */
+  private bgTransformCss(left: number, top: number, zoomx: number, zoomy: number, rotate: number): { transform: string; origin: string } {
+    const url = this.currentScene.bg ? this.resolver.background(this.currentScene.bg) : null;
+    const size = url ? this.bgSizes.get(url) : undefined;
+    if (url && !size && typeof Image !== "undefined") {
+      const img = new Image();
+      img.onload = () => {
+        this.bgSizes.set(url, { w: img.naturalWidth, h: img.naturalHeight });
+        // Le fond est toujours celui-là et immobile : repose le pivot exact.
+        if (this.bgEl && !this.bgMotion && this.currentScene.bg && this.resolver.background(this.currentScene.bg) === url) {
+          const sc = this.currentScene;
+          this.bgEl.style.transformOrigin = `${(sc.bgLeft ?? left) + img.naturalWidth / 2}px ${(sc.bgTop ?? top) + img.naturalHeight / 2}px`;
+        }
+      };
+      img.src = url;
+    }
+    return {
+      transform: `rotate(${rotate}deg) scale(${zoomx / 100}, ${zoomy / 100})`,
+      origin: size ? `${left + size.w / 2}px ${top + size.h / 2}px` : "512px 288px",
+    };
+  }
+
+  /**
+   * Panoramique : fait glisser le fond affiché jusqu'à (left, top) en `time` ms, en ligne droite
+   * ou avec l'accélération `accel` ; avec `zoomx`/`zoomy`/`rotate`, il est aussi zoomé et tourné
+   * dans le même temps.
+   */
+  private moveBackground(
+    left: number,
+    top: number,
+    time: Ms,
+    opts: { accel?: number; zoomx?: number; zoomy?: number; rotate?: number } = {},
+  ): void {
     const from = this.bgPositionNow(this.currentScene);
+    const accel = opts.accel ?? 0;
+    const transformed = opts.zoomx !== undefined || opts.zoomy !== undefined || opts.rotate !== undefined;
     this.currentScene = { ...this.currentScene, bgLeft: left, bgTop: top };
     this.bgMotion = null;
     const el = this.bgEl;
     if (!el || !this.currentScene.bg) return;
+    const target = transformed ? this.bgTransformCss(left, top, opts.zoomx ?? 100, opts.zoomy ?? 100, opts.rotate ?? 0) : null;
+    // Une transition de zoom/rotation encore en cours repart de la valeur affichée.
+    const live = performance.now() < this.bgTransformEnd ? getComputedStyle(el) : null;
+    const liveTransform = live ? { transform: live.transform, origin: live.transformOrigin } : null;
     el.style.transition = "none";
+    this.bgTransformEnd = 0;
     if (time <= 0 || !from) {
       el.style.backgroundPosition = `${left}px ${top}px`;
+      if (target) {
+        el.style.transform = target.transform;
+        el.style.transformOrigin = target.origin;
+      }
       return;
     }
     // Repart de la position courante (un panoramique précédent peut être en cours).
     el.style.backgroundPosition = `${from.left}px ${from.top}px`;
+    if (target) {
+      if (liveTransform) {
+        el.style.transform = liveTransform.transform;
+        el.style.transformOrigin = liveTransform.origin;
+      } else if (!el.style.transform) {
+        el.style.transform = "rotate(0deg) scale(1, 1)";
+        el.style.transformOrigin = target.origin;
+      }
+    }
     void el.offsetHeight;
-    el.style.transition = `background-position ${time}ms linear`;
+    const easing = cssEasing(accel);
+    const parts = [`background-position ${time}ms ${easing}`];
+    if (target) parts.push(`transform ${time}ms ${easing}`, `transform-origin ${time}ms ${easing}`);
+    el.style.transition = parts.join(", ");
     el.style.backgroundPosition = `${left}px ${top}px`;
-    this.bgMotion = { fromLeft: from.left, fromTop: from.top, toLeft: left, toTop: top, start: performance.now(), time };
+    if (target) {
+      el.style.transform = target.transform;
+      el.style.transformOrigin = target.origin;
+      this.bgTransformEnd = performance.now() + time;
+    }
+    this.bgMotion = { fromLeft: from.left, fromTop: from.top, toLeft: left, toTop: top, start: performance.now(), time, accel };
   }
 
   /**
-   * Calque de timeline : pose son état (`time` = 0) ou le fait glisser en ligne droite
-   * (position et opacité) par une transition CSS. Une transition interrompue repart de
-   * la valeur affichée à cet instant.
+   * Calque de timeline : pose son état (`time` = 0) ou le fait glisser (position, opacité,
+   * zoom et rotation) par une transition CSS, en ligne droite ou avec l'accélération `accel`.
+   * Une transition interrompue repart de la valeur affichée à cet instant.
    */
-  private applyTimelineLayer(layer: TimelineLayerState, time: Ms): void {
+  private applyTimelineLayer(layer: TimelineLayerState, time: Ms, accel = 0): void {
     if (!this.timelineEl) return;
     let el = this.timelineLayerEls.get(layer.id);
     if (!el) {
@@ -920,13 +1015,18 @@ export class DomStageRenderer implements StageRenderer {
     if (time > 0) {
       // Fige d'abord l'état courant (posé juste avant, au même instant) comme départ.
       void el.offsetWidth;
-      el.style.transition = `left ${time}ms linear, top ${time}ms linear, opacity ${time}ms linear`;
+      const easing = cssEasing(accel);
+      el.style.transition = `left ${time}ms ${easing}, top ${time}ms ${easing}, opacity ${time}ms ${easing}, transform ${time}ms ${easing}`;
     } else {
       el.style.transition = "none";
     }
     el.style.left = `${layer.x}px`;
     el.style.top = `${layer.y}px`;
     el.style.opacity = String(layer.opacity);
+    // Zoom et rotation autour du point d'ancrage (centre de l'image par défaut) ; la liste de
+    // fonctions est toujours la même pour que la transition interpole terme à terme.
+    el.style.transform = `translate(-50%, -50%) rotate(${layer.rotate ?? 0}deg) scale(${(layer.zoomx ?? 100) / 100}, ${(layer.zoomy ?? 100) / 100})`;
+    el.style.transformOrigin = layer.afx !== undefined && layer.afy !== undefined ? `${layer.afx}px ${layer.afy}px` : "50% 50%";
   }
 
   private clearTimelineLayers(): void {

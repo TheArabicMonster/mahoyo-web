@@ -1083,8 +1083,9 @@ export class Runtime {
   /**
    * @playtimeline : rejoue une timeline d'animation sous forme de calendrier.
    *
-   * Sont repris les fonds (fondus enchaînés ou coupes), leurs panoramiques (`bgMove`),
-   * les calques (`timelineLayer`) et les pistes audio ; pas les effets. Les événements
+   * Sont repris les fonds (fondus enchaînés ou coupes), leurs panoramiques (`bgMove`, avec
+   * accélération, zoom et rotation), les calques (`timelineLayer`) et les pistes audio ; pas
+   * les effets (brume, tremblement, balancement : avertissement). Les événements
    * sont construits ici, une fois pour toutes, et l'état du runtime reçoit tout de
    * suite le résultat final : le player les rejoue à leur instant, ou d'un coup si le
    * joueur saute la séquence. Sans timeline connue, la commande est sans effet.
@@ -1099,10 +1100,21 @@ export class Runtime {
     const entries: { at: number; order: number; events: RenderEvent[] }[] = [];
     let order = 0;
 
+    // Si le fond a un zoom ou une rotation quelque part, chaque plan les (re)pose explicitement.
+    const bgTransformed = scene.bg.some((b) => b.zoomx !== undefined || b.zoomy !== undefined || b.rotate !== undefined);
     let previous: TimelineBg | undefined;
     for (const bg of scene.bg) {
-      // Deux fonds identiques de suite (même image, même position) : un seul changement.
-      if (previous && bg.storage === previous.storage && bg.left === previous.left && bg.top === previous.top) continue;
+      // Deux fonds identiques de suite (même image, position, zoom et rotation) : un seul changement.
+      if (
+        previous &&
+        bg.storage === previous.storage &&
+        bg.left === previous.left &&
+        bg.top === previous.top &&
+        bg.zoomx === previous.zoomx &&
+        bg.zoomy === previous.zoomy &&
+        bg.rotate === previous.rotate
+      )
+        continue;
       previous = bg;
       const fade = bg.fade ?? (bg.at === 0 ? 0 : TIMELINE_FADE_MS);
       const res = this.applyBg({
@@ -1115,14 +1127,23 @@ export class Runtime {
         left: bg.left,
         top: bg.top,
       });
-      entries.push({ at: bg.at, order: order++, events: res.events });
+      const events = res.events;
+      if (bgTransformed && bg.left !== undefined && bg.top !== undefined) {
+        events.push({ kind: "bgMove", left: bg.left, top: bg.top, time: 0, zoomx: bg.zoomx ?? 100, zoomy: bg.zoomy ?? 100, rotate: bg.rotate ?? 0 });
+      }
+      entries.push({ at: bg.at, order: order++, events });
     }
 
     // Panoramiques : chacun déplace le fond affiché à son instant. L'état final reçoit
     // la position atteinte par le dernier panoramique du dernier fond.
     const lastBgAt = previous?.at ?? 0;
     for (const m of scene.moves ?? []) {
-      entries.push({ at: m.at, order: order++, events: [{ kind: "bgMove", left: m.left, top: m.top, time: m.time }] });
+      const move: RenderEvent = { kind: "bgMove", left: m.left, top: m.top, time: m.time };
+      if (m.accel) move.accel = m.accel;
+      if (m.zoomx !== undefined) move.zoomx = m.zoomx;
+      if (m.zoomy !== undefined) move.zoomy = m.zoomy;
+      if (m.rotate !== undefined) move.rotate = m.rotate;
+      entries.push({ at: m.at, order: order++, events: [move] });
       if (previous && previous.left !== undefined && m.at >= lastBgAt) {
         this.state.fore.bgLeft = m.left;
         this.state.fore.bgTop = m.top;
@@ -1132,11 +1153,21 @@ export class Runtime {
     // Calques : transitoires, ils ne touchent pas l'état du runtime et sont retirés à
     // la fin de la séquence (après tout le reste, même si `next` raccourcit la durée).
     const layers = scene.layers ?? [];
+    const unsupportedEffects = new Set<string>();
     for (const k of layers) {
       const layer: TimelineLayerState = { id: k.id, storage: k.storage, x: k.x, y: k.y, opacity: k.opacity, z: k.z };
       if (k.rain) layer.rain = true;
-      entries.push({ at: k.at, order: order++, events: [{ kind: "timelineLayer", layer, time: k.time }] });
+      if (k.zoomx !== undefined) layer.zoomx = k.zoomx;
+      if (k.zoomy !== undefined) layer.zoomy = k.zoomy;
+      if (k.rotate !== undefined) layer.rotate = k.rotate;
+      if (k.afx !== undefined) layer.afx = k.afx;
+      if (k.afy !== undefined) layer.afy = k.afy;
+      if (k.effect) unsupportedEffects.add(k.effect);
+      const event: RenderEvent = { kind: "timelineLayer", layer, time: k.time };
+      if (k.accel) event.accel = k.accel;
+      entries.push({ at: k.at, order: order++, events: [event] });
     }
+    for (const effect of unsupportedEffects) this.onWarning(`effet de calque non pris en charge : ${effect}`);
 
     for (const a of scene.audio) {
       const channel = a.channel === "bgm" ? "bgm" : "se:0";

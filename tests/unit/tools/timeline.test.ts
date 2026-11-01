@@ -198,6 +198,115 @@ describe("buildTimelineScenes", () => {
     });
   });
 
+  describe("accélération, zoom, rotation, ancrage et effet (#125, phase 2)", () => {
+    /** Ligne avec les trois premiers indicateurs : masqué, interpolation, accélération (null = inchangé). */
+    const rowF = (at: number, hidden: number | null, interp: number | null, accel: number | null, ...values: unknown[]): string =>
+      `[${[at, hidden ?? "null", interp ?? "null", accel ?? "null", "null", ...values.map((v) => (v === null ? "null" : typeof v === "string" ? `"${v}"` : v))].join(",")}]`;
+    const PROPS = ["storage", "center", "vcenter", "absolute", "opacity", "zoomx", "zoomy", "rotate", "afx", "afy", "effect"];
+    const bgOf = (layer: string, end = 200) => obj("BGObject", "blue", ["storage"], [row(0, "black")], end, layer, { page: 0 });
+
+    it("panoramique accéléré : le segment garde l'accélération de sa ligne de départ, qui reste active", () => {
+      const s = scenesOf(obj("BGObject", "blue", ["storage", "left", "top"], [
+        rowF(0, null, 0, 0, "black", -48, -48),
+        rowF(20, null, 1, 20, "pano", -99, null),
+        rowF(120, null, 1, null, null, -200, null),
+        rowF(220, null, 0, 0, null, -300, null),
+        rowF(260, null, null, null, null, -310, null),
+      ], 300));
+      expect(s.moves).toEqual([
+        { at: 1000, left: -200, top: -48, time: 5000, accel: 20 },
+        { at: 6000, left: -300, top: -48, time: 5000, accel: 20 },
+        { at: 13000, left: -310, top: -48, time: 0 },
+      ]);
+    });
+
+    it("sans accélération, aucun champ `accel` n'apparaît (format inchangé)", () => {
+      const s = scenesOf(obj("BGObject", "blue", ["storage", "left", "top"], [
+        rowF(0, null, 0, 0, "black", -48, -48),
+        rowF(20, null, 1, 0, "pano", -99, null),
+        rowF(120, null, 0, 0, null, -200, null),
+      ], 300));
+      expect(s.moves).toEqual([{ at: 1000, left: -200, top: -48, time: 5000 }]);
+    });
+
+    it("mouvement et fondu d'un calque : accélération portée par la clé", () => {
+      const layer = obj("LayerObject", "credits", PROPS, [
+        rowF(0, 0, 0, 0, "credits", 512, 380, 1100, 255),
+        rowF(100, null, 1, 20, null, null, null, null, null),
+        rowF(200, null, 0, 0, null, null, 1520, null, 0),
+      ], 220);
+      expect(scenesOf(bgOf(layer)).layers).toEqual([
+        { at: 0, id: "L1", storage: "credits", x: 512, y: 380, opacity: 1, z: 1100, time: 0 },
+        { at: 5000, id: "L1", storage: "credits", x: 512, y: 1520, opacity: 0, z: 1100, time: 5000, accel: 20 },
+      ]);
+    });
+
+    it("un intervalle coupé par une autre courbe dans un segment accéléré est approché par des morceaux linéaires", () => {
+      // x va de 0 à 400 en 100 unités avec accélération 3 ; la page (PageObject) fond de 30 à 70,
+      // ce qui coupe le segment de x : chaque intervalle devient 8 morceaux linéaires.
+      const page = obj("PageObject", "page", ["page"], [rowF(0, null, 0, 0, 0), rowF(30, null, 1, 0, 0), rowF(70, null, 0, 0, 1)], 120);
+      const layer = obj("LayerObject", "perso", PROPS, [
+        rowF(0, 0, 1, 3, "perso", 0, 288, 1000, 255),
+        rowF(100, null, 0, 0, null, 400, null, null, null),
+      ], 120);
+      const keys = scenesOf(page, bgOf(layer)).layers!;
+      expect(keys.every((k) => k.accel === undefined)).toBe(true);
+      const moves = keys.filter((k) => k.time > 0);
+      expect(moves.length).toBe(16); // 8 morceaux avant le fondu, 8 pendant (invisible ensuite)
+      // Les extrémités des morceaux suivent la courbe : x(t) = 400 * (t / 100)^k avec k = 1 + ln 4.
+      const k = 1 + Math.log(4);
+      const at30 = moves[7]!;
+      expect(at30.at + at30.time).toBe(1500);
+      expect(at30.x).toBeCloseTo(400 * Math.pow(0.3, k), 1);
+      expect(at30.opacity).toBe(1);
+      const at70 = moves[15]!;
+      expect(at70.at + at70.time).toBe(3500);
+      expect(at70.x).toBeCloseTo(400 * Math.pow(0.7, k), 1);
+      expect(at70.opacity).toBe(0);
+    });
+
+    it("zoom, rotation et ancrage : portés par les clés quand ils ne sont pas à leur valeur par défaut", () => {
+      const layer = obj("LayerObject", "logo", PROPS, [
+        rowF(0, 0, 1, 0, "logo", 512, 288, 1000, 255, 100, 100, 0, -100000, -100000, "none"),
+        rowF(40, null, 0, null, null, null, null, null, null, 200, 50, 90, 12.5, 34, "void"),
+      ], 60);
+      expect(scenesOf(bgOf(layer)).layers).toEqual([
+        { at: 0, id: "L1", storage: "logo", x: 512, y: 288, opacity: 1, z: 1000, time: 0 },
+        { at: 0, id: "L1", storage: "logo", x: 512, y: 288, opacity: 1, z: 1000, time: 2000, zoomx: 200, zoomy: 50, rotate: 90 },
+        { at: 2000, id: "L1", storage: "logo", x: 512, y: 288, opacity: 1, z: 1000, time: 0, zoomx: 200, zoomy: 50, rotate: 90, afx: 12.5, afy: 34 },
+      ]);
+    });
+
+    it("`effect` : none et void ne produisent rien, un autre effet est transmis", () => {
+      const layer = obj("LayerObject", "brume", PROPS, [
+        rowF(0, 0, 0, 0, "brume", 512, 288, 1000, 255, null, null, null, null, null, "none"),
+        rowF(20, null, null, null, null, null, null, null, null, null, null, null, null, null, "haze"),
+        rowF(40, null, null, null, null, null, null, null, null, null, null, null, null, null, "void"),
+      ], 60);
+      expect(scenesOf(bgOf(layer)).layers!.map((k) => [k.at, k.effect])).toEqual([[0, undefined], [1000, "haze"], [2000, undefined]]);
+    });
+
+    it("zoom et rotation du fond : posés sur le plan, puis suivis par les panoramiques", () => {
+      const bg = obj("BGObject", "blue", ["storage", "left", "top", "zoomx", "zoomy", "rotate"], [
+        rowF(0, null, 1, 3, "logo", -384, -1168, 800, 800, 0),
+        rowF(40, null, 0, 0, null, -381, -613, 60, 60, 0),
+      ], 60, "", { page: 0 });
+      const s = scenesOf(bg);
+      expect(s.bg).toEqual([{ at: 0, storage: "logo", left: -384, top: -1168, fade: 0, zoomx: 800, zoomy: 800, rotate: 0 }]);
+      expect(s.moves).toEqual([{ at: 0, left: -381, top: -613, time: 2000, accel: 3, zoomx: 60, zoomy: 60, rotate: 0 }]);
+    });
+
+    it("un fond sans zoom ni rotation n'en porte pas", () => {
+      const bg = obj("BGObject", "blue", ["storage", "left", "top", "zoomx", "zoomy", "rotate"], [
+        rowF(0, null, 1, 0, "img", -48, -48, 100, 100, 0),
+        rowF(40, null, 0, 0, null, -99, -48, 100, 100, 0),
+      ], 60, "", { page: 0 });
+      const s = scenesOf(bg);
+      expect(s.bg[0]).toEqual({ at: 0, storage: "img", left: -48, top: -48, fade: 0 });
+      expect(s.moves).toEqual([{ at: 0, left: -99, top: -48, time: 2000 }]);
+    });
+  });
+
   it("ignore les lignes sans image, 'void' et le marqueur ~", () => {
     const bg = obj("BGObject", "blue", ["storage"], [row(0, "black"), row(10, null), row(20, "~"), row(30, "void"), row(40, "img")], 50);
     const scenes = buildTimelineScenes(extractTla(ks(`4, ${scene([bg])}`))!.graph);

@@ -22,6 +22,25 @@ describe("parseTimelineData", () => {
     expect(parseTimelineData(bad)).toBeNull();
   });
 
+  it("accepte accélération, zoom, rotation, ancrage et effet (phase 2), tous optionnels", () => {
+    const layers = [{ at: 0, id: "L1", storage: "logo", x: 512, y: 288, opacity: 1, z: 1000, time: 500, accel: 3, zoomx: 60, zoomy: -80, rotate: 315, afx: 12.5, afy: 34, effect: "haze" }];
+    const bg = [{ at: 0, storage: "logo", left: -48, top: -48, zoomx: 800, zoomy: 800, rotate: 0 }];
+    const moves = [{ at: 0, left: -48, top: -149, time: 14500, accel: 20, zoomx: 100, zoomy: 100, rotate: 0 }];
+    const full = { version: 1, scripts: { "logo.ks": { "4": { ...scene, bg, moves, layers } } } };
+    expect(parseTimelineData(full)).toEqual(full);
+    for (const bad of [
+      { layers: [{ ...layers[0], accel: "x" }] },
+      { layers: [{ ...layers[0], rotate: Number.NaN }] },
+      { layers: [{ ...layers[0], afx: "1" }] },
+      { layers: [{ ...layers[0], effect: 1 }] },
+      { moves: [{ ...moves[0], accel: "x" }] },
+      { moves: [{ ...moves[0], zoomx: "100" }] },
+      { bg: [{ ...bg[0], rotate: "0" }] },
+    ]) {
+      expect(parseTimelineData({ version: 1, scripts: { "logo.ks": { "4": { ...scene, ...bad } } } })).toBeNull();
+    }
+  });
+
   it("refuse une forme inattendue", () => {
     expect(parseTimelineData(null)).toBeNull();
     expect(parseTimelineData({ version: 2, scripts: {} })).toBeNull();
