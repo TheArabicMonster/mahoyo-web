@@ -118,6 +118,13 @@ export type TimelineLayerState = {
   z: number;
   /** Pluie animée par-dessus l'image. */
   rain?: boolean;
+  /** Zoom en % (100 par défaut ; négatif = miroir), rotation en degrés (0 par défaut). */
+  zoomx?: number;
+  zoomy?: number;
+  rotate?: number;
+  /** Point d'ancrage du zoom et de la rotation, en px dans l'image ; absent = centre. */
+  afx?: number;
+  afy?: number;
 };
 
 /** État de la textbox et de sa bordure. */
@@ -170,15 +177,18 @@ export type RenderEvent =
   /** Passe à la scène cible. */
   | { kind: "scene"; scene: SceneState; transition: TransitionSpec }
   /**
-   * Déplace le fond affiché jusqu'à (left, top) en `time` ms, en ligne droite
-   * (panoramique d'une timeline). Repère 1024×576, comme `SceneState.bgLeft`.
+   * Déplace le fond affiché jusqu'à (left, top) en `time` ms, en ligne droite ou accélérée
+   * (panoramique d'une timeline). Repère 1024×576, comme `SceneState.bgLeft`. Avec `zoomx`,
+   * `zoomy` ou `rotate` (zoom en %, rotation en degrés), le fond est aussi zoomé et tourné
+   * autour du centre de son image. Le renderer remet le zoom à 100 et la rotation à 0 à
+   * chaque nouveau fond ; un événement sans ces champs les laisse inchangés.
    */
-  | { kind: "bgMove"; left: number; top: number; time: Ms }
+  | { kind: "bgMove"; left: number; top: number; time: Ms; accel?: number; zoomx?: number; zoomy?: number; rotate?: number }
   /**
-   * Pose un calque de timeline (`time` = 0) ou le fait glisser en ligne droite
-   * (position et opacité) jusqu'à cet état en `time` ms.
+   * Pose un calque de timeline (`time` = 0) ou le fait glisser jusqu'à cet état en `time` ms
+   * (position, opacité, zoom et rotation), en ligne droite ou avec l'accélération `accel`.
    */
-  | { kind: "timelineLayer"; layer: TimelineLayerState; time: Ms }
+  | { kind: "timelineLayer"; layer: TimelineLayerState; time: Ms; accel?: number }
   /** Retire tous les calques de timeline (fin de la séquence). */
   | { kind: "timelineLayerClear" }
   /** Lance une animation sur un sprite. */

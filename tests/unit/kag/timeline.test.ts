@@ -57,6 +57,32 @@ const DATA: TimelineData = {
         ],
         audio: [],
       },
+      // Phase 2 de #125 : accélération, zoom, rotation, ancrage, effet.
+      "7": {
+        name: "transformations",
+        duration: 9000,
+        bg: [
+          { at: 0, storage: "logo", left: -384, top: -1168, fade: 0, zoomx: 800, zoomy: 800, rotate: 0 },
+          { at: 4000, storage: "plain", left: -48, top: -48, fade: 0 },
+        ],
+        moves: [{ at: 1000, left: -381, top: -613, time: 2000, accel: 3, zoomx: 60, zoomy: 60, rotate: 315 }],
+        layers: [
+          { at: 0, id: "L1", storage: "carton", x: 512, y: 288, opacity: 1, z: 1000, time: 0 },
+          { at: 1000, id: "L1", storage: "carton", x: 512, y: 600, opacity: 0, z: 1000, time: 3000, accel: 20, zoomx: 150, zoomy: 50, rotate: 90, afx: 12.5, afy: 34, effect: "haze" },
+        ],
+        audio: [],
+      },
+      // Même image et même position deux fois de suite, mais pas le même zoom.
+      "8": {
+        name: "zoom seul",
+        duration: 3000,
+        bg: [
+          { at: 0, storage: "logo", left: -48, top: -48, fade: 0, zoomx: 100, zoomy: 100, rotate: 0 },
+          { at: 1000, storage: "logo", left: -48, top: -48, fade: 0, zoomx: 200, zoomy: 200, rotate: 0 },
+          { at: 2000, storage: "logo", left: -48, top: -48, fade: 0, zoomx: 200, zoomy: 200, rotate: 0 },
+        ],
+        audio: [],
+      },
     },
   },
 };
@@ -227,6 +253,47 @@ describe("Runtime — @playtimeline", () => {
       expect(runtime.getSaveData().state.fore.background).toBe("black");
       const stop = timelineStop(run("@playtimeline scene=5\n@pg\n").steps);
       expect(stop.schedule.some((e) => e.events.some((ev) => ev.kind === "timelineLayerClear"))).toBe(false);
+    });
+  });
+
+  describe("accélération, zoom, rotation, ancrage et effet (#125, phase 2)", () => {
+    const events = () => timelineStop(run("@playtimeline scene=7\n@pg\n").steps).schedule.map((e) => ({ at: e.at, events: e.events }));
+
+    it("bgMove porte l'accélération, le zoom et la rotation des données", () => {
+      const move = events().flatMap((e) => e.events).find((ev) => ev.kind === "bgMove" && ev.time > 0);
+      expect(move).toEqual({ kind: "bgMove", left: -381, top: -613, time: 2000, accel: 3, zoomx: 60, zoomy: 60, rotate: 315 });
+    });
+
+    it("quand le fond a une transformation, chaque plan la (re)pose : valeurs par défaut pour un plan sans zoom", () => {
+      const poses = events().flatMap((e) => e.events.filter((ev) => ev.kind === "bgMove" && ev.time === 0).map((ev) => ({ at: e.at, ev })));
+      expect(poses).toEqual([
+        { at: 0, ev: { kind: "bgMove", left: -384, top: -1168, time: 0, zoomx: 800, zoomy: 800, rotate: 0 } },
+        { at: 4000, ev: { kind: "bgMove", left: -48, top: -48, time: 0, zoomx: 100, zoomy: 100, rotate: 0 } },
+      ]);
+    });
+
+    it("un plan de même image et même position mais de zoom différent n'est pas ignoré ; un doublon exact l'est", () => {
+      const stop = timelineStop(run("@playtimeline scene=8\n@pg\n").steps);
+      const poses = stop.schedule.flatMap((e) => e.events.filter((ev) => ev.kind === "bgMove").map((ev) => ({ at: e.at, zoomx: (ev as { zoomx?: number }).zoomx })));
+      expect(poses).toEqual([{ at: 0, zoomx: 100 }, { at: 1000, zoomx: 200 }]);
+    });
+
+    it("sans transformation dans les données, aucun bgMove supplémentaire n'est émis", () => {
+      const stop = timelineStop(run("@playtimeline scene=5\n@pg\n").steps);
+      expect(stop.schedule.flatMap((e) => e.events).filter((ev) => ev.kind === "bgMove" && ev.time === 0 && ev.zoomx !== undefined)).toEqual([]);
+    });
+
+    it("le calque reçoit zoom, rotation, ancrage et accélération ; l'effet non pris en charge est signalé une fois", () => {
+      const { steps, warnings } = run("@playtimeline scene=7\n@pg\n");
+      const layers = timelineStop(steps).schedule.flatMap((e) => e.events).filter((ev): ev is Extract<RenderEvent, { kind: "timelineLayer" }> => ev.kind === "timelineLayer");
+      expect(layers[0]).toEqual({ kind: "timelineLayer", layer: { id: "L1", storage: "carton", x: 512, y: 288, opacity: 1, z: 1000 }, time: 0 });
+      expect(layers[1]).toEqual({
+        kind: "timelineLayer",
+        layer: { id: "L1", storage: "carton", x: 512, y: 600, opacity: 0, z: 1000, zoomx: 150, zoomy: 50, rotate: 90, afx: 12.5, afy: 34 },
+        time: 3000,
+        accel: 20,
+      });
+      expect(warnings.filter((w) => w.includes("effet de calque"))).toEqual(["effet de calque non pris en charge : haze"]);
     });
   });
 

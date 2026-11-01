@@ -278,6 +278,42 @@ describe("DomStageRenderer", () => {
       expect(bgEl().style.backgroundPosition).toBe("-167px -48px");
     });
 
+    it("panoramique accéléré : la transition porte l'accélération", async () => {
+      await showPano();
+      await renderer.apply([{ kind: "bgMove", left: -48, top: -149, time: 14500, accel: 20 }], { instant: false, signal: sig() });
+      expect(bgEl().style.transition).toMatch(/^background-position 14500ms (linear\(0|ease-in)/);
+    });
+
+    it("un fondu en plein panoramique accéléré part de la position eased, pas de la linéaire", async () => {
+      const now = vi.spyOn(performance, "now").mockReturnValue(0);
+      await showPano();
+      await renderer.apply([{ kind: "bgMove", left: 1, top: -48, time: 1000, accel: 3 }], { instant: false, signal: sig() });
+      now.mockReturnValue(500);
+      await renderer.apply(
+        [{ kind: "scene", scene: { bg: "next", bgLeft: 0, bgTop: 0, sprites: [], effect: null }, transition: { method: "crossfade", time: 800 } }],
+        { instant: false, signal: sig() },
+      );
+      const overlay = root.querySelector(".mh-stage-bg-overlay") as HTMLElement;
+      // À mi-parcours, une accélération positive est en retard sur la droite : -99 + 100 * 0.5^k avec k = 1 + ln 4.
+      const k = 1 + Math.log(4);
+      const expected = -99 + 100 * Math.pow(0.5, k);
+      expect(parseFloat(overlay.style.backgroundPosition)).toBeCloseTo(expected, 1);
+      expect(parseFloat(overlay.style.backgroundPosition)).toBeLessThan(-49);
+      renderer.hurry();
+    });
+
+    it("zoom et rotation du fond : transform autour du centre ; un nouveau fond les remet à zéro", async () => {
+      await showPano();
+      await renderer.apply([{ kind: "bgMove", left: -381, top: -613, time: 0, zoomx: 60, zoomy: 60, rotate: 315 }], { instant: false, signal: sig() });
+      expect(bgEl().style.transform).toBe("rotate(315deg) scale(0.6, 0.6)");
+      expect(bgEl().style.transformOrigin).toBe("512px 288px");
+      await renderer.apply([{ kind: "bgMove", left: -48, top: -48, time: 2000, accel: 3, zoomx: 100, zoomy: 100, rotate: 0 }], { instant: false, signal: sig() });
+      expect(bgEl().style.transition).toMatch(/transform 2000ms (linear\(0|ease-in)/);
+      expect(bgEl().style.transform).toBe("rotate(0deg) scale(1, 1)");
+      await showPano();
+      expect(bgEl().style.transform).toBe("");
+    });
+
     it("un fondu commencé en plein panoramique part de la position courante de l'ancien fond", async () => {
       const now = vi.spyOn(performance, "now").mockReturnValue(1000);
       await showPano();
@@ -318,12 +354,35 @@ describe("DomStageRenderer", () => {
     it("fondu : transition linéaire de l'opacité et de la position ; instantanée en cas de saut", async () => {
       await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
       await renderer.apply([{ kind: "timelineLayer", layer: layer({ opacity: 1, x: 300 }), time: 1500 }], { instant: false, signal: sig() });
-      expect(layerEl()!.style.transition).toBe("left 1500ms linear, top 1500ms linear, opacity 1500ms linear");
+      expect(layerEl()!.style.transition).toBe("left 1500ms linear, top 1500ms linear, opacity 1500ms linear, transform 1500ms linear");
       expect(layerEl()!.style.opacity).toBe("1");
       expect(layerEl()!.style.left).toBe("300px");
       await renderer.apply([{ kind: "timelineLayer", layer: layer({ opacity: 0 }), time: 1000 }], { instant: true, signal: sig() });
       expect(layerEl()!.style.transition).toBe("none");
       expect(layerEl()!.style.opacity).toBe("0");
+    });
+
+    it("accélération : le même rythme pour la position, l'opacité et le zoom", async () => {
+      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
+      await renderer.apply([{ kind: "timelineLayer", layer: layer({ opacity: 1, y: 600 }), time: 14500, accel: 20 }], { instant: false, signal: sig() });
+      const t = layerEl()!.style.transition;
+      // `linear(…)` échantillonné (ou ease-in sans support) : jamais le `linear` simple.
+      for (const prop of ["left", "top", "opacity", "transform"]) expect(t).toMatch(new RegExp(`${prop} 14500ms (linear\\(0|ease-in)`));
+      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 2000, accel: -3 }], { instant: false, signal: sig() });
+      expect(layerEl()!.style.transition).toMatch(/top 2000ms (linear\(0|ease-out)/);
+    });
+
+    it("zoom, rotation et point d'ancrage : transform CSS autour de l'ancrage, centre par défaut", async () => {
+      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
+      expect(layerEl()!.style.transform).toBe("translate(-50%, -50%) rotate(0deg) scale(1, 1)");
+      expect(layerEl()!.style.transformOrigin).toBe("50% 50%");
+      await renderer.apply([{ kind: "timelineLayer", layer: layer({ zoomx: 60, zoomy: -80, rotate: 315, afx: 121.5, afy: 204 }), time: 0 }], { instant: false, signal: sig() });
+      expect(layerEl()!.style.transform).toBe("translate(-50%, -50%) rotate(315deg) scale(0.6, -0.8)");
+      expect(layerEl()!.style.transformOrigin).toBe("121.5px 204px");
+      // Une clé sans ces champs remet les valeurs par défaut.
+      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
+      expect(layerEl()!.style.transform).toBe("translate(-50%, -50%) rotate(0deg) scale(1, 1)");
+      expect(layerEl()!.style.transformOrigin).toBe("50% 50%");
     });
 
     it("pluie : classe dédiée tant que le calque la demande", async () => {
