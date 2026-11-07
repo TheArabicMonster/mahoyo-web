@@ -85,6 +85,24 @@ fragments coupés (voir B17 dans `docs/BUGS_PROLOGUE.md`).
 - Non repris : `blur`, `xblur`/`yblur`, `brightness`, `contrast`, `type` et `effect` sur ces commandes,
   et le point d'ancrage `afx`/`afy` des `@bgact` (voir ci-dessous).
 
+### Ancrage des sprites zoomés et bord inférieur des sprites (#171)
+
+Un sprite (`@fg`) est posé par le **centre** de son image (`center`/`vcenter`) et zoomé autour de ce
+centre (`translate(-50%, -50%) rotate scale`). Contrôle sur le corpus japonais (`@fg` dont l'image fait au
+moins 400 px de haut, 7 774 commandes avec zoom vertical ≠ 100 %) : part dont le **bas** atteint le bas de
+l'écran (y ≥ 576, repère 1024 × 576) selon le pivot : centre 5 941 (76,4 %), bas-centre 6 095 (78,4 %),
+haut-centre et coin 5 210 (67,0 %) ; part qui couvre à la fois le haut et le bas : centre 3 969, haut-centre
+3 533, bas-centre 2 600. Les 7 479 sprites non zoomés atteignent le bas dans 79,4 % des cas : le pivot au
+centre garde le même taux que sans zoom, les autres le dégradent ou font sortir le haut. Pivot au centre
+conservé. **Déduit du corpus, pas mesuré sur le jeu.**
+
+Un sprite qui s'arrête avant le bas de l'écran n'est pas un défaut de zoom. Exemple vérifié dans Chromium :
+le buste d'un professeur (image de 732 × 672) posé à `center=601 vcenter=205`, **sans zoom**, occupe
+(294, −164, 915 × 840) à l'écran, donc finit à y = 541 dans le repère 1024 × 576 (676 sur 720). Sur le corpus,
+les bas de sprites qui n'atteignent pas 576 se concentrent entre 500 et 560 (1 379 sprites non zoomés finissent
+avant 548) : le jeu d'origine les pose pour que leur bord inférieur soit **caché par la fenêtre de texte**. Dans le
+port, la boîte (fond noir à 70 %, bas à y = 547) laisse voir ce bord ; c'est un réglage de la boîte, pas du zoom.
+
 ### `@bgact` (#164)
 
 `@bgact` anime un fond (`props=-storage,left,top,zoomx,zoomy,rotate…` : panoramique, zoom, rotation ; 720
