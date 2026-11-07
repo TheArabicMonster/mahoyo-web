@@ -36,6 +36,10 @@ Règles observées dans le prologue :
 - **Trans implicite** : une commande avec `time>0` et `rule=` mais sans
   `page=back` (ex. `@bg time=1200 rule=crossfade storage=white`) équivaut à
   backlay → modification du back → trans. `nowait=1` → non bloquant.
+  S'applique à `@bg`, `@partbg`, `@fg` et `@chgfg` (#166) : `@fg rule=crossfade time=300 …`
+  montre le personnage tout de suite (fondu de 300 ms, bloquant sauf `nowait=1`). Sans `time`
+  ou avec `page=back`, le calque reste sur back jusqu'au `@trans` ou au `@bg` suivant (le
+  corpus empile ainsi plusieurs `@fg` avant un `@bg … time=…`).
 
 ## 3. Calques (layers)
 
