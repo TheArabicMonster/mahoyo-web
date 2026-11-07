@@ -19,6 +19,7 @@ import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-c
 import { partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
+import { fitTextBox, TEXT_FIT_DEFAULTS } from "./text-fit.js";
 import { cssEasing, easeProgress } from "@/core/easing.js";
 
 /**
@@ -27,6 +28,13 @@ import { cssEasing, easeProgress } from "@/core/easing.js";
  * à 1024×576 (80 %), collé en haut à gauche, avec des bandes noires à droite et en bas.
  */
 const STAGE_SCALE = 1.25;
+
+/** Taille nominale du texte en rem (avant `fontScale`), hauteur de ligne et marge verticale (CSS ci-dessous). */
+const TEXT_REM = 1.5;
+const TEXT_LINE_HEIGHT = 1.6;
+const TEXT_PADDING_Y = 20;
+/** Hauteur du stage en repère logique (1024×576), repli quand le conteneur n'a pas de mise en page. */
+const STAGE_HEIGHT = 576;
 
 /**
  * Motif de pluie (traitement « rain1 » d'un calque de timeline) : traits obliques
@@ -362,7 +370,8 @@ export class DomStageRenderer implements StageRenderer {
     this.settings = { ...settings };
     this.applyTextbox();
     if (this.textEl) {
-      this.textEl.style.fontSize = `${1.5 * settings.fontScale}rem`;
+      this.textEl.style.fontSize = `${TEXT_REM * settings.fontScale}rem`;
+      this.fitText(this.buildTextUnits(), this.typedUnits);
     }
   }
 
@@ -508,7 +517,7 @@ export class DomStageRenderer implements StageRenderer {
         bottom: 5%;
         min-height: 140px;
         z-index: 30;
-        transition: opacity 0.3s ease;
+        transition: opacity 0.3s ease, bottom 0.2s ease;
         pointer-events: auto;
       }
       .mh-stage-textbox-frame {
@@ -520,10 +529,10 @@ export class DomStageRenderer implements StageRenderer {
       }
       .mh-stage-text {
         position: relative;
-        padding: 20px 24px;
+        padding: ${TEXT_PADDING_Y}px 24px;
         color: #fff;
-        font-size: 1.5rem;
-        line-height: 1.6;
+        font-size: ${TEXT_REM}rem;
+        line-height: ${TEXT_LINE_HEIGHT};
         white-space: pre-wrap;
         min-height: 100px;
       }
@@ -1299,11 +1308,43 @@ export class DomStageRenderer implements StageRenderer {
     this.textEl.appendChild(frag);
   }
 
+  /**
+   * Ajuste taille et position de la boîte à la page entière (voir `text-fit.ts`), puis
+   * affiche les `keep` premières unités. Tout se fait avant le prochain rendu : pas de
+   * clignotement. Sans mise en page (jsdom), la hauteur mesurée est nulle et rien ne change.
+   */
+  private fitText(units: TextUnit[], keep: number): void {
+    const textEl = this.textEl;
+    const boxEl = this.textboxEl;
+    if (!textEl || !boxEl) return;
+    this.renderTextUpTo(units, units.length);
+    const nominalRem = TEXT_REM * this.settings.fontScale;
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const stageHeight = this.container?.clientHeight || STAGE_HEIGHT;
+    const fit = fitTextBox({
+      ...TEXT_FIT_DEFAULTS,
+      stageHeight,
+      nominalBottom: stageHeight * 0.05,
+      paddingY: TEXT_PADDING_Y,
+      lineHeight: nominalRem * rootPx * TEXT_LINE_HEIGHT,
+      measureHeight: (scale) => {
+        textEl.style.fontSize = `${nominalRem * scale}rem`;
+        return textEl.offsetHeight;
+      },
+    });
+    textEl.style.fontSize = `${nominalRem * fit.scale}rem`;
+    textEl.style.maxHeight = fit.raised ? `${fit.maxHeight}px` : "";
+    textEl.style.overflowY = fit.overflow ? "auto" : "";
+    boxEl.style.bottom = fit.raised ? `${fit.bottom}px` : "";
+    boxEl.dataset.textFit = fit.overflow ? "overflow" : fit.scale < 1 ? "shrunk" : fit.raised ? "raised" : "nominal";
+    if (keep < units.length) this.renderTextUpTo(units, keep);
+  }
+
   private renderText(instant: boolean): void {
     if (!this.textEl) return;
     const units = this.buildTextUnits();
     if (instant) {
-      this.renderTextUpTo(units, units.length);
+      this.fitText(units, units.length);
       this.typedUnits = units.length;
       return;
     }
@@ -1316,6 +1357,8 @@ export class DomStageRenderer implements StageRenderer {
       const units = this.buildTextUnits();
       // Anti re-type : on continue depuis typedUnits (déjà révélées).
       const startUnit = Math.min(this.typedUnits, units.length);
+      // Taille et position de la page entière avant de la révéler : pas de saut en cours de frappe.
+      this.fitText(units, startUnit);
 
       if (opts.instant || this.settings.textSpeed <= 0 || this.typewriterHurry) {
         this.renderTextUpTo(units, units.length);

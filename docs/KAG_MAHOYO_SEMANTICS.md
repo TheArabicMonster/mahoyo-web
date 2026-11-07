@@ -216,6 +216,28 @@ Sémantique implémentée (la plus simple compatible avec ces indices) :
   comptent pas comme du contenu visible : une pause `[l]` qui ne suit qu'eux reste « morte ».
 - Pas d'effet sur le déroulement du script, qui ne s'arrête sur aucune de ces commandes.
 
+### Texte long et bande basse (#161)
+
+La zone de texte du port est un choix du player (le jeu d'origine règle la sienne par les
+cadres `txtwindow01`/`txtwindow02` et le moteur, non reproduits) : ancrée à 5 % du bas de la
+scène (repère 1024×576), marges de 10 % à gauche et à droite, elle grandit vers le haut avec la
+page. Les scripts posent des calques décoratifs dans la bande basse (carte du titre de chapitre
+`ch01タイトル`, pixels opaques de y 445 à 537 sur 576, soit 77 % à 93 % de la hauteur) : leur
+position vient du script et n'est pas modifiée.
+
+Règle retenue (`src/renderer/text-fit.ts`, fonction pure `fitTextBox`, appliquée par le renderer
+sur la **page entière** avant la frappe, donc sans saut en cours de texte) :
+
+- Une page de 5 lignes ou moins garde la position et la taille nominales (japonais comme français).
+- Au-delà de 5 lignes, la boîte remonte : le bas des lignes de texte reste au-dessus de 76 % de la
+  hauteur de scène (la boîte glisse en 0,2 s).
+- Si la page ne tient pas dans la place restante (hauteur de scène moins le bas remonté moins 12
+  de marge haute), la police diminue par pas de 5 % jusqu'à 75 % de la taille nominale
+  (`1,5 rem` multiplié par `fontScale`, qui reste respecté). En dessous, la zone défile
+  (`overflow-y: auto`, `data-text-fit="overflow"` sur `#textbox`).
+- Limite : une page de 5 lignes ou moins qui contient un texte large dans la bande basse peut
+  encore recouvrir une carte posée dans cette bande (la règle ne connaît pas les calques).
+
 ## 7. Attentes (`@wt` / `@wact` / `@wm` / `nowait`)
 
 - `@trans nowait=0` (ou absent) : **bloquant** → le runtime émet

@@ -181,6 +181,83 @@ describe("DomStageRenderer", () => {
     expect(text.textContent).toBe("Long text here");
   });
 
+  describe("ajustement du texte long (#161)", () => {
+    // jsdom n'a pas de mise en page : on simule la hauteur de la zone de texte (24 px = 1,5 rem,
+    // lignes de 1,6 fois la taille, marges de 20 px) en fonction de la police et du nombre de lignes.
+    function mockTextHeight(linesOf: (el: HTMLElement) => number): () => void {
+      const spy = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+        if (!this.classList.contains("mh-stage-text")) return 0;
+        const px = parseFloat(this.style.fontSize) * 16;
+        return 40 + linesOf(this) * px * 1.6;
+      });
+      return () => spy.mockRestore();
+    }
+
+    async function show(text: string, fontScale = 1): Promise<{ box: HTMLElement; text: HTMLElement }> {
+      renderer.setSettings({ textSpeed: 0, autoDelay: 2000, fontScale, textboxOpacity: 1 });
+      await renderer.apply([{ kind: "text", segments: [{ text }] }], { instant: true, signal: new AbortController().signal });
+      return { box: root.querySelector("#textbox") as HTMLElement, text: root.querySelector("#text") as HTMLElement };
+    }
+
+    it("laisse un texte court à sa place nominale", async () => {
+      const restore = mockTextHeight(() => 3);
+      try {
+        const { box, text } = await show("court");
+        expect(box.style.bottom).toBe("");
+        expect(box.dataset.textFit).toBe("nominal");
+        expect(text.style.fontSize).toBe("1.5rem");
+        expect(text.style.maxHeight).toBe("");
+      } finally {
+        restore();
+      }
+    });
+
+    it("remonte une page de 7 lignes au-dessus de la bande basse, police inchangée", async () => {
+      const restore = mockTextHeight(() => 7);
+      try {
+        const { box, text } = await show("long");
+        expect(box.dataset.textFit).toBe("raised");
+        // Bas de la boîte à 576 - bottom ; les lignes finissent 20 px plus haut, sous 76 % de 576 (437,76).
+        const bottom = parseFloat(box.style.bottom);
+        expect(576 - bottom - 20).toBeLessThanOrEqual(576 * 0.76 + 0.01);
+        expect(text.style.fontSize).toBe("1.5rem");
+      } finally {
+        restore();
+      }
+    });
+
+    it("réduit la police d'une page très longue, sans passer sous 75 %, et respecte fontScale", async () => {
+      const restore = mockTextHeight(() => 11);
+      try {
+        const { box, text } = await show("très long", 1.2);
+        expect(box.dataset.textFit).toBe("shrunk");
+        const rem = parseFloat(text.style.fontSize);
+        expect(rem).toBeLessThan(1.5 * 1.2);
+        expect(rem).toBeGreaterThanOrEqual(1.5 * 1.2 * 0.75 - 1e-9);
+      } finally {
+        restore();
+      }
+    });
+
+    it("rend la place nominale à la page suivante", async () => {
+      let lines = 8;
+      const restore = mockTextHeight(() => lines);
+      try {
+        const { box } = await show("page longue");
+        expect(box.dataset.textFit).toBe("raised");
+        lines = 2;
+        await renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text: "court" }] }], {
+          instant: true,
+          signal: new AbortController().signal,
+        });
+        expect(box.style.bottom).toBe("");
+        expect(box.dataset.textFit).toBe("nominal");
+      } finally {
+        restore();
+      }
+    });
+  });
+
   it("réconcilie les sprites par id (pas de recréation DOM)", async () => {
     const scene = (sprites: { id: string; storage: string; x: number; y: number; z: number; opacity: number }[]) => ({
       bg: null,
