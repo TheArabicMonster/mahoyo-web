@@ -51,6 +51,48 @@ Règles observées dans le prologue :
   de gris). À mapper vers `filter` CSS.
 - `contrast=`, `rotate=`, `zoomx=`/`zoomy=` : transformations du calque.
 
+### Zoom et rotation de `@bg`, `@fg`, `@chgfg` (#164)
+
+Ces trois commandes portent aussi `zoom=` (en %, les deux axes), `zoomx=`/`zoomy=` (un axe, négatif
+= miroir) et `rotate=` (degrés, sens horaire). Elles sont partout dans le corpus japonais :
+2 389 `@bg` avec `zoom`, 1 095 avec `rotate`, 6 215 `@fg` avec `zoom`, 8 710 avec `rotate`, 546
+`@chgfg` avec `zoom` (comptes des valeurs différentes de 100 % et de 0°). Les ignorer affichait les
+sprites et les fonds à leur taille d'origine, à une position pensée pour l'image zoomée : fond noir,
+fragments coupés (voir B17 dans `docs/BUGS_PROLOGUE.md`).
+
+- `zoomx` et `zoomy` priment sur `zoom` ; un axe non précisé vaut 100 %. Une valeur illisible
+  (expression `&…`) est ignorée.
+- **Pivot** : le centre de l'image. Pour un sprite, `center`/`vcenter` est ce centre. Pour un fond, l'image
+  est d'abord placée en (`left`, `top`) à sa taille d'origine (centrée sans position), puis zoomée et
+  tournée autour de **son propre centre**. Contrôle sur les 2 812 `@bg` avec zoom ou rotation du corpus
+  japonais dont on connaît la taille d'image : ce modèle couvre tout l'écran 1024 × 576 dans 2 409 cas, contre
+  1 341 si le pivot était le coin haut gauche (les 403 autres sont des fonds tournés, que ce contrôle simple
+  ignore, ou des images plus petites que l'écran). **Déduit, pas mesuré** sur le jeu d'origine.
+- Un `@bg` **remplace** le zoom du fond précédent : sans `zoom=`, le fond est à 100 % et sans rotation.
+  Un `@fg` pose un nouveau calque (il ne garde rien de l'ancien du même nom) ; un `@chgfg` garde le zoom et
+  la rotation du calque, sauf si la commande en précise (même `zoom=100`, qui remet à zéro).
+- Un calque neutre (100 %, 0°) n'écrit rien dans l'état (`SpriteState.zoomx`, `SceneState.bgZoomX`… absents) :
+  sauvegardes et snapshots d'avant restent identiques. L'état est en % et en degrés ; seuls les keyframes
+  d'`@fgact` sont en proportion (1 = 100 %), et le zoom de leur **dernière** keyframe devient celui de l'état.
+- Rendu : un sprite reçoit `transform: translate(-50%, -50%) rotate(r) scale(zx, zy)`. Un fond zoomé ou
+  tourné n'est plus un `background-image` (rogné aux 1024 × 576 de sa boîte : un zoom montre ce qui dépasse)
+  mais un `<img>` enfant à sa taille d'origine, posé en (`left`, `top`) avec `transform-origin: 50% 50%` ;
+  il suit le fondu enchaîné comme un fond ordinaire.
+- Non repris : `blur`, `xblur`/`yblur`, `brightness`, `contrast`, `type` et `effect` sur ces commandes,
+  et le point d'ancrage `afx`/`afy` des `@bgact` (voir ci-dessous).
+
+### `@bgact` (#164)
+
+`@bgact` anime un fond (`props=-storage,left,top,zoomx,zoomy,rotate…` : panoramique, zoom, rotation ; 720
+occurrences dans 107 scripts, surtout `page=back` suivies d'un `@trans`). Le moteur le lisait comme un
+`@bg` sans position : il recentrait le fond **et vidait les calques de la page**. Maintenant :
+
+- `@bgact` ne touche ni au fond, ni aux calques ;
+- seule la **première keyframe** est posée (position, zoom, rotation, si elle les précise) : c'est
+  l'état de départ de l'animation. Les keyframes suivantes (panoramique ou zoom lent de plusieurs
+  secondes) **ne sont pas rejouées** : le fond reste à l'image de départ. Limite connue ;
+- `page=fore` émet une scène sans transition, `page=back` ne montre rien avant le `@trans`.
+
 ## 4. `@partbg` — panorama recadré
 
 `@partbg storage=im0911根源光 srcleft=-188 srctop=38 index=2000 width=1024
