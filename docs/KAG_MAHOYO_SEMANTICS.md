@@ -262,27 +262,30 @@ Sémantique implémentée (la plus simple compatible avec ces indices) :
   comptent pas comme du contenu visible : une pause `[l]` qui ne suit qu'eux reste « morte ».
 - Pas d'effet sur le déroulement du script, qui ne s'arrête sur aucune de ces commandes.
 
-### Texte long et bande basse (#161)
+### Boîte de texte fixe et pages longues (#161, #163)
 
 La zone de texte du port est un choix du player (le jeu d'origine règle la sienne par les
 cadres `txtwindow01`/`txtwindow02` et le moteur, non reproduits) : ancrée à 5 % du bas de la
-scène (repère 1024×576), marges de 10 % à gauche et à droite, elle grandit vers le haut avec la
-page. Les scripts posent des calques décoratifs dans la bande basse (carte du titre de chapitre
-`ch01タイトル`, pixels opaques de y 445 à 537 sur 576, soit 77 % à 93 % de la hauteur) : leur
+scène (repère 1024x576), marges de 10 % à gauche et à droite. Les scripts posent des calques
+décoratifs dans la bande basse (carte du titre de chapitre `ch01タイトル`, sprite plein écran
+dont les pixels opaques vont de y 445 à 537 sur 576, soit 77 % à 93 % de la hauteur) : leur
 position vient du script et n'est pas modifiée.
 
 Règle retenue (`src/renderer/text-fit.ts`, fonction pure `fitTextBox`, appliquée par le renderer
-sur la **page entière** avant la frappe, donc sans saut en cours de texte) :
+sur la **page entière** avant la frappe, donc sans changement de taille en cours de texte) :
 
-- Une page de 5 lignes ou moins garde la position et la taille nominales (japonais comme français).
-- Au-delà de 5 lignes, la boîte remonte : le bas des lignes de texte reste au-dessus de 76 % de la
-  hauteur de scène (la boîte glisse en 0,2 s).
-- Si la page ne tient pas dans la place restante (hauteur de scène moins le bas remonté moins 12
-  de marge haute), la police diminue par pas de 5 % jusqu'à 75 % de la taille nominale
-  (`1,5 rem` multiplié par `fontScale`, qui reste respecté). En dessous, la zone défile
-  (`overflow-y: auto`, `data-text-fit="overflow"` sur `#textbox`).
-- Limite : une page de 5 lignes ou moins qui contient un texte large dans la bande basse peut
-  encore recouvrir une carte posée dans cette bande (la règle ne connaît pas les calques).
+- **La boîte ne bouge jamais** : même position (bas à 5 %), même hauteur (`boxHeightRatio` = 47 %
+  de la hauteur de scène, soit 270 sur 576, la place de 6 lignes à la taille nominale), à toutes
+  les pages. Le texte est aligné en haut de la boîte. Depuis #163 plus aucune remontée ni
+  glissement sur `bottom` : la remontée de #161 faisait sauter la boîte d'une page à l'autre.
+- Une page qui tient dans la boîte garde la taille nominale (`1,5 rem` multiplié par `fontScale`).
+- Une page plus longue réduit la police par pas de 5 %, jusqu'à 70 % de la taille nominale
+  (`fontScale` reste respecté : le plancher est relatif à la taille réglée). La plus grande
+  échelle qui tient est retenue (`data-text-fit="shrunk"` sur `#textbox`).
+- En dessous du plancher, la zone de texte défile (`overflow-y: auto`, `data-text-fit="overflow"`).
+- Limite : la règle ne connaît pas les calques. Un texte qui descend dans la bande basse (à
+  partir de 6 lignes, ou de 5 avec une police agrandie) peut recouvrir la carte du titre ;
+  voir B16 dans `BUGS_PROLOGUE.md` pour la mesure.
 
 ## 7. Attentes (`@wt` / `@wact` / `@wm` / `nowait`)
 
