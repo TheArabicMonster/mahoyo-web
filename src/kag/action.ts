@@ -145,6 +145,8 @@ function coerceProp(
       const n = parseFloat(raw);
       return Number.isNaN(n) ? null : { value: n, field: "rotate" };
     }
+    case "left":
+    case "top":
     case "srcleft":
     case "srctop": {
       const n = parseFloat(raw);

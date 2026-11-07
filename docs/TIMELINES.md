@@ -258,5 +258,12 @@ Fait en phase 2 : accélération des interpolations, zoom, rotation, point d'anc
 
 `tests/integration/timelines.test.ts` vérifie que l'ouverture ne cite que des assets présents
 dans le manifest ; `tests/integration/story-play.test.ts` joue l'histoire avec les timelines
-(l'ouverture produit un arrêt `timeline`). Ils demandent les assets locaux
-(`MAHOYO_ASSETS_DIR`) et `timelines.json`, sinon ils sont ignorés.
+(l'ouverture produit un arrêt `timeline`) ; `tests/integration/after-opening.test.ts` rejoue toute la
+séquence (fin naturelle ou saut, même état final) puis les premières pages de `1-2.ks` et vérifie :
+0 calque de timeline restant, un fond non noir, et que les fonds et sprites zoomés de `1-2.ks` portent
+leur zoom (#164). Ils demandent les assets locaux (`MAHOYO_ASSETS_DIR`) et `timelines.json`, sinon ils
+sont ignorés.
+
+Le défaut rapporté « fond noir et fragments mal placés juste après l'ouverture » n'était pas dans la
+timeline : elle se termine proprement (0 calque, fond d'école) ; il venait du zoom ignoré sur `@bg` / `@fg`
+(voir `KAG_MAHOYO_SEMANTICS.md` et B17 dans `BUGS_PROLOGUE.md`).

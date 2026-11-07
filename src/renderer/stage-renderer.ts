@@ -78,6 +78,8 @@ export class DomStageRenderer implements StageRenderer {
   private spritesEl: HTMLElement | null = null;
   /** Calque(s) overlay pour le crossfade de fond (transition non-bloquante). */
   private bgOverlays: HTMLElement[] = [];
+  /** Image du fond quand il est zoomé ou tourné (sinon `null` : le fond est un `background-image`). */
+  private bgImgEl: HTMLImageElement | null = null;
   private effectsEl: HTMLElement | null = null;
   private textboxEl: HTMLElement | null = null;
   private textEl: HTMLElement | null = null;
@@ -688,7 +690,12 @@ export class DomStageRenderer implements StageRenderer {
   private renderScene(instant: boolean): void {
     if (!this.bgEl || !this.spritesEl) return;
     const bg = this.currentScene.bg;
-    this.bgEl.style.backgroundImage = bg ? cssUrl(this.resolver.background(bg)) : "none";
+    // Fond zoomé ou tourné : l'image est un <img> enfant (voir `renderTransformedBg`).
+    const { bgZoomX = 100, bgZoomY = 100, bgRotate = 0 } = this.currentScene;
+    const transformedBg = bg !== null && (bgZoomX !== 100 || bgZoomY !== 100 || bgRotate !== 0);
+    this.bgImgEl?.remove();
+    this.bgImgEl = null;
+    this.bgEl.style.backgroundImage = bg && !transformedBg ? cssUrl(this.resolver.background(bg)) : "none";
     this.bgEl.style.backgroundColor = bg ? "" : "#000";
     // Un nouveau fond interrompt le panoramique en cours et perd le zoom/la rotation du précédent.
     this.bgMotion = null;
@@ -702,6 +709,7 @@ export class DomStageRenderer implements StageRenderer {
       const top = this.currentScene.bgTop;
       this.bgEl.style.backgroundPosition =
         left !== undefined && top !== undefined ? `${left}px ${top}px` : "50% 50%";
+      if (transformedBg) this.renderTransformedBg(bg, left, top, bgZoomX, bgZoomY, bgRotate);
     }
 
     const sprites = [...this.currentScene.sprites].sort((a, b) => a.z - b.z);
@@ -790,6 +798,16 @@ export class DomStageRenderer implements StageRenderer {
         img.style.top = `${s.y}px`;
         img.style.opacity = String(s.opacity);
         img.style.zIndex = String(s.z);
+        // Zoom et rotation autour du centre (`@fg zoom=… rotate=…`) ; neutre : le CSS de la classe suffit.
+        if (s.zoomx !== undefined || s.zoomy !== undefined || s.rotate !== undefined) {
+          img.style.transform = spriteTransform({
+            zoomx: (s.zoomx ?? 100) / 100,
+            zoomy: (s.zoomy ?? 100) / 100,
+            rotate: s.rotate ?? 0,
+          });
+        } else {
+          img.style.removeProperty("transform");
+        }
         this.spritesEl.appendChild(img);
       }
     }
@@ -833,16 +851,24 @@ export class DomStageRenderer implements StageRenderer {
     // Zoom et rotation de l'ancien fond (renderScene les remet à zéro pour le nouveau).
     const fromTransform = this.bgEl ? { transform: this.bgEl.style.transform, origin: this.bgEl.style.transformOrigin } : null;
 
+    // Image de l'ancien fond s'il était zoomé ou tourné : elle passe dans l'overlay (sinon `renderScene` la retire).
+    const fromImg = this.bgImgEl;
+    this.bgImgEl = null;
+
     this.currentScene = to;
 
     if (opts.instant || time <= 0) {
+      fromImg?.remove();
       this.renderScene(true);
       return;
     }
 
     // Rend la nouvelle scène (sprites réconciliés + nouveau fond).
     this.renderScene(true);
-    if (!this.bgEl) return;
+    if (!this.bgEl) {
+      fromImg?.remove();
+      return;
+    }
 
     // Overlay avec l'ancien fond, par-dessus, qui fade out.
     const oldBg = from.bg;
@@ -850,7 +876,8 @@ export class DomStageRenderer implements StageRenderer {
       const overlay = document.createElement("div");
       overlay.className = "mh-stage-bg mh-stage-bg-overlay";
       overlay.style.cssText = this.bgEl.style.cssText;
-      overlay.style.backgroundImage = cssUrl(this.resolver.background(oldBg));
+      overlay.style.backgroundImage = fromImg ? "none" : cssUrl(this.resolver.background(oldBg));
+      if (fromImg) overlay.appendChild(fromImg);
       overlay.style.transition = "none";
       overlay.style.backgroundPosition = fromPos ? `${fromPos.left}px ${fromPos.top}px` : "50% 50%";
       overlay.style.transform = fromTransform?.transform ?? "";
@@ -869,6 +896,8 @@ export class DomStageRenderer implements StageRenderer {
         overlay.style.opacity = "0";
         if (moving) overlay.style.backgroundPosition = `${fromPos.toLeft}px ${fromPos.toTop}px`;
       });
+    } else {
+      fromImg?.remove();
     }
 
     // Promise résolu à la fin de la transition (ou via hurry/finishTransition).
@@ -912,6 +941,45 @@ export class DomStageRenderer implements StageRenderer {
     }
     if (scene.bgLeft === undefined || scene.bgTop === undefined) return null;
     return { left: scene.bgLeft, top: scene.bgTop, toLeft: scene.bgLeft, toTop: scene.bgTop, remaining: 0, accel: 0, progress: 1 };
+  }
+
+  /**
+   * Fond posé avec `zoom=`/`rotate=` (`@bg`) : zoom et rotation autour du centre de l'image, placée
+   * en (`left`, `top`) comme un fond ordinaire (sans position : centrée sur l'écran).
+   *
+   * Un `background-image` ne peut pas servir : il est rogné aux 1024×576 de la boîte du fond, alors
+   * qu'un zoom montre ce qui dépasse. L'image est donc un <img> à sa taille d'origine, dont le centre
+   * est le pivot, ce qui évite d'avoir à connaître sa taille.
+   */
+  private renderTransformedBg(
+    bg: string,
+    left: number | undefined,
+    top: number | undefined,
+    zoomx: number,
+    zoomy: number,
+    rotate: number,
+  ): void {
+    if (!this.bgEl) return;
+    const img = document.createElement("img");
+    img.className = "mh-stage-bg-img";
+    img.alt = "";
+    img.draggable = false;
+    img.src = this.resolver.background(bg);
+    img.style.position = "absolute";
+    img.style.maxWidth = "none";
+    const scale = `rotate(${rotate}deg) scale(${zoomx / 100}, ${zoomy / 100})`;
+    if (left !== undefined && top !== undefined) {
+      img.style.left = `${left}px`;
+      img.style.top = `${top}px`;
+      img.style.transform = scale;
+    } else {
+      img.style.left = "50%";
+      img.style.top = "50%";
+      img.style.transform = `translate(-50%, -50%) ${scale}`;
+    }
+    img.style.transformOrigin = "50% 50%";
+    this.bgEl.appendChild(img);
+    this.bgImgEl = img;
   }
 
   /**
