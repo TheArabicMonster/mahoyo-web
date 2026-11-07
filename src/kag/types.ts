@@ -61,6 +61,13 @@ export type Layer = {
   crop?: CropSpec;
   /** Pour @fg/@fgact partbgid= : id du partbg parent (clipage). */
   partbgId?: string;
+  /**
+   * Zoom en % (100 = taille d'origine, négatif = miroir) et rotation en degrés (sens horaire),
+   * autour du centre de l'image. Absents = neutres (100 %, 0°) ; un calque neutre n'en porte pas.
+   */
+  zoomx?: number;
+  zoomy?: number;
+  rotate?: number;
 };
 
 export type PageLayer = "fore" | "back";
@@ -76,6 +83,9 @@ export type AnimKeyframe = {
   // Props continues :
   center?: number;
   vcenter?: number;
+  /** Position du fond (`@bgact`), repère 1024×576 : coin haut gauche de l'image. */
+  left?: number;
+  top?: number;
   opacity?: number;   // 0..1
   zoomx?: number;     // 1.0 = 100%
   zoomy?: number;
@@ -108,10 +118,14 @@ export type AnimationDef = {
   isMove?: boolean;
 };
 
+/** Zoom (%) et rotation (degrés) lus sur un `@bg`, `@fg` ou `@chgfg` ; absents = non précisés. */
+export type TransformArgs = { zoomx?: number; zoomy?: number; rotate?: number };
+
 export type Instruction =
-  | { kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean; nowait?: boolean; canskip?: boolean }
-  | { kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; partbgId?: string }
-  | { kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer }
+  | ({ kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean; nowait?: boolean; canskip?: boolean } & TransformArgs)
+  | ({ kind: "bgact"; storage: string; page?: PageLayer; keyframes: AnimKeyframe[] })
+  | ({ kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; partbgId?: string } & TransformArgs)
+  | ({ kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer } & TransformArgs)
   | { kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean; crop: CropSpec }
   | { kind: "animate"; def: AnimationDef }
   | { kind: "clall"; page?: PageLayer }

@@ -58,6 +58,9 @@ function layerToSprite(layer: Layer): SpriteState {
     };
   }
   if (layer.partbgId) sprite.partbgId = layer.partbgId;
+  if (layer.zoomx !== undefined) sprite.zoomx = layer.zoomx;
+  if (layer.zoomy !== undefined) sprite.zoomy = layer.zoomy;
+  if (layer.rotate !== undefined) sprite.rotate = layer.rotate;
   return sprite;
 }
 

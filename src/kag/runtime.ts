@@ -59,8 +59,50 @@ export type PageState = {
   background: string;
   bgLeft?: number;
   bgTop?: number;
+  /** Zoom (%) et rotation (degrés) du fond ; absents = neutres (100 %, 0°). */
+  bgZoomX?: number;
+  bgZoomY?: number;
+  bgRotate?: number;
   layers: Layer[];
 };
+
+/** Zoom (%) et rotation (degrés) qui s'appliquent à un fond ou un calque. */
+type TransformValues = { zoomx?: number; zoomy?: number; rotate?: number };
+
+/** Valeurs neutres : un zoom de 100 % ou une rotation de 0° ne s'écrivent pas dans l'état. */
+const NEUTRAL_ZOOM = 100;
+const NEUTRAL_ROTATE = 0;
+
+/**
+ * Applique à `target` les zoom/rotation précisés dans `patch` (ceux qui sont `undefined` ne
+ * changent rien). Une valeur neutre retire le champ : l'état ne porte que ce qui modifie l'image.
+ */
+function patchTransform(
+  target: { zoomx?: number; zoomy?: number; rotate?: number },
+  patch: TransformValues,
+): void {
+  if (patch.zoomx !== undefined) {
+    if (patch.zoomx === NEUTRAL_ZOOM) delete target.zoomx;
+    else target.zoomx = patch.zoomx;
+  }
+  if (patch.zoomy !== undefined) {
+    if (patch.zoomy === NEUTRAL_ZOOM) delete target.zoomy;
+    else target.zoomy = patch.zoomy;
+  }
+  if (patch.rotate !== undefined) {
+    if (patch.rotate === NEUTRAL_ROTATE) delete target.rotate;
+    else target.rotate = patch.rotate;
+  }
+}
+
+/** Champs « fond » d'une page (image, position, zoom, rotation), pour copier back ↔ fore. */
+function bgFieldsOf(page: PageState): Omit<PageState, "layers"> {
+  const fields: Omit<PageState, "layers"> = { background: page.background, bgLeft: page.bgLeft, bgTop: page.bgTop };
+  if (page.bgZoomX !== undefined) fields.bgZoomX = page.bgZoomX;
+  if (page.bgZoomY !== undefined) fields.bgZoomY = page.bgZoomY;
+  if (page.bgRotate !== undefined) fields.bgRotate = page.bgRotate;
+  return fields;
+}
 
 export type RuntimeState = {
   fore: PageState;
@@ -756,18 +798,25 @@ export class Runtime {
       };
     }
     if (layer.partbgId) sprite.partbgId = layer.partbgId;
+    if (layer.zoomx !== undefined) sprite.zoomx = layer.zoomx;
+    if (layer.zoomy !== undefined) sprite.zoomy = layer.zoomy;
+    if (layer.rotate !== undefined) sprite.rotate = layer.rotate;
     return sprite;
   }
 
   private buildSceneState(page: PageLayer = "fore"): SceneState {
     const target = page === "back" ? this.state.back : this.state.fore;
-    return {
+    const scene: SceneState = {
       bg: target.background || null,
       bgLeft: target.bgLeft,
       bgTop: target.bgTop,
       sprites: target.layers.map((l) => this.layerToSprite(l)),
       effect: this.buildEffectState(),
     };
+    if (target.bgZoomX !== undefined) scene.bgZoomX = target.bgZoomX;
+    if (target.bgZoomY !== undefined) scene.bgZoomY = target.bgZoomY;
+    if (target.bgRotate !== undefined) scene.bgRotate = target.bgRotate;
+    return scene;
   }
 
   private buildEffectState(): EffectState | null {
@@ -813,6 +862,11 @@ export class Runtime {
     target.background = instruction.storage;
     target.bgLeft = instruction.left;
     target.bgTop = instruction.top;
+    // Un nouveau fond repart sans zoom ni rotation, sauf ceux de la commande (`zoom=`, `rotate=`).
+    delete target.bgZoomX;
+    delete target.bgZoomY;
+    delete target.bgRotate;
+    this.patchBgTransform(target, instruction);
 
     // Trans implicite : @bg sans page explicite + time>0 → trans back→fore.
     // Pas de backlay : on a écrit directement sur back.
@@ -829,12 +883,7 @@ export class Runtime {
    * Bloque jusqu'à la fin du trans sauf si nowait.
    */
   private runImplicitTrans(time: number, rule: string | undefined, nowait?: boolean, canskip?: boolean): { events: RenderEvent[]; stop?: StopReason } {
-    this.state.fore = {
-      background: this.state.back.background,
-      bgLeft: this.state.back.bgLeft,
-      bgTop: this.state.back.bgTop,
-      layers: this.state.back.layers.slice(),
-    };
+    this.state.fore = { ...bgFieldsOf(this.state.back), layers: this.state.back.layers.slice() };
     const events: RenderEvent[] = [this.emitScene(this.makeTransition(time, rule))];
     if (nowait) return { events };
     return { events, stop: { kind: "waitFor", what: "transition", skippable: canskip ?? true } };
@@ -853,8 +902,52 @@ export class Runtime {
       opacity: instruction.opacity ?? 1,
       partbgId: instruction.partbgId,
     };
+    patchTransform(layer, instruction);
     target.layers = target.layers.filter((l) => l.id !== id);
     target.layers.push(layer);
+    if (page === "back") return null;
+    return this.emitScene({ method: "none" });
+  }
+
+  /**
+   * Zoom et rotation du fond (`zoom=`, `zoomx=`, `zoomy=`, `rotate=`) : le fond est placé en
+   * (`left`, `top`) puis zoomé et tourné autour de son centre.
+   */
+  private patchBgTransform(target: PageState, patch: TransformValues): void {
+    const values: { zoomx?: number; zoomy?: number; rotate?: number } = {};
+    if (target.bgZoomX !== undefined) values.zoomx = target.bgZoomX;
+    if (target.bgZoomY !== undefined) values.zoomy = target.bgZoomY;
+    if (target.bgRotate !== undefined) values.rotate = target.bgRotate;
+    patchTransform(values, patch);
+    if (values.zoomx !== undefined) target.bgZoomX = values.zoomx;
+    else delete target.bgZoomX;
+    if (values.zoomy !== undefined) target.bgZoomY = values.zoomy;
+    else delete target.bgZoomY;
+    if (values.rotate !== undefined) target.bgRotate = values.rotate;
+    else delete target.bgRotate;
+  }
+
+  /**
+   * @bgact : animation du fond (panoramique, zoom, rotation). L'animation n'est pas rejouée :
+   * on pose seulement la première keyframe (l'état de départ), sans toucher au fond, à ses
+   * calques ni à ce que la keyframe ne précise pas. Avant, la commande était lue comme un
+   * `@bg` sans position et réinitialisait le fond (recentré) et ses calques.
+   */
+  private applyBgact(instruction: Extract<Instruction, { kind: "bgact" }>): RenderEvent | null {
+    const first = instruction.keyframes[0];
+    if (!first) return null;
+    const page = this.resolvePage("bgact", instruction.page);
+    const target = this.getPageState(page);
+    if (!target.background) return null;
+    if (first.left !== undefined && first.top !== undefined) {
+      target.bgLeft = first.left;
+      target.bgTop = first.top;
+    }
+    this.patchBgTransform(target, {
+      zoomx: first.zoomx !== undefined ? first.zoomx * 100 : undefined,
+      zoomy: first.zoomy !== undefined ? first.zoomy * 100 : undefined,
+      rotate: first.rotate,
+    });
     if (page === "back") return null;
     return this.emitScene({ method: "none" });
   }
@@ -902,19 +995,23 @@ export class Runtime {
     target.layers = target.layers.map((l) => {
       if (l.id !== key && (instruction.id === undefined || l.storage !== key)) return l;
       found = true;
-      return { ...l, storage: instruction.storage, id: instruction.id ?? l.id };
+      const changed: Layer = { ...l, storage: instruction.storage, id: instruction.id ?? l.id };
+      patchTransform(changed, instruction);
+      return changed;
     });
     if (!found) {
       // Calque inexistant : on en crée un par défaut (centré).
       const id = instruction.id ?? instruction.storage;
-      target.layers.push({
+      const created: Layer = {
         id,
         storage: instruction.storage,
         center: 512,
         vcenter: 288,
         index: instruction.index ?? 1,
         opacity: 1,
-      });
+      };
+      patchTransform(created, instruction);
+      target.layers.push(created);
     }
     if (page === "back") return null;
     return this.emitScene({ method: "none" });
@@ -984,6 +1081,16 @@ export class Runtime {
       crop: existing?.crop,
       partbgId: existing?.partbgId,
     };
+    // Zoom et rotation : ceux de la dernière keyframe, sinon ceux du calque existant.
+    const endTransform: TransformValues = {
+      zoomx: existing?.zoomx,
+      zoomy: existing?.zoomy,
+      rotate: existing?.rotate,
+    };
+    if (lastFrame?.zoomx !== undefined) endTransform.zoomx = lastFrame.zoomx * 100;
+    if (lastFrame?.zoomy !== undefined) endTransform.zoomy = lastFrame.zoomy * 100;
+    if (lastFrame?.rotate !== undefined) endTransform.rotate = lastFrame.rotate;
+    patchTransform(merged, endTransform);
 
     // Reporter les src* de la dernière keyframe dans le crop (partbg).
     if (merged.crop && (lastFrame?.srcleft !== undefined || lastFrame?.srctop !== undefined || lastFrame?.srczoomx !== undefined)) {
@@ -1057,21 +1164,15 @@ export class Runtime {
       this.state.back.layers = this.state.fore.layers.slice();
     }
     if (!storage || storage === "bg") {
-      this.state.back.background = this.state.fore.background;
-      this.state.back.bgLeft = this.state.fore.bgLeft;
-      this.state.back.bgTop = this.state.fore.bgTop;
+      const { layers: backLayers } = this.state.back;
+      this.state.back = { ...bgFieldsOf(this.state.fore), layers: backLayers };
     }
     return [];
   }
 
   private applyTrans(instruction: Extract<Instruction, { kind: "trans" }>): { events: RenderEvent[]; stop?: StopReason } {
     // fore = clone(back) ; back conservé (sémantique KAG exchange=false).
-    this.state.fore = {
-      background: this.state.back.background,
-      bgLeft: this.state.back.bgLeft,
-      bgTop: this.state.back.bgTop,
-      layers: this.state.back.layers.slice(),
-    };
+    this.state.fore = { ...bgFieldsOf(this.state.back), layers: this.state.back.layers.slice() };
     const events: RenderEvent[] = [this.emitScene(this.makeTransition(instruction.time, instruction.rule))];
     if (!instruction.nowait) {
       return { events, stop: { kind: "waitFor", what: "transition", skippable: instruction.canskip ?? true } };
@@ -1492,6 +1593,11 @@ export class Runtime {
         const res = this.applyBg(instruction);
         events.push(...res.events);
         if (res.stop) return { events, stop: res.stop };
+        break;
+      }
+      case "bgact": {
+        const ev = this.applyBgact(instruction);
+        if (ev) events.push(ev);
         break;
       }
       case "fg": {

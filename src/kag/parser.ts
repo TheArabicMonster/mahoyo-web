@@ -5,7 +5,7 @@
  * Page boundaries are: @pg/[p] (page break), end of input.
  */
 
-import type { AnimationDef, CropSpec, Instruction, ParsedScript, TextSegment, TextStyle, Token } from "./types.js";
+import type { AnimationDef, CropSpec, Instruction, ParsedScript, TextSegment, TextStyle, Token, TransformArgs } from "./types.js";
 import { storageKey } from "@/core/storage-key.js";
 import { parseActionKeys } from "./action.js";
 
@@ -65,6 +65,29 @@ function normStorageOpt(value: string | undefined): string | undefined {
   return value ? storageKey(value) : undefined;
 }
 
+/**
+ * Zoom et rotation d'un `@bg`, `@fg` ou `@chgfg` : `zoom` (en %) règle les deux axes,
+ * `zoomx`/`zoomy` les précisent (négatif = miroir), `rotate` est en degrés. Un axe non
+ * précisé reste absent (le runtime le lit comme 100 %). Une valeur illisible (expression
+ * `&…`) est ignorée sans invalider le reste de la commande.
+ */
+function parseTransformArgs(args: Record<string, string>): TransformArgs {
+  const num = (value: string | undefined): number | undefined => {
+    if (value === undefined) return undefined;
+    const n = Number.parseFloat(value);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const zoom = num(args.zoom);
+  const zoomx = num(args.zoomx) ?? zoom;
+  const zoomy = num(args.zoomy) ?? zoom;
+  const rotate = num(args.rotate);
+  const out: TransformArgs = {};
+  if (zoomx !== undefined) out.zoomx = zoomx;
+  if (zoomy !== undefined) out.zoomy = zoomy;
+  if (rotate !== undefined) out.rotate = rotate;
+  return out;
+}
+
 function parsePageLayer(value: string | undefined): "fore" | "back" | undefined {
   if (value === "fore" || value === "back") return value;
   return undefined;
@@ -87,6 +110,7 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         noclear: args.noclear === "1",
         nowait: args.nowait === "1",
         canskip: args.canskip !== "0",
+        ...parseTransformArgs(args),
       };
     case "fg":
       return {
@@ -99,6 +123,7 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         page: parsePageLayer(args.page),
         id: args.id,
         partbgId: args.partbgid,
+        ...parseTransformArgs(args),
       };
     case "chgfg":
       // @chgfg : change l'image d'un calque existant (garde position/z/opacity).
@@ -108,6 +133,7 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         id: args.id,
         index: args.index !== undefined ? parseIntArg(args.index) : undefined,
         page: parsePageLayer(args.page),
+        ...parseTransformArgs(args),
       };
     case "clall":
       return { kind: "clall", page: parsePageLayer(args.page) };
@@ -235,10 +261,15 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       };
     }
     case "bgact": {
-      // @bgact = animation de background. On extrait le storage.
-      const storage = normStorage(args.storage);
-      const page = parsePageLayer(args.page);
-      return { kind: "bg", storage, time: 0, rule: undefined, page };
+      // @bgact = animation du fond (panoramique, zoom, rotation) : `props=-storage,left,top,…`.
+      // Le runtime n'en retient que la première keyframe (état de départ), sans toucher au
+      // reste de la page : voir `applyBgact`.
+      return {
+        kind: "bgact",
+        storage: normStorage(args.storage),
+        page: parsePageLayer(args.page),
+        keyframes: parseActionKeys(args.keys, args.props),
+      };
     }
     case "movefg":
     case "movepartbg": {

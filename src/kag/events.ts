@@ -46,6 +46,13 @@ export type SpriteState = {
   z: number;
   /** Opacité entre 0 et 1. */
   opacity: number;
+  /**
+   * Zoom en % (100 = taille d'origine, négatif = miroir) et rotation en degrés (sens horaire),
+   * autour du centre du sprite. Absents = neutres.
+   */
+  zoomx?: number;
+  zoomy?: number;
+  rotate?: number;
   /** Si défini, ce sprite est un partbg (crop viewport @partbg). */
   crop?: {
     width: number;
@@ -75,6 +82,13 @@ export type SceneState = {
   /** Position explicite du fond (pixels, repère 1024×576). */
   bgLeft?: number;
   bgTop?: number;
+  /**
+   * Zoom du fond en % (100 = taille d'origine) et rotation en degrés, autour du centre de
+   * l'image placée en (`bgLeft`, `bgTop`). Absents = neutres.
+   */
+  bgZoomX?: number;
+  bgZoomY?: number;
+  bgRotate?: number;
   sprites: readonly SpriteState[];
   /** null = aucun effet actif. */
   effect: EffectState | null;
