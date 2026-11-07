@@ -104,8 +104,44 @@ describe("DomStageRenderer — zoom et rotation des fonds et des sprites", () =>
     });
   });
 
+  describe("partbg zoomé (#169)", () => {
+    const partbg = (crop: { srcLeft: number; srcTop: number; srcZoomX: number; srcZoomY: number }): SpriteState => ({
+      id: "pb",
+      storage: "fond-haut",
+      x: 626,
+      y: 288,
+      z: 1000,
+      opacity: 1,
+      crop: { width: 775, height: 576, ...crop },
+    });
+    const inner = () => root.querySelector(".mh-stage-partbg-img") as HTMLImageElement;
+
+    it("l'image est zoomée autour de son propre centre, pas de son coin haut gauche", async () => {
+      await show({ bg: "noir", sprites: [partbg({ srcLeft: -150, srcTop: -174, srcZoomX: 140, srcZoomY: 140 })] });
+      expect(inner().style.transform).toBe("translate(150px, 174px) scale(1.4, 1.4)");
+      expect(inner().style.transformOrigin).toBe("50% 50%");
+    });
+
+    it("avec ce pivot, une image 775×1050 zoomée à 140 % couvre la fenêtre 775×576 (plus de bande noire)", () => {
+      // Image posée à sa taille d'origine en (-srcleft, -srctop), puis zoomée autour de son centre.
+      const [W, H, z, srcLeft, srcTop, w, h] = [775, 1050, 1.4, -150, -174, 775, 576];
+      const left = -srcLeft + (W * (1 - z)) / 2;
+      const top = -srcTop + (H * (1 - z)) / 2;
+      expect(left).toBeLessThanOrEqual(0);
+      expect(top).toBeLessThanOrEqual(0);
+      expect(left + W * z).toBeGreaterThanOrEqual(w);
+      expect(top + H * z).toBeGreaterThanOrEqual(h);
+    });
+
+    it("sans zoom, le pivot ne change rien : l'image reste décalée de (-srcleft, -srctop)", async () => {
+      await show({ bg: "noir", sprites: [partbg({ srcLeft: 42, srcTop: 127, srcZoomX: 100, srcZoomY: 100 })] });
+      expect(inner().style.transform).toBe("translate(-42px, -127px) scale(1, 1)");
+      expect(inner().style.transformOrigin).toBe("50% 50%");
+    });
+  });
+
   describe("sprites", () => {
-    const sprite = (extra: Partial<SpriteState> = {}): SpriteState => ({ id: "s", storage: "sprite", x: 429, y: 86, z: 1000, opacity: 1, ...extra });
+    const sprite =(extra: Partial<SpriteState> = {}): SpriteState => ({ id: "s", storage: "sprite", x: 429, y: 86, z: 1000, opacity: 1, ...extra });
     const spriteEl = () => root.querySelector(".mh-stage-sprite") as HTMLImageElement;
 
     it("zoom et rotation : transform centré (translate, rotate, scale)", async () => {

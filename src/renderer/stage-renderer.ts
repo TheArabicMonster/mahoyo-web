@@ -16,7 +16,7 @@ import type {
 import type { AnimationDef, AnimKeyframe, TextSegment } from "@/kag/types.js";
 import type { DisplaySettings, RunOptions, StageRenderer, StageRendererDeps } from "./types.js";
 import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
-import { partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
+import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
 import { fitTextBox, textBoxHeight, TEXT_FIT_DEFAULTS } from "./text-fit.js";
@@ -775,7 +775,7 @@ export class DomStageRenderer implements StageRenderer {
             srczoomx: crop.srcZoomX,
             srczoomy: crop.srcZoomY,
           });
-          innerImg.style.transformOrigin = "0 0";
+          innerImg.style.transformOrigin = PARTBG_INNER_ORIGIN;
         }
         this.spritesEl.appendChild(wrapper);
       } else {

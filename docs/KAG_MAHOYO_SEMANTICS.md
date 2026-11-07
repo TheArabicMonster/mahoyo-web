@@ -105,8 +105,16 @@ height=576 type=13 effect=monocro noclear=1 srczoom=400 id=pb1`
 - Crée un wrapper de `width × height` (souvent 1024×576) en `overflow:hidden`,
   positionné à `center/vcenter` (défaut 512/288), `translate(-50%,-50%)`.
 - À l'intérieur, une `<img>` en taille **native**, décalée de
-  `translate(-srcleft px, -srctop px) scale(srczoom/100)` (origine 0 0).
-  `srczoom=400` = ×4.
+  `translate(-srcleft px, -srctop px) scale(srczoom/100)`. `srczoom=400` = ×4.
+  **Pivot du zoom : le centre de l'image** (`transform-origin: 50% 50%`, #169), comme pour `@bg` :
+  l'image est d'abord posée en (`-srcleft`, `-srctop`) à sa taille d'origine, puis zoomée autour de
+  son propre centre. Un pivot au coin haut gauche repoussait l'image dans un coin de la fenêtre dès
+  que `srcleft`/`srctop` sont négatifs (636 des 2 171 `@partbg` du corpus japonais, ex. `srcleft=-150
+  srctop=-174 srczoom=140` : fond de la salle des professeurs coupé en bas à droite, bande noire
+  en haut et à gauche). **Déduit du corpus, pas mesuré sur le jeu** : sur les 1 793 `@partbg` dont
+  l'image zoomée est assez grande pour couvrir la fenêtre, le pivot au centre la couvre dans 1 716 cas
+  (95,7 %), le pivot au coin dans 1 257 (70 %), un zoom en unités de l'image source dans 1 169 et un
+  pivot au centre de la fenêtre dans 1 219. Sans zoom (`srczoom=100`) les modèles sont identiques.
 - `bgstorage` : remplace le fond de la page cible.
 - `rule/time` : transition implicite (voir §2).
 - `partbgid=pb1` (sur `@fg`) : clip le sprite **à l'intérieur** du partbg
