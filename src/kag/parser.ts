@@ -123,6 +123,10 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         page: parsePageLayer(args.page),
         id: args.id,
         partbgId: args.partbgid,
+        time: parseIntArg(args.time),
+        rule: args.rule,
+        nowait: args.nowait === "1",
+        canskip: args.canskip !== "0",
         ...parseTransformArgs(args),
       };
     case "chgfg":
@@ -133,6 +137,10 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         id: args.id,
         index: args.index !== undefined ? parseIntArg(args.index) : undefined,
         page: parsePageLayer(args.page),
+        time: parseIntArg(args.time),
+        rule: args.rule,
+        nowait: args.nowait === "1",
+        canskip: args.canskip !== "0",
         ...parseTransformArgs(args),
       };
     case "clall":

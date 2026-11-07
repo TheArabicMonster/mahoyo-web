@@ -124,8 +124,8 @@ export type TransformArgs = { zoomx?: number; zoomy?: number; rotate?: number };
 export type Instruction =
   | ({ kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean; nowait?: boolean; canskip?: boolean } & TransformArgs)
   | ({ kind: "bgact"; storage: string; page?: PageLayer; keyframes: AnimKeyframe[] })
-  | ({ kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; partbgId?: string } & TransformArgs)
-  | ({ kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer } & TransformArgs)
+  | ({ kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; partbgId?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs)
+  | ({ kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs)
   | { kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean; crop: CropSpec }
   | { kind: "animate"; def: AnimationDef }
   | { kind: "clall"; page?: PageLayer }
