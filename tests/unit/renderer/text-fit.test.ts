@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { fitTextBox, TEXT_FIT_DEFAULTS, type TextFitParams } from "@/renderer/text-fit.js";
+import { fitTextBox, textBoxHeight, TEXT_FIT_DEFAULTS, type TextFitParams } from "@/renderer/text-fit.js";
 
 const LINE = 38.4;
 const PAD = 20;
+const STAGE = 576;
+const BOX = textBoxHeight(STAGE);
 
 /** Hauteur d'un texte de `lines` lignes à l'échelle 1 ; les lignes se réduisent avec l'échelle, sans nouveau retour à la ligne. */
 function heightOf(lines: number): (scale: number) => number {
@@ -12,74 +14,88 @@ function heightOf(lines: number): (scale: number) => number {
 function params(lines: number, over: Partial<TextFitParams> = {}): TextFitParams {
   return {
     ...TEXT_FIT_DEFAULTS,
-    stageHeight: 576,
-    nominalBottom: 28.8,
-    paddingY: PAD,
-    lineHeight: LINE,
+    boxHeight: BOX,
     measureHeight: heightOf(lines),
     ...over,
   };
 }
 
+describe("textBoxHeight", () => {
+  it("donne une hauteur fixe qui accueille 6 lignes à la taille nominale", () => {
+    expect(BOX).toBeGreaterThanOrEqual(2 * PAD + 6 * LINE);
+    // Mais pas beaucoup plus : la boîte ne doit pas envahir la scène.
+    expect(BOX).toBeLessThan(STAGE * 0.5);
+  });
+
+  it("ne dépend que de la hauteur de scène", () => {
+    expect(textBoxHeight(STAGE)).toBe(textBoxHeight(STAGE));
+    expect(textBoxHeight(1000)).toBeGreaterThan(textBoxHeight(500));
+  });
+});
+
 describe("fitTextBox", () => {
-  it("garde la position et la taille nominales jusqu'à 5 lignes", () => {
-    for (const lines of [1, 2, 3, 4, 5]) {
+  it("garde la taille nominale jusqu'à la capacité de la boîte (6 lignes)", () => {
+    for (const lines of [1, 2, 3, 4, 5, 6]) {
       const fit = fitTextBox(params(lines));
-      expect(fit.raised).toBe(false);
       expect(fit.scale).toBe(1);
-      expect(fit.bottom).toBe(28.8);
       expect(fit.overflow).toBe(false);
+      expect(fit.maxHeight).toBe(BOX);
     }
   });
 
-  it("remonte le texte au-delà de 5 lignes sans réduire la police quand il tient", () => {
-    const fit = fitTextBox(params(7));
-    expect(fit.raised).toBe(true);
-    expect(fit.scale).toBe(1);
-    expect(fit.overflow).toBe(false);
-    // Le bas des lignes (boîte moins la marge) reste au-dessus de 76 % de la hauteur.
-    const textBottomY = 576 - fit.bottom - PAD;
-    expect(textBottomY).toBeLessThanOrEqual(576 * 0.76 + 1e-9);
-    // Et la boîte tient dans la scène.
-    expect(fit.bottom + heightOf(7)(fit.scale)).toBeLessThanOrEqual(576 - 12);
+  it("ne renvoie aucune notion de position : la boîte ne bouge jamais", () => {
+    for (const lines of [1, 6, 9, 13, 40]) {
+      const fit = fitTextBox(params(lines)) as unknown as Record<string, unknown>;
+      expect(fit.bottom).toBeUndefined();
+      expect(fit.raised).toBeUndefined();
+      expect(fit.maxHeight).toBe(BOX);
+    }
   });
 
-  it("ne remonte jamais la boîte plus bas que la position nominale", () => {
-    const fit = fitTextBox(params(7, { safeBottomRatio: 0.99 }));
-    expect(fit.bottom).toBe(28.8);
-  });
-
-  it("réduit la police par pas de 5 % quand le texte est trop long", () => {
-    const fit = fitTextBox(params(13));
-    expect(fit.raised).toBe(true);
+  it("réduit la police par pas de 5 % dès que la page dépasse la capacité", () => {
+    const fit = fitTextBox(params(8));
     expect(fit.scale).toBeLessThan(1);
-    expect(fit.scale).toBeGreaterThanOrEqual(0.75);
+    expect(fit.scale).toBeGreaterThanOrEqual(TEXT_FIT_DEFAULTS.minScale);
     expect(Math.abs(fit.scale * 20 - Math.round(fit.scale * 20))).toBeLessThan(1e-9);
-    expect(heightOf(13)(fit.scale)).toBeLessThanOrEqual(fit.maxHeight);
+    expect(heightOf(8)(fit.scale)).toBeLessThanOrEqual(BOX);
     // C'est la plus grande échelle qui convient.
-    expect(heightOf(13)(fit.scale + 0.05)).toBeGreaterThan(fit.maxHeight);
+    expect(heightOf(8)(fit.scale + 0.05)).toBeGreaterThan(BOX);
     expect(fit.overflow).toBe(false);
   });
 
-  it("s'arrête au plancher de 75 % et signale le débordement", () => {
+  it("une page à peine plus longue ne perd qu'un pas", () => {
+    const fit = fitTextBox(params(6.2));
+    expect(fit.scale).toBe(0.95);
+  });
+
+  it("s'arrête au plancher et signale le débordement", () => {
     const fit = fitTextBox(params(40));
-    expect(fit.scale).toBe(0.75);
+    expect(fit.scale).toBe(TEXT_FIT_DEFAULTS.minScale);
     expect(fit.overflow).toBe(true);
-    expect(fit.maxHeight).toBeGreaterThan(0);
+    expect(fit.maxHeight).toBe(BOX);
   });
 
-  it("le seuil de 5 lignes suit la hauteur de ligne (fontScale agrandi)", () => {
-    // Police à 130 % : la même hauteur mesurée correspond à moins de lignes.
-    const bigLine = LINE * 1.3;
-    const fit = fitTextBox(params(0, { lineHeight: bigLine, measureHeight: () => 2 * PAD + 5 * bigLine }));
-    expect(fit.raised).toBe(false);
-    const fit6 = fitTextBox(params(0, { lineHeight: bigLine, measureHeight: (s) => 2 * PAD + 6 * bigLine * s }));
-    expect(fit6.raised).toBe(true);
+  it("tient à l'échelle minimale sans déborder", () => {
+    // Capacité à l'échelle minimale : (BOX - 40) / (LINE * minScale) lignes.
+    const capacity = (BOX - 2 * PAD) / (LINE * TEXT_FIT_DEFAULTS.minScale);
+    const fit = fitTextBox(params(capacity - 0.01));
+    expect(fit.scale).toBe(TEXT_FIT_DEFAULTS.minScale);
+    expect(fit.overflow).toBe(false);
   });
 
-  it("donne une zone de hauteur positive même sur une scène minuscule", () => {
-    const fit = fitTextBox(params(10, { stageHeight: 40 }));
-    expect(fit.maxHeight).toBeGreaterThanOrEqual(0);
+  it("la capacité suit la hauteur mesurée, donc fontScale (police agrandie)", () => {
+    // Police à 140 % : 5 lignes à cette taille rendent 5 * 1,4 * LINE à l'échelle 1.
+    const big = LINE * 1.4;
+    const fit5 = fitTextBox(params(0, { measureHeight: (s) => 2 * PAD + 5 * big * s }));
+    expect(fit5.scale).toBeLessThan(1);
+    const fit4 = fitTextBox(params(0, { measureHeight: (s) => 2 * PAD + 4 * big * s }));
+    expect(fit4.scale).toBe(1);
+  });
+
+  it("donne un résultat cohérent sur une boîte minuscule", () => {
+    const fit = fitTextBox(params(10, { boxHeight: 40 }));
+    expect(fit.maxHeight).toBe(40);
     expect(fit.overflow).toBe(true);
+    expect(fit.scale).toBe(TEXT_FIT_DEFAULTS.minScale);
   });
 });
