@@ -19,7 +19,7 @@ import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-c
 import { partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
-import { fitTextBox, TEXT_FIT_DEFAULTS } from "./text-fit.js";
+import { fitTextBox, textBoxHeight, TEXT_FIT_DEFAULTS } from "./text-fit.js";
 import { cssEasing, easeProgress } from "@/core/easing.js";
 
 /**
@@ -517,9 +517,10 @@ export class DomStageRenderer implements StageRenderer {
         left: 10%;
         right: 10%;
         bottom: 5%;
-        min-height: 140px;
+        /* Hauteur fixe (#163) : la boîte ne change jamais de position ni de taille, seule la police s'adapte. */
+        height: ${TEXT_FIT_DEFAULTS.boxHeightRatio * 100}%;
         z-index: 30;
-        transition: opacity 0.3s ease, bottom 0.2s ease;
+        transition: opacity 0.3s ease;
         pointer-events: auto;
       }
       .mh-stage-textbox-frame {
@@ -536,7 +537,6 @@ export class DomStageRenderer implements StageRenderer {
         font-size: ${TEXT_REM}rem;
         line-height: ${TEXT_LINE_HEIGHT};
         white-space: pre-wrap;
-        min-height: 100px;
       }
       .mh-stage-indicator {
         position: absolute;
@@ -1377,7 +1377,7 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   /**
-   * Ajuste taille et position de la boîte à la page entière (voir `text-fit.ts`), puis
+   * Ajuste la taille de la police à la page entière (voir `text-fit.ts`) dans la boîte fixe, puis
    * affiche les `keep` premières unités. Tout se fait avant le prochain rendu : pas de
    * clignotement. Sans mise en page (jsdom), la hauteur mesurée est nulle et rien ne change.
    */
@@ -1387,24 +1387,23 @@ export class DomStageRenderer implements StageRenderer {
     if (!textEl || !boxEl) return;
     this.renderTextUpTo(units, units.length);
     const nominalRem = TEXT_REM * this.settings.fontScale;
-    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    const stageHeight = this.container?.clientHeight || STAGE_HEIGHT;
+    // Mesure à zone libre : sans plafond ni défilement hérités de la page précédente.
+    textEl.style.maxHeight = "";
+    textEl.style.overflowY = "";
     const fit = fitTextBox({
       ...TEXT_FIT_DEFAULTS,
-      stageHeight,
-      nominalBottom: stageHeight * 0.05,
-      paddingY: TEXT_PADDING_Y,
-      lineHeight: nominalRem * rootPx * TEXT_LINE_HEIGHT,
+      boxHeight: boxEl.clientHeight || textBoxHeight(this.container?.clientHeight || STAGE_HEIGHT),
       measureHeight: (scale) => {
         textEl.style.fontSize = `${nominalRem * scale}rem`;
         return textEl.offsetHeight;
       },
     });
     textEl.style.fontSize = `${nominalRem * fit.scale}rem`;
-    textEl.style.maxHeight = fit.raised ? `${fit.maxHeight}px` : "";
-    textEl.style.overflowY = fit.overflow ? "auto" : "";
-    boxEl.style.bottom = fit.raised ? `${fit.bottom}px` : "";
-    boxEl.dataset.textFit = fit.overflow ? "overflow" : fit.scale < 1 ? "shrunk" : fit.raised ? "raised" : "nominal";
+    if (fit.overflow) {
+      textEl.style.maxHeight = `${fit.maxHeight}px`;
+      textEl.style.overflowY = "auto";
+    }
+    boxEl.dataset.textFit = fit.overflow ? "overflow" : fit.scale < 1 ? "shrunk" : "nominal";
     if (keep < units.length) this.renderTextUpTo(units, keep);
   }
 

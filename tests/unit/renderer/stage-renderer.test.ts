@@ -181,7 +181,7 @@ describe("DomStageRenderer", () => {
     expect(text.textContent).toBe("Long text here");
   });
 
-  describe("ajustement du texte long (#161)", () => {
+  describe("boîte de texte fixe et police réduite (#163)", () => {
     // jsdom n'a pas de mise en page : on simule la hauteur de la zone de texte (24 px = 1,5 rem,
     // lignes de 1,6 fois la taille, marges de 20 px) en fonction de la police et du nombre de lignes.
     function mockTextHeight(linesOf: (el: HTMLElement) => number): () => void {
@@ -199,59 +199,93 @@ describe("DomStageRenderer", () => {
       return { box: root.querySelector("#textbox") as HTMLElement, text: root.querySelector("#text") as HTMLElement };
     }
 
-    it("laisse un texte court à sa place nominale", async () => {
+    it("laisse un texte court à sa taille nominale", async () => {
       const restore = mockTextHeight(() => 3);
       try {
         const { box, text } = await show("court");
-        expect(box.style.bottom).toBe("");
         expect(box.dataset.textFit).toBe("nominal");
         expect(text.style.fontSize).toBe("1.5rem");
         expect(text.style.maxHeight).toBe("");
+        expect(text.style.overflowY).toBe("");
       } finally {
         restore();
       }
     });
 
-    it("remonte une page de 7 lignes au-dessus de la bande basse, police inchangée", async () => {
+    it("ne déplace jamais la boîte, même pour une page de 7 lignes (police réduite à la place)", async () => {
       const restore = mockTextHeight(() => 7);
       try {
         const { box, text } = await show("long");
-        expect(box.dataset.textFit).toBe("raised");
-        // Bas de la boîte à 576 - bottom ; les lignes finissent 20 px plus haut, sous 76 % de 576 (437,76).
-        const bottom = parseFloat(box.style.bottom);
-        expect(576 - bottom - 20).toBeLessThanOrEqual(576 * 0.76 + 0.01);
-        expect(text.style.fontSize).toBe("1.5rem");
+        expect(box.dataset.textFit).toBe("shrunk");
+        expect(box.style.bottom).toBe("");
+        expect(box.style.top).toBe("");
+        expect(box.style.height).toBe("");
+        expect(parseFloat(text.style.fontSize)).toBeLessThan(1.5);
       } finally {
         restore();
       }
     });
 
-    it("réduit la police d'une page très longue, sans passer sous 75 %, et respecte fontScale", async () => {
-      const restore = mockTextHeight(() => 11);
+    it("la boîte garde la même géométrie d'une page à l'autre", async () => {
+      let lines = 2;
+      const restore = mockTextHeight(() => lines);
+      try {
+        const { box } = await show("page");
+        const snapshot = () => [box.style.top, box.style.bottom, box.style.height, box.style.maxHeight].join("|");
+        const first = snapshot();
+        for (const n of [9, 12, 4, 30, 1]) {
+          lines = n;
+          await renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text: `page ${n}` }] }], {
+            instant: true,
+            signal: new AbortController().signal,
+          });
+          expect(snapshot()).toBe(first);
+        }
+      } finally {
+        restore();
+      }
+    });
+
+    it("réduit la police d'une page très longue, sans passer sous 70 %, et respecte fontScale", async () => {
+      const restore = mockTextHeight(() => 7);
       try {
         const { box, text } = await show("très long", 1.2);
         expect(box.dataset.textFit).toBe("shrunk");
         const rem = parseFloat(text.style.fontSize);
         expect(rem).toBeLessThan(1.5 * 1.2);
-        expect(rem).toBeGreaterThanOrEqual(1.5 * 1.2 * 0.75 - 1e-9);
+        expect(rem).toBeGreaterThanOrEqual(1.5 * 1.2 * 0.7 - 1e-9);
       } finally {
         restore();
       }
     });
 
-    it("rend la place nominale à la page suivante", async () => {
+    it("rend zone défilable une page qui ne tient pas même à la taille minimale", async () => {
+      const restore = mockTextHeight(() => 60);
+      try {
+        const { box, text } = await show("énorme");
+        expect(box.dataset.textFit).toBe("overflow");
+        expect(text.style.overflowY).toBe("auto");
+        expect(text.style.maxHeight).not.toBe("");
+        expect(parseFloat(text.style.fontSize)).toBeCloseTo(1.5 * 0.7, 6);
+      } finally {
+        restore();
+      }
+    });
+
+    it("rend la taille nominale à la page suivante", async () => {
       let lines = 8;
       const restore = mockTextHeight(() => lines);
       try {
-        const { box } = await show("page longue");
-        expect(box.dataset.textFit).toBe("raised");
+        const { box, text } = await show("page longue");
+        expect(box.dataset.textFit).toBe("shrunk");
         lines = 2;
         await renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text: "court" }] }], {
           instant: true,
           signal: new AbortController().signal,
         });
-        expect(box.style.bottom).toBe("");
         expect(box.dataset.textFit).toBe("nominal");
+        expect(text.style.fontSize).toBe("1.5rem");
+        expect(text.style.overflowY).toBe("");
       } finally {
         restore();
       }
