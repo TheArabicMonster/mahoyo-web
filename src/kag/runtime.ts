@@ -889,7 +889,25 @@ export class Runtime {
     return { events, stop: { kind: "waitFor", what: "transition", skippable: canskip ?? true } };
   }
 
-  private applyFg(instruction: Extract<Instruction, { kind: "fg" }>): RenderEvent | null {
+  /**
+   * Fin d'un `@fg`/`@chgfg`. Sans `page=`, une commande qui porte `time>0` fait sa propre
+   * transition (§2 de `KAG_MAHOYO_SEMANTICS.md`, comme `@bg`/`@partbg`) : le calque posé sur
+   * back est montré tout de suite. Sans cela, le personnage n'apparaissait qu'à la prochaine
+   * transition, voire jamais dans la page. Sans `time`, le calque reste sur back jusqu'à un
+   * `@trans` ou un `@bg` ; avec `page=back`, aussi.
+   */
+  private revealLayerChange(
+    page: PageLayer,
+    instruction: { page?: PageLayer; time?: number; rule?: string; nowait?: boolean; canskip?: boolean },
+  ): { events: RenderEvent[]; stop?: StopReason } {
+    if (!instruction.page && instruction.time && instruction.time > 0) {
+      return this.runImplicitTrans(instruction.time, instruction.rule, instruction.nowait, instruction.canskip);
+    }
+    if (page === "back") return { events: [] };
+    return { events: [this.emitScene({ method: "none" })] };
+  }
+
+  private applyFg(instruction: Extract<Instruction, { kind: "fg" }>): { events: RenderEvent[]; stop?: StopReason } {
     const page = this.resolvePage("fg", instruction.page);
     const target = this.getPageState(page);
     const id = instruction.id ?? instruction.storage;
@@ -905,8 +923,7 @@ export class Runtime {
     patchTransform(layer, instruction);
     target.layers = target.layers.filter((l) => l.id !== id);
     target.layers.push(layer);
-    if (page === "back") return null;
-    return this.emitScene({ method: "none" });
+    return this.revealLayerChange(page, instruction);
   }
 
   /**
@@ -987,7 +1004,7 @@ export class Runtime {
     return { events: [this.emitScene(transition)] };
   }
 
-  private applyChgfg(instruction: Extract<Instruction, { kind: "chgfg" }>): RenderEvent | null {
+  private applyChgfg(instruction: Extract<Instruction, { kind: "chgfg" }>): { events: RenderEvent[]; stop?: StopReason } {
     const page = this.resolvePage("chgfg", instruction.page);
     const target = this.getPageState(page);
     const key = instruction.id ?? instruction.storage;
@@ -1013,8 +1030,7 @@ export class Runtime {
       patchTransform(created, instruction);
       target.layers.push(created);
     }
-    if (page === "back") return null;
-    return this.emitScene({ method: "none" });
+    return this.revealLayerChange(page, instruction);
   }
 
   private applyAnimate(instruction: Extract<Instruction, { kind: "animate" }>): RenderEvent[] {
@@ -1601,13 +1617,15 @@ export class Runtime {
         break;
       }
       case "fg": {
-        const ev = this.applyFg(instruction);
-        if (ev) events.push(ev);
+        const res = this.applyFg(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
         break;
       }
       case "chgfg": {
-        const ev = this.applyChgfg(instruction);
-        if (ev) events.push(ev);
+        const res = this.applyChgfg(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
         break;
       }
       case "partbg": {
