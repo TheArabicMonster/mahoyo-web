@@ -148,6 +148,9 @@ function isVisibleEvent(event: RenderEvent): boolean {
 /** Durée des fondus enchaînés entre deux fonds d'une timeline (ms). */
 const TIMELINE_FADE_MS = 1500;
 
+/** Durée du fondu qui réaffiche la textbox quand un texte arrive (ms, #159). */
+const TEXTBOX_REVEAL_MS = 300;
+
 export function createRuntimeState(): RuntimeState {
   return {
     fore: { background: "", layers: [] },
@@ -1328,7 +1331,8 @@ export class Runtime {
       frame = true;
     }
 
-    const state = this.buildTextboxState();
+    // Copie : l'événement émis ne doit pas être modifié par les commandes suivantes.
+    const state = { ...this.buildTextboxState() };
     if (visible !== undefined) state.visible = visible;
     if (frame !== undefined) state.frame = frame;
     this.state.textbox = state;
@@ -1699,10 +1703,27 @@ export class Runtime {
     return { events };
   }
 
+  /**
+   * Réaffiche la textbox masquée par `@textoff` (ou `@position visible=false`)
+   * quand un texte lisible arrive (#159). Sans cela le texte qui suit un
+   * `@textoff` restait invisible, `@texton` étant presque absent du corpus.
+   * Ne fait rien si la boîte est déjà visible ; le masquage par l'utilisateur
+   * (`userHidden`) est géré côté renderer et n'est pas touché.
+   */
+  private revealTextboxForText(segments: readonly TextSegment[], events: RenderEvent[]): void {
+    if (this.buildTextboxState().visible) return;
+    const readable = segments.some((seg) => "text" in seg && seg.text.trim().length > 0);
+    if (!readable) return;
+    const state = { ...this.buildTextboxState(), visible: true };
+    this.state.textbox = state;
+    events.push({ kind: "textbox", state, time: TEXTBOX_REVEAL_MS });
+  }
+
   private processText(instruction: Extract<Instruction, { kind: "text" }>): { events: RenderEvent[]; stop?: StopReason } {
     const events: RenderEvent[] = [];
     const segments = instruction.segments;
     const startIdx = this.context.segmentIndex;
+    this.revealTextboxForText(segments.slice(startIdx), events);
 
     // Find the next pause after our current position.
     let pauseIndex = -1;

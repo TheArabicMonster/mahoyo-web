@@ -120,7 +120,8 @@ Les noms de fichiers peuvent contenir des parenthèses :
   prologue l'utilisent.
 - `[ruby text=ふ]触れた` et `[ruby char=N text=…]` : furigana. Le lexer/parser
   les gèrent ; le rendu doit produire `<ruby>base<rt>lecture</rt></ruby>`.
-- `@textoff time=4000` : masque la textbox avec un fondu de 4 s.
+- `@textoff time=4000` : masque la textbox avec un fondu de 4 s. Le texte qui suit
+  la réaffiche (règle au §11, #159).
 - `@visibleframe` / `@invisibleframe` : affiche/masque le cadre de la textbox.
 - `@cm4pg` : reset de mise en page pour le changement de page (à valider).
 
@@ -268,7 +269,46 @@ Sémantique implémentée (la plus simple compatible avec ces indices) :
   vraies définitions de macros (scripts système du `data.xp3`, en local) pour
   trancher.
 - Valeur par défaut de `textoff=` (probablement : masquer la textbox pendant la
-  commande).
+  commande, puis la réafficher ; **non validée**). Le corpus écrit `textoff=0` sur
+  environ 4 000 commandes (`@bg`, `@chgfg`, `@fgact`, `@partbg`, `@movefg`, `@trans`…) et
+  `textoff=1` sur 15 seulement (`@fgact`, un `@movefg`). Le moteur ignore ce
+  paramètre : il ne masque jamais la boîte pendant une commande. Ce qui est
+  **tranché** (#159) est la règle sur le texte, ci-dessous.
+
+### Règle retenue : un texte lisible réaffiche la boîte (#159)
+
+Constat sur le corpus (comptes seulement) : 263 `@textoff` en japonais, 240 en
+français. Ce qui suit chacun d'eux, dans la page ou plus loin dans le script :
+
+| Suite du `@textoff` | ja | fr |
+|---|---|---|
+| texte lisible (même page ; 145 / 138 avec un `@clall` entre les deux) | 244 | 227 |
+| `@return` (dont 2 / 3 précédés d'un `@clall`) | 11 | 10 |
+| `@texton` (dont 1 / 1 précédé d'un `@clall`) | 3 | 2 |
+| autre `@textoff`, `@call` ou fin de script sans texte | 5 | 1 |
+
+`@texton` n'existe que dans 9 scripts japonais (11 occurrences) et 7 français. Donc,
+dans le jeu d'origine, le texte qui suit un `@textoff` s'affiche sans `@texton` :
+la boîte est réaffichée par autre chose (probablement le `@trans` interne des
+macros, qui passe `texton=1` dans `macro.ks`). Aucun cas du corpus ne demande de
+garder la boîte masquée pendant un texte lisible : le seul texte « vide » après un
+`@textoff` (`gamemenu.ks`, script système) ne contient pas de caractère affichable.
+
+Règle du runtime (`revealTextboxForText`, `src/kag/runtime.ts`) :
+
+- `@textoff` (et `@position visible=false`) masquent la boîte comme avant, avec leur fondu.
+- Quand un `text` contenant au moins un caractère non blanc doit être émis alors que
+  `state.textbox.visible` est faux, le runtime émet d'abord un événement `textbox`
+  `visible: true` (fondu de 300 ms, le renderer a une transition CSS de 0,3 s), puis le texte.
+  Le cadre (`@invisibleframe`) est conservé.
+- `@textoff` sans texte derrière (fondu, écran noir, film d'ouverture) laisse la boîte masquée.
+- L'état est celui du runtime, partagé entre scripts : une boîte masquée par un
+  `@textoff` suivi d'un `@return` ou de la fin du script reste masquée jusqu'au premier texte
+  du script suivant, qui la réaffiche. Pas de réaffichage au démarrage du script
+  (écran sans texte : la boîte n'a rien à montrer).
+- Le masquage par l'utilisateur (`userHidden`, clic droit) est côté renderer et n'est pas touché ;
+  la sauvegarde conserve `textbox` (une boîte masquée au moment de la sauvegarde est
+  réaffichée au premier texte après le chargement).
 - Sémantique exacte de `accel` (formule d'accélération KAG).
 - Sens de `mode=` de `@ploysay` (côté, direction, taille de la bulle) et choix de
   l'image (`balloon01`/`balloon02`) : à déduire du plugin TJS d'origine ou d'une
