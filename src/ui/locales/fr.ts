@@ -50,6 +50,8 @@ export const fr = {
   "slots.saveTitle.deco": "セーブ",
   "slots.loadTitle": "Charger",
   "slots.loadTitle.deco": "ロード",
+  "slots.export": "Exporter",
+  "slots.import": "Importer",
   "slots.pagesLabel": "Pages de sauvegarde",
   "slots.pageAria": "Page {n}",
   "slots.pageStatus": "Page {n} sur {total}",

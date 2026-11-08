@@ -30,11 +30,25 @@ import "./save-load-screen.css";
 
 export type SaveLoadMode = "save" | "load";
 
+/** Export et import JSON des sauvegardes (WEB-03, #198) ; absents : les deux boutons ne sont pas affichés. */
+export interface SaveTransferActions {
+  /** Télécharge le fichier d'export ; renvoie le message à afficher. */
+  export(): Promise<string>;
+  /** Ouvre le sélecteur de fichier puis importe ; null si le joueur annule. `imported` : au moins un emplacement écrit. */
+  import(): Promise<{ message: string; imported: boolean } | null>;
+}
+
+/** Délai avant le rechargement de la page qui suit un import (laisse lire le message). */
+export const RELOAD_AFTER_IMPORT_MS = 2200;
+
 export interface SaveLoadDeps {
   mode: SaveLoadMode;
   commands: Pick<PlayerCommands, "save" | "load" | "deleteSave" | "updateSave" | "closeScreen">;
   confirm(message: string, options?: ConfirmOptions): Promise<boolean>;
   toast(message: string): void;
+  transfer?: SaveTransferActions;
+  /** Rechargement de la page après un import (la progression fusionnée n'est lue qu'au démarrage). */
+  reload?: () => void;
   /** Faux pendant un chargement : les boutons n'agissent plus. */
   isInputEnabled(): boolean;
 }
@@ -85,6 +99,7 @@ export class SaveLoadScreen {
   private readonly pager: El;
   private readonly status: El;
   private readonly back: HTMLButtonElement;
+  private readonly transfer: El;
 
   private pages: SaveSlot[][] = paginate([]);
   private cards: El[] = [];
@@ -106,7 +121,8 @@ export class SaveLoadScreen {
     this.status.setAttribute("role", "status");
     this.back = this.makeButton("mh-sl-back", () => deps.commands.closeScreen());
     this.back.dataset.focusKey = "back";
-    this.element.append(this.header, this.grid, this.pager, this.back, this.status);
+    this.transfer = h("div", "mh-sl-transfer");
+    this.element.append(this.header, this.transfer, this.grid, this.pager, this.back, this.status);
     this.element.addEventListener("keydown", (e) => this.onKeyDown(e));
     this.element.addEventListener("focusin", (e) => this.onFocusIn(e));
   }
@@ -170,6 +186,37 @@ export class SaveLoadScreen {
     sub.setAttribute("aria-hidden", "true");
     this.header.replaceChildren(title, sub);
     this.element.setAttribute("aria-label", t(key));
+    this.renderTransfer();
+  }
+
+  /** Boutons Exporter / Importer (fichier JSON), seulement si le store sait les servir. */
+  private renderTransfer(): void {
+    const actions = this.deps.transfer;
+    if (!actions) return;
+    const exportBtn = this.makeButton("mh-sl-btn mh-sl-export", () => void this.runExport(actions), t("slots.export"));
+    exportBtn.dataset.focusKey = "export";
+    const importBtn = this.makeButton("mh-sl-btn mh-sl-import", () => void this.runImport(actions), t("slots.import"));
+    importBtn.dataset.focusKey = "import";
+    this.transfer.replaceChildren(exportBtn, importBtn);
+  }
+
+  private async runExport(actions: SaveTransferActions): Promise<void> {
+    try {
+      this.deps.toast(await actions.export());
+    } catch {
+      this.deps.toast(t("toast.saveFailed"));
+    }
+  }
+
+  private async runImport(actions: SaveTransferActions): Promise<void> {
+    try {
+      const result = await actions.import();
+      if (!result) return;
+      this.deps.toast(result.message);
+      if (result.imported) setTimeout(() => (this.deps.reload ?? (() => window.location.reload()))(), RELOAD_AFTER_IMPORT_MS);
+    } catch {
+      this.deps.toast(t("toast.saveFailed"));
+    }
   }
 
   private renderPager(): void {

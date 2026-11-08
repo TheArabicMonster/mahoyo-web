@@ -24,7 +24,7 @@ import type {
 } from "@/ui/types.js";
 import { openConfirmDialog, type ConfirmDialog } from "@/ui/confirm-dialog.js";
 import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t } from "@/ui/i18n.js";
-import { createSaveLoadScreen, type SaveLoadScreen } from "@/ui/save-load-screen.js";
+import { createSaveLoadScreen, type SaveLoadScreen, type SaveTransferActions } from "@/ui/save-load-screen.js";
 import { ToastStack } from "@/ui/toast.js";
 import { renderFlowchartScreen } from "@/ui/flowchart-view.js";
 import { syncNightDemo } from "@/ui/night.js";
@@ -64,6 +64,8 @@ function h<K extends keyof HTMLElementTagNameMap>(
 export type DomUIManagerOptions = {
   /** Source des images d'interface (le résolveur d'assets) ; absente = repli CSS partout (HUD-03, #189). */
   resolver?: UiImageSource;
+  /** Export et import JSON des sauvegardes, proposés dans l'écran de sauvegarde/chargement (WEB-03, #198). */
+  saveTransfer?: SaveTransferActions;
 };
 
 /**
@@ -105,9 +107,11 @@ export class DomUIManager implements UIManager {
   private cleanups: (() => void)[] = [];
   private previousDocumentLang: string | null = null;
   private readonly uiAssets: UiAssets;
+  private readonly saveTransfer: SaveTransferActions | undefined;
 
   constructor(options: DomUIManagerOptions = {}) {
     this.uiAssets = createUiAssets(options.resolver);
+    this.saveTransfer = options.saveTransfer;
   }
 
   // ── Cycle de vie ──
@@ -433,6 +437,7 @@ export class DomUIManager implements UIManager {
       commands: this.commands!,
       confirm: (message, options) => this.confirm(message, options),
       toast: (message) => this.toast(message),
+      transfer: this.saveTransfer,
       isInputEnabled: () => this.inputEnabled,
     });
     screen.setSlots(slots);

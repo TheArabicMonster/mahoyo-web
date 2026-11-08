@@ -1360,7 +1360,9 @@ export class Player implements PlayerCommands {
   }
 
   private async slots(): Promise<SaveSlot[]> {
-    return Promise.all(saveSlotIds().map(async (id) => ({ id, data: await this.deps.saveStore.get(id) })));
+    // Une seule lecture du stockage (IndexedDB : un seul parcours au lieu de 120 transactions).
+    const byKey = new Map((await this.deps.saveStore.list()).map((e) => [String(e.slot), e.record] as const));
+    return saveSlotIds().map((id) => ({ id, data: byKey.get(String(id)) ?? null }));
   }
 
   /** Langues disponibles : japonais toujours, plus celles dont l'index est chargé. */

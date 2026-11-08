@@ -44,6 +44,8 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "slots.saveTitle.deco": "セーブ",
   "slots.loadTitle": "Load",
   "slots.loadTitle.deco": "ロード",
+  "slots.export": "Export",
+  "slots.import": "Import",
   "slots.pagesLabel": "Save pages",
   "slots.pageAria": "Page {n}",
   "slots.pageStatus": "Page {n} of {total}",

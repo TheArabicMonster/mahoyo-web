@@ -21,17 +21,16 @@ test.describe("Écrans de sauvegarde et de chargement (#196)", () => {
 
   test("aller-retour : sauvegarder dans un emplacement, recharger la page, charger", async ({ page }) => {
     await page.goto("/");
-    await page.getByText("Nouvelle partie").click();
+    await page.locator(".mh-ui-new-game").click();
     const text = page.locator("#text");
     await expect(text).toContainText(/\S{5}/, { timeout: 15000 });
+    // Le menu met la lecture en pause : il faut avoir atteint le premier point d'arrêt (une sauvegarde le requiert).
+    await expect(page.locator("#textbox-indicator")).toBeVisible({ timeout: 20000 });
 
     await openSaveScreen(page);
     const slot3 = page.locator("[data-slot='3']");
-    // Le premier point d'arrêt peut ne pas être atteint tout de suite : on réessaie jusqu'à « Sauvegardé ».
-    await expect(async () => {
-      await slot3.locator(".mh-sl-save").click();
-      await expect(page.locator("#ui-toast")).toContainText("Sauvegardé", { timeout: 1500 });
-    }).toPass({ timeout: 15000 });
+    await slot3.locator(".mh-sl-save").click();
+    await expect(page.locator("#ui-toast")).toContainText("Sauvegardé");
     // L'écran se rafraîchit : la fiche est pleine, avec titre de scène et date au format de l'original.
     await expect(slot3.locator("time")).toHaveText(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}$/);
     await expect(slot3.locator(".mh-sl-scene")).not.toBeEmpty();
@@ -45,7 +44,7 @@ test.describe("Écrans de sauvegarde et de chargement (#196)", () => {
     await page.waitForTimeout(150);
 
     await page.reload();
-    await page.getByRole("button", { name: /^Charger$/ }).first().click();
+    await page.locator("[data-entry='load']").click();
     const loaded = page.locator("[data-slot='3']");
     await expect(loaded.locator(".mh-sl-scene")).toHaveText(title);
     await expect(loaded.locator(".mh-sl-comment")).toHaveValue("Avant le choix");
@@ -64,7 +63,7 @@ test.describe("Écrans de sauvegarde et de chargement (#196)", () => {
 
   test("navigation entre pages, clavier, et géométrie à 1280×720 sans débordement", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: /^Charger$/ }).first().click();
+    await page.locator("[data-entry='load']").click();
     await expect(page.locator(".mh-sl")).toBeVisible();
 
     await expect(page.locator("article.mh-sl-card")).toHaveCount(8);

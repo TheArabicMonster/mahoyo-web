@@ -46,6 +46,15 @@
   color: var(--mh-text-menu, #a9c8cc);
 }
 
+/* Export / import JSON : en haut à droite de la grille. */
+.mh-sl-transfer {
+  position: absolute;
+  right: 19.9%;
+  top: 4.4%;
+  display: flex;
+  gap: 0.5rem;
+}
+
 /* ── Grille 2 × 4 ── */
 .mh-sl-grid {
   position: absolute;

@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RELOAD_AFTER_IMPORT_MS } from "@/ui/save-load-screen.js";
 import { setUiLanguage } from "@/ui/i18n.js";
-import { createSaveLoadScreen, type SaveLoadMode, type SaveLoadScreen } from "@/ui/save-load-screen.js";
+import { createSaveLoadScreen, type SaveLoadDeps, type SaveLoadMode, type SaveLoadScreen } from "@/ui/save-load-screen.js";
 import type { SaveSlot } from "@/ui/types.js";
 
 const TS = new Date(2025, 2, 9, 14, 5, 7).getTime();
@@ -21,7 +22,7 @@ const full = (id: SaveSlot["id"], extra: Partial<NonNullable<SaveSlot["data"]>> 
   },
 });
 
-function setup(mode: SaveLoadMode, slots: SaveSlot[], confirmAnswer = true) {
+function setup(mode: SaveLoadMode, slots: SaveSlot[], confirmAnswer = true, extra: Partial<SaveLoadDeps> = {}) {
   const commands = {
     save: vi.fn(() => Promise.resolve()),
     load: vi.fn(() => Promise.resolve()),
@@ -32,7 +33,7 @@ function setup(mode: SaveLoadMode, slots: SaveSlot[], confirmAnswer = true) {
   const confirm = vi.fn((_message: string, _options?: { defaultButton?: "yes" | "no" }) => Promise.resolve(confirmAnswer));
   const toast = vi.fn();
   const state = { enabled: true };
-  const screen: SaveLoadScreen = createSaveLoadScreen({ mode, commands, confirm, toast, isInputEnabled: () => state.enabled });
+  const screen: SaveLoadScreen = createSaveLoadScreen({ mode, commands, confirm, toast, isInputEnabled: () => state.enabled, ...extra });
   document.body.appendChild(screen.element);
   screen.setSlots(slots);
   const q = (sel: string) => screen.element.querySelector<HTMLElement>(sel);
@@ -316,6 +317,55 @@ describe("SaveLoadScreen", () => {
       input.focus();
       key(input, "ArrowRight");
       expect(document.activeElement).toBe(input);
+    });
+  });
+
+  describe("export et import JSON", () => {
+    it("sans actions de transfert, aucun bouton", () => {
+      const { q } = setup("load", []);
+      expect(q(".mh-sl-export")).toBeNull();
+      expect(q(".mh-sl-import")).toBeNull();
+    });
+
+    it("Exporter télécharge et affiche le message", async () => {
+      const transfer = { export: vi.fn(() => Promise.resolve("2 emplacement(s) exporté(s).")), import: vi.fn() };
+      const { q, toast } = setup("load", [], true, { transfer });
+      expect(q(".mh-sl-export")!.textContent).toBe("Exporter");
+      q(".mh-sl-export")!.click();
+      await vi.waitFor(() => expect(toast).toHaveBeenCalledWith("2 emplacement(s) exporté(s)."));
+    });
+
+    it("Importer : message puis rechargement de la page seulement si des emplacements ont été écrits", async () => {
+      vi.useFakeTimers();
+      try {
+        const reload = vi.fn();
+        const transfer = {
+          export: vi.fn(),
+          import: vi.fn().mockResolvedValueOnce({ message: "ok", imported: true }).mockResolvedValueOnce({ message: "rien", imported: false }).mockResolvedValueOnce(null),
+        };
+        const { q, toast } = setup("save", [], true, { transfer, reload });
+        q(".mh-sl-import")!.click();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(toast).toHaveBeenLastCalledWith("ok");
+        expect(reload).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(RELOAD_AFTER_IMPORT_MS);
+        expect(reload).toHaveBeenCalledTimes(1);
+        q(".mh-sl-import")!.click();
+        await vi.advanceTimersByTimeAsync(RELOAD_AFTER_IMPORT_MS + 10);
+        expect(toast).toHaveBeenLastCalledWith("rien");
+        q(".mh-sl-import")!.click();
+        await vi.advanceTimersByTimeAsync(RELOAD_AFTER_IMPORT_MS + 10);
+        expect(reload).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("un échec du transfert affiche un message d'erreur", async () => {
+      const transfer = { export: vi.fn(() => Promise.reject(new Error("x"))), import: vi.fn() };
+      const { q, toast } = setup("load", [], true, { transfer });
+      q(".mh-sl-export")!.click();
+      await vi.waitFor(() => expect(toast).toHaveBeenCalledWith("Échec de la sauvegarde."));
     });
   });
 

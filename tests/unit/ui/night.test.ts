@@ -48,7 +48,7 @@ describe("syncNightDemo", () => {
     syncNightDemo(el, "title", "?night"); // l'écran titre est clair : il ne prend jamais le fond nuit (HUD-07, #195)
     expect(el.classList.contains(NIGHT_CLASS)).toBe(false);
     el.classList.add(NIGHT_CLASS);
-    syncNightDemo(el, "save", "");
+    syncNightDemo(el, "backlog", "");
     expect(el.classList.contains(NIGHT_CLASS)).toBe(false);
   });
 });
