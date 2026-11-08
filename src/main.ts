@@ -1,4 +1,5 @@
 import "./main.css";
+import "./ui/tokens.css";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { AssetResolver } from "@/core/asset-resolver.js";
 import { applyViewportScale, computeViewportScale } from "@/core/display.js";
