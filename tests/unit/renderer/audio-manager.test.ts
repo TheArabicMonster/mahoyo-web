@@ -35,7 +35,8 @@ class FakeAudio implements AudioElementLike {
 }
 
 const settings = (o: Partial<AudioSettings> = {}): AudioSettings => ({
-  master: 1, bgm: 1, se: 1, voice: 1, muted: false, ...o,
+  master: 1, bgm: 1, se: 1, system: 1, voice: 1, muted: false,
+  bgmMuted: false, seMuted: false, systemMuted: false, ...o,
 });
 
 let created: FakeAudio[];

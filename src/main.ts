@@ -1,6 +1,7 @@
 import "./main.css";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { AssetResolver } from "@/core/asset-resolver.js";
+import { applyViewportScale, computeViewportScale } from "@/core/display.js";
 import { createDomStageRenderer } from "./renderer/stage-renderer.js";
 import { DomUIManager } from "./ui/ui-manager.js";
 import { Player } from "./ui/player.js";
@@ -47,15 +48,15 @@ async function main() {
   viewport.id = "viewport";
   app.appendChild(viewport);
 
-  // Scaling : ajuste le viewport pour tenir dans la fenêtre
-  function updateScale() {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const scale = Math.min(vw / 1280, vh / 720);
-    viewport.style.transform = `scale(${scale})`;
-  }
-  updateScale();
-  window.addEventListener("resize", updateScale);
+  // Échelle initiale ; le player la recalcule selon les réglages (#177).
+  applyViewportScale(
+    viewport,
+    computeViewportScale(window.innerWidth, window.innerHeight, {
+      fullscreen: false,
+      mode: "fit",
+      windowSize: "fit",
+    }),
+  );
 
   const chain = await loadChain(resolver);
 

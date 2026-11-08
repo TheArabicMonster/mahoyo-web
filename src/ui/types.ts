@@ -2,7 +2,8 @@
  * Contrat UI : écrans hors jeu, entrées utilisateur et commandes vers le player.
  */
 import type { Ms, StageSnapshot } from "@/kag/events.js";
-import type { AudioSettings, DisplaySettings } from "@/renderer/types.js";
+import type { ShortcutBindings } from "@/core/shortcuts.js";
+import type { AudioSettings, DisplaySettings, MouseMode } from "@/renderer/types.js";
 
 // ── Réglages et état du player ──
 
@@ -14,6 +15,7 @@ export type GameSettings = {
   /** false = le skip s'arrête sur le texte non lu. */
   skipUnread: boolean;
   language: GameLanguage;
+  shortcuts: ShortcutBindings;
 };
 
 export type PlayMode = "normal" | "auto" | "skip";
@@ -28,6 +30,14 @@ export type PlayerStatus = {
   quickMenuLocked: boolean;
   /** Avance automatique suspendue par le script (@pauseautomode) ; `mode` reste le choix du joueur. */
   autoPaused: boolean;
+  /** Comportement du clic droit (menu direct ou masquer puis menu). */
+  mouseMode: MouseMode;
+  /** Masquer le curseur après inactivité. */
+  autoHideCursor: boolean;
+  /** Touche d'avance rapide choisie. */
+  fastForwardKey: "enter" | "shift" | "ctrl";
+  /** Raccourcis actifs, poussés avec le statut pour être disponibles en jeu. */
+  shortcuts: ShortcutBindings;
 };
 
 export type SlotId = number | "quick" | "auto";
@@ -43,6 +53,8 @@ export type SlotId = number | "quick" | "auto";
 export interface PlayerCommands {
   /** Clic, Espace, Entrée. Le player décide : hurry, avancer, ou rien. */
   advance(): void;
+  /** Avance rapide (touche maintenue) ; true si l'appui a été consommé. */
+  hurryText(): boolean;
   setMode(mode: PlayMode): void;
   toggleUserHide(): void;
   rollback(): void;
@@ -61,7 +73,10 @@ export interface PlayerCommands {
 
   // Système
   updateSettings(patch: Partial<GameSettings>): void;
+  resetSettings(): void;
   toggleFullscreen(): void;
+  /** Joue un bip de test au volume SE courant. */
+  testSe(): void;
 }
 
 // ── Données affichées ──

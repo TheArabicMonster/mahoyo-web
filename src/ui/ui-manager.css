@@ -34,3 +34,35 @@
 .mh-ui-loading { z-index: 300; background: rgba(0, 0, 0, 0.5); pointer-events: auto; }
 .mh-ui-confirm { position: absolute; inset: 0; z-index: 250; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; }
 .mh-ui-confirm-box { background: #112; border: 1px solid #889; padding: 1.5rem; }
+
+/* ── Configuration 4 onglets (#177) ── */
+.mh-ui-settings-screen { width: min(94%, 58rem); display: flex; flex-direction: column; overflow: hidden; }
+.mh-ui-settings-screen .mh-ui-tabs, .mh-ui-settings-screen .mh-ui-config-footer { flex: none; }
+.mh-ui-settings-screen input[type="checkbox"] { width: 1rem; height: 1rem; accent-color: #3c8; }
+.mh-ui-settings-screen select { background: #1a1a2a; color: #eee; border: 1px solid #667; padding: 0.25rem 0.5rem; font: inherit; }
+.mh-ui-tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; border-bottom: 1px solid #556; }
+.mh-ui-tab { background: transparent; border: none; border-bottom: 2px solid transparent; padding: 0.5rem 1rem; }
+.mh-ui-tab.active { border-bottom-color: #6cf; color: #6cf; }
+.mh-ui-config { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 1.5rem; align-items: start; overflow-y: auto; min-height: 0; flex: 1; padding-right: 0.25rem; }
+.mh-ui-config-section { border: 1px solid #445; padding: 0.75rem 1rem; }
+.mh-ui-config-title { margin: 0.1rem 0 0.5rem; font-size: 1rem; color: #8cf; }
+.mh-ui-field { flex-wrap: wrap; }
+.mh-ui-field input[type="range"] { flex: 1; min-width: 8rem; }
+.mh-ui-field-value { min-width: 5rem; text-align: right; opacity: 0.85; }
+.mh-ui-segments { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.mh-ui-segment { padding: 0.3rem 0.7rem; border-color: #556; }
+.mh-ui-segment.active { background: #1d4d3a; border-color: #3c8; color: #bff; }
+.mh-ui-check { justify-content: flex-start; gap: 0.5rem; }
+.mh-ui-check .mh-ui-field-label { min-width: 0; }
+.mh-ui-shortcut-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.3rem 0; border-bottom: 1px dashed #334; }
+.mh-ui-shortcut-keys { display: flex; gap: 0.35rem; }
+.mh-ui-key { min-width: 5.5rem; padding: 0.3rem 0.6rem; }
+.mh-ui-key.capturing { border-color: #6cf; color: #6cf; }
+.mh-ui-hint { opacity: 0.7; font-size: 0.85rem; }
+.mh-ui-config-footer { display: flex; justify-content: space-between; margin-top: 1rem; }
+.mh-ui-test-se { margin-top: 0.5rem; }
+.mh-ui-cursor-hidden, .mh-ui-cursor-hidden * { cursor: none !important; }
+@media (max-width: 900px) {
+  .mh-ui-config { grid-template-columns: 1fr; }
+  .mh-ui-field-label { min-width: 100%; }
+}

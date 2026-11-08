@@ -18,15 +18,72 @@ import type {
 
 // ── Réglages ──
 
+export type TextAnimation = "fade" | "none";
+export type AutoClickAction = "skip" | "cancel";
+export type FastForwardKey = "enter" | "shift" | "ctrl";
+export type FastForwardScope = "all" | "read";
+export type FullscreenMode = "fit" | "fill" | "none";
+export type WindowSize =
+  | "fit"
+  | "1024x576"
+  | "1920x1080"
+  | "1600x900"
+  | "1440x810"
+  | "1280x720"
+  | "800x450"
+  | "640x360";
+export type MouseMode = "menu" | "hideThenMenu";
+
 export type DisplaySettings = {
-  /** ms par caractère, 0 = instantané. */
-  textSpeed: Ms;
-  /** Délai après la fin du texte en mode auto (ms). */
-  autoDelay: Ms;
+  /** ms par caractère pour une page non lue, 0 = instantané. */
+  textSpeedUnread: Ms;
+  /** ms par caractère pour une page déjà lue, 0 = instantané. */
+  textSpeedRead: Ms;
+  /** Afficher toute la page d'un coup (texte non lu / déjà lu). */
+  instantUnreadPage: boolean;
+  instantReadPage: boolean;
+  /** Délai après la fin d'une page en mode auto (ms). */
+  autoPageDelay: Ms;
+  /** Délai après une attente de ligne `[l]` en mode auto (ms). */
+  autoLineDelay: Ms;
+  /** Clic en mode auto : sauter l'animation ou arrêter l'auto. */
+  autoClick: AutoClickAction;
+  /** Entrer en skip automatiquement sur une page déjà lue. */
+  autoSkipRead: boolean;
+  /** Demander confirmation avant ce skip automatique. */
+  autoSkipConfirm: boolean;
+  /** Touche maintenue pour accélérer la frappe. */
+  fastForwardKey: FastForwardKey;
+  /** Portée de l'avance rapide. */
+  fastForwardScope: FastForwardScope;
+  /** Fondu d'apparition de la page de texte. */
+  textAnimation: TextAnimation;
+  /** Atténuer le texte déjà lu, avec un fondu de `readFadeDuration`. */
+  readFade: boolean;
+  readFadeDuration: Ms;
+  readFadeOpacity: number;
+  /** Pile CSS de la police du texte ("" = police du port). */
+  fontFamily: string;
   /** Multiplicateur de taille de police (1 = défaut). */
   fontScale: number;
   /** Opacité de la textbox entre 0 et 1. */
   textboxOpacity: number;
+  /** Échelle appliquée en plein écran. */
+  fullscreenMode: FullscreenMode;
+  /** Taille d'affichage maximale en fenêtre (adaptation web). */
+  windowSize: WindowSize;
+  /** Clic droit : menu direct, ou masquer le texte puis menu. */
+  mouseMode: MouseMode;
+  /** Masquer le curseur après inactivité. */
+  autoHideCursor: boolean;
+  /** À la fin d'une page, amener les effets en cours à leur état final. */
+  instantEffects: boolean;
+  /** Un clic peut-il interrompre une animation/transition en cours ? */
+  stopAnimations: boolean;
+  /** Un `clearText` de changement de page vide le texte. */
+  clearTextOnPageChange: boolean;
+  /** Afficher les effets spéciaux (noise, haze, tremblements). */
+  specialEffects: boolean;
 };
 
 export type AudioSettings = {
@@ -34,8 +91,58 @@ export type AudioSettings = {
   master: number;
   bgm: number;
   se: number;
+  /** Sons d'interface (menu, clics). */
+  system: number;
   voice: number;
   muted: boolean;
+  bgmMuted: boolean;
+  seMuted: boolean;
+  systemMuted: boolean;
+};
+
+/** Valeurs par défaut des réglages d'affichage (#177), partagées par le player et le renderer. */
+export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
+  textSpeedUnread: 36,
+  textSpeedRead: 26,
+  instantUnreadPage: false,
+  instantReadPage: false,
+  autoPageDelay: 3000,
+  autoLineDelay: 2200,
+  autoClick: "cancel",
+  autoSkipRead: false,
+  autoSkipConfirm: true,
+  fastForwardKey: "shift",
+  fastForwardScope: "read",
+  textAnimation: "fade",
+  readFade: true,
+  readFadeDuration: 1500,
+  readFadeOpacity: 0.4,
+  fontFamily: "",
+  fontScale: 1,
+  textboxOpacity: 0.8,
+  fullscreenMode: "fit",
+  windowSize: "fit",
+  mouseMode: "menu",
+  autoHideCursor: false,
+  instantEffects: false,
+  // Le port garde le clic qui saute les animations (comportement historique) ; la capture
+  // d'origine montre « Non », réglable dans l'onglet Son/Effet.
+  stopAnimations: true,
+  clearTextOnPageChange: true,
+  specialEffects: true,
+};
+
+/** Valeurs par défaut audio (#177). */
+export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
+  master: 1,
+  bgm: 0.7,
+  se: 0.6,
+  system: 0.5,
+  voice: 1,
+  muted: false,
+  bgmMuted: false,
+  seMuted: false,
+  systemMuted: false,
 };
 
 // ── Options communes ──
@@ -46,6 +153,8 @@ export type RunOptions = {
    * sans typewriter, transition ni animation (les boucles infinies restent actives).
    */
   instant: boolean;
+  /** Vitesse de frappe de cette page (ms/caractère) ; absent = vitesse non lue. */
+  textSpeed?: Ms;
   /**
    * Annulation (load, retour titre). Après un abort, les promesses se RÉSOLVENT
    * (elles ne rejettent pas) et le renderer reste dans un état cohérent.
@@ -146,6 +255,9 @@ export interface AudioPlayer {
   restore(snapshot: AudioSnapshot): void;
 
   stopAll(fadeOut?: Ms): void;
+
+  /** Bip synthétique de test au volume SE courant (aucun asset requis). */
+  testSe(): void;
 
   setSettings(settings: Readonly<AudioSettings>): void;
 

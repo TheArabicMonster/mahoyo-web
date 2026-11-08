@@ -1,3 +1,13 @@
+import { WINDOW_SIZE_OPTIONS } from "@/core/display.js";
+import {
+  actionForEvent,
+  bindingFromEvent,
+  cloneShortcuts,
+  defaultShortcuts,
+  formatBinding,
+  SHORTCUT_DEFINITIONS,
+  type ShortcutAction,
+} from "@/core/shortcuts.js";
 import type { Ms } from "@/kag/events.js";
 import type {
   BacklogEntry,
@@ -27,7 +37,13 @@ const DEFAULT_STATUS: PlayerStatus = {
   canRollback: false,
   quickMenuLocked: false,
   autoPaused: false,
+  mouseMode: "menu",
+  autoHideCursor: false,
+  fastForwardKey: "shift",
+  shortcuts: defaultShortcuts(),
 };
+
+type SettingsTab = "system" | "message" | "sound" | "shortcuts";
 
 type El = HTMLElement;
 
@@ -81,6 +97,10 @@ export class DomUIManager implements UIManager {
 
   private ctrlSkip = false;
   private modeBeforeCtrl: PlayerStatus["mode"] = "normal";
+  private settingsTab: SettingsTab = "system";
+  private capturing: { action: ShortcutAction; index: number } | null = null;
+  private captureApply: ((binding: string) => void) | null = null;
+  private cursorTimer: ReturnType<typeof setTimeout> | undefined;
 
   private pendingConfirm: ((v: boolean) => void) | null = null;
   private toastTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -115,6 +135,7 @@ export class DomUIManager implements UIManager {
     this.listen(this.overlay, "wheel", (e) => this.onWheel(e as WheelEvent));
     this.listen(document, "keydown", (e) => this.onKeyDown(e as KeyboardEvent));
     this.listen(document, "keyup", (e) => this.onKeyUp(e as KeyboardEvent));
+    this.listen(document, "mousemove", () => this.resetCursorTimer());
     this.listen(window, "blur", () => this.releaseCtrlSkip());
 
     this.show(this.view);
@@ -126,6 +147,7 @@ export class DomUIManager implements UIManager {
     this.cleanups = [];
     for (const t of this.toastTimers) clearTimeout(t);
     this.toastTimers.clear();
+    if (this.cursorTimer) clearTimeout(this.cursorTimer);
     this.resolveConfirm(false);
     if (this.root) {
       this.overlay.replaceChildren();
@@ -181,6 +203,20 @@ export class DomUIManager implements UIManager {
     // Le player fait foi : si le mode revient à autre chose que skip, le Ctrl temporaire est caduc.
     if (this.ctrlSkip && status.mode !== "skip") this.ctrlSkip = false;
     this.renderStatus();
+    this.resetCursorTimer();
+  }
+
+  /** Masquage automatique du curseur après 2 s d'inactivité en jeu (#177). */
+  private resetCursorTimer(): void {
+    if (!this.overlay) return;
+    if (this.cursorTimer) clearTimeout(this.cursorTimer);
+    this.overlay.classList.remove("mh-ui-cursor-hidden");
+    if (!this.status.autoHideCursor || this.view.screen !== "game") return;
+    this.cursorTimer = setTimeout(() => {
+      if (this.status.autoHideCursor && this.view.screen === "game") {
+        this.overlay.classList.add("mh-ui-cursor-hidden");
+      }
+    }, 2000);
   }
 
   showChoices(options: readonly string[]): void {
@@ -445,13 +481,98 @@ export class DomUIManager implements UIManager {
   }
 
   private renderSettings(settings: Readonly<GameSettings>, availableLanguages: readonly GameLanguage[]): El {
-    const p = this.panel("Réglages", "mh-ui-settings-screen");
-    const form = h("div", "mh-ui-form");
+    const p = this.panel("Config", "mh-ui-settings-screen");
+    const tabs = h("div", "mh-ui-tabs");
+    const content = h("div", "mh-ui-config");
     // Copies locales : `Partial<GameSettings>` est superficiel, on renvoie les groupes entiers.
     const display = { ...settings.display };
     const audio = { ...settings.audio };
+    const shortcuts = cloneShortcuts(settings.shortcuts);
+    let language = settings.language;
+    let skipUnread = settings.skipUnread;
+    const updateView = () => {
+      this.view = {
+        screen: "settings",
+        settings: {
+          ...settings,
+          display: { ...display },
+          audio: { ...audio },
+          shortcuts: cloneShortcuts(shortcuts),
+          language,
+          skipUnread,
+        },
+        availableLanguages,
+      };
+    };
+    const pushDisplay = () => {
+      updateView();
+      this.commands?.updateSettings({ display: { ...display } });
+    };
+    const pushAudio = () => {
+      updateView();
+      this.commands?.updateSettings({ audio: { ...audio } });
+    };
+    const pushShortcuts = () => {
+      updateView();
+      this.commands?.updateSettings({ shortcuts: cloneShortcuts(shortcuts) });
+    };
+    const refresh = () => this.show(this.view);
 
-    const range = (
+    const tabDefs: readonly [SettingsTab, string][] = [
+      ["system", "Système"],
+      ["message", "Message"],
+      ["sound", "Son/Effet"],
+      ["shortcuts", "Raccourcis"],
+    ];
+    for (const [id, label] of tabDefs) {
+      const tab = this.button(label, () => {
+        updateView();
+        this.settingsTab = id;
+        this.show(this.view);
+      }, "mh-ui-tab");
+      tab.dataset.tab = id;
+      if (id === this.settingsTab) tab.classList.add("active");
+      tabs.appendChild(tab);
+    }
+
+    const section = (title: string): El => {
+      const s = h("section", "mh-ui-config-section");
+      s.appendChild(h("h3", "mh-ui-config-title", title));
+      content.appendChild(s);
+      return s;
+    };
+    const field = (parent: El, label: string): El => {
+      const row = h("div", "mh-ui-field");
+      row.appendChild(h("span", "mh-ui-field-label", label));
+      parent.appendChild(row);
+      return row;
+    };
+    const segmented = <T extends string>(
+      parent: El,
+      label: string,
+      name: string,
+      options: readonly { value: T; label: string }[],
+      value: T,
+      onChange: (v: T) => void,
+    ) => {
+      const row = field(parent, label);
+      const group = h("div", "mh-ui-segments");
+      const buttons: HTMLButtonElement[] = [];
+      for (const option of options) {
+        const b = this.button(option.label, () => {
+          onChange(option.value);
+          for (const other of buttons) other.classList.toggle("active", other === b);
+        }, "mh-ui-segment");
+        b.name = name;
+        b.dataset.value = option.value;
+        if (option.value === value) b.classList.add("active");
+        buttons.push(b);
+        group.appendChild(b);
+      }
+      row.appendChild(group);
+    };
+    const slider = (
+      parent: El,
       label: string,
       name: string,
       min: number,
@@ -459,9 +580,9 @@ export class DomUIManager implements UIManager {
       step: number,
       value: number,
       onInput: (v: number) => void,
+      format: (v: number) => string = (v) => String(v),
     ) => {
-      const row = h("label", "mh-ui-field");
-      row.appendChild(h("span", "mh-ui-field-label", label));
+      const row = field(parent, label);
       const input = h("input");
       input.type = "range";
       input.name = name;
@@ -469,14 +590,17 @@ export class DomUIManager implements UIManager {
       input.max = String(max);
       input.step = String(step);
       input.value = String(value);
+      const output = h("output", "mh-ui-field-value", format(value));
       input.addEventListener("input", () => {
-        if (this.inputEnabled) onInput(Number(input.value));
+        if (!this.inputEnabled) return;
+        const v = Number(input.value);
+        output.textContent = format(v);
+        onInput(v);
       });
-      row.appendChild(input);
-      form.appendChild(row);
+      row.append(input, output);
     };
-    const check = (label: string, name: string, value: boolean, onChange: (v: boolean) => void) => {
-      const row = h("label", "mh-ui-field");
+    const check = (parent: El, label: string, name: string, value: boolean, onChange: (v: boolean) => void) => {
+      const row = h("label", "mh-ui-field mh-ui-check");
       const input = h("input");
       input.type = "checkbox";
       input.name = name;
@@ -485,48 +609,281 @@ export class DomUIManager implements UIManager {
         if (this.inputEnabled) onChange(input.checked);
       });
       row.append(input, h("span", "mh-ui-field-label", label));
-      form.appendChild(row);
+      parent.appendChild(row);
     };
-    const pushAudio = () => this.commands?.updateSettings({ audio: { ...audio } });
-    const pushDisplay = () => this.commands?.updateSettings({ display: { ...display } });
+    const yesNo = (parent: El, label: string, name: string, value: boolean, onChange: (v: boolean) => void) => {
+      segmented(parent, label, name, [{ value: "yes", label: "Oui" }, { value: "no", label: "Non" }], value ? "yes" : "no", (v) => onChange(v === "yes"));
+    };
+    const select = <T extends string>(
+      parent: El,
+      label: string,
+      name: string,
+      options: readonly { value: T; label: string }[],
+      value: T,
+      onChange: (v: T) => void,
+    ) => {
+      const row = field(parent, label);
+      const el = h("select");
+      el.name = name;
+      for (const option of options) {
+        const o = h("option", undefined, option.label);
+        o.value = option.value;
+        el.appendChild(o);
+      }
+      el.value = value;
+      el.addEventListener("change", () => {
+        if (this.inputEnabled) onChange(el.value as T);
+      });
+      row.appendChild(el);
+    };
+    const keyRow = (parent: El, action: ShortcutAction, label: string) => {
+      const row = h("div", "mh-ui-shortcut-row");
+      row.appendChild(h("span", "mh-ui-shortcut-label", label));
+      const keys = h("div", "mh-ui-shortcut-keys");
+      for (let index = 0; index < 2; index++) {
+        const b = this.button(formatBinding(shortcuts[action][index] ?? ""), () => {
+          this.capturing = { action, index };
+          this.captureApply = (binding) => {
+            shortcuts[action][index] = binding;
+            pushShortcuts();
+            refresh();
+          };
+          b.textContent = "Appuyez…";
+          b.classList.add("capturing");
+        }, "mh-ui-key");
+        b.dataset.action = action;
+        b.dataset.index = String(index);
+        keys.appendChild(b);
+      }
+      row.appendChild(keys);
+      parent.appendChild(row);
+    };
 
-    range("Volume général", "master", 0, 1, 0.05, audio.master, (v) => ((audio.master = v), pushAudio()));
-    range("Musique", "bgm", 0, 1, 0.05, audio.bgm, (v) => ((audio.bgm = v), pushAudio()));
-    range("Effets", "se", 0, 1, 0.05, audio.se, (v) => ((audio.se = v), pushAudio()));
-    range("Voix", "voice", 0, 1, 0.05, audio.voice, (v) => ((audio.voice = v), pushAudio()));
-    check("Muet", "muted", audio.muted, (v) => ((audio.muted = v), pushAudio()));
-    range("Vitesse du texte (ms/caractère)", "textSpeed", 0, 100, 5, display.textSpeed, (v) => ((display.textSpeed = v), pushDisplay()));
-    range("Délai auto (ms)", "autoDelay", 0, 5000, 100, display.autoDelay, (v) => ((display.autoDelay = v), pushDisplay()));
-    range("Taille du texte", "fontScale", 0.5, 2, 0.1, display.fontScale, (v) => ((display.fontScale = v), pushDisplay()));
-    range("Opacité de la boîte de texte", "textboxOpacity", 0, 1, 0.05, display.textboxOpacity, (v) => ((display.textboxOpacity = v), pushDisplay()));
-    check("Skip : passer aussi le texte non lu", "skipUnread", settings.skipUnread, (v) =>
-      this.commands?.updateSettings({ skipUnread: v }),
-    );
+    if (this.settingsTab === "system") {
+      const screen = section("Affichage à l'écran");
+      const fullscreenRow = h("div", "mh-ui-field");
+      fullscreenRow.appendChild(this.button("Mode plein écran", () => this.commands?.toggleFullscreen(), "mh-ui-fullscreen"));
+      screen.appendChild(fullscreenRow);
+      segmented(screen, "Plein écran", "fullscreenMode", [
+        { value: "fit", label: "Adapter à l'écran" },
+        { value: "fill", label: "Afficher sur tout l'écran" },
+        { value: "none", label: "Pas étendu" },
+      ], display.fullscreenMode, (v) => {
+        display.fullscreenMode = v;
+        pushDisplay();
+      });
+      select(screen, "Mode fenêtré — taille", "windowSize", WINDOW_SIZE_OPTIONS, display.windowSize, (v) => {
+        display.windowSize = v;
+        pushDisplay();
+      });
 
-    const lang = h("label", "mh-ui-field");
-    lang.appendChild(h("span", "mh-ui-field-label", "Langue"));
-    const select = h("select");
-    select.name = "language";
-    const languageOptions: { value: GameLanguage; text: string }[] = [
-      { value: "ja", text: "日本語" },
-      { value: "en", text: "English" },
-      { value: "fr", text: "Français" },
-    ];
-    const available = new Set<GameLanguage>(availableLanguages);
-    for (const { value, text } of languageOptions) {
-      if (!available.has(value)) continue;
-      const o = h("option", undefined, text);
-      o.value = value;
-      select.appendChild(o);
+      const text = section("Mise en scène du texte");
+      segmented(text, "Texte affiché", "textAnimation", [
+        { value: "fade", label: "Activée" },
+        { value: "none", label: "Sans" },
+      ], display.textAnimation, (v) => {
+        display.textAnimation = v;
+        pushDisplay();
+      });
+      segmented(text, "Texte déjà lu", "readFade", [
+        { value: "fade", label: "Fondu" },
+        { value: "none", label: "Sans" },
+      ], display.readFade ? "fade" : "none", (v) => {
+        display.readFade = v === "fade";
+        pushDisplay();
+      });
+      slider(text, "Durée du fondu", "readFadeDuration", 0, 3000, 100, display.readFadeDuration, (v) => {
+        display.readFadeDuration = v;
+        pushDisplay();
+      }, (v) => `${v} ms`);
+      slider(text, "Opacité du texte lu", "readFadeOpacity", 0, 100, 5, Math.round(display.readFadeOpacity * 100), (v) => {
+        display.readFadeOpacity = v / 100;
+        pushDisplay();
+      }, (v) => `${v} %`);
+
+      const mouse = section("Réglage de la souris");
+      segmented(mouse, "Clic droit", "mouseMode", [
+        { value: "menu", label: "1 clic : menu" },
+        { value: "hideThenMenu", label: "2 clics : cacher puis menu" },
+      ], display.mouseMode, (v) => {
+        display.mouseMode = v;
+        pushDisplay();
+      });
+      check(mouse, "Curseur autoguidé (masqué après inactivité)", "autoHideCursor", display.autoHideCursor, (v) => {
+        display.autoHideCursor = v;
+        pushDisplay();
+      });
+
+      const layout = section("Texte et boîte");
+      slider(layout, "Taille du texte", "fontScale", 0.5, 2, 0.1, display.fontScale, (v) => {
+        display.fontScale = v;
+        pushDisplay();
+      }, (v) => `× ${v.toFixed(1)}`);
+      slider(layout, "Opacité de la boîte", "textboxOpacity", 0, 1, 0.05, display.textboxOpacity, (v) => {
+        display.textboxOpacity = v;
+        pushDisplay();
+      }, (v) => `${Math.round(v * 100)} %`);
+    } else if (this.settingsTab === "message") {
+      const unread = section("Vitesse des scènes non lues");
+      slider(unread, "Vitesse", "textSpeedUnread", 0, 100, 1, display.textSpeedUnread, (v) => {
+        display.textSpeedUnread = v;
+        pushDisplay();
+      }, (v) => `${v} ms/car.`);
+      check(unread, "Afficher toute la page", "instantUnreadPage", display.instantUnreadPage, (v) => {
+        display.instantUnreadPage = v;
+        pushDisplay();
+      });
+
+      const read = section("Vitesse des scènes déjà lues");
+      slider(read, "Vitesse", "textSpeedRead", 0, 100, 1, display.textSpeedRead, (v) => {
+        display.textSpeedRead = v;
+        pushDisplay();
+      }, (v) => `${v} ms/car.`);
+      check(read, "Afficher toute la page", "instantReadPage", display.instantReadPage, (v) => {
+        display.instantReadPage = v;
+        pushDisplay();
+      });
+
+      const auto = section("Mode automatique");
+      slider(auto, "Délai entre les pages", "autoPageDelay", 0, 6000, 100, display.autoPageDelay, (v) => {
+        display.autoPageDelay = v;
+        pushDisplay();
+      }, (v) => `${v} ms`);
+      slider(auto, "Délai entre les lignes", "autoLineDelay", 0, 6000, 100, display.autoLineDelay, (v) => {
+        display.autoLineDelay = v;
+        pushDisplay();
+      }, (v) => `${v} ms`);
+      segmented(auto, "Clic en mode auto", "autoClick", [
+        { value: "skip", label: "Sauter l'animation" },
+        { value: "cancel", label: "Arrêt du mode auto" },
+      ], display.autoClick, (v) => {
+        display.autoClick = v;
+        pushDisplay();
+      });
+
+      const skipping = section("Saut et avance rapide");
+      segmented(skipping, "Saut automatique des scènes déjà lues", "autoSkipRead", [
+        { value: "off", label: "Désactivé" },
+        { value: "on", label: "Activé" },
+      ], display.autoSkipRead ? "on" : "off", (v) => {
+        display.autoSkipRead = v === "on";
+        pushDisplay();
+      });
+      check(skipping, "Afficher confirmation", "autoSkipConfirm", display.autoSkipConfirm, (v) => {
+        display.autoSkipConfirm = v;
+        pushDisplay();
+      });
+      segmented(skipping, "Touche d'avance rapide", "fastForwardKey", [
+        { value: "enter", label: "Entrée" },
+        { value: "shift", label: "Maj" },
+        { value: "ctrl", label: "Ctrl" },
+      ], display.fastForwardKey, (v) => {
+        display.fastForwardKey = v;
+        pushDisplay();
+      });
+      segmented(skipping, "Avance rapide du texte", "fastForwardScope", [
+        { value: "all", label: "Tous les textes" },
+        { value: "read", label: "Textes déjà lus" },
+      ], display.fastForwardScope, (v) => {
+        display.fastForwardScope = v;
+        pushDisplay();
+      });
+      check(skipping, "Le skip passe aussi le texte non lu", "skipUnread", skipUnread, (v) => {
+        skipUnread = v;
+        updateView();
+        this.commands?.updateSettings({ skipUnread: v });
+      });
+
+      const font = section("Police");
+      select(font, "Police du texte", "fontFamily", [
+        { value: "", label: "Police du port" },
+        { value: '"Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif', label: "Serif japonaise" },
+        { value: '"Noto Sans JP", "Hiragino Sans", sans-serif', label: "Sans-serif" },
+        { value: "monospace", label: "Monospace" },
+      ], display.fontFamily, (v) => {
+        display.fontFamily = v;
+        pushDisplay();
+      });
+
+      const languageSection = section("Langue");
+      const labels: Record<GameLanguage, string> = { ja: "日本語", en: "English", fr: "Français" };
+      select(
+        languageSection,
+        "Langue",
+        "language",
+        availableLanguages.map((value) => ({ value, label: labels[value] })),
+        language,
+        (v) => {
+          language = v;
+          updateView();
+          this.commands?.updateSettings({ language: v });
+        },
+      );
+    } else if (this.settingsTab === "sound") {
+      const bgm = section("Volume des musiques");
+      slider(bgm, "Volume", "bgm", 0, 100, 5, Math.round(audio.bgm * 100), (v) => {
+        audio.bgm = v / 100;
+        pushAudio();
+      }, (v) => `${v} %`);
+      check(bgm, "Muet", "bgmMuted", audio.bgmMuted, (v) => {
+        audio.bgmMuted = v;
+        pushAudio();
+      });
+
+      const se = section("Volume des bruitages");
+      slider(se, "Volume", "se", 0, 100, 5, Math.round(audio.se * 100), (v) => {
+        audio.se = v / 100;
+        pushAudio();
+      }, (v) => `${v} %`);
+      check(se, "Muet", "seMuted", audio.seMuted, (v) => {
+        audio.seMuted = v;
+        pushAudio();
+      });
+      se.appendChild(this.button("Tester le volume", () => this.commands?.testSe(), "mh-ui-test-se"));
+
+      const system = section("Volume des sons système");
+      slider(system, "Volume", "system", 0, 100, 5, Math.round(audio.system * 100), (v) => {
+        audio.system = v / 100;
+        pushAudio();
+      }, (v) => `${v} %`);
+      check(system, "Muet", "systemMuted", audio.systemMuted, (v) => {
+        audio.systemMuted = v;
+        pushAudio();
+      });
+
+      const effects = section("Effets et pages");
+      yesNo(effects, "Affichage final des pages", "instantEffects", display.instantEffects, (v) => {
+        display.instantEffects = v;
+        pushDisplay();
+      });
+      yesNo(effects, "Arrêt des animations en cours", "stopAnimations", display.stopAnimations, (v) => {
+        display.stopAnimations = v;
+        pushDisplay();
+      });
+      yesNo(effects, "Effacement du texte au changement de page", "clearTextOnPageChange", display.clearTextOnPageChange, (v) => {
+        display.clearTextOnPageChange = v;
+        pushDisplay();
+      });
+      yesNo(effects, "Affichage des effets spéciaux", "specialEffects", display.specialEffects, (v) => {
+        display.specialEffects = v;
+        pushDisplay();
+      });
+    } else {
+      const keys = section("Raccourcis clavier");
+      keys.appendChild(
+        h("p", "mh-ui-hint", "Cliquez sur une touche puis appuyez sur la combinaison voulue. Échap annule la capture."),
+      );
+      for (const definition of SHORTCUT_DEFINITIONS) {
+        keyRow(keys, definition.id, definition.label);
+      }
     }
-    select.value = settings.language;
-    select.addEventListener("change", () => {
-      if (this.inputEnabled) this.commands?.updateSettings({ language: select.value as GameSettings["language"] });
-    });
-    lang.appendChild(select);
-    form.appendChild(lang);
 
-    p.append(form, this.backButton());
+    const footer = h("div", "mh-ui-config-footer");
+    footer.append(
+      this.backButton(),
+      this.button("Réglages par défaut", () => this.commands?.resetSettings(), "mh-ui-reset"),
+    );
+    p.append(tabs, content, footer);
     return p;
   }
 
@@ -587,7 +944,12 @@ export class DomUIManager implements UIManager {
   private onContextMenu(e: MouseEvent): void {
     e.preventDefault();
     if (!this.playing) return;
-    this.commands?.toggleUserHide();
+    // Réglage d'origine : menu direct, ou masquer le texte puis menu (#177).
+    if (this.status.mouseMode === "hideThenMenu" && !this.status.userHidden) {
+      this.commands?.toggleUserHide();
+      return;
+    }
+    this.commands?.openScreen("pause");
   }
 
   private onWheel(e: WheelEvent): void {
@@ -599,17 +961,47 @@ export class DomUIManager implements UIManager {
 
   private onKeyDown(e: KeyboardEvent): void {
     if (!this.commands) return;
+    if (this.capturing) {
+      this.handleCapture(e);
+      return;
+    }
     // Une touche maintenue ne doit ni enchaîner les pages, ni faire clignoter une bascule (B1).
-    // Ctrl est exclu : il est déjà protégé par `ctrlSkip` et son relâchement doit rester fiable.
-    if (e.repeat && e.key !== "Control") return;
-    if (e.key === "Escape") {
+    // Ctrl et Shift sont exclus : ils servent à l'avance rapide maintenue.
+    if (e.repeat && e.key !== "Control" && e.key !== "Shift") return;
+    if (!this.inputEnabled || this.confirmEl) {
+      if (e.key === "Escape") this.onEscape();
+      return;
+    }
+
+    const screen = this.view.screen;
+    const inOverlay = screen !== "game" && screen !== "title";
+    // Échap ferme toujours un écran superposé, même si le raccourci « menu » a été changé.
+    if (e.key === "Escape" && inOverlay) {
       this.onEscape();
       return;
     }
-    if (!this.inputEnabled || this.confirmEl) return;
 
-    if (e.key === "Control") {
-      if (!this.ctrlSkip && this.view.screen === "game") {
+    const field = e.target instanceof Element && e.target.closest("input, select, textarea") !== null;
+    if (field) return;
+
+    const shortcuts = screen === "settings" ? this.view.settings.shortcuts : this.status.shortcuts;
+    const action = actionForEvent(e, shortcuts);
+    if (action) {
+      e.preventDefault();
+      this.runShortcut(action);
+      return;
+    }
+
+    // Touche d'avance rapide : termine la frappe en cours (#177).
+    if (this.isFastKey(e) && this.commands.hurryText()) {
+      e.preventDefault();
+      return;
+    }
+    if (this.isFastKey(e) && e.key !== "Enter") return;
+
+    // Rétrocompatibilité : Ctrl maintenu = skip, sauf s'il est devenu la touche d'avance rapide.
+    if (e.key === "Control" && this.status.fastForwardKey !== "ctrl") {
+      if (!this.ctrlSkip && screen === "game") {
         this.ctrlSkip = true;
         this.modeBeforeCtrl = this.status.mode;
         if (this.status.mode !== "skip") this.commands.setMode("skip");
@@ -617,17 +1009,9 @@ export class DomUIManager implements UIManager {
       return;
     }
 
-    const field = e.target instanceof Element && e.target.closest("input, select, textarea") !== null;
-    if (field || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (screen !== "game") return;
     const onButton = e.target instanceof Element && e.target.closest("button") !== null;
-
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (key === "f") {
-      this.commands.toggleFullscreen();
-      return;
-    }
-    if (this.view.screen !== "game") return;
-
     if (this.choiceCount > 0) {
       const n = Number(key);
       if (Number.isInteger(n) && n >= 1 && n <= Math.min(9, this.choiceCount)) this.choose(n - 1);
@@ -644,11 +1028,85 @@ export class DomUIManager implements UIManager {
         e.preventDefault();
         this.commands.rollback();
         break;
-      case "a":
+    }
+  }
+
+  private isFastKey(e: KeyboardEvent): boolean {
+    if (this.status.fastForwardKey === "enter") return e.key === "Enter";
+    if (this.status.fastForwardKey === "ctrl") return e.key === "Control";
+    return e.key === "Shift";
+  }
+
+  private handleCapture(e: KeyboardEvent): void {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === "Escape") {
+      this.capturing = null;
+      this.captureApply = null;
+      this.show(this.view);
+      return;
+    }
+    const binding = bindingFromEvent(e);
+    if (!binding) return;
+    const apply = this.captureApply;
+    this.capturing = null;
+    this.captureApply = null;
+    apply?.(binding);
+  }
+
+  private runShortcut(action: ShortcutAction): void {
+    if (!this.commands) return;
+    const screen = this.view.screen;
+    if (screen === "title") {
+      if (action !== "fullscreen" && action !== "options") return;
+    } else if (screen !== "game" && !["fullscreen", "options", "menu", "history"].includes(action)) {
+      return;
+    }
+    switch (action) {
+      case "saveMenu":
+        this.commands.openScreen("save");
+        break;
+      case "loadMenu":
+        this.commands.openScreen("load");
+        break;
+      case "quickSave":
+        void this.commands.save("quick");
+        break;
+      case "quickLoad":
+        this.commands.openScreen("load");
+        break;
+      case "loadLatest":
+        void this.commands.load("auto");
+        break;
+      case "hideText":
+        this.commands.toggleUserHide();
+        break;
+      case "fullscreen":
+        this.commands.toggleFullscreen();
+        break;
+      case "options":
+        this.commands.openScreen("settings");
+        break;
+      case "menu":
+        this.commands.openScreen("pause");
+        break;
+      case "auto":
         this.commands.setMode(this.status.mode === "auto" ? "normal" : "auto");
         break;
-      case "s":
-        this.commands.setMode(this.status.mode === "skip" ? "normal" : "skip");
+      case "advanceRead":
+        this.commands.setMode("skip");
+        break;
+      case "history":
+        this.commands.openScreen("backlog");
+        break;
+      case "returnTitle":
+        void this.confirm("Retourner au titre ? La progression non sauvegardée sera perdue.").then((ok) => {
+          if (ok) this.commands?.returnToTitle();
+        });
+        break;
+      case "quit":
+        window.close();
+        if (!window.closed) this.toast("Le navigateur refuse de fermer l'onglet.");
         break;
     }
   }
@@ -672,7 +1130,7 @@ export class DomUIManager implements UIManager {
     }
     if (!this.inputEnabled || !this.commands) return;
     const screen = this.view.screen;
-    if (screen === "game") this.commands.openScreen("pause");
-    else if (screen !== "title") this.commands.closeScreen();
+    // En jeu, l'ouverture du menu passe par le raccourci configurable « Ouvrir le menu ».
+    if (screen !== "game" && screen !== "title") this.commands.closeScreen();
   }
 }

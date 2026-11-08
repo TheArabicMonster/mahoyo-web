@@ -14,7 +14,13 @@ import type {
   TimelineLayerState,
 } from "@/kag/events.js";
 import type { AnimationDef, AnimKeyframe, TextSegment } from "@/kag/types.js";
-import type { DisplaySettings, RunOptions, StageRenderer, StageRendererDeps } from "./types.js";
+import {
+  DEFAULT_DISPLAY_SETTINGS,
+  type DisplaySettings,
+  type RunOptions,
+  type StageRenderer,
+  type StageRendererDeps,
+} from "./types.js";
 import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { textStyleToCss } from "./text-style.js";
@@ -97,12 +103,7 @@ export class DomStageRenderer implements StageRenderer {
   private indicatorEl: HTMLElement | null = null;
   private waitEl: HTMLElement | null = null;
 
-  private settings: DisplaySettings = {
-    textSpeed: 30,
-    autoDelay: 2000,
-    fontScale: 1,
-    textboxOpacity: 0.8,
-  };
+  private settings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
 
   private userHidden = false;
   private currentScene: SceneState = { bg: null, sprites: [], effect: null };
@@ -431,9 +432,15 @@ export class DomStageRenderer implements StageRenderer {
     this.settings = { ...settings };
     this.applyTextbox();
     if (this.textEl) {
+      this.textEl.style.fontFamily = settings.fontFamily;
+      // Le fondu du texte lu est piloté par deux variables CSS (#177).
+      this.textEl.style.setProperty("--mh-read-opacity", String(settings.readFade ? settings.readFadeOpacity : 1));
+      this.textEl.style.setProperty("--mh-read-duration", `${settings.readFade ? settings.readFadeDuration : 0}ms`);
+      this.textEl.dataset.textAnimation = settings.textAnimation;
       this.textEl.style.fontSize = `${this.nominalTextRem()}rem`;
       this.fitText(this.buildTextUnits(), this.typedUnits);
     }
+    this.renderEffect();
   }
 
   clear(): void {
@@ -625,7 +632,15 @@ export class DomStageRenderer implements StageRenderer {
         text-shadow: 0 0 3px rgba(0,0,0,0.85), 1px 1px 2px rgba(0,0,0,0.7);
       }
       .mh-stage-text-read {
-        opacity: ${READ_TEXT_OPACITY};
+        opacity: var(--mh-read-opacity, ${READ_TEXT_OPACITY});
+        transition: opacity var(--mh-read-duration, 300ms) ease;
+      }
+      .mh-stage-text[data-text-animation="fade"].mh-stage-text-appear {
+        animation: mh-text-appear 220ms ease;
+      }
+      @keyframes mh-text-appear {
+        from { opacity: 0; }
+        to { opacity: 1; }
       }
       .mh-stage-indicator {
         color: #fff;
@@ -739,9 +754,12 @@ export class DomStageRenderer implements StageRenderer {
         break;
       }
       case "clearText": {
+        // Réglage d'origine « Effacement du texte au changement de page » (#177).
+        if (!this.settings.clearTextOnPageChange) break;
         this.text = [];
         this.typedUnits = 0;
         this.readUnits = 0;
+        this.textEl?.replaceChildren();
         break;
       }
       case "textbox": {
@@ -787,8 +805,8 @@ export class DomStageRenderer implements StageRenderer {
         break;
       }
       case "quake": {
-        if (event.quake) this.startQuake(event.quake, opts);
-        else this.stopQuake();
+        if (event.quake && this.settings.specialEffects) this.startQuake(event.quake, opts);
+        else if (!event.quake) this.stopQuake();
         break;
       }
       case "staffroll": {
@@ -1262,6 +1280,8 @@ export class DomStageRenderer implements StageRenderer {
   private renderEffect(): void {
     if (!this.effectsEl) return;
     this.effectsEl.innerHTML = "";
+    // Réglage d'origine « Affichage des effets spéciaux » (#177).
+    if (!this.settings.specialEffects) return;
     const effect = this.currentScene.effect;
     if (!effect) return;
     if (effect.kind === "noise") {
@@ -1522,6 +1542,7 @@ export class DomStageRenderer implements StageRenderer {
   /** Reconstruit le DOM de la textbox jusqu'à n unités (inclu) avec ruby. */
   private renderTextUpTo(units: TextUnit[], n: number): void {
     if (!this.textEl) return;
+    const wasEmpty = this.textEl.childNodes.length === 0;
     this.textEl.replaceChildren();
     const frag = document.createDocumentFragment();
     const limit = Math.min(n, units.length);
@@ -1563,6 +1584,12 @@ export class DomStageRenderer implements StageRenderer {
       parent.appendChild(node);
     }
     this.textEl.appendChild(frag);
+    if (wasEmpty && limit > 0 && this.settings.textAnimation === "fade") {
+      // Relance l'animation d'apparition à chaque nouvelle page (#177).
+      this.textEl.classList.remove("mh-stage-text-appear");
+      void this.textEl.offsetWidth;
+      this.textEl.classList.add("mh-stage-text-appear");
+    }
     this.placeIndicator();
   }
 
@@ -1675,8 +1702,9 @@ export class DomStageRenderer implements StageRenderer {
       const startUnit = Math.min(this.typedUnits, units.length);
       // Taille et position de la page entière avant de la révéler : pas de saut en cours de frappe.
       this.fitText(units, startUnit);
+      const speed = opts.textSpeed ?? this.settings.textSpeedUnread;
 
-      if (opts.instant || this.settings.textSpeed <= 0 || this.typewriterHurry) {
+      if (opts.instant || speed <= 0 || this.typewriterHurry) {
         this.renderTextUpTo(units, units.length);
         this.typedUnits = units.length;
         this.typewriterResolve = null;
@@ -1704,7 +1732,7 @@ export class DomStageRenderer implements StageRenderer {
           resolve();
           return;
         }
-        this.typewriterTimer = setTimeout(step, this.settings.textSpeed);
+        this.typewriterTimer = setTimeout(step, speed);
       };
       step();
     });

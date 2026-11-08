@@ -5,7 +5,9 @@ import { createMemorySettingsStore } from "@/player/settings-store.js";
 import { FakeAudioPlayer } from "../mocks/fake-audio-player.js";
 import { FakeUIManager } from "../mocks/fake-ui-manager.js";
 import { RecordingStageRenderer } from "../renderer/recording-stage-renderer.js";
+import { DEFAULT_AUDIO_SETTINGS, DEFAULT_DISPLAY_SETTINGS } from "@/renderer/types.js";
 import type { RunOptions } from "@/renderer/types.js";
+import { defaultShortcuts } from "@/core/shortcuts.js";
 import type { RenderEvent, Step } from "@/kag/events.js";
 import type { RuntimeSaveData } from "@/kag/runtime.js";
 import type { ParsedScript } from "@/kag/types.js";
@@ -13,6 +15,9 @@ import type { StoryChain } from "@/core/story-chain.js";
 import type { LanguageIndex } from "@/core/language.js";
 import prologue from "../../fixtures/prologue.json";
 import audioFixture from "../../fixtures/audio.json";
+
+const display = (o: Partial<typeof DEFAULT_DISPLAY_SETTINGS> = {}) => ({ ...DEFAULT_DISPLAY_SETTINGS, ...o });
+const audio = (o: Partial<typeof DEFAULT_AUDIO_SETTINGS> = {}) => ({ ...DEFAULT_AUDIO_SETTINGS, ...o });
 
 /** Runtime qui rejoue des Steps et sait se repositionner (save/load/rollback). */
 class ScriptedRuntime implements RuntimeLike {
@@ -318,7 +323,7 @@ describe("Player", () => {
   it("mode auto : avance après autoDelay", async () => {
     const ctx = setup();
     await start(ctx);
-    ctx.player.updateSettings({ display: { textSpeed: 30, autoDelay: 15, fontScale: 1, textboxOpacity: 1 } });
+    ctx.player.updateSettings({ display: display({ textSpeedUnread: 30, textSpeedRead: 30, autoPageDelay: 15, autoLineDelay: 15, fontScale: 1, textboxOpacity: 1 }) });
     ctx.player.setMode("auto");
     await until(() => ctx.player.currentState === "title", "auto fin");
   });
@@ -386,7 +391,7 @@ describe("Player", () => {
     const ctx = setup();
     current = ctx.player;
     await ctx.player.ready;
-    ctx.player.updateSettings({ audio: { master: 0.5, bgm: 1, se: 1, voice: 1, muted: true } });
+    ctx.player.updateSettings({ audio: audio({ master: 0.5, bgm: 1, se: 1, voice: 1, muted: true }) });
     expect(ctx.audio.settings?.muted).toBe(true);
   });
 
@@ -954,10 +959,11 @@ describe("Player — langues", () => {
     const calls: { file: string; language?: string }[] = [];
     const store = createMemorySettingsStore();
     await store.saveSettings({
-      display: { textSpeed: 30, autoDelay: 1500, fontScale: 1, textboxOpacity: 0.8 },
-      audio: { master: 1, bgm: 0.8, se: 0.8, voice: 1, muted: false },
+      display: display({ textSpeedUnread: 30, autoPageDelay: 1500 }),
+      audio: audio({ bgm: 0.8, se: 0.8 }),
       skipUnread: false,
       language: "fr",
+      shortcuts: defaultShortcuts(),
     });
     const ctx = setup([], {
       settingsStore: store,
@@ -1070,7 +1076,7 @@ describe("Player — menu rapide verrouillé et auto suspendu", () => {
       click(1, [{ kind: "autoMode", paused: false }]),
     ]);
     await start(ctx);
-    ctx.player.updateSettings({ display: { textSpeed: 30, autoDelay: 10, fontScale: 1, textboxOpacity: 1 } });
+    ctx.player.updateSettings({ display: display({ textSpeedUnread: 30, textSpeedRead: 30, autoPageDelay: 10, autoLineDelay: 10, fontScale: 1, textboxOpacity: 1 }) });
     ctx.player.setMode("auto");
     expect(ctx.ui.statuses.at(-1)).toMatchObject({ mode: "auto", autoPaused: true });
 
@@ -1082,6 +1088,84 @@ describe("Player — menu rapide verrouillé et auto suspendu", () => {
     // Un clic avance ; la reprise relance l'auto, qui mène à la fin.
     ctx.player.advance();
     await until(() => ctx.player.currentState === "title", "auto repris");
+  });
+});
+
+describe("Player — vitesses et avance rapide (#177)", () => {
+  const at = (page: number) => ({ scriptName: "t.ks", page, instruction: 0 });
+  const page = (n: number, text: string): Step => ({
+    position: at(n),
+    events: [{ kind: "text", segments: [{ text }] }],
+    stop: { kind: "click", style: "page" },
+  });
+  const readKey = (n: number) => `t.ks:${n}:0:`;
+
+  it("utilise la vitesse déjà lue, puis celle des pages non lues", async () => {
+    const store = createMemorySettingsStore();
+    await store.saveRead(new Set([readKey(1)]));
+    const ctx = setup([page(1, "Premier"), page(2, "Second")], { settingsStore: store });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-click", "première page");
+    expect(ctx.stage.lastOptions?.textSpeed).toBe(DEFAULT_DISPLAY_SETTINGS.textSpeedRead);
+
+    ctx.player.advance();
+    await until(
+      () =>
+        ctx.player.currentState === "waiting-click" &&
+        ctx.stage.events.some(
+          (e) => e.kind === "text" && e.segments.some((s) => "text" in s && s.text === "Second"),
+        ),
+      "seconde page",
+    );
+    expect(ctx.stage.lastOptions?.textSpeed).toBe(DEFAULT_DISPLAY_SETTINGS.textSpeedUnread);
+  });
+
+  it("force la page entière quand instantReadPage est actif", async () => {
+    const store = createMemorySettingsStore();
+    await store.saveRead(new Set([readKey(1)]));
+    const ctx = setup([page(1, "Premier")], { settingsStore: store });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.updateSettings({ display: display({ instantReadPage: true }) });
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-click", "page instantanée");
+    expect(ctx.stage.lastOptions?.textSpeed).toBe(0);
+  });
+
+  it("saute automatiquement une page déjà lue après confirmation", async () => {
+    const store = createMemorySettingsStore();
+    await store.saveRead(new Set([readKey(1)]));
+    const ctx = setup([page(1, "Premier"), page(2, "Second")], { settingsStore: store });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.updateSettings({ display: display({ autoSkipRead: true, autoSkipConfirm: true }) });
+    ctx.player.startScript("t.ks");
+    // La page lue est sautée ; le skip s'arrête sur la page non lue avec un message.
+    await until(() => ctx.ui.toasts.some((t) => t.message.includes("non lu")), "skip interrompu");
+    expect(ctx.ui.confirms.some((m) => m.includes("scènes déjà lues"))).toBe(true);
+    expect(ctx.stage.events.some((e) => e.kind === "text" && e.segments.some((s) => "text" in s && s.text === "Second"))).toBe(true);
+    expect(ctx.player.currentState).toBe("waiting-click");
+  });
+
+  it("avance rapide selon la portée et ne consomme pas une page non lue en mode « déjà lus »", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const ctx = setup([page(1, "Premier")]);
+    ctx.stage.gate = gate;
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.stage.active > 0, "frappe en cours");
+
+    const before = ctx.stage.hurries;
+    expect(ctx.player.hurryText()).toBe(false);
+    ctx.player.updateSettings({ display: display({ fastForwardScope: "all" }) });
+    expect(ctx.player.hurryText()).toBe(true);
+    expect(ctx.stage.hurries).toBe(before + 1);
+    release();
+    await until(() => ctx.player.currentState === "waiting-click", "fin de page");
   });
 });
 
