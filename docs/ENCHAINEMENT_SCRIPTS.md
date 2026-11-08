@@ -93,11 +93,81 @@ chapitre), avec le titre de la page et son script d'entrée. L'écran titre l'af
 
 Quand une route et le bloc qui la suit portent chacun une condition, elles sont combinées en ET.
 
+## Graphe de scénario (`story-graph.json`)
+
+`npm run chain` écrit aussi, à côté de `story-chain.json`, un **graphe typé** pour le flowchart
+(`docs/ANALYSE_HUD_ORIGINAL.md` §7). Même commande, même dossier de sortie :
+
+```bash
+npm run chain -- <chemin/main.gc> <dossier d'assets>
+```
+
+`story-graph.json` dérive de la table et des fichiers de l'utilisateur ; il **contient les libellés de choix**
+et des noms d'images du jeu : il est ignoré par git (`.gitignore`, par son nom) et ne doit jamais être commité.
+Les vignettes sont lues dans `<dossier d'assets>/scenario/*.ks` s'il existe (sinon `thumb` est simplement absent).
+Les types sont dans `src/core/story-graph.ts`, la construction (pure) dans `tools/story-graph-lib.ts`.
+
+```json
+{
+  "version": 1,
+  "first": "1-0",
+  "nodes": [
+    { "id": "1-5", "file": "1-5.ks", "kind": "normal", "chapter": "1-0", "arc": "第1章", "thumb": "nom-du-fond" },
+    { "id": "teatime", "file": "teatime.ks", "kind": "interlude" }
+  ],
+  "edges": [
+    { "from": "wik_robby", "to": "wik_b-1", "kind": "choice", "choice": "libellé de l'option" },
+    { "from": "wik_b-1-b", "to": "wik_room", "kind": "conditional", "condition": "room>0" },
+    { "from": "1-5", "to": "teatime", "kind": "normal" },
+    { "from": "teatime", "to": "2-1", "kind": "normal" }
+  ]
+}
+```
+
+**Nœuds** (un par script cité par la table, dans l'ordre du graphe d'origine) :
+
+- `id` : nom du script sans `.ks`, en minuscules (clé stable ; les arêtes y renvoient) ; `file` : nom du fichier.
+- `kind` (priorité `interlude`, puis `choice`, puis `end`) :
+  - `interlude` : script cité par la table mais sans entrée propre dans `next` (la table n'en donne pas aux scripts
+    partagés par plusieurs blocs, comme `teatime.ks`) ; un seul nœud, plusieurs arêtes entrantes ;
+  - `choice` : toutes les sorties du script sont des options libellées (même règle que `resolveNext`) ;
+  - `end` : aucune arête sortante ;
+  - `normal` : tout le reste.
+- `arc` : titre de la page du graphe d'origine qui porte le script ; `chapter` : `id` du chapitre principal de cette
+  page (une entrée de `story-chain.json.chapters`, qui fournit le titre à afficher). Ces deux champs sont **absents**
+  d'un script présent sur plusieurs pages (le goûter) ; `chapter` est aussi absent d'une page sans chapitre.
+- `thumb` : **nom** (sans extension) du premier `@bg storage=…` du script qui n'est pas un aplat de couleur (`black`,
+  `white`, `red`, `gray`). Une clé seulement, jamais l'image. Absent si le script n'en pose pas.
+
+**Arêtes** (`from`/`to` = `id` de nœud, dédoublonnées, ordre déterministe) :
+
+- `kind: "choice"` : option libellée (`choice`), avec sa `condition` d'affichage éventuelle ;
+- `kind: "conditional"` : suite prise si `condition` est vraie ;
+- `kind: "normal"` : suite inconditionnelle.
+- Un `then` de la table est déroulé : `a -> to`, puis `to -> then[0]`, `then[0] -> then[1]`… (arêtes `normal`) ; le
+  libellé et la condition restent sur la première. L'interlude `teatime` a donc une arête entrante par chapitre qui le
+  précède et une arête sortante par chapitre qui le suit : **le graphe seul ne dit pas quelle sortie va avec quelle
+  entrée** (la table, via `then`, le dit).
+
+Le résultat est **déterministe** : il ne dépend que de l'ordre de la table.
+
 ## Résultat sur le corpus de référence
 
 194 blocs dont 161 avec script, 200 scripts dans la table dont 19 avec plusieurs suites,
 4 interludes partagés. En suivant la première route depuis `1-0.ks`, l'histoire s'enchaîne
 sur **134 scripts jusqu'à `d-9.ks`**, interludes compris.
+
+Le graphe de scénario compte **205 nœuds** (les 200 scripts de la table, plus 5 scripts cités sans entrée propre),
+**243 arêtes**, dont :
+
+- **24** nœuds à choix et **72** arêtes libellées ;
+- **2** arêtes portant une condition ;
+- **5** interludes : `teatime.ks`, `wik_l-1.ks`, `wik_n-1.ks`, `wik_n-1-a.ks` et `wik_wxyz.ks` (les 4 scripts partagés
+  de `main.gc` en comptent un, `wik_v-2.ks`, que la table ne cite pas, mais pas `wik_l-1`/`wik_n-1`, dont le bloc
+  contient un script partagé) ;
+- **21** nœuds sans successeur (`end`), dont **9** bonus isolés (`1.5-*`, `7-ex`, `8-ex`, `8.5`, `sp1`, `sp2`, sans
+  arête entrante ni sortante) et **1** seul atteignable depuis `1-0.ks` (`d-9.ks`) ; les autres sont des culs-de-sac
+  des branches `wik_*` et des bonus `nz*`.
 
 ## Test
 
@@ -109,6 +179,11 @@ vérifie l'absence d'erreur et de boucle. Il demande les assets locaux
 npm run chain -- <main.gc> "$MAHOYO_ASSETS_DIR"
 MAHOYO_ASSETS_DIR=/chemin/assets npx vitest run tests/integration/story-play.test.ts
 ```
+
+Le graphe de scénario est couvert par `tests/unit/tools/story-graph.test.ts` (table et `main.gc` factices originaux :
+choix, interlude partagé, arête conditionnelle, fin, déterminisme) et, sur les vrais assets locaux, par
+`tests/integration/story-graph.test.ts` (24 scripts à choix, 72 arêtes libellées, 2 conditionnelles ; ignoré sans
+`MAHOYO_ASSETS_DIR` ni `story-chain.json`).
 
 ## Limites connues
 
