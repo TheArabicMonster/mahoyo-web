@@ -73,6 +73,8 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`asset-resolver.ts`** / **`asset-manifest.ts`** : résolution des URLs d'assets et manifeste.
 - **`story-chain.ts`** : types de la table d'enchaînement des scripts et des choix.
 - **`story-graph.ts`** : types du graphe de scénario (nœuds, arêtes, conditions).
+- **`flow-graph.ts`** : `parseStoryGraph` (validation du `story-graph.json`), types de la mise en page du flowchart, `groupTitle`, `endingProgress`, `choiceLabelLines`.
+- **`flow-layout.ts`** : `layoutFlowchart(graph)`, mise en page pure (sans DOM) du flowchart : groupes par chapitre, niveaux, arêtes orthogonales.
 - **`timeline.ts`** : parsing et validation des timelines d'ouverture.
 - **`shortcuts.ts`** : définition, normalisation et résolution des 14 raccourcis configurables.
 - **`display.ts`** : calcul pur de l'échelle du viewport (fit/fill/1:1, taille maximale).
