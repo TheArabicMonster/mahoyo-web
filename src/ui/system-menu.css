@@ -1,0 +1,142 @@
+/* ── Menu système plein cadre (HUD-06, #194) ─────────────────────────────────
+   docs/ANALYSE_HUD_ORIGINAL.md §2.5 et docs/DESIGN.md §2.2, §3, §4, §6, §7. CSS pur, aucun asset.
+
+   Repères : les mesures de l'analyse sont en 1920x1080 ; le HUD du port vit dans #viewport, en
+   1280x720 logique (facteur 2/3, PAS le repère 1024x576 de la scène, qui est agrandi de 1,25).
+   Colonne : texte aligné à gauche en x = 1638 @1080 -> 1092 @720 (85,3 % de la largeur) ; centres
+   y = 172, 232, 290, 347, 408, 472, 536, 603 @1080 -> 115, 155, 193, 231, 272, 315, 357, 402 @720
+   (pas moyen 41,25 px, ici régulier pour que l'insertion d'une entrée ne décale que les suivantes) ;
+   en-tête 1087-1241 x 29-69 @720 ; « Back » 1095-1161 x 666-687 @720.
+   Les positions sont en pourcentages de #ui-pause (1280x720), les tailles en rem (1 rem = 16 px). */
+
+#ui-pause.mh-ui-pause {
+  /* Teintes propres au menu : DESIGN §2.3, « ≈ #c2dee0 pour l'en-tête et Back ». */
+  --mh-sysmenu-head: #c2dee0;
+  --mh-sysmenu-hover-bright: #e0e4ec; /* entrée survolée « plus vive » (ANALYSE §2.5) */
+  --mh-sysmenu-glow: rgba(95, 207, 197, 0.55);
+  --mh-sysmenu-row: 2.578rem; /* pas des entrées : 41,25 px @720 (61,9 px @1080) */
+  --mh-back-size: 1.8rem; /* DESIGN §3 : capitale 32 px @1080, corps ≈ 29 px @720 */
+}
+
+/* Le slot : voile bleu nuit (night.css) qui apparaît en --mh-dur-menu, sans le centrage du panneau « Pause » d'avant. */
+#ui-pause.mh-ui-pause.mh-ui-night.mh-ui-night-veil:not(:empty) {
+  display: block;
+  pointer-events: auto;
+  background: color-mix(in srgb, var(--mh-night-veil, #152539) var(--mh-night-veil-alpha, 82%), transparent);
+  animation: mh-sysmenu-in var(--mh-dur-menu, 270ms) var(--mh-ease, linear) both;
+}
+
+@keyframes mh-sysmenu-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ui-pause.mh-ui-pause.mh-ui-night.mh-ui-night-veil:not(:empty) { animation: none; }
+}
+
+.mh-sysmenu {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--mh-text-menu, #a9c8cc);
+  font-family: var(--mh-font-ui, system-ui, sans-serif);
+}
+
+/* En-tête « SYSTÈME » : capitales serif très espacées, ligne japonaise décorative dessous. */
+.mh-sysmenu-head {
+  position: absolute;
+  left: 84.92%; /* x = 1087 @720 */
+  top: 4.03%; /* y = 29 @720 */
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  font-weight: 400;
+  color: var(--mh-sysmenu-head);
+  text-shadow: 0 0 12px rgba(0, 192, 192, 0.45);
+}
+.mh-sysmenu-title {
+  font-family: var(--mh-font-title, Georgia, serif);
+  font-size: 1.3rem;
+  line-height: 1.2;
+  letter-spacing: 0.45em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.mh-sysmenu-deco {
+  font-family: var(--mh-font-ja, sans-serif);
+  font-size: var(--mh-screen-subtitle-size, 0.8rem);
+  line-height: 1.4;
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+}
+
+/* Colonne d'entrées : premier centre à y = 115 @720, soit 15,97 % moins une demi-rangée. */
+.mh-sysmenu-list {
+  position: absolute;
+  left: 85.3125%; /* x = 1092 @720 */
+  top: calc(15.972% - var(--mh-sysmenu-row) / 2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mh-sysmenu-item { height: var(--mh-sysmenu-row); }
+
+/* Entrée : texte seul, sans fond ni cadre ni marqueur ; le survol éclaircit et ajoute une lueur. */
+.mh-sysmenu-entry,
+.mh-sysmenu-back {
+  appearance: none;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mh-text-menu, #a9c8cc);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  transition:
+    color var(--mh-dur-fast, 150ms) var(--mh-ease, linear),
+    text-shadow var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+.mh-sysmenu-entry {
+  height: var(--mh-sysmenu-row);
+  line-height: var(--mh-sysmenu-row);
+  font-size: var(--mh-sysmenu-size, 1.55rem);
+}
+.mh-sysmenu-entry:hover:not(:disabled),
+.mh-sysmenu-back:hover {
+  color: var(--mh-sysmenu-hover-bright);
+  text-shadow: 0 0 12px var(--mh-sysmenu-glow);
+}
+/* Bascule en cours (auto, skip) : éclaircie et lueur, sans soulignement. */
+.mh-sysmenu-entry.is-active {
+  color: var(--mh-text-menu-hover, #b1d6da);
+  text-shadow: 0 0 10px var(--mh-sysmenu-glow);
+}
+.mh-sysmenu-entry:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Focus clavier visible : contour 2 px cyan, décalage 2 px (DESIGN §10). */
+.mh-sysmenu-entry:focus-visible,
+.mh-sysmenu-back:focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+
+/* « Back » en bas à droite : encre de x = 1095 et de y = 666 à 687 @720. Les marges de glyphe du serif
+   de repli (3 px à gauche, descente sous la ligne de base) décalent la boîte : mesuré au navigateur
+   à 1280x720 (pixels du rendu), l'encre tombe à x = 1095, y = 667 à 687 avec ces valeurs. */
+.mh-sysmenu-back {
+  position: absolute;
+  left: 85.34%;
+  bottom: 3.82%;
+  font-size: var(--mh-back-size);
+  line-height: 1;
+  color: var(--mh-sysmenu-head);
+}

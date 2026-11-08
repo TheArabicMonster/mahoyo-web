@@ -262,7 +262,34 @@ Premier composant à suivre ce principe : `src/ui/night.css` (importé par `src/
 - **Rendu sans asset** (repli, toujours présent) : dégradé vertical `--mh-bg-night-top` → `-mid` → `-bottom` avec éclaircie `-mid-right` à droite et vignettage ; bandeaux de feuillage haut (13 %) et bas (14 %) de la hauteur, silhouettes `--mh-bg-night-top` sur un lit `#101c27` ; arabesques en arcs et volutes sur la bande droite et en pied d'écran. Tout est en **pourcentages** du conteneur : les mesures @1080 (140 px et 150 px de bandeau, colonne droite x ≥ 1638 sur 1920) ne dépendent d'aucun repère de pixels.
 - **Surcouche d'image** : suit la convention de clés ci-dessus : le calque lit `var(--mh-asset-night, var(--mh-asset-c_background, none))`. `--mh-asset-c_background` (clé du manifeste, posée par `createUiAssets().apply`) est l'image par défaut ; un écran qui veut une autre image pose `--mh-asset-night: var(--mh-asset-<clé>)`. Aucune des deux présente : `none`, donc aucune requête. Le CSS ne contient aucune URL.
 - **Contraste** : les ornements sont plafonnés (arabesques à 14 % et 9 % de `--mh-cyan-rail`) pour que tout texte clair des tokens reste ≥ 7:1, même sur un trait d'arabesque posé sur le fond le plus clair. `tests/unit/ui/night-css.test.ts` recalcule ces rapports à partir de `tokens.css` : modifier une opacité ou un token qui casse le seuil fait échouer le test.
-- **Démonstration** : `?night` dans l'URL pose la classe sur le slot `#ui-menu` pour les écrans titre, sauvegarde, chargement et historique (`syncNightDemo`, une ligne dans `ui-manager.ts`). Les autres écrans, dont la config, sont inchangés ; les tâches HUD-06, HUD-09, HUD-10 et suivantes adopteront la classe écran par écran.
+- **Démonstration** : `?night` dans l'URL pose la classe sur le slot `#ui-menu` pour les écrans titre, sauvegarde, chargement et historique (`syncNightDemo`, une ligne dans `ui-manager.ts`). Les autres écrans, dont la config, sont inchangés ; les tâches HUD-09, HUD-10 et suivantes adopteront (HUD-06 : menu système, §9.2) la classe écran par écran.
+
+### 9.2 Menu système plein cadre (`src/ui/system-menu.ts`, HUD-06 / #194)
+
+Écran ouvert par le clic droit ou `Échap` (vue `pause`). Il remplace le panneau centré « Pause ».
+
+- **Entrées** (tableau `SYSTEM_MENU_ENTRIES`, ordre de ANALYSE §2.5 **sans** `exitgame`, décision 3) : `save`, `load`,
+  `config`, `auto`, `skip`, `backlog`, `flowchart`, `graphic`, `title`, puis « Back » (`common.back`) en bas à droite.
+  `save` et `load` sont désactivés quand `quickMenuLocked` (info-bulle `systemMenu.quickMenuLocked`). `auto` et `skip`
+  basculent le mode puis referment le menu (`aria-pressed`, entrée éclaircie quand le mode est actif) ; `graphic` appelle
+  `toggleUserHide` puis referme ; `title` passe par `confirm(…)` avec **Non** par défaut ; `flowchart` ouvre l'écran
+  existant en attendant FLOW-08 (#207), qui le rebranchera (une ligne du tableau).
+- **Voile** : le slot `#ui-pause` reçoit `mh-ui-night mh-ui-night-veil` (voile `#152539` à 82 %, feuillage et arabesques
+  de HUD-02) tant que le menu est rendu ; apparition en `--mh-dur-menu` (270 ms, linéaire), sans animation sous
+  `prefers-reduced-motion`. Un nouveau clic droit ou `Échap` referme ; un clic droit pendant la confirmation ne fait rien.
+- **Mise en page mesurée à 1280×720** (repère du HUD, facteur ×2/3 depuis 1920×1080 ; **pas** le repère 1024×576 de la
+  scène) : colonne alignée à gauche en x = 1092 (85,3125 %), rangées de 41,25 px (2,578 rem) du centre y = 115 au
+  centre y = 445 (la 7e rangée tombe sur l'ancien emplacement de `graphic`, la 9e sur celui d'`exitgame` : `flowchart`
+  prend la place de l'une, `title` celle de l'autre) ; corps `--mh-sysmenu-size` (24,8 px) ; en-tête « SYSTÈME » (serif
+  1,3 rem, interlettrage 0,45 em, `#c2dee0`) en x = 1087, y = 29, encre mesurée sur le rendu x = 1088–1238 (cible
+  1087–1241) ; « Back » (`--mh-back-size` 1,8 rem) encre mesurée x = 1095, y = 667–687 (cible 1095, 666–687). Les
+  centres de rangée de l'original ne sont pas réguliers (mesure au x-height) : l'écart maximal avec une colonne
+  régulière est de 8 px (1,1 % de la hauteur).
+- **Clavier** : le focus initial est la première entrée utilisable ; `Tab` / `Maj+Tab` bouclent entre les entrées et
+  « Back » (piège de focus), `↑` `↓` `Début` `Fin` déplacent le focus ; contour 2 px `--mh-focus`. `role="dialog"`,
+  `aria-modal="true"`, nommé par l'en-tête ; sous-titre japonais `aria-hidden`.
+- **Rendu sans asset** : aucune image ; seule la surcouche `--mh-asset-*` de night.css s'applique aux autres écrans
+  (la variante voile ne peint pas d'image).
 
 ## 10. Accessibilité minimale à conserver
 

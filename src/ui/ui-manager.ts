@@ -28,6 +28,7 @@ import { openConfirmDialog, type ConfirmDialog } from "@/ui/confirm-dialog.js";
 import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t, uiLocale } from "@/ui/i18n.js";
 import { ToastStack } from "@/ui/toast.js";
 import { syncNightDemo } from "@/ui/night.js";
+import { focusSystemMenu, renderSystemMenu, syncSystemMenu, syncSystemMenuVeil } from "@/ui/system-menu.js";
 import "./ui-manager.css";
 
 /** Taille logique du viewport, utilisée pour positionner le flowchart. */
@@ -195,7 +196,7 @@ export class DomUIManager implements UIManager {
         this.menu.appendChild(this.renderTitle(view.scripts, view.hasContinue));
         break;
       case "pause":
-        this.pause.appendChild(this.renderPause());
+        if (this.commands) this.pause.appendChild(this.renderSystemMenu(this.commands));
         break;
       case "save":
       case "load":
@@ -212,6 +213,8 @@ export class DomUIManager implements UIManager {
         this.flowchart.appendChild(this.renderFlowchart(view.scripts, view.progress));
         break;
     }
+    syncSystemMenuVeil(this.pause);
+    if (view.screen === "pause") focusSystemMenu(this.pause);
     this.renderStatus();
   }
 
@@ -365,11 +368,8 @@ export class DomUIManager implements UIManager {
       );
       this.statusEl.appendChild(badge);
     }
-    // Menu rapide verrouillé : Sauvegarder et Charger du menu pause ne sont plus utilisables.
-    for (const btn of this.overlay.querySelectorAll<HTMLButtonElement>("[data-quick-menu]")) {
-      btn.disabled = this.status.quickMenuLocked;
-      btn.title = this.status.quickMenuLocked ? t("pause.quickMenuLocked") : "";
-    }
+    // Menu système : verrou du menu rapide, bascules auto et skip.
+    syncSystemMenu(this.pause, this.status);
     if (inGame && this.status.canRollback) {
       this.statusEl.appendChild(h("span", "mh-ui-badge mh-ui-badge-rollback", "↶"));
     }
@@ -406,38 +406,18 @@ export class DomUIManager implements UIManager {
     return p;
   }
 
-  private renderPause(): El {
-    const p = this.panel(t("pause.title"), "mh-ui-pause-screen");
-    const col = h("div", "mh-ui-col");
-    const open = (s: OverlayScreen) => () => this.commands?.openScreen(s);
-    // Sauvegarder et Charger appartiennent au menu rapide : verrouillés par @lockquickmenu.
-    const quick = (label: string, screen: OverlayScreen): El => {
-      const btn = this.button(label, open(screen));
-      btn.dataset.quickMenu = screen;
-      btn.disabled = this.status.quickMenuLocked;
-      if (btn.disabled) btn.title = t("pause.quickMenuLocked");
-      return btn;
-    };
-    col.append(
-      this.button(t("pause.resume"), () => this.commands?.closeScreen(), "mh-ui-resume"),
-      quick(t("pause.save"), "save"),
-      quick(t("pause.load"), "load"),
-      this.button(t("pause.settings"), open("settings")),
-      this.button(t("pause.history"), open("backlog")),
-      this.button(t("pause.flowchart"), open("flowchart")),
-      this.button(
-        t("pause.returnToTitle"),
-        () =>
-          void this.confirm(t("confirm.returnToTitle")).then(
-            (ok) => {
-              if (ok) this.commands?.returnToTitle();
-            },
-          ),
-        "mh-ui-to-title",
-      ),
+  private renderSystemMenu(commands: PlayerCommands): El {
+    return renderSystemMenu(
+      {
+        commands,
+        getStatus: () => this.status,
+        confirmReturnToTitle: () =>
+          void this.confirm(t("confirm.returnToTitle")).then((ok) => {
+            if (ok) commands.returnToTitle();
+          }),
+      },
+      () => this.inputEnabled,
     );
-    p.appendChild(col);
-    return p;
   }
 
   private renderSlots(mode: "save" | "load", slots: readonly SaveSlot[]): El {
@@ -987,6 +967,11 @@ export class DomUIManager implements UIManager {
 
   private onContextMenu(e: MouseEvent): void {
     e.preventDefault();
+    // Menu système ouvert : un nouveau clic droit le referme (comme l'original).
+    if (this.view.screen === "pause" && this.inputEnabled && this.confirmEl === null) {
+      this.commands?.closeScreen();
+      return;
+    }
     if (!this.playing) return;
     // Réglage d'origine : menu direct, ou masquer le texte puis menu (#177).
     if (this.status.mouseMode === "hideThenMenu" && !this.status.userHidden) {

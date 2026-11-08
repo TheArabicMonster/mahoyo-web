@@ -190,9 +190,11 @@ describe("DomUIManager", () => {
     it.each(views.map((v) => [v.screen, v] as const))("affiche %s", (_n, v) => {
       ui.show(v);
       expect(q("#ui-overlay")!.dataset.screen).toBe(v.screen);
-      expect(q(".mh-ui-panel")).not.toBeNull();
+      // Le menu système (« pause ») est plein cadre : pas de panneau centré (HUD-06, #194).
+      expect(q(v.screen === "pause" ? ".mh-sysmenu" : ".mh-ui-panel")).not.toBeNull();
       ui.show({ screen: "game" });
       expect(q(".mh-ui-panel")).toBeNull();
+      expect(q(".mh-sysmenu")).toBeNull();
     });
 
     it("title : script et continuer", () => {
@@ -216,14 +218,14 @@ describe("DomUIManager", () => {
       ui.show({ screen: "title", scripts: [], hasContinue: false });
       expect(q(".mh-ui-new-game")).toBeNull();
     });
-    it("pause : reprendre et ouvrir save", () => {
+    it("pause : « Back » referme le menu", () => {
       ui.show({ screen: "pause" });
-      q(".mh-ui-resume")!.click();
+      q(".mh-sysmenu-back")!.click();
       expect(cmd.closeScreen).toHaveBeenCalled();
     });
     it("pause : retour au titre demande confirmation", async () => {
       ui.show({ screen: "pause" });
-      q(".mh-ui-to-title")!.click();
+      q('[data-entry="title"]')!.click();
       q(".mh-ui-confirm-yes")!.click();
       await Promise.resolve();
       await Promise.resolve();
@@ -415,8 +417,8 @@ describe("DomUIManager", () => {
       expect(quick.map((b) => b.dataset.quickMenu)).toEqual(["save", "load"]);
       expect(quick.every((b) => b.disabled)).toBe(true);
       // Les autres entrées restent actives.
-      expect((q(".mh-ui-resume") as HTMLButtonElement).disabled).toBe(false);
-      expect((q(".mh-ui-to-title") as HTMLButtonElement).disabled).toBe(false);
+      expect((q(".mh-sysmenu-back") as HTMLButtonElement).disabled).toBe(false);
+      expect((q('[data-entry="title"]') as HTMLButtonElement).disabled).toBe(false);
     });
     it("le déverrouillage réactive les boutons sans rouvrir l'écran", () => {
       ui.setStatus(status({ quickMenuLocked: true }));
@@ -443,9 +445,10 @@ describe("DomUIManager", () => {
 
     it("par défaut, les écrans sont en français", () => {
       ui.show({ screen: "pause" });
-      expect(qa(".mh-ui-pause-screen .mh-ui-col button").map((b) => b.textContent)).toEqual([
-        "Reprendre", "Sauvegarder", "Charger", "Réglages", "Historique", "Flowchart", "Retour au titre",
+      expect(qa(".mh-sysmenu-entry").map((b) => b.textContent)).toEqual([
+        "Sauvegarder", "Charger", "Config", "Auto", "Skip", "Historique", "Flowchart", "Masquer", "Titre",
       ]);
+      expect(q(".mh-sysmenu-back")!.textContent).toBe("Retour");
       ui.show({ screen: "title", scripts, hasContinue: true });
       expect(q(".mh-ui-new-game")!.textContent).toBe("Nouvelle partie");
       expect(q(".mh-ui-continue")!.textContent).toBe("Continuer");
@@ -456,10 +459,12 @@ describe("DomUIManager", () => {
       setUiLanguage("en");
       expect(q("#ui-overlay")!.lang).toBe("en");
       expect(document.documentElement.lang).toBe("en");
-      expect(q(".mh-ui-resume")!.textContent).toBe("Resume");
+      expect(q(".mh-sysmenu-back")!.textContent).toBe("Back");
+      expect(q('[data-entry="backlog"]')!.textContent).toBe("History");
       setUiLanguage("ja");
       expect(q("#ui-overlay")!.lang).toBe("ja");
-      expect(q(".mh-ui-resume")!.textContent).toBe("ゲームに戻る");
+      expect(q(".mh-sysmenu-back")!.textContent).toBe("戻る");
+      expect(q('[data-entry="backlog"]')!.textContent).toBe("履歴");
     });
 
     it("l'écran de configuration, les emplacements et la confirmation suivent la langue", async () => {

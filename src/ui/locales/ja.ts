@@ -19,16 +19,19 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   "title.entry.config": "コンフィグ",
   "title.entry.extra": "エクストラ",
 
-  // ── ポーズメニュー ──
-  "pause.title": "ポーズ",
-  "pause.resume": "ゲームに戻る",
-  "pause.save": "セーブ",
-  "pause.load": "ロード",
-  "pause.settings": "設定",
-  "pause.history": "履歴",
-  "pause.flowchart": "フローチャート",
-  "pause.returnToTitle": "タイトルに戻る",
-  "pause.quickMenuLocked": "この場面では使用できません",
+  // ── システムメニュー（右クリック） ──
+  "systemMenu.title": "システム",
+  "systemMenu.title.deco": "システム",
+  "systemMenu.entry.save": "セーブ",
+  "systemMenu.entry.load": "ロード",
+  "systemMenu.entry.config": "設定",
+  "systemMenu.entry.auto": "オート",
+  "systemMenu.entry.skip": "スキップ",
+  "systemMenu.entry.backlog": "履歴",
+  "systemMenu.entry.flowchart": "フローチャート",
+  "systemMenu.entry.graphic": "非表示",
+  "systemMenu.entry.title": "タイトル",
+  "systemMenu.quickMenuLocked": "この場面では使用できません",
 
   // ── 確認 ──
   "confirm.returnToTitle": "タイトルに戻りますか？ セーブしていない進行状況は失われます。",

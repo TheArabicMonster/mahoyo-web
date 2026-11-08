@@ -22,7 +22,7 @@ Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 - **Fenêtre de message** : texte posé sur le cadre du jeu (sans boîte), texte déjà lu atténué, indicateurs de ligne/page animés.
 - **Configuration** : quatre onglets (Système, Message, Son/Effet, Raccourcis), 14 raccourcis clavier modifiables, plein écran fit/fill/1:1, volumes et mutes BGM/SE/système.
 - **Sauvegardes** : emplacements numérotés, rapide et auto dans `localStorage` ; le modèle stocke désormais le titre de scène, le commentaire et le verrou (écran de sauvegarde HUD à venir, #196).
-- **Interface** : écran titre, pause, historique, chargement/sauvegarde, flowchart par chapitres, toasts et confirmations.
+- **Interface** : écran titre, menu système, historique, chargement/sauvegarde, flowchart par chapitres, toasts et confirmations.
 - **Traductions** : japonais d'origine et patch fan français Moon-Trad installable par script ; sélecteur de langue dans la configuration.
 - **Pipeline** : extraction `.xp3`, conversion `.tlg` → WebP, audio OGG, normalisation des `.ks`, audit du corpus, table d'enchaînement et graphe de scénario.
 - **Design system** : palette, typographie, espacements et états mesurés sur le jeu d'origine, tokens CSS dans `src/ui/tokens.css`.
