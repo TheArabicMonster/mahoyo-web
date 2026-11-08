@@ -151,6 +151,47 @@ Les types sont dans `src/core/story-graph.ts`, la construction (pure) dans `tool
 
 Le résultat est **déterministe** : il ne dépend que de l'ordre de la table.
 
+## Mise en page du flowchart (`layoutFlowchart`)
+
+`layoutFlowchart(graph, options?)` (`src/core/flow-layout.ts`, types dans `src/core/flow-graph.ts`) est une fonction
+**pure** (sans DOM) qui place **tout** le graphe, quelle que soit la progression du joueur : les positions sont stables,
+l'anti-spoiler (réglage `flowchartRevealAll`) se joue dans le rendu. `parseStoryGraph` valide le JSON avant usage.
+
+**Sortie** (`FlowLayout`, sérialisable, sans texte du jeu : le libellé et la condition d'une arête restent dans le
+graphe, retrouvés par `FlowEdgeLayout.index`) :
+
+- `nodes[]` : `x`, `y`, `width`, `height`, `level`, `groupId`, `section`, `hub`, `ending` ;
+- `edges[]` : `points` (polyligne orthogonale de `from` vers `to`, la flèche est au dernier point), `reversed` (arête
+  qui remonte, dans un cycle), `external` (entre deux groupes ou vers un interlude partagé) ;
+- `groups[]` : un rectangle par page du graphe d'origine (chapitre), avec `chapter` (le titre se lit dans
+  `story-chain.json.chapters[].label`, voir `groupTitle`), `arc`, `headerHeight` (place du titre) et `nodeIds` ;
+- `sections[]` : `main` (atteignable depuis le premier script) puis `bonus` ;
+- `endings[]`, `width`, `height`.
+
+**Principe** : niveaux par plus long chemin, nœuds factices sur les arêtes qui sautent des niveaux, ordre par
+barycentres (meilleur ordre en nombre de croisements), abscisses lissées vers la moyenne des voisins. Un parcours en
+profondeur retourne les arêtes qui forment un cycle. Les groupes sont empilés de haut en bas dans l'ordre du récit.
+
+**Cas particuliers du graphe réel** :
+
+- **Interlude partagé** (`teatime`, sans chapitre ni arc, 13 entrées et 13 sorties) : un seul nœud (`hub: true`) dans
+  une colonne à droite, à la hauteur moyenne de ses voisins ; ses arêtes passent par un couloir vertical entre le
+  contenu et cette colonne. Pour ordonner les chapitres, ses entrées et ses sorties sont appariées dans l'ordre du
+  graphe (la sortie suit l'entrée la plus proche qui la précède) ; sans cela, `teatime` ferait de toute l'histoire un cycle.
+- **Section « Bonus »** : tout nœud non atteignable depuis le premier script (les 9 scripts isolés, les chaînes `nz*`,
+  la page `wik_*` de 68 scripts), rangé par page dans ses propres groupes (`bonus:<arc>`), sous la section principale.
+- **Fins** : `endings` ne liste que les nœuds sans successeur **atteignables depuis le début** (1 sur le corpus de
+  référence : `d-9`). Il n'y a pas de compteur « x/4 » : `endingProgress(layout, fins vues)` renvoie `{ reached, total }`
+  sur ces seules fins ; les extrémités de la section Bonus ne se comptent pas.
+- **Libellés de choix** : peuvent contenir la séquence littérale « \n » ; `choiceLabelLines` les découpe en lignes.
+
+**Sur le corpus de référence** (205 nœuds, 243 arêtes) : 14 groupes dans la section principale (122 nœuds) et 6 dans
+Bonus (83 nœuds), environ 790 × 15 900 unités (une colonne étroite, de haut en bas), calculée en 2 ms. Elle est
+couverte par `tests/unit/core/flow-layout.test.ts` (graphes factices originaux : chaîne, choix, fusion, arête longue,
+interlude partagé, cycle, sections, performance) et, sur les vrais assets locaux, par
+`tests/integration/flow-layout.test.ts` (ignoré sans `MAHOYO_ASSETS_DIR` ; `MAHOYO_STORY_GRAPH` désigne un
+`story-graph.json` ailleurs que dans le dossier d'assets).
+
 ## Résultat sur le corpus de référence
 
 194 blocs dont 161 avec script, 200 scripts dans la table dont 19 avec plusieurs suites,

@@ -450,7 +450,9 @@ Choix d'architecture :
   gitignored comme `story-chain.json`) : `nodes[{id, file, chapter, arc, kind, thumb?}]`, `edges[{from, to, kind,
   choice?, condition?}]`. Les libellés de choix restent dans ce fichier local.
 - **Mise en page** : fonction **pure** `layoutFlowchart(graph)` (`src/core/flow-layout.ts`) : niveaux par plus long chemin,
-  ordre pour minimiser les croisements, arêtes orthogonales. Testable sans DOM.
+  ordre pour minimiser les croisements, arêtes orthogonales. Testable sans DOM. Implémentée (FLOW-02, #192) : voir
+  « Mise en page du flowchart » dans `ENCHAINEMENT_SCRIPTS.md` (groupes par chapitre, section « Bonus », fins
+  atteignables depuis le début plutôt qu'un compteur « n/4 »).
 - **Progression** : étendre `settings-store` avec `visited` (scripts), `finished` (scripts), `choices` (arête prise),
   `endings` (fins) ; **migration** des anciennes données (champs absents = vide) et import dans l'export de sauvegarde.
 - **Rendu** : SVG pour les arêtes et DOM pour les nœuds (200 nœuds, accessibilité native), ou Canvas + couche de
