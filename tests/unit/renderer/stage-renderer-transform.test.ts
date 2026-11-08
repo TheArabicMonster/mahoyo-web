@@ -156,6 +156,21 @@ describe("DomStageRenderer — zoom et rotation des fonds et des sprites", () =>
       expect(spriteEl().style.transform).toBe("translate(-50%, -50%) rotate(0deg) scale(-1.5, 1)");
     });
 
+    it("ancrage (#171) : le zoom pivote autour du centre posé par left/top, jamais autour du bas ni du coin", async () => {
+      // Valeurs inventées : un sprite zoomé à 140 % et un non zoomé au même centre.
+      await show({ bg: "fond", sprites: [sprite({ id: "z", x: 601, y: 205, zoomx: 140, zoomy: 140 }), sprite({ id: "n", x: 601, y: 205 })] });
+      const zoomed = root.querySelector<HTMLElement>('[data-sprite-id="z"]')!;
+      const plain = root.querySelector<HTMLElement>('[data-sprite-id="n"]')!;
+      for (const el of [zoomed, plain]) {
+        expect(el.style.left).toBe("601px");
+        expect(el.style.top).toBe("205px");
+        expect(el.style.transformOrigin).toBe("");
+      }
+      // translate(-50%, -50%) est la première fonction : le centre de l'image reste en (left, top).
+      expect(zoomed.style.transform.startsWith("translate(-50%, -50%) ")).toBe(true);
+      expect(plain.style.transform).toBe("");
+    });
+
     it("sprite neutre : aucun transform en ligne (le CSS de la classe centre déjà)", async () => {
       await show({ bg: "fond", sprites: [sprite()] });
       expect(spriteEl().style.transform).toBe("");
