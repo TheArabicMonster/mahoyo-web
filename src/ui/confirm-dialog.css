@@ -1,0 +1,147 @@
+/*
+ * Boîte de confirmation au design d'origine (HUD-05 / #190 ; docs/ANALYSE_HUD_ORIGINAL.md §2.8, docs/DESIGN.md §2.3/§5/§8).
+ * CSS pur, tokens --mh-* de tokens.css (jamais redéclarés ici), aucune image du jeu.
+ * Repère : le viewport logique fait 1280x720 ; les cotes de l'original (@1080) sont converties en @720 (x 2/3).
+ */
+
+/* Fond transparent qui bloque les clics hors de la boîte : la scène reste visible mais inactive. */
+.mh-ui-overlay > .mh-ui-confirm {
+  position: absolute;
+  inset: 0;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  pointer-events: auto;
+  animation: mh-ui-confirm-in var(--mh-dur-fast) var(--mh-ease);
+}
+
+/* Écran tactile : fond modal discret, pour éviter les appuis hors boîte. */
+@media (pointer: coarse) {
+  .mh-ui-overlay > .mh-ui-confirm {
+    background: rgba(7, 17, 27, 0.35);
+  }
+}
+
+/* 585x246 @1080 = 390x164 @720 ; la hauteur grandit si le message est long. */
+.mh-ui-confirm-box {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 390px;
+  max-width: calc(100% - 2 * var(--mh-margin-screen));
+  min-height: 164px;
+  padding: 28px 32px 22px;
+  background: linear-gradient(to bottom, var(--mh-dialog-top), var(--mh-dialog-bottom));
+  border: 2px solid var(--mh-dialog-border);
+  color: var(--mh-text-ui);
+  font-family: var(--mh-font-ui);
+  box-shadow: 0 6px 24px rgba(7, 17, 27, 0.55);
+}
+
+/* Question centrée (~30 px @1080 = 20 px @720). */
+.mh-ui-confirm-message {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 18px;
+  font-size: 20px;
+  line-height: 1.4;
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: none;
+}
+
+/* Oui à gauche, Non à droite : centres à +-120 px @1080 de l'axe, soit une pastille de 97 px et 63 px d'écart @720. */
+.mh-ui-confirm-row {
+  display: flex;
+  justify-content: center;
+  gap: 63px;
+}
+
+/* Pastille elliptique 146x36 @1080 = 97x24 @720. Repos --mh-pill-off ; sélection (survol ou clavier) --mh-pill-on. */
+.mh-ui-confirm-pill {
+  box-sizing: border-box;
+  width: 97px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--mh-pill-off);
+  color: var(--mh-text-ui);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/*
+ * Sélection : la sélection est le focus (le survol y déplace le focus). Le texte passe en sombre :
+ * #eef4f5 sur --mh-pill-on ne ferait que 2,6:1 contre 6,7:1 pour --mh-bg-night-bottom.
+ * L'état ne repose pas sur la couleur seule : lueur en plus, et contour de focus pour le clavier.
+ */
+.mh-ui-confirm-pill:hover,
+.mh-ui-confirm-pill:focus {
+  background: var(--mh-pill-on);
+  color: var(--mh-bg-night-bottom);
+  box-shadow: 0 0 10px rgba(95, 207, 197, 0.55);
+}
+
+.mh-ui-confirm-pill:focus {
+  outline: none;
+}
+
+.mh-ui-confirm-pill:focus-visible {
+  outline: 2px solid var(--mh-focus);
+  outline-offset: 2px;
+}
+
+/* Cibles de 44 px minimum sur écran tactile. */
+@media (pointer: coarse) {
+  .mh-ui-confirm-pill {
+    width: 120px;
+    height: 44px;
+  }
+  .mh-ui-confirm-row {
+    gap: 32px;
+  }
+}
+
+/* Quatre volutes d'angle : arc de cercle + petite boucle, retournés par symétrie. */
+.mh-ui-confirm-corner {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border: 2px solid var(--mh-dialog-ornament);
+  border-right: 0;
+  border-bottom: 0;
+  border-top-left-radius: 22px;
+  pointer-events: none;
+}
+
+.mh-ui-confirm-corner::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 6px;
+  height: 6px;
+  box-sizing: border-box;
+  border: 2px solid var(--mh-dialog-ornament);
+  border-radius: 50%;
+}
+
+.mh-ui-confirm-corner-tl { top: 5px; left: 5px; }
+.mh-ui-confirm-corner-tr { top: 5px; right: 5px; transform: scaleX(-1); }
+.mh-ui-confirm-corner-bl { bottom: 5px; left: 5px; transform: scaleY(-1); }
+.mh-ui-confirm-corner-br { bottom: 5px; right: 5px; transform: scale(-1, -1); }
+
+/* Ouverture : fondu seul, sans échelle (docs/DESIGN.md §7). --mh-dur-fast tombe à 0 sous prefers-reduced-motion. */
+@keyframes mh-ui-confirm-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

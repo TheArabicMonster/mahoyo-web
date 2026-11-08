@@ -163,6 +163,11 @@ système sont ≈ 2 % (22 px@1080) ; le pied d'écran (« Back »/« Retour ») 
 | Indicateurs d'attente | Feuille (ligne), livre (page), animés par feuilles de sprites de 40 vignettes | `linebreak_a`, `pagebreak_a` (déjà utilisés, `CLICK_GLYPHS`) |
 | Curseur de choix | Curseur dédié animé | `selectcursor`, `selectcursor_a` |
 
+La boîte de dialogue est implémentée en CSS pur dans `src/ui/confirm-dialog.css` (#190) : boîte 390×164 @720, dégradé et bord
+issus des tokens `--mh-dialog-*`, quatre volutes d'angle en bordures arrondies, pastilles 97×24 (44 px sur écran tactile),
+fondu de `--mh-dur-fast`. Écart d'accessibilité : le texte de la pastille sélectionnée passe en `--mh-bg-night-bottom`
+(`#eef4f5` sur `#33a9a9` ne ferait que 2,6:1 ; la valeur d'origine du texte n'a pas été mesurée).
+
 Quand une clé est absente (utilisateur sans assets), l'écran utilise le **repli CSS** de §9.
 
 ## 6. Opacités et effets
@@ -206,7 +211,7 @@ toutes ces durées tombent à 0 sauf la frappe du texte.
 | Onglet de config | blanc | lueur cyan | lueur cyan renforcée, libellé `#cfeff0` | | à ajouter |
 | Radio | disque noir, anneau `#8c959a` | non vu | point intérieur gris clair | | |
 | Case à cocher (« Verr. ») | carré clair vide | | cochée = verrouille la sauvegarde | | |
-| Pastille de dialogue | `#2e7179` | `#33a9a9` | | | |
+| Pastille de dialogue | `#2e7179` | `#33a9a9` | idem survol (la sélection suit le focus) | | contour 2 px `#5fcfc5` (implémenté, #190) |
 | Bouton de sauvegarde | `#586888` → `#283858` | éclaircit, bord bleu | | grisé si emplacement vide | |
 | Numéro de page | gris cursif | non vu | cyan | | |
 | Tuile CG | sarcelle sombre | bord `#c0f790` | idem | libellé « image non affichée » | |

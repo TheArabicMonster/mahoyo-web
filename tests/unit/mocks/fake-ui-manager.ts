@@ -1,6 +1,7 @@
 import type { Ms } from "@/kag/events.js";
 import type {
   BacklogEntry,
+  ConfirmOptions,
   GameSettings,
   OverlayScreen,
   PlayerCommands,
@@ -21,6 +22,8 @@ export class FakeUIManager implements UIManager {
   choices: string[][] = [];
   toasts: { message: string; duration?: Ms }[] = [];
   confirms: string[] = [];
+  /** Options passées à `confirm`, dans le même ordre que `confirms`. */
+  confirmOptions: (ConfirmOptions | undefined)[] = [];
   inputEnabled = true;
   commands: PlayerCommands | null = null;
 
@@ -44,8 +47,9 @@ export class FakeUIManager implements UIManager {
     this.choices.push([]);
   }
 
-  async confirm(message: string): Promise<boolean> {
+  async confirm(message: string, options?: ConfirmOptions): Promise<boolean> {
     this.confirms.push(message);
+    this.confirmOptions.push(options);
     return true;
   }
 
@@ -63,5 +67,6 @@ export class FakeUIManager implements UIManager {
     this.choices = [];
     this.toasts = [];
     this.confirms = [];
+    this.confirmOptions = [];
   }
 }

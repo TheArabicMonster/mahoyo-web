@@ -11,6 +11,7 @@ import {
 import type { Ms } from "@/kag/events.js";
 import type {
   BacklogEntry,
+  ConfirmOptions,
   GameLanguage,
   GameSettings,
   OverlayScreen,
@@ -23,6 +24,7 @@ import type {
   UIManager,
   UIView,
 } from "@/ui/types.js";
+import { openConfirmDialog, type ConfirmDialog } from "@/ui/confirm-dialog.js";
 import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t, uiLocale } from "@/ui/i18n.js";
 import { ToastStack } from "@/ui/toast.js";
 import { syncNightDemo } from "@/ui/night.js";
@@ -104,7 +106,7 @@ export class DomUIManager implements UIManager {
   private captureApply: ((binding: string) => void) | null = null;
   private cursorTimer: ReturnType<typeof setTimeout> | undefined;
 
-  private pendingConfirm: ((v: boolean) => void) | null = null;
+  private confirmDialog: ConfirmDialog | null = null;
   private cleanups: (() => void)[] = [];
   private previousDocumentLang: string | null = null;
 
@@ -255,26 +257,23 @@ export class DomUIManager implements UIManager {
     this.renderStatus();
   }
 
-  confirm(message: string): Promise<boolean> {
+  confirm(message: string, options?: ConfirmOptions): Promise<boolean> {
     if (!this.root) return Promise.resolve(false);
     this.resolveConfirm(false);
-    return new Promise<boolean>((resolve) => {
-      this.pendingConfirm = resolve;
-      const box = h("div", "mh-ui-confirm mh-ui-panel");
-      box.setAttribute("role", "dialog");
-      box.setAttribute("aria-modal", "true");
-      const dialog = h("div", "mh-ui-confirm-box");
-      dialog.appendChild(h("p", "mh-ui-confirm-message", message));
-      const row = h("div", "mh-ui-row");
-      const no = this.button(t("common.no"), () => this.resolveConfirm(false), "mh-ui-confirm-no");
-      const yes = this.button(t("common.yes"), () => this.resolveConfirm(true), "mh-ui-confirm-yes");
-      row.append(no, yes);
-      dialog.appendChild(row);
-      box.appendChild(dialog);
-      this.confirmEl = box;
-      this.overlay.appendChild(box);
-      yes.focus();
+    const dialog = openConfirmDialog(this.overlay, {
+      message,
+      yesLabel: t("common.yes"),
+      noLabel: t("common.no"),
+      defaultButton: options?.defaultButton,
     });
+    this.confirmDialog = dialog;
+    this.confirmEl = dialog.element;
+    void dialog.result.then(() => {
+      if (this.confirmDialog !== dialog) return;
+      this.confirmDialog = null;
+      this.confirmEl = null;
+    });
+    return dialog.result;
   }
 
   toast(message: string, duration?: Ms): void {
@@ -336,11 +335,10 @@ export class DomUIManager implements UIManager {
   }
 
   private resolveConfirm(value: boolean): void {
-    const resolve = this.pendingConfirm;
-    this.pendingConfirm = null;
-    this.confirmEl?.remove();
+    const dialog = this.confirmDialog;
+    this.confirmDialog = null;
     this.confirmEl = null;
-    resolve?.(value);
+    dialog?.close(value);
   }
 
   private choose(index: number): void {

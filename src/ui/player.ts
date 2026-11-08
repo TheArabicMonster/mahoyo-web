@@ -787,7 +787,7 @@ export class Player implements PlayerCommands {
         let accepted = this.autoSkipConfirmed || !display.autoSkipConfirm;
         if (!this.autoSkipConfirmed && display.autoSkipConfirm) {
           this.autoSkipConfirmed = true;
-          accepted = await this.ui.confirm(t("confirm.skipRead"));
+          accepted = await this.ui.confirm(t("confirm.skipRead"), { defaultButton: "yes" });
         }
         if (accepted) this.setMode("skip");
         else this.autoSkipDeclined = true;
