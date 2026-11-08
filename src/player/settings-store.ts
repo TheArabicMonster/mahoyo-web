@@ -5,7 +5,8 @@
 import { isGameLanguage, type GameLanguage } from "@/core/language.js";
 import { defaultShortcuts, mergeShortcuts } from "@/core/shortcuts.js";
 import { DEFAULT_AUDIO_SETTINGS, DEFAULT_DISPLAY_SETTINGS } from "@/renderer/types.js";
-import type { GameSettings, ScriptProgress } from "@/ui/types.js";
+import type { GameSettings, ScriptProgress, StoryProgress } from "@/ui/types.js";
+import { emptyStoryProgress, normalizeStoryProgress } from "./story-progress.js";
 
 export const DEFAULT_SETTINGS: GameSettings = {
   display: { ...DEFAULT_DISPLAY_SETTINGS },
@@ -14,6 +15,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
   // Français par défaut ; le player retombe sur "ja" si aucune traduction n'est installée.
   language: "fr",
   shortcuts: defaultShortcuts(),
+  // Anti-spoiler actif par défaut : seules les scènes visitées sont révélées.
+  flowchartRevealAll: false,
 };
 
 export interface SettingsStore {
@@ -24,6 +27,9 @@ export interface SettingsStore {
   saveRead(read: ReadonlySet<string>): Promise<void>;
   loadProgress(): Promise<{ completed: string[] }>;
   saveProgress(progress: { completed: readonly string[] }): Promise<void>;
+  /** Progression par scène (flowchart) ; vide si absente, partielle ou corrompue. */
+  loadStoryProgress(): Promise<StoryProgress>;
+  saveStoryProgress(progress: Readonly<StoryProgress>): Promise<void>;
 }
 
 type LegacyDisplay = Partial<GameSettings["display"]> & {
@@ -74,6 +80,13 @@ export function mergeSettings(base: Readonly<GameSettings>, patch: Partial<GameS
     display: display as GameSettings["display"],
     audio,
     shortcuts: mergeShortcuts(base.shortcuts ?? defaultShortcuts(), patch.shortcuts),
+    // Anciennes sauvegardes : champ absent ou invalide -> valeur de base, puis `false`.
+    flowchartRevealAll:
+      typeof patch.flowchartRevealAll === "boolean"
+        ? patch.flowchartRevealAll
+        : typeof base.flowchartRevealAll === "boolean"
+          ? base.flowchartRevealAll
+          : false,
   };
 }
 
@@ -116,6 +129,13 @@ export function createLocalSettingsStore(storage: Storage = localStorage, prefix
     async saveProgress(progress) {
       storage.setItem(`${prefix}progress`, JSON.stringify(progress));
     },
+    async loadStoryProgress() {
+      return normalizeStoryProgress(readJson<unknown>(storage, `${prefix}story-progress`));
+    },
+    async saveStoryProgress(progress) {
+      // Normalisation à l'écriture : seuls des identifiants de scripts sont persistés.
+      storage.setItem(`${prefix}story-progress`, JSON.stringify(normalizeStoryProgress(progress)));
+    },
   };
 }
 
@@ -124,6 +144,7 @@ export function createMemorySettingsStore(): SettingsStore {
   let settings = DEFAULT_SETTINGS;
   let read = new Set<string>();
   let progress: { completed: string[] } = { completed: [] };
+  let story = emptyStoryProgress();
   return {
     async loadSettings() {
       return settings;
@@ -142,6 +163,12 @@ export function createMemorySettingsStore(): SettingsStore {
     },
     async saveProgress(p) {
       progress = { completed: [...p.completed] };
+    },
+    async loadStoryProgress() {
+      return normalizeStoryProgress(story);
+    },
+    async saveStoryProgress(p) {
+      story = normalizeStoryProgress(p);
     },
   };
 }

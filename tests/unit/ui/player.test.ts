@@ -964,6 +964,7 @@ describe("Player — langues", () => {
       skipUnread: false,
       language: "fr",
       shortcuts: defaultShortcuts(),
+      flowchartRevealAll: false,
     });
     const ctx = setup([], {
       settingsStore: store,

@@ -16,6 +16,11 @@ export type GameSettings = {
   skipUnread: boolean;
   language: GameLanguage;
   shortcuts: ShortcutBindings;
+  /**
+   * Flowchart : true = révèle tous les nœuds (désactive l'anti-spoiler).
+   * Défaut false : seules les scènes visitées sont dévoilées.
+   */
+  flowchartRevealAll: boolean;
 };
 
 export type PlayMode = "normal" | "auto" | "skip";
@@ -94,6 +99,24 @@ export type ScriptSummary = {
 export type ScriptProgress = {
   unlocked: readonly string[];
   completed: readonly string[];
+};
+
+/** Arête de choix prise : scripts uniquement, jamais le libellé de l'option. */
+export type TakenChoice = { from: string; to: string };
+
+/**
+ * Progression par scène (script) pour le flowchart. Persistée dans `mahoyo.story-progress`.
+ * Données anciennes ou partielles : les champs absents valent vide.
+ */
+export type StoryProgress = {
+  /** Scripts ouverts au moins une fois. */
+  visited: readonly string[];
+  /** Scripts lus jusqu'au `@return`. */
+  finished: readonly string[];
+  /** Arêtes de choix prises (script d'origine -> script cible). */
+  choices: readonly TakenChoice[];
+  /** Scripts terminaux (fins) atteints. */
+  endings: readonly string[];
 };
 
 export type SaveSlot = {
