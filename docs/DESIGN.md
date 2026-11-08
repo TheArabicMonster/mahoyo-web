@@ -120,6 +120,8 @@ Aucune police du jeu n'est distribuée. Piles proposées (libres ou système) :
 | Libellés de config et boutons | ≈ 28 px | ≈ 19 px | `--mh-control-size: 1.2rem` |
 | Mention de droits | 14 px | ≈ 9 px | `--mh-legal-size: 0.6rem` (jamais sous 10 px réels, voir §10) |
 
+> **Texte de jeu : mise en œuvre (#182).** Le player dessine la scène en 1024×576 puis l'agrandit de 1,25 vers 1280×720. Le texte de jeu est donc réglé dans ce repère : `FRAME_TEXT_REM = 1.7` et `FRAME_TEXT_LINE_HEIGHT = 1.5` (`src/renderer/text-fit.ts`), soit 1,7 × 16 × 1,25 = 34 px de corps et 51 px d'interligne à l'écran, comme l'original. `getComputedStyle` renvoie 27,2 px / 40,8 px (avant agrandissement) : la conformité se mesure sur le rendu (`getBoundingClientRect` du stage ÷ largeur du stage), pas sur la valeur calculée seule.
+
 ## 4. Espacement et grille
 
 | Élément | @1080 | @720 |

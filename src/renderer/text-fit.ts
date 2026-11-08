@@ -60,6 +60,17 @@ export const FRAME_TEXT_AREA = {
   bottom: 0.081,
 } as const;
 
+/**
+ * Échelle du texte du style « cadre image » (#182, docs/ANALYSE_HUD_ORIGINAL.md §2.4 et docs/DESIGN.md §3).
+ *
+ * Jeu d'origine à 1280x720 : corps ≈ 34 px, interligne ≈ 51 px (77/1080 de la hauteur). Le stage est
+ * dessiné en 1024x576 puis agrandi par `STAGE_SCALE` (1,25, voir stage-renderer.ts) : les valeurs CSS
+ * ci-dessous sont donc exprimées dans le repère du stage, et c'est le rendu à l'écran qui doit valoir
+ * 34 px / 51 px. 1,7 rem x 16 px x 1,25 = 34 px ; interligne 1,5 : 34 x 1,5 = 51 px.
+ */
+export const FRAME_TEXT_REM = 1.7;
+export const FRAME_TEXT_LINE_HEIGHT = 1.5;
+
 /** Hauteur de la zone de texte du style « cadre image » pour une scène de `stageHeight`. */
 export function frameTextAreaHeight(stageHeight: number): number {
   return stageHeight * (1 - FRAME_TEXT_AREA.top - FRAME_TEXT_AREA.bottom);

@@ -282,8 +282,10 @@ au repère 1024×576 :
   tombe entre 89 % et 93 %) ;
 - première ligne centrée à 126/1080, interligne 77/1080 : haut de la zone à 8,1 % ; bas pris
   symétrique du haut (hypothèse, le bas n'est pas visible sur la capture) ;
-- police nominale `1,6 rem` (25 px sur 1080), interligne `1,6`, interlettrage `0,06 em`,
-  ombre portée pour la lisibilité ;
+- police nominale `1,7 rem`, interligne `1,5`, interlettrage `0,06 em`, ombre portée pour la
+  lisibilité (#182). Ces valeurs sont dans le repère du stage (1024×576, agrandi de 1,25) : à
+  l'écran à 1280×720, corps 34 px et interligne 51 px, soit les ≈ 34 px / 51 px mesurés sur le jeu
+  (77/1080 d'interligne) ; avant #182, 1,6 rem / 1,6 donnait 32 px / 51 px ;
 - après un clic sur une attente `[l]`, le texte déjà affiché de la page reste visible à 40 %
   d'opacité jusqu'au changement de page ;
 - indicateur d'attente : bandes animées `linebreak_a` (feuille, 40 vignettes de 24 px) et

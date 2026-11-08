@@ -65,6 +65,8 @@ export function generatePlaceholderAssets(outDir: string): void {
   writePlaceholder(join(outDir, "bg", "white.webp"), 255, 255, 255);
   writePlaceholder(join(outDir, "image", "placeholder.webp"), 255, 0, 0);
   writePlaceholder(join(outDir, "rule", "rule.png"), 128, 128, 128);
+  // Cadre de la fenêtre de message par défaut (#182) : sans lui, le player retombe sur l'ancienne boîte.
+  writePlaceholder(join(outDir, "image", "txtwindow02.webp"), 0, 0, 0);
 
   // Copie le manifest et le scénario depuis public/assets (non versionnés par le test).
   const publicAssets = join(__dirname, "..", "..", "public", "assets");
