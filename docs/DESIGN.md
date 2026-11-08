@@ -190,6 +190,8 @@ Quand une clé est absente (utilisateur sans assets), l'écran utilise le **repl
 | Toast | 0,2 s d'entrée, ≈ 2,5 s d'affichage | linéaire | Sortie à la prochaine action. |
 | Texte de page | frappe caractère par caractère (vitesse réglable), pas de défilement | | |
 
+> **Toasts : mise en œuvre (#191, HUD-13).** `src/ui/toast.ts` (`ToastStack`) et `src/ui/toast.css`, sans asset. Cadre `--mh-toast-fill` bordé de `#8da9af` → `#4a6b72`, deux chevrons (`<` et `>`) en pseudo-éléments. Mesures de l'original (510×90 px, x 1370–1880, y 950–1040 @1080) ramenées au repère logique 1280×720 du `#viewport` (×2/3, le HUD n'est **pas** dans le repère 1024×576 de la scène) : cadre 340×60 px, marges droite et bas de 27 px, vérifiées au navigateur (`getBoundingClientRect`). Corps de texte `--mh-control-size` (19,2 px) ; un message long passe à la ligne et agrandit la hauteur. Entrée en fondu de 0,2 s, maintien de 2,5 s (`duration` de `toast()` si fourni), fondu de sortie `--mh-dur-fast` ; sous `prefers-reduced-motion`, ni entrée ni sortie animées. Pile de 3 au plus, le plus ancien (en haut) disparaît ; les toasts n'interceptent pas la souris. La région `aria-live="polite"` est le conteneur `#ui-toast`, créé avant les messages.
+
 Tokens proposés : `--mh-dur-fast: 150ms`, `--mh-dur-menu: 270ms`, `--mh-dur-fade-out: 400ms`, `--mh-dur-fade-in: 800ms`,
 `--mh-dur-scene-out: 1200ms`, `--mh-dur-scene-in: 850ms`, `--mh-ease: linear`. Avec `prefers-reduced-motion`,
 toutes ces durées tombent à 0 sauf la frappe du texte.

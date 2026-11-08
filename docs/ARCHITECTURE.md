@@ -46,6 +46,7 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`player.ts`** : orchestrateur Runtime ↔ StageRenderer ↔ AudioPlayer ↔ UIManager, boucle de lecture, modes auto/skip, sauvegardes et viewport.
 - **`ui-manager.ts`** : écrans DOM (titre, pause, sauvegarde/chargement, historique, flowchart, configuration) et gestion des entrées.
 - **`ui-manager.css`**, **`tokens.css`** : styles des écrans et tokens du design system (palette, typo, durées, états).
+- **`toast.ts`**, **`toast.css`** : composant `ToastStack` des messages éphémères (cadre sarcelle bas droite, 3 au plus, `aria-live="polite"`) ; `DomUIManager.toast()` y délègue.
 - **`chapter-list.ts`** : construction de la liste des chapitres/scripts.
 - **`i18n.ts`** et **`locales/`** : dictionnaire d'interface FR/JA/EN (`t(clé)`, repli sur le français). Voir [`I18N.md`](I18N.md).
 
