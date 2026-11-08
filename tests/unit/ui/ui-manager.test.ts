@@ -234,6 +234,16 @@ describe("DomUIManager", () => {
       ui.show({ screen: "title", scripts: [], hasContinue: false });
       expect(q(".mh-ui-new-game")).toBeNull();
     });
+    it("les entrées Flowchart du titre et du menu système ouvrent le nouvel écran (FLOW-05)", () => {
+      ui.show({ screen: "title", scripts, hasContinue: false });
+      q('[data-entry="flowchart"]')!.click();
+      expect(cmd.openScreen).toHaveBeenLastCalledWith("flowchart");
+      ui.show({ screen: "pause" });
+      q('[data-entry="flowchart"]')!.click();
+      expect(cmd.openScreen).toHaveBeenCalledTimes(2);
+      ui.show(views[6]!);
+      expect(q(".mh-flow-screen")).not.toBeNull();
+    });
     it("pause : « Back » referme le menu", () => {
       ui.show({ screen: "pause" });
       q(".mh-sysmenu-back")!.click();
