@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultShortcuts } from "@/core/shortcuts.js";
 import { DEFAULT_AUDIO_SETTINGS, DEFAULT_DISPLAY_SETTINGS } from "@/renderer/types.js";
 import { setUiLanguage } from "@/ui/i18n.js";
+import { TOAST_LEAVE_MS } from "@/ui/toast.js";
 import { DomUIManager } from "@/ui/ui-manager.js";
 import type { GameSettings, PlayerCommands, PlayerStatus, UIView } from "@/ui/types.js";
 
@@ -327,9 +328,14 @@ describe("DomUIManager", () => {
     it("toast disparaît après la durée", () => {
       vi.useFakeTimers();
       ui.toast("hi", 100);
-      expect(q(".mh-ui-toast-item")!.textContent).toBe("hi");
-      vi.advanceTimersByTime(100);
-      expect(q(".mh-ui-toast-item")).toBeNull();
+      expect(q(".mh-toast")!.textContent).toBe("hi");
+      vi.advanceTimersByTime(100 + TOAST_LEAVE_MS);
+      expect(q(".mh-toast")).toBeNull();
+    });
+    it("toast : région aria-live polie, 3 toasts au plus (#191)", () => {
+      expect(q("#ui-toast")!.getAttribute("aria-live")).toBe("polite");
+      for (const m of ["a", "b", "c", "d"]) ui.toast(m);
+      expect(qa(".mh-toast").map((e) => e.textContent)).toEqual(["b", "c", "d"]);
     });
     it("setInputEnabled(false) bloque les entrées", () => {
       ui.setInputEnabled(false);

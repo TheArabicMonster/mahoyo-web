@@ -29,8 +29,7 @@
 .mh-ui-overlay > .mh-ui-status { inset: 0.5rem 0.5rem auto auto; align-items: flex-start; }
 .mh-ui-badge { background: rgba(0, 0, 0, 0.6); padding: 0.1rem 0.5rem; font-size: 0.8rem; }
 .mh-ui-badge-suspended { opacity: 0.6; }
-.mh-ui-toast { z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 2rem; gap: 0.25rem; }
-.mh-ui-toast-item { background: rgba(0, 0, 0, 0.8); padding: 0.4rem 1rem; }
+/* Toasts : voir toast.css (HUD-13, #191). */
 .mh-ui-loading { z-index: 300; background: rgba(0, 0, 0, 0.5); pointer-events: auto; }
 .mh-ui-confirm { position: absolute; inset: 0; z-index: 250; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; }
 .mh-ui-confirm-box { background: #112; border: 1px solid #889; padding: 1.5rem; }
