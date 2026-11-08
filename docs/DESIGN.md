@@ -249,6 +249,16 @@ Le module `src/ui/ui-assets.ts` fait le pont entre le manifeste de l'utilisateur
   Sans variable, la déclaration se résout en `none` + dégradé : le navigateur ne lance aucune requête et l'écran garde son
   aspect de repli.
 
+### 9.1 Fond « nuit bleue » (`.mh-ui-night`, HUD-02 / #188)
+
+Premier composant à suivre ce principe : `src/ui/night.css` (importé par `src/ui/night.ts`).
+
+- **Usage** : ajouter la classe `mh-ui-night` au conteneur d'un écran système ; le contenu s'empile au-dessus. La variante `mh-ui-night-veil` donne le voile translucide `#152539` à 82 % (§6) pour les écrans qui laissent voir la scène (menu système), avec feuillage et arabesques mais sans image.
+- **Rendu sans asset** (repli, toujours présent) : dégradé vertical `--mh-bg-night-top` → `-mid` → `-bottom` avec éclaircie `-mid-right` à droite et vignettage ; bandeaux de feuillage haut (13 %) et bas (14 %) de la hauteur, silhouettes `--mh-bg-night-top` sur un lit `#101c27` ; arabesques en arcs et volutes sur la bande droite et en pied d'écran. Tout est en **pourcentages** du conteneur : les mesures @1080 (140 px et 150 px de bandeau, colonne droite x ≥ 1638 sur 1920) ne dépendent d'aucun repère de pixels.
+- **Surcouche d'image** : suit la convention de clés ci-dessus : le calque lit `var(--mh-asset-night, var(--mh-asset-c_background, none))`. `--mh-asset-c_background` (clé du manifeste, posée par `createUiAssets().apply`) est l'image par défaut ; un écran qui veut une autre image pose `--mh-asset-night: var(--mh-asset-<clé>)`. Aucune des deux présente : `none`, donc aucune requête. Le CSS ne contient aucune URL.
+- **Contraste** : les ornements sont plafonnés (arabesques à 14 % et 9 % de `--mh-cyan-rail`) pour que tout texte clair des tokens reste ≥ 7:1, même sur un trait d'arabesque posé sur le fond le plus clair. `tests/unit/ui/night-css.test.ts` recalcule ces rapports à partir de `tokens.css` : modifier une opacité ou un token qui casse le seuil fait échouer le test.
+- **Démonstration** : `?night` dans l'URL pose la classe sur le slot `#ui-menu` pour les écrans titre, sauvegarde, chargement et historique (`syncNightDemo`, une ligne dans `ui-manager.ts`). Les autres écrans, dont la config, sont inchangés ; les tâches HUD-06, HUD-09, HUD-10 et suivantes adopteront la classe écran par écran.
+
 ## 10. Accessibilité minimale à conserver
 
 - **Contraste** : texte clair sur fond sombre ≥ 7:1 (ex. `#a9c8cc` sur `#132337` ≈ 9:1). Le texte lu à 40 % d'opacité
