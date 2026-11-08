@@ -27,4 +27,29 @@ describe("mergeSettings", () => {
     const merged = mergeSettings(DEFAULT_SETTINGS, stored);
     expect(merged.language).toBe("fr");
   });
+
+  it("migre les anciens réglages textSpeed/autoDelay (#177)", () => {
+    const legacy = {
+      display: { textSpeed: 40, autoDelay: 500, fontScale: 1, textboxOpacity: 0.8 },
+      audio: { master: 1, bgm: 0.8, se: 0.8, voice: 1, muted: false },
+      skipUnread: false,
+      language: "fr",
+    } as never;
+    const merged = mergeSettings(DEFAULT_SETTINGS, legacy);
+    expect(merged.display.textSpeedUnread).toBe(40);
+    expect(merged.display.textSpeedRead).toBe(30);
+    expect(merged.display.autoPageDelay).toBe(500);
+    expect(merged.display.autoLineDelay).toBe(500);
+    expect(merged.audio.system).toBe(DEFAULT_SETTINGS.audio.system);
+    expect(merged.audio.bgmMuted).toBe(false);
+    expect(merged.display.fullscreenMode).toBe("fit");
+  });
+
+  it("fusionne les raccourcis action par action", () => {
+    const merged = mergeSettings(DEFAULT_SETTINGS, {
+      shortcuts: { saveMenu: ["x"] } as never,
+    });
+    expect(merged.shortcuts.saveMenu).toEqual(["x"]);
+    expect(merged.shortcuts.loadMenu).toEqual(DEFAULT_SETTINGS.shortcuts.loadMenu);
+  });
 });

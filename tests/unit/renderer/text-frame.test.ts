@@ -4,6 +4,8 @@ import {
   DEFAULT_FRAME_IMAGE,
   DEFAULT_TEXTBOX_OPACITY,
   frameImageOpacity,
+  indicatorOffset,
+  INDICATOR_GAP,
   resolveFrameStyle,
 } from "@/renderer/text-frame.js";
 import { dimmedUnitCount, FRAME_TEXT_AREA, frameTextAreaHeight } from "@/renderer/text-fit.js";
@@ -74,6 +76,33 @@ describe("dimmedUnitCount", () => {
     expect(dimmedUnitCount(4, 10)).toBe(4);
     expect(dimmedUnitCount(12, 10)).toBe(10);
     expect(dimmedUnitCount(-1, 10)).toBe(0);
+  });
+});
+
+describe("indicatorOffset (#175)", () => {
+  it("colle l'icône au bord droit du dernier caractère et la centre verticalement", () => {
+    const char = { top: 50, left: 80, right: 100, height: 40 };
+    expect(indicatorOffset(char, { top: 20, left: 10 }, 1, 24)).toEqual({
+      left: 90 + INDICATOR_GAP,
+      top: 30 + (40 - 24) / 2,
+    });
+  });
+
+  it("divise les mesures écran par l'échelle de la scène", () => {
+    const char = { top: 100, left: 160, right: 210, height: 80 };
+    expect(indicatorOffset(char, { top: 40, left: 20 }, 2, 24)).toEqual({
+      left: 190 / 2 + INDICATOR_GAP,
+      top: 60 / 2 + (80 / 2 - 24) / 2,
+    });
+  });
+
+  it("retombe sur une échelle de 1 si la mesure est invalide", () => {
+    const char = { top: 10, left: 0, right: 20, height: 20 };
+    expect(indicatorOffset(char, { top: 0, left: 0 }, 0, 20)).toEqual({
+      left: 20 + INDICATOR_GAP,
+      top: 10,
+    });
+    expect(indicatorOffset(char, { top: 0, left: 0 }, Number.NaN, 20).left).toBe(20 + INDICATOR_GAP);
   });
 });
 

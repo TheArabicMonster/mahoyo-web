@@ -1,6 +1,6 @@
 import type { AudioChannel, AudioEvent, AudioSnapshot, Ms } from "@/kag/events.js";
 import type { AssetResolver } from "@/core/asset-resolver.js";
-import type { AudioPlayer, AudioPlayerDeps, AudioSettings } from "./types.js";
+import { DEFAULT_AUDIO_SETTINGS, type AudioPlayer, type AudioPlayerDeps, type AudioSettings } from "./types.js";
 
 /** Sous-ensemble de HTMLAudioElement utilisé ici (permet de le simuler en test). */
 export type AudioElementLike = {
@@ -40,7 +40,16 @@ type Voice = {
   onError: () => void;
 };
 
-const DEFAULT_SETTINGS: AudioSettings = { master: 1, bgm: 1, se: 1, voice: 1, muted: false };
+// Valeurs neutres avant que le player n'applique ses réglages (les tests et le premier
+// rendu ne doivent pas subir un changement de volume transitoire).
+const DEFAULT_SETTINGS: AudioSettings = {
+  ...DEFAULT_AUDIO_SETTINGS,
+  master: 1,
+  bgm: 1,
+  se: 1,
+  system: 1,
+  voice: 1,
+};
 
 function clamp01(v: number): number {
   return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
@@ -173,8 +182,38 @@ export class WebAudioPlayer implements AudioPlayer {
 
   private channelGain(channel: AudioChannel): number {
     if (this.settings.muted) return 0;
+    if (channel === "bgm" && this.settings.bgmMuted) return 0;
+    if (channel !== "bgm" && channel !== "voice" && this.settings.seMuted) return 0;
     const kind = channel === "bgm" ? this.settings.bgm : channel === "voice" ? this.settings.voice : this.settings.se;
     return clamp01(this.settings.master) * clamp01(kind);
+  }
+
+  /** Test du volume SE : courte sinusoïde, sans dépendre d'un asset du jeu. */
+  testSe(): void {
+    if (this.disposed) return;
+    const gain = this.channelGain("se:0");
+    if (gain <= 0) return;
+    try {
+      const Ctor =
+        (globalThis as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
+          .AudioContext ??
+        (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      const context = new Ctor();
+      const oscillator = context.createOscillator();
+      const envelope = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = 880;
+      envelope.gain.setValueAtTime(0, context.currentTime);
+      envelope.gain.linearRampToValueAtTime(0.12 * gain, context.currentTime + 0.01);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+      oscillator.connect(envelope).connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.2);
+      oscillator.addEventListener("ended", () => void context.close());
+    } catch {
+      // AudioContext indisponible (navigation privée, navigateur sans Web Audio) : silencieux.
+    }
   }
 
   private applyVolume(channel: AudioChannel, voice: Voice): void {

@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultShortcuts } from "@/core/shortcuts.js";
+import { DEFAULT_AUDIO_SETTINGS, DEFAULT_DISPLAY_SETTINGS } from "@/renderer/types.js";
 import { DomUIManager } from "@/ui/ui-manager.js";
 import type { GameSettings, PlayerCommands, PlayerStatus, UIView } from "@/ui/types.js";
 
 function makeCommands() {
   const names = [
-    "advance", "setMode", "toggleUserHide", "rollback", "choose", "startScript", "openScreen",
-    "closeScreen", "returnToTitle", "save", "load", "deleteSave", "updateSettings", "toggleFullscreen",
+    "advance", "hurryText", "setMode", "toggleUserHide", "rollback", "choose", "startScript", "openScreen",
+    "closeScreen", "returnToTitle", "save", "load", "deleteSave", "updateSettings", "resetSettings",
+    "toggleFullscreen", "testSe",
   ] as const;
   const c = {} as Record<string, ReturnType<typeof vi.fn>>;
   for (const n of names) c[n] = vi.fn(() => Promise.resolve());
@@ -13,13 +16,15 @@ function makeCommands() {
 }
 
 const settings: GameSettings = {
-  display: { textSpeed: 30, autoDelay: 1500, fontScale: 1, textboxOpacity: 0.8 },
-  audio: { master: 1, bgm: 0.8, se: 0.8, voice: 1, muted: false },
+  display: { ...DEFAULT_DISPLAY_SETTINGS, textSpeedUnread: 30, autoPageDelay: 1500 },
+  audio: { ...DEFAULT_AUDIO_SETTINGS, bgm: 0.8, se: 0.8 },
   skipUnread: false,
   language: "ja",
+  shortcuts: defaultShortcuts(),
 };
 const status = (p: Partial<PlayerStatus> = {}): PlayerStatus => ({
-  mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, autoPaused: false, ...p,
+  mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, autoPaused: false,
+  mouseMode: "menu", autoHideCursor: false, fastForwardKey: "shift", shortcuts: defaultShortcuts(), ...p,
 });
 const scripts = [
   { id: "a", label: "A", file: "a.ks", arc: "X", x: 100, y: 100 },
@@ -100,17 +105,16 @@ describe("DomUIManager", () => {
       key("ArrowLeft");
       expect(cmd.rollback).not.toHaveBeenCalled();
     });
-    it("S bascule le skip, A bascule l'auto (B2)", () => {
-      key("s");
-      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
-      ui.setStatus(status({ mode: "skip" }));
-      key("s");
-      expect(cmd.setMode).toHaveBeenLastCalledWith("normal");
+    it("A bascule l'auto, F avance jusqu'au dernier texte lu, S ouvre la sauvegarde (#177)", () => {
       key("a");
       expect(cmd.setMode).toHaveBeenLastCalledWith("auto");
       ui.setStatus(status({ mode: "auto" }));
       key("a");
       expect(cmd.setMode).toHaveBeenLastCalledWith("normal");
+      key("f");
+      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
+      key("s");
+      expect(cmd.openScreen).toHaveBeenCalledWith("save");
     });
     it("Échap ouvre le menu de pause en jeu (B2)", () => {
       key("Escape");
@@ -121,11 +125,16 @@ describe("DomUIManager", () => {
       document.getElementById("b")!.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
       expect(cmd.advance).not.toHaveBeenCalled();
     });
-    it("clic droit = toggleUserHide et preventDefault", () => {
+    it("clic droit : menu direct par défaut, ou masquer puis menu (#177)", () => {
       const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
       q("#ui-overlay")!.dispatchEvent(ev);
-      expect(cmd.toggleUserHide).toHaveBeenCalled();
+      expect(cmd.openScreen).toHaveBeenCalledWith("pause");
       expect(ev.defaultPrevented).toBe(true);
+      cmd.openScreen.mockClear();
+      ui.setStatus(status({ mouseMode: "hideThenMenu" }));
+      q("#ui-overlay")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      expect(cmd.toggleUserHide).toHaveBeenCalled();
+      expect(cmd.openScreen).not.toHaveBeenCalled();
     });
     it("molette haut = rollback, bas = advance", () => {
       const o = q("#ui-overlay")!;
@@ -148,17 +157,14 @@ describe("DomUIManager", () => {
       key("Escape");
       expect(cmd.closeScreen).toHaveBeenCalled();
     });
-    it("F, A, S", () => {
-      key("f");
+    it("F4 plein écran, F avance, S sauvegarde (#177)", () => {
+      key("F4");
       expect(cmd.toggleFullscreen).toHaveBeenCalled();
-      key("a");
-      expect(cmd.setMode).toHaveBeenLastCalledWith("auto");
-      ui.setStatus(status({ mode: "auto" }));
-      key("a");
-      expect(cmd.setMode).toHaveBeenLastCalledWith("normal");
+      key("f");
+      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
       ui.setStatus(status());
       key("s");
-      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
+      expect(cmd.openScreen).toHaveBeenCalledWith("save");
     });
     it("hors jeu, clic/espace n'avancent pas", () => {
       ui.show({ screen: "pause" });
@@ -235,20 +241,49 @@ describe("DomUIManager", () => {
       q('[data-slot="1"] .mh-ui-slot-action')!.click();
       expect(cmd.load).toHaveBeenCalledWith(1);
     });
-    it("settings : envoie le groupe complet", () => {
+    it("settings : envoie le groupe audio complet depuis l'onglet Son/Effet", () => {
       ui.show({ screen: "settings", settings, availableLanguages: ["ja", "fr", "en"] });
+      (q('[data-tab="sound"]') as HTMLButtonElement).click();
       const input = q('input[name="bgm"]') as HTMLInputElement;
-      input.value = "0.5";
+      input.value = "50";
       input.dispatchEvent(new Event("input"));
       expect(cmd.updateSettings).toHaveBeenCalledWith({ audio: { ...settings.audio, bgm: 0.5 } });
     });
     it("settings : le sélecteur de langue ne propose que les langues disponibles", () => {
       ui.show({ screen: "settings", settings, availableLanguages: ["ja", "fr"] });
+      (q('[data-tab="message"]') as HTMLButtonElement).click();
       const options = [...root.querySelectorAll<HTMLOptionElement>('select[name="language"] option')].map(
         (o) => o.value,
       );
       expect(options).toEqual(["ja", "fr"]);
       expect(options).not.toContain("en");
+    });
+    it("settings : quatre onglets et leurs contrôles (#177)", () => {
+      ui.show({ screen: "settings", settings, availableLanguages: ["ja", "fr"] });
+      expect(qa(".mh-ui-tab")).toHaveLength(4);
+      (q('[data-tab="message"]') as HTMLButtonElement).click();
+      expect(root.textContent).toContain("Vitesse des scènes non lues");
+      (q('[data-tab="shortcuts"]') as HTMLButtonElement).click();
+      expect(qa(".mh-ui-key")).toHaveLength(28);
+      (q('[data-tab="sound"]') as HTMLButtonElement).click();
+      expect(root.textContent).toContain("Volume des musiques");
+    });
+    it("settings : capture une touche et renvoie les raccourcis (#177)", () => {
+      ui.show({ screen: "settings", settings, availableLanguages: ["ja"] });
+      (q('[data-tab="shortcuts"]') as HTMLButtonElement).click();
+      (q('[data-action="saveMenu"][data-index="0"]') as HTMLButtonElement).click();
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true, cancelable: true }));
+      expect(cmd.updateSettings).toHaveBeenCalledWith({
+        shortcuts: { ...settings.shortcuts, saveMenu: ["x", "F2"] },
+      });
+    });
+    it("settings : test du volume SE et réinitialisation (#177)", () => {
+      ui.show({ screen: "settings", settings, availableLanguages: ["ja"] });
+      (q('[data-tab="sound"]') as HTMLButtonElement).click();
+      (q(".mh-ui-test-se") as HTMLButtonElement).click();
+      expect(cmd.testSe).toHaveBeenCalled();
+      (q(".mh-ui-reset") as HTMLButtonElement).click();
+      expect(cmd.resetSettings).toHaveBeenCalled();
     });
     it("flowchart : scripts verrouillés désactivés", () => {
       ui.show(views[6]!);

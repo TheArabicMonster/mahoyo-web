@@ -14,13 +14,19 @@ import type {
   TimelineLayerState,
 } from "@/kag/events.js";
 import type { AnimationDef, AnimKeyframe, TextSegment } from "@/kag/types.js";
-import type { DisplaySettings, RunOptions, StageRenderer, StageRendererDeps } from "./types.js";
+import {
+  DEFAULT_DISPLAY_SETTINGS,
+  type DisplaySettings,
+  type RunOptions,
+  type StageRenderer,
+  type StageRendererDeps,
+} from "./types.js";
 import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
 import { dimmedUnitCount, fitTextBox, frameTextAreaHeight, FRAME_TEXT_AREA, textBoxHeight, TEXT_FIT_DEFAULTS } from "./text-fit.js";
-import { CLICK_GLYPHS, frameImageOpacity, resolveFrameStyle, type FrameStyle } from "./text-frame.js";
+import { CLICK_GLYPHS, frameImageOpacity, indicatorOffset, resolveFrameStyle, type FrameStyle } from "./text-frame.js";
 import { cssEasing, easeProgress } from "@/core/easing.js";
 
 /**
@@ -97,12 +103,7 @@ export class DomStageRenderer implements StageRenderer {
   private indicatorEl: HTMLElement | null = null;
   private waitEl: HTMLElement | null = null;
 
-  private settings: DisplaySettings = {
-    textSpeed: 30,
-    autoDelay: 2000,
-    fontScale: 1,
-    textboxOpacity: 0.8,
-  };
+  private settings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
 
   private userHidden = false;
   private currentScene: SceneState = { bg: null, sprites: [], effect: null };
@@ -317,6 +318,8 @@ export class DomStageRenderer implements StageRenderer {
     this.indicatorEl.style.visibility = style ? "visible" : "hidden";
     if (style) this.indicatorEl.dataset.style = style;
     else delete this.indicatorEl.dataset.style;
+    // La taille de l'icône dépend du style affiché (glyphe de secours ou bande chargée) : replacer.
+    this.placeIndicator();
     // Fin d'une attente : le texte affiché jusqu'ici devient « lu » et s'atténue (#173).
     if (previous && !style && !this.typewriterResolve) {
       const units = this.buildTextUnits();
@@ -338,7 +341,11 @@ export class DomStageRenderer implements StageRenderer {
       const url = this.resolver.image(glyph.storage);
       el.style.setProperty(`--mh-glyph-${style}`, cssUrl(url));
       const img = new Image();
-      img.onload = () => el.classList.add(`mh-glyph-${style}-ok`);
+      img.onload = () => {
+        el.classList.add(`mh-glyph-${style}-ok`);
+        // La bande chargée a une taille connue : recentrer l'indicateur si c'est le style courant.
+        if (this.clickStyle === style) this.placeIndicator();
+      };
       img.onerror = () => this.resolver.reportMissing("image", glyph.storage);
       img.src = url;
     }
@@ -425,9 +432,15 @@ export class DomStageRenderer implements StageRenderer {
     this.settings = { ...settings };
     this.applyTextbox();
     if (this.textEl) {
+      this.textEl.style.fontFamily = settings.fontFamily;
+      // Le fondu du texte lu est piloté par deux variables CSS (#177).
+      this.textEl.style.setProperty("--mh-read-opacity", String(settings.readFade ? settings.readFadeOpacity : 1));
+      this.textEl.style.setProperty("--mh-read-duration", `${settings.readFade ? settings.readFadeDuration : 0}ms`);
+      this.textEl.dataset.textAnimation = settings.textAnimation;
       this.textEl.style.fontSize = `${this.nominalTextRem()}rem`;
       this.fitText(this.buildTextUnits(), this.typedUnits);
     }
+    this.renderEffect();
   }
 
   clear(): void {
@@ -619,7 +632,15 @@ export class DomStageRenderer implements StageRenderer {
         text-shadow: 0 0 3px rgba(0,0,0,0.85), 1px 1px 2px rgba(0,0,0,0.7);
       }
       .mh-stage-text-read {
-        opacity: ${READ_TEXT_OPACITY};
+        opacity: var(--mh-read-opacity, ${READ_TEXT_OPACITY});
+        transition: opacity var(--mh-read-duration, 300ms) ease;
+      }
+      .mh-stage-text[data-text-animation="fade"].mh-stage-text-appear {
+        animation: mh-text-appear 220ms ease;
+      }
+      @keyframes mh-text-appear {
+        from { opacity: 0; }
+        to { opacity: 1; }
       }
       .mh-stage-indicator {
         color: #fff;
@@ -631,13 +652,19 @@ export class DomStageRenderer implements StageRenderer {
         bottom: 16px;
         font-size: 1.2rem;
       }
-      /* Cadre image : l'indicateur suit le dernier caractère, posé sur la ligne de base. */
+      /*
+       * Cadre image : l'indicateur est hors du flux, positionné sur le dernier caractère par
+       * placeIndicator (#175). Il n'élargit donc pas la ligne et ne peut pas la faire passer
+       * à la ligne suivante.
+       */
       .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator {
-        display: inline-block;
+        position: absolute;
+        display: block;
         letter-spacing: 0;
         font-size: 0.8em;
         line-height: 1;
-        margin-left: 2px;
+        margin: 0;
+        pointer-events: none;
       }
       .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator:not([data-style]) {
         display: none;
@@ -646,7 +673,6 @@ export class DomStageRenderer implements StageRenderer {
       .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator.mh-glyph-page-ok[data-style="page"] {
         color: transparent;
         font-size: 0;
-        vertical-align: -2px;
         background-repeat: no-repeat;
         background-position: 0 0;
         animation: none;
@@ -728,9 +754,12 @@ export class DomStageRenderer implements StageRenderer {
         break;
       }
       case "clearText": {
+        // Réglage d'origine « Effacement du texte au changement de page » (#177).
+        if (!this.settings.clearTextOnPageChange) break;
         this.text = [];
         this.typedUnits = 0;
         this.readUnits = 0;
+        this.textEl?.replaceChildren();
         break;
       }
       case "textbox": {
@@ -776,8 +805,8 @@ export class DomStageRenderer implements StageRenderer {
         break;
       }
       case "quake": {
-        if (event.quake) this.startQuake(event.quake, opts);
-        else this.stopQuake();
+        if (event.quake && this.settings.specialEffects) this.startQuake(event.quake, opts);
+        else if (!event.quake) this.stopQuake();
         break;
       }
       case "staffroll": {
@@ -1251,6 +1280,8 @@ export class DomStageRenderer implements StageRenderer {
   private renderEffect(): void {
     if (!this.effectsEl) return;
     this.effectsEl.innerHTML = "";
+    // Réglage d'origine « Affichage des effets spéciaux » (#177).
+    if (!this.settings.specialEffects) return;
     const effect = this.currentScene.effect;
     if (!effect) return;
     if (effect.kind === "noise") {
@@ -1511,6 +1542,7 @@ export class DomStageRenderer implements StageRenderer {
   /** Reconstruit le DOM de la textbox jusqu'à n unités (inclu) avec ruby. */
   private renderTextUpTo(units: TextUnit[], n: number): void {
     if (!this.textEl) return;
+    const wasEmpty = this.textEl.childNodes.length === 0;
     this.textEl.replaceChildren();
     const frag = document.createDocumentFragment();
     const limit = Math.min(n, units.length);
@@ -1552,15 +1584,70 @@ export class DomStageRenderer implements StageRenderer {
       parent.appendChild(node);
     }
     this.textEl.appendChild(frag);
+    if (wasEmpty && limit > 0 && this.settings.textAnimation === "fade") {
+      // Relance l'animation d'apparition à chaque nouvelle page (#177).
+      this.textEl.classList.remove("mh-stage-text-appear");
+      void this.textEl.offsetWidth;
+      this.textEl.classList.add("mh-stage-text-appear");
+    }
     this.placeIndicator();
   }
 
   /** Cadre image : l'indicateur suit le texte ; ancienne boîte : il reste dans le coin de la boîte. */
   private placeIndicator(): void {
     const el = this.indicatorEl;
-    if (!el || !this.textEl || !this.textboxEl) return;
-    const parent = this.frameStyle.mode === "image" ? this.textEl : this.textboxEl;
-    if (el.parentNode !== parent || el !== parent.lastChild) parent.appendChild(el);
+    const textEl = this.textEl;
+    if (!el || !textEl || !this.textboxEl) return;
+    if (this.frameStyle.mode === "box") {
+      el.style.left = "";
+      el.style.top = "";
+      if (el.parentNode !== this.textboxEl || el !== this.textboxEl.lastChild) {
+        this.textboxEl.appendChild(el);
+      }
+      return;
+    }
+    if (el.parentNode !== textEl || el !== textEl.lastChild) textEl.appendChild(el);
+
+    // L'indicateur est hors du flux : on le centre sur la boîte du dernier caractère (#175).
+    const node = this.lastVisibleTextNode();
+    if (!node?.data) return;
+    let end = node.data.length;
+    while (end > 0 && /\s/.test(node.data[end - 1]!)) end--;
+    if (end === 0 || typeof document.createRange !== "function") return;
+    const range = document.createRange();
+    range.setStart(node, end - 1);
+    range.setEnd(node, end);
+    const rects = typeof range.getClientRects === "function" ? range.getClientRects() : [];
+    const char = rects[rects.length - 1];
+    const textRect = textEl.getBoundingClientRect();
+    // Largeur logique du contenu : `clientWidth` exclut la barre de défilement d'une page qui
+    // déborde ; la largeur calculée, elle, reste fiable pour retrouver l'échelle de la scène.
+    const computedWidth = Number.parseFloat(getComputedStyle(textEl).width);
+    const logicalWidth = computedWidth > 0 ? computedWidth : textEl.clientWidth;
+    if (!char || char.width === 0 || char.height === 0 || textRect.width === 0 || logicalWidth <= 0) {
+      return;
+    }
+    const height = el.offsetHeight || CLICK_GLYPHS.page.height;
+    const pos = indicatorOffset(char, textRect, textRect.width / logicalWidth, height);
+    el.style.left = `${pos.left}px`;
+    el.style.top = `${pos.top}px`;
+  }
+
+  /** Dernier nœud de texte visible, hors indicateur et hors furigana (`rt`/`rp`). */
+  private lastVisibleTextNode(): Text | null {
+    if (!this.textEl) return null;
+    const indicator = this.indicatorEl;
+    const walker = document.createTreeWalker(this.textEl, NodeFilter.SHOW_TEXT);
+    let last: Text | null = null;
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (!(node instanceof Text)) continue;
+      if (indicator?.contains(node)) continue;
+      const parent = node.parentElement;
+      if (parent && (parent.tagName === "RT" || parent.tagName === "RP")) continue;
+      if (/\S/.test(node.data)) last = node;
+    }
+    return last;
   }
 
   /**
@@ -1592,6 +1679,8 @@ export class DomStageRenderer implements StageRenderer {
     }
     boxEl.dataset.textFit = fit.overflow ? "overflow" : fit.scale < 1 ? "shrunk" : "nominal";
     if (keep < units.length) this.renderTextUpTo(units, keep);
+    // La police finale peut avoir changé : replacer l'indicateur sur le dernier caractère.
+    this.placeIndicator();
   }
 
   private renderText(instant: boolean): void {
@@ -1613,8 +1702,9 @@ export class DomStageRenderer implements StageRenderer {
       const startUnit = Math.min(this.typedUnits, units.length);
       // Taille et position de la page entière avant de la révéler : pas de saut en cours de frappe.
       this.fitText(units, startUnit);
+      const speed = opts.textSpeed ?? this.settings.textSpeedUnread;
 
-      if (opts.instant || this.settings.textSpeed <= 0 || this.typewriterHurry) {
+      if (opts.instant || speed <= 0 || this.typewriterHurry) {
         this.renderTextUpTo(units, units.length);
         this.typedUnits = units.length;
         this.typewriterResolve = null;
@@ -1642,7 +1732,7 @@ export class DomStageRenderer implements StageRenderer {
           resolve();
           return;
         }
-        this.typewriterTimer = setTimeout(step, this.settings.textSpeed);
+        this.typewriterTimer = setTimeout(step, speed);
       };
       step();
     });

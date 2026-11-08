@@ -34,3 +34,423 @@
 .mh-ui-loading { z-index: 300; background: rgba(0, 0, 0, 0.5); pointer-events: auto; }
 .mh-ui-confirm { position: absolute; inset: 0; z-index: 250; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; }
 .mh-ui-confirm-box { background: #112; border: 1px solid #889; padding: 1.5rem; }
+
+/* ── Écran de configuration (#177) ───────────────────────────────────────────
+   Repère visuel : config de Tsukiweb (bleu nuit, lignes fines, cyan, typo
+   display serif) + cadres discrets du jeu d'origine. Pas d'assets du jeu. */
+
+.mh-ui-menu.mh-ui-settings-open { display: block; background: transparent; }
+
+.mh-ui-settings-open .mh-ui-settings-screen {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  max-height: none;
+  border: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #e8f4ff;
+  font-family: "Optima", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  background:
+    radial-gradient(1.5px 1.5px at 11% 16%, rgba(190, 240, 255, 0.55), transparent 60%),
+    radial-gradient(1px 1px at 27% 31%, rgba(160, 220, 255, 0.4), transparent 60%),
+    radial-gradient(1.2px 1.2px at 43% 12%, rgba(190, 240, 255, 0.45), transparent 60%),
+    radial-gradient(1px 1px at 58% 26%, rgba(150, 210, 255, 0.32), transparent 60%),
+    radial-gradient(1.4px 1.4px at 73% 15%, rgba(200, 245, 255, 0.5), transparent 60%),
+    radial-gradient(1px 1px at 86% 34%, rgba(160, 220, 255, 0.38), transparent 60%),
+    radial-gradient(1.3px 1.3px at 17% 58%, rgba(190, 240, 255, 0.4), transparent 60%),
+    radial-gradient(1px 1px at 35% 74%, rgba(160, 220, 255, 0.32), transparent 60%),
+    radial-gradient(1.4px 1.4px at 62% 66%, rgba(200, 245, 255, 0.42), transparent 60%),
+    radial-gradient(1px 1px at 79% 82%, rgba(160, 220, 255, 0.36), transparent 60%),
+    radial-gradient(1.2px 1.2px at 92% 61%, rgba(190, 240, 255, 0.34), transparent 60%),
+    radial-gradient(1px 1px at 7% 89%, rgba(160, 220, 255, 0.3), transparent 60%),
+    radial-gradient(ellipse at 18% 0%, rgba(32, 102, 184, 0.38), transparent 55%),
+    radial-gradient(ellipse at 88% 100%, rgba(20, 72, 150, 0.3), transparent 52%),
+    linear-gradient(155deg, #03102a 0%, #061b3f 55%, #020817 100%);
+  animation: mh-config-in 0.3s ease both;
+}
+.mh-ui-settings-open .mh-ui-settings-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 52%, rgba(0, 0, 0, 0.42) 100%);
+  pointer-events: none;
+}
+.mh-ui-settings-open .mh-ui-settings-screen > * { position: relative; z-index: 1; }
+
+@keyframes mh-config-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mh-ui-settings-open .mh-ui-settings-screen { animation: none; }
+}
+
+/* En-tête */
+.mh-ui-config-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2.4rem;
+  padding: 1.65rem 3.2rem 0.55rem;
+}
+.mh-ui-config-brand { display: flex; align-items: baseline; gap: 1.1rem; min-width: 0; }
+.mh-ui-settings-open .mh-ui-title {
+  margin: 0;
+  font-family: "Didot", "Bodoni 72", "Cormorant Garamond", Georgia, serif;
+  font-weight: 400;
+  font-size: 3.45rem;
+  line-height: 1;
+  letter-spacing: 0.005em;
+  color: #f2fbff;
+  text-shadow: 0 0 30px rgba(90, 210, 255, 0.45), 0 0 2px rgba(0, 0, 0, 0.85);
+}
+.mh-ui-config-subtitle {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: #7fa8d4;
+  white-space: nowrap;
+}
+
+/* Onglets en fil d'Ariane, comme Tsukiweb */
+.mh-ui-settings-open .mh-ui-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  flex-wrap: wrap;
+}
+.mh-ui-settings-open .mh-ui-tab {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0.25rem 0.2rem;
+  font-family: inherit;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e8f4ff;
+  text-shadow: 0 1px 2px #000;
+}
+.mh-ui-settings-open .mh-ui-tab::before {
+  content: "›";
+  display: inline-block;
+  margin: 0 0.9rem;
+  color: #7fa8d4;
+  font-weight: 400;
+  font-size: 1.15rem;
+}
+.mh-ui-settings-open .mh-ui-tab:first-child::before { content: none; margin: 0; }
+.mh-ui-settings-open .mh-ui-tab:hover { background: none; color: #ffffff; }
+.mh-ui-settings-open .mh-ui-tab.active { color: #6fe4ff; text-shadow: 0 0 18px rgba(86, 216, 255, 0.65), 0 1px 2px #000; }
+.mh-ui-settings-open .mh-ui-tab.active::before {
+  content: "◆";
+  margin: 0 0.7rem;
+  color: #56d8ff;
+  font-size: 0.62rem;
+  text-shadow: 0 0 10px #56d8ff;
+}
+
+/* Contenu */
+.mh-ui-settings-open .mh-ui-config {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: block;
+  padding: 0.4rem 3.2rem 0.8rem;
+}
+.mh-ui-settings-open .mh-ui-config::-webkit-scrollbar { width: 6px; }
+.mh-ui-settings-open .mh-ui-config::-webkit-scrollbar-thumb {
+  background: rgba(86, 216, 255, 0.35);
+  border-radius: 3px;
+}
+.mh-ui-settings-open .mh-ui-config-heading { display: none; }
+
+.mh-ui-settings-open .mh-ui-config-section {
+  position: static;
+  margin: 0 0 1.15rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+.mh-ui-settings-open .mh-ui-config-section::after { content: none; }
+.mh-ui-settings-open .mh-ui-config-title {
+  position: static;
+  transform: none;
+  margin: 0 0 0.1rem;
+  padding: 0 0 0.4rem;
+  background: none;
+  border-bottom: 1px solid rgba(120, 180, 255, 0.14);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  white-space: normal;
+  color: #8fb6e6;
+  text-shadow: none;
+}
+.mh-ui-settings-open .mh-ui-config-title::before {
+  content: "◆";
+  margin-right: 0.55rem;
+  color: #56d8ff;
+  font-size: 0.55em;
+  vertical-align: middle;
+  text-shadow: 0 0 8px #56d8ff;
+}
+
+/* Une ligne = un réglage : libellé à gauche, contrôle à droite */
+.mh-ui-settings-open .mh-ui-field {
+  display: grid;
+  grid-template-columns: minmax(15rem, 22rem) minmax(0, 1fr);
+  align-items: center;
+  gap: 1.5rem;
+  min-height: 46px;
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid rgba(120, 180, 255, 0.14);
+}
+.mh-ui-settings-open .mh-ui-field-label {
+  min-width: 0;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 400;
+  color: #e8f4ff;
+}
+.mh-ui-field-value {
+  margin-left: 0.55rem;
+  color: #9fe8ff;
+  font-size: 0.92em;
+  font-variant-numeric: tabular-nums;
+}
+.mh-ui-settings-open .mh-ui-field-check input[type="checkbox"] {
+  grid-column: 2;
+  justify-self: start;
+}
+
+/* Curseurs : piste fine, pastille en losange */
+.mh-ui-settings-open .mh-ui-range { display: flex; align-items: center; gap: 0.9rem; min-width: 0; }
+.mh-ui-settings-open .mh-ui-range input[type="range"] {
+  flex: 1;
+  min-width: 8rem;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 1.6rem;
+  background: transparent;
+}
+.mh-ui-range-mark {
+  width: 1rem;
+  text-align: center;
+  color: #8fb6e6;
+  font-size: 1.2rem;
+  line-height: 1;
+  user-select: none;
+}
+.mh-ui-settings-open input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  background: linear-gradient(90deg, #2f6fa8, #8fe6ff);
+  box-shadow: 0 0 8px rgba(86, 216, 255, 0.3);
+}
+.mh-ui-settings-open input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  border: 1px solid #bff4ff;
+  border-radius: 2px;
+  background: radial-gradient(circle at 40% 35%, #ffffff, #bdefff 60%, #56d8ff);
+  box-shadow: 0 0 12px rgba(86, 216, 255, 0.8);
+  transform: rotate(45deg);
+}
+.mh-ui-settings-open input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: linear-gradient(90deg, #2f6fa8, #8fe6ff);
+}
+.mh-ui-settings-open input[type="range"]::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: 1px solid #bff4ff;
+  border-radius: 2px;
+  background: radial-gradient(circle at 40% 35%, #ffffff, #bdefff 60%, #56d8ff);
+  box-shadow: 0 0 12px rgba(86, 216, 255, 0.8);
+  transform: rotate(45deg);
+}
+
+/* Choix segmentés : pas de cadre au repos, cadre cyan lumineux sur l'actif */
+.mh-ui-settings-open .mh-ui-segments { display: flex; align-items: center; flex-wrap: wrap; gap: 0.15rem; }
+.mh-ui-settings-open .mh-ui-segment {
+  padding: 0.35rem 0.9rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  box-shadow: none;
+  color: #a9c4e6;
+  font-family: inherit;
+  font-size: 0.98rem;
+  font-weight: 400;
+}
+.mh-ui-settings-open .mh-ui-segment:hover:not(.active) {
+  background: rgba(86, 216, 255, 0.06);
+  border-color: rgba(86, 216, 255, 0.2);
+  color: #ffffff;
+}
+.mh-ui-settings-open .mh-ui-segment.active {
+  background: linear-gradient(180deg, rgba(38, 110, 180, 0.45), rgba(10, 45, 90, 0.35));
+  border-color: #6fdcff;
+  color: #f2fcff;
+  box-shadow: 0 0 16px rgba(86, 216, 255, 0.28), inset 0 0 14px rgba(86, 216, 255, 0.12);
+}
+
+/* Boutons, cases, sélecteurs */
+.mh-ui-settings-open .mh-ui-button {
+  background: transparent;
+  border: 1px solid rgba(120, 180, 255, 0.28);
+  border-radius: 2px;
+  box-shadow: none;
+  color: #cfe6ff;
+  font-family: inherit;
+}
+.mh-ui-settings-open .mh-ui-button:hover:not(:disabled) {
+  background: rgba(86, 216, 255, 0.08);
+  border-color: #6fdcff;
+  color: #ffffff;
+}
+.mh-ui-settings-open input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #5f9fd6;
+  border-radius: 2px;
+  background: rgba(5, 20, 45, 0.8);
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
+}
+.mh-ui-settings-open input[type="checkbox"]:checked {
+  background: linear-gradient(135deg, #56d8ff, #2f8fd0);
+  border-color: #bff4ff;
+  box-shadow: 0 0 10px rgba(86, 216, 255, 0.55);
+}
+.mh-ui-settings-open select {
+  background: #071c3c;
+  color: #e8f4ff;
+  border: 1px solid rgba(120, 180, 255, 0.3);
+  border-radius: 2px;
+  padding: 0.3rem 0.6rem;
+  font: inherit;
+  font-size: 0.96rem;
+}
+
+/* Raccourcis : une ligne par action, touches en capsules */
+.mh-ui-settings-open .mh-ui-shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(15rem, 22rem) minmax(0, 1fr);
+  align-items: center;
+  gap: 1.5rem;
+  min-height: 46px;
+  padding: 0;
+  border-bottom: 1px solid rgba(120, 180, 255, 0.14);
+}
+.mh-ui-settings-open .mh-ui-shortcut-label { font-size: 1rem; color: #e8f4ff; }
+.mh-ui-settings-open .mh-ui-shortcut-keys { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.mh-ui-settings-open .mh-ui-key {
+  min-width: 5rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 3px;
+  background: rgba(10, 35, 75, 0.5);
+  border: 1px solid rgba(120, 180, 255, 0.3);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+}
+.mh-ui-settings-open .mh-ui-key.capturing {
+  border-color: #7fe4ff;
+  color: #eafcff;
+  box-shadow: 0 0 14px rgba(86, 216, 255, 0.5);
+}
+.mh-ui-settings-open .mh-ui-hint { margin: 0.15rem 0 0.55rem; color: #8fb6e6; font-size: 0.85rem; }
+
+/* Pied de page flottant */
+.mh-ui-settings-open .mh-ui-config-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 3.2rem 1.3rem;
+  border: 0;
+  background: none;
+}
+.mh-ui-settings-open .mh-ui-back {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #e8f4ff;
+  text-shadow: 0 1px 2px #000;
+}
+.mh-ui-settings-open .mh-ui-back::before {
+  content: "‹‹";
+  margin-right: 0.55rem;
+  color: #56d8ff;
+  font-weight: 400;
+  letter-spacing: -0.12em;
+}
+.mh-ui-settings-open .mh-ui-back:hover {
+  background: none;
+  color: #ffffff;
+  text-shadow: 0 0 16px rgba(86, 216, 255, 0.55);
+}
+.mh-ui-settings-open .mh-ui-reset {
+  background: none;
+  border: 0;
+  padding: 0.35rem 0;
+  color: #bcd8f5;
+  font-size: 1rem;
+}
+.mh-ui-settings-open .mh-ui-reset:hover { background: none; color: #ffffff; }
+
+/* Focus clavier visible, sans casser le style */
+.mh-ui-settings-open button:focus-visible,
+.mh-ui-settings-open input:focus-visible,
+.mh-ui-settings-open select:focus-visible {
+  outline: 2px solid #8be9ff;
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .mh-ui-config-header { flex-direction: column; align-items: flex-start; gap: 0.8rem; padding: 1.1rem 1.25rem 0.5rem; }
+  .mh-ui-settings-open .mh-ui-title { font-size: 2.4rem; }
+  .mh-ui-settings-open .mh-ui-tab { font-size: 1rem; }
+  .mh-ui-settings-open .mh-ui-tab::before { margin: 0 0.55rem; }
+  .mh-ui-settings-open .mh-ui-config { padding: 0.3rem 1.25rem 0.7rem; }
+  .mh-ui-settings-open .mh-ui-field,
+  .mh-ui-settings-open .mh-ui-shortcut-row {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+    padding: 0.55rem 0;
+  }
+  .mh-ui-settings-open .mh-ui-config-footer { padding: 0.35rem 1.25rem 1rem; }
+}
+/* Correctifs de composition : onglets sans cadre, contrôles à leur taille naturelle */
+.mh-ui-settings-open .mh-ui-tabs .mh-ui-tab,
+.mh-ui-settings-open .mh-ui-tabs .mh-ui-tab:hover,
+.mh-ui-settings-open .mh-ui-tabs .mh-ui-tab:focus {
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+.mh-ui-settings-open .mh-ui-field > .mh-ui-button { justify-self: start; }
+.mh-ui-settings-open .mh-ui-field > select { width: 100%; max-width: 20rem; }
+.mh-ui-field-value::before {
+  content: "·";
+  margin-right: 0.4rem;
+  color: #5f8fb8;
+  font-weight: 400;
+}
+.mh-ui-settings-open .mh-ui-field-action { border-bottom: 0; min-height: 0; padding: 0.15rem 0 0.45rem; }

@@ -288,7 +288,9 @@ au repère 1024×576 :
   d'opacité jusqu'au changement de page ;
 - indicateur d'attente : bandes animées `linebreak_a` (feuille, 40 vignettes de 24 px) et
   `pagebreak_a` (livre, 40 vignettes de 32 px), posées à la suite du dernier caractère ;
-  glyphes `▽`/`▼` si l'asset manque.
+  glyphes `▽`/`▼` si l'asset manque. L'indicateur est **hors du flux**, centré sur la boîte
+  du dernier caractère : il n'élargit pas la ligne et ne peut pas la faire passer à la ligne
+  suivante (#175).
 
 Sémantique retenue (`src/renderer/text-frame.ts`, fonctions pures) :
 

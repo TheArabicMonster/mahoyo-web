@@ -4,6 +4,9 @@ import { createAssetResolver } from "@/core/asset-resolver.js";
 import { compileAction } from "@/renderer/action-compiler.js";
 import { partbgInnerTransform } from "@/renderer/transform-helpers.js";
 import type { RenderEvent, StageSnapshot, TimelineLayerState } from "@/kag/events.js";
+import { DEFAULT_DISPLAY_SETTINGS, type DisplaySettings } from "@/renderer/types.js";
+
+const display = (o: Partial<DisplaySettings> = {}): DisplaySettings => ({ ...DEFAULT_DISPLAY_SETTINGS, ...o });
 
 type MockAnim = {
   element: HTMLElement;
@@ -170,7 +173,7 @@ describe("DomStageRenderer", () => {
     const events: RenderEvent[] = [
       { kind: "text", segments: [{ text: "Long text here" }] },
     ];
-    renderer.setSettings({ textSpeed: 1000, autoDelay: 2000, fontScale: 1, textboxOpacity: 1 });
+    renderer.setSettings(display({ textSpeedUnread: 1000, textSpeedRead: 1000, fontScale: 1, textboxOpacity: 1 }));
     const promise = renderer.apply(events, { instant: false, signal: new AbortController().signal });
     // Laisse le typewriter démarrer (microtask) avant de hurry — reflète l'usage
     // réel où le player appelle hurry pendant apply (typewriterResolve set).
@@ -217,7 +220,7 @@ describe("DomStageRenderer", () => {
     }
 
     async function show(text: string, fontScale = 1): Promise<{ box: HTMLElement; text: HTMLElement }> {
-      renderer.setSettings({ textSpeed: 0, autoDelay: 2000, fontScale, textboxOpacity: 1 });
+      renderer.setSettings(display({ textSpeedUnread: 0, textSpeedRead: 0, fontScale, textboxOpacity: 1 }));
       await renderer.apply([{ kind: "text", segments: [{ text }] }], { instant: true, signal: new AbortController().signal });
       return { box: root.querySelector("#textbox") as HTMLElement, text: root.querySelector("#text") as HTMLElement };
     }
@@ -350,9 +353,9 @@ describe("DomStageRenderer", () => {
     });
 
     it("garde l'image d'origine au réglage d'opacité par défaut", () => {
-      renderer.setSettings({ textSpeed: 0, autoDelay: 2000, fontScale: 1, textboxOpacity: 0.8 });
+      renderer.setSettings(display({ textSpeedUnread: 0, textSpeedRead: 0, fontScale: 1, textboxOpacity: 0.8 }));
       expect(frame().style.opacity).toBe("1");
-      renderer.setSettings({ textSpeed: 0, autoDelay: 2000, fontScale: 1, textboxOpacity: 0.4 });
+      renderer.setSettings(display({ textSpeedUnread: 0, textSpeedRead: 0, fontScale: 1, textboxOpacity: 0.4 }));
       expect(frame().style.opacity).toBe("0.5");
     });
 
@@ -363,8 +366,38 @@ describe("DomStageRenderer", () => {
       expect(indicator.parentElement).toBe(text());
       expect(text().lastChild).toBe(indicator);
       expect(indicator.dataset.style).toBe("page");
+      expect(getComputedStyle(indicator).position).toBe("absolute");
       renderer.setClickIndicator(null);
       expect(indicator.dataset.style).toBeUndefined();
+    });
+
+    it("positionne l'indicateur hors du flux sur le dernier caractère (#175)", async () => {
+      const rect = (left: number, top: number, width: number, height: number) =>
+        ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() { return this; } }) as DOMRect;
+      const widthSpy = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+        return this.id === "text" ? 100 : 0;
+      });
+      const boxSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+        return this.id === "text" ? rect(10, 20, 100, 40) : rect(0, 0, 0, 0);
+      });
+      // jsdom n'implémente pas la mise en page : on fournit la boîte du dernier caractère.
+      const rangeProto = Range.prototype as unknown as { getClientRects?: () => DOMRectList };
+      const originalGetClientRects = rangeProto.getClientRects;
+      rangeProto.getClientRects = () => [rect(90, 30, 10, 20)] as unknown as DOMRectList;
+      try {
+        await renderer.apply([{ kind: "text", segments: [{ text: "Texte inventé." }] }], { instant: true, signal: sig() });
+        renderer.setClickIndicator("page");
+        const indicator = root.querySelector("#textbox-indicator") as HTMLElement;
+        // Dernier caractère : right = 100, text.left = 10, scale = 1 → 92 px.
+        // Boîte du caractère : top 30, hauteur 20 ; icône 24 px → 30 - 20 + (20 - 24) / 2 = 8 px.
+        expect(indicator.style.left).toBe("92px");
+        expect(indicator.style.top).toBe("8px");
+      } finally {
+        if (originalGetClientRects) rangeProto.getClientRects = originalGetClientRects;
+        else delete rangeProto.getClientRects;
+        boxSpy.mockRestore();
+        widthSpy.mockRestore();
+      }
     });
 
     it("atténue le texte déjà lu de la page après le clic, jusqu'au changement de page", async () => {
@@ -400,7 +433,7 @@ describe("DomStageRenderer", () => {
         return lines * parseFloat(this.style.fontSize) * 16 * 1.6;
       });
       try {
-        renderer.setSettings({ textSpeed: 0, autoDelay: 2000, fontScale: 1, textboxOpacity: 0.8 });
+        renderer.setSettings(display({ textSpeedUnread: 0, textSpeedRead: 0, fontScale: 1, textboxOpacity: 0.8 }));
         await renderer.apply([{ kind: "text", segments: [{ text: "onze lignes" }] }], { instant: true, signal: sig() });
         expect(box().dataset.textFit).toBe("nominal");
         expect(text().style.fontSize).toBe("1.6rem");
@@ -414,7 +447,7 @@ describe("DomStageRenderer", () => {
     });
 
     it("respecte fontScale", async () => {
-      renderer.setSettings({ textSpeed: 0, autoDelay: 2000, fontScale: 1.25, textboxOpacity: 0.8 });
+      renderer.setSettings(display({ textSpeedUnread: 0, textSpeedRead: 0, fontScale: 1.25, textboxOpacity: 0.8 }));
       await renderer.apply([{ kind: "text", segments: [{ text: "court" }] }], { instant: true, signal: sig() });
       expect(text().style.fontSize).toBe("2rem");
     });
@@ -1433,5 +1466,44 @@ describe("DomStageRenderer", () => {
     const match = style.match(/\.mh-stage-sprite\s*\{([^}]*)\}/);
     expect(match).not.toBeNull();
     expect(match![1]).not.toContain("transition");
+  });
+
+  describe("réglages d'affichage (#177)", () => {
+    const textEl = () => root.querySelector("#text") as HTMLElement;
+    const sig = () => new AbortController().signal;
+
+    it("applique la police et les variables du fondu du texte lu", () => {
+      renderer.setSettings(display({ fontFamily: "monospace", readFade: true, readFadeOpacity: 0.5, readFadeDuration: 800 }));
+      expect(textEl().style.fontFamily).toBe("monospace");
+      expect(textEl().style.getPropertyValue("--mh-read-opacity")).toBe("0.5");
+      expect(textEl().style.getPropertyValue("--mh-read-duration")).toBe("800ms");
+    });
+
+    it("désactive l'atténuation du texte lu quand le fondu est sans", () => {
+      renderer.setSettings(display({ readFade: false }));
+      expect(textEl().style.getPropertyValue("--mh-read-opacity")).toBe("1");
+      expect(textEl().style.getPropertyValue("--mh-read-duration")).toBe("0ms");
+    });
+
+    it("masque les effets spéciaux quand le réglage est désactivé", async () => {
+      renderer.setSettings(display({ specialEffects: false }));
+      await renderer.apply([{ kind: "effect", effect: { kind: "noise", opacity: 0.5 } }], { instant: true, signal: sig() });
+      expect((root.querySelector(".mh-stage-effects") as HTMLElement).children.length).toBe(0);
+      renderer.setSettings(display({ specialEffects: true }));
+      expect((root.querySelector(".mh-stage-effects") as HTMLElement).children.length).toBe(1);
+    });
+
+    it("conserve le texte au changement de page quand l'effacement est désactivé", async () => {
+      renderer.setSettings(display({ clearTextOnPageChange: false }));
+      await renderer.apply([{ kind: "text", segments: [{ text: "Premier." }] }], { instant: true, signal: sig() });
+      await renderer.apply(
+        [{ kind: "clearText" }, { kind: "text", segments: [{ text: "Second." }] }],
+        { instant: true, signal: sig() },
+      );
+      expect(textEl().textContent).toBe("Premier.Second.");
+      renderer.setSettings(display({ clearTextOnPageChange: true }));
+      await renderer.apply([{ kind: "clearText" }], { instant: true, signal: sig() });
+      expect(textEl().textContent).toBe("");
+    });
   });
 });

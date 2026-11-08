@@ -4,6 +4,8 @@ import { Runtime, type RuntimeSaveData } from "@/kag/runtime.js";
 import { applyStageSnapshot, reduceAudio } from "@/kag/stage-state.js";
 import { WebAudioPlayer } from "@/renderer/audio-manager.js";
 import { createAssetResolver, type AssetResolver } from "@/core/asset-resolver.js";
+import { applyViewportScale, computeViewportScale } from "@/core/display.js";
+import { defaultShortcuts } from "@/core/shortcuts.js";
 import { hasTranslation, parseLanguageIndex, type LanguageIndex } from "@/core/language.js";
 import { parseStoryChain, resolveNext, type StoryChain } from "@/core/story-chain.js";
 import { parseTimelineData, type TimelineData } from "@/core/timeline.js";
@@ -18,6 +20,7 @@ import {
 import type {
   AudioChannel,
   AudioSnapshot,
+  Ms,
   Position,
   RenderEvent,
   StageSnapshot,
@@ -273,6 +276,14 @@ export class Player implements PlayerCommands {
   private chainQueue: string[] = [];
   /** Le point d'arrêt courant n'avait pas encore été lu (pour le skip). */
   private stopWasRead = true;
+  /** La page courante a déjà été lue (vitesse, avance rapide, auto-skip). */
+  private pageRead = true;
+  /** Confirmation du skip automatique déjà obtenue pour cette session. */
+  private autoSkipConfirmed = false;
+  /** L'utilisateur a refusé le skip automatique : ne plus demander tant qu'on reste en normal. */
+  private autoSkipDeclined = false;
+
+  private readonly onViewportChange = () => this.applyViewportScale();
 
   private readonly onVisibility = () => {
     if (document.visibilityState === "hidden") {
@@ -312,6 +323,9 @@ export class Player implements PlayerCommands {
     this.stage.mount(this.deps.root);
     this.ui.init(this.deps.root, this.bindCommands());
     document.addEventListener("visibilitychange", this.onVisibility);
+    window.addEventListener("resize", this.onViewportChange);
+    document.addEventListener("fullscreenchange", this.onViewportChange);
+    this.applyViewportScale();
 
     this.ready = this.init();
   }
@@ -334,6 +348,7 @@ export class Player implements PlayerCommands {
   private bindCommands(): PlayerCommands {
     return {
       advance: () => this.advance(),
+      hurryText: () => this.hurryText(),
       setMode: (m) => this.setMode(m),
       toggleUserHide: () => this.toggleUserHide(),
       rollback: () => this.rollback(),
@@ -346,7 +361,9 @@ export class Player implements PlayerCommands {
       load: (s) => this.load(s),
       deleteSave: (s) => this.deleteSave(s),
       updateSettings: (p) => this.updateSettings(p),
+      resetSettings: () => this.resetSettings(),
       toggleFullscreen: () => this.toggleFullscreen(),
+      testSe: () => this.audio.testSe(),
     };
   }
 
@@ -375,6 +392,12 @@ export class Player implements PlayerCommands {
       this.toggleUserHide();
       return;
     }
+    // Réglage d'origine « Clic en mode auto » (#177) : arrêter l'auto au lieu d'avancer.
+    // Une auto suspendue par le script (@pauseautomode) laisse le clic avancer normalement.
+    if (this.mode === "auto" && !this.autoPaused && this.settings.display.autoClick === "cancel") {
+      this.setMode("normal");
+      return;
+    }
     if (this.mode === "skip") {
       this.setMode("normal");
       return;
@@ -397,6 +420,15 @@ export class Player implements PlayerCommands {
       this.pendingAdvance = true;
       this.rearm?.();
     }
+  }
+
+  /** Touche d'avance rapide : termine la frappe en cours. Retourne true si consommée. */
+  hurryText(): boolean {
+    if (this.state === "title" || this.state === "loading" || this.overlays.length > 0) return false;
+    if (this.settings.display.fastForwardScope === "read" && !this.pageRead) return false;
+    if (!this.applying) return false;
+    this.stage.hurry();
+    return true;
   }
 
   setMode(mode: PlayMode): void {
@@ -601,12 +633,37 @@ export class Player implements PlayerCommands {
     if (this.settings.language !== "ja" && !this.languageIndexes.has(this.settings.language)) {
       this.settings = { ...this.settings, language: "ja" };
     }
+    if (patch.display?.autoSkipRead !== undefined) {
+      this.autoSkipConfirmed = false;
+      this.autoSkipDeclined = false;
+    }
     this.applySettings();
+    this.pushStatus();
     void this.deps.settingsStore.saveSettings(this.settings).catch(() => {});
-    if (this.overlays[this.overlays.length - 1] === "settings") void this.showOverlay("settings");
     if (patch.language && this.settings.language !== previousLanguage && this.state !== "title") {
       this.ui.toast("La langue s'appliquera au prochain chapitre.");
     }
+  }
+
+  /** « Réglages par défaut » (#177) : conserve la langue et la progression. */
+  resetSettings(): void {
+    this.settings = {
+      ...DEFAULT_SETTINGS,
+      display: { ...DEFAULT_SETTINGS.display },
+      audio: { ...DEFAULT_SETTINGS.audio },
+      shortcuts: defaultShortcuts(),
+      language: this.settings.language,
+    };
+    this.autoSkipConfirmed = false;
+    this.autoSkipDeclined = false;
+    this.applySettings();
+    this.pushStatus();
+    void this.deps.settingsStore.saveSettings(this.settings).catch(() => {});
+    if (this.overlays[this.overlays.length - 1] === "settings") void this.showOverlay("settings");
+  }
+
+  testSe(): void {
+    this.audio.testSe();
   }
 
   toggleFullscreen(): void {
@@ -619,6 +676,8 @@ export class Player implements PlayerCommands {
 
   async dispose(): Promise<void> {
     document.removeEventListener("visibilitychange", this.onVisibility);
+    window.removeEventListener("resize", this.onViewportChange);
+    document.removeEventListener("fullscreenchange", this.onViewportChange);
     await this.endSession();
     this.stage.dispose();
     this.audio.dispose();
@@ -656,16 +715,31 @@ export class Player implements PlayerCommands {
       next = undefined;
 
       const read = this.readSet.has(positionKey(step.position));
+      this.pageRead = read;
+      // L'état doit être « playing » avant le skip automatique : setMode refuse « loading ».
+      this.setState("playing");
+      const display = this.settings.display;
+      // « Saut automatique des scènes déjà lues » (#177), avec confirmation optionnelle.
+      if (display.autoSkipRead && read && this.mode === "normal" && !this.autoPaused && !this.autoSkipDeclined) {
+        let accepted = this.autoSkipConfirmed || !display.autoSkipConfirm;
+        if (!this.autoSkipConfirmed && display.autoSkipConfirm) {
+          this.autoSkipConfirmed = true;
+          accepted = await this.ui.confirm("Passer les scènes déjà lues ?");
+        }
+        if (accepted) this.setMode("skip");
+        else this.autoSkipDeclined = true;
+      }
       this.stopWasRead = read || this.settings.skipUnread;
       const instant = this.mode === "skip" && this.stopWasRead;
-      this.setState("playing");
-      await this.applyStep(step, instant, signal);
+      const instantPage = read ? display.instantReadPage : display.instantUnreadPage;
+      const textSpeed = instantPage ? 0 : read ? display.textSpeedRead : display.textSpeedUnread;
+      await this.applyStep(step, instant, signal, textSpeed);
       if (signal.aborted) return;
       if (!(await this.handleStop(step, record, signal))) return;
     }
   }
 
-  private async applyStep(step: Step, instant: boolean, signal: AbortSignal): Promise<void> {
+  private async applyStep(step: Step, instant: boolean, signal: AbortSignal, textSpeed?: Ms): Promise<void> {
     const visual: RenderEvent[] = [];
     for (const event of step.events) {
       if (event.kind === "audio") this.audio.apply(event.event, { instant });
@@ -680,7 +754,7 @@ export class Player implements PlayerCommands {
     const { controller, dispose } = childController(signal);
     this.applying = true;
     try {
-      await this.stage.apply(visual, { instant, signal: controller.signal });
+      await this.stage.apply(visual, { instant, signal: controller.signal, textSpeed });
     } finally {
       this.applying = false;
       dispose();
@@ -696,11 +770,15 @@ export class Player implements PlayerCommands {
         const skippable = this.stopWasRead;
         this.readSet.add(positionKey(position));
         if (entry && this.mode !== "skip") void this.autosave(entry);
+        // « Affichage final des pages » : amène les effets en cours à leur état final (#177).
+        if (this.settings.display.instantEffects) this.stage.hurry();
         this.stage.setClickIndicator(stop.style);
         this.setState("waiting-click");
         await this.waitUser(signal, {
           clickable: true,
           skipOk: skippable,
+          // Le délai est relu à chaque réarmement : un changement de réglage s'applique tout de suite.
+          autoKind: stop.style === "line" ? "line" : "page",
         });
         this.stage.setClickIndicator(null);
         return !signal.aborted;
@@ -804,7 +882,10 @@ export class Player implements PlayerCommands {
         })();
       };
 
-      this.onAdvance = skip;
+      // « Arrêt des animations en cours » : le clic ne saute la timeline que si activé (#177).
+      this.onAdvance = () => {
+        if (this.settings.display.stopAnimations) skip();
+      };
       this.rearm = () => {
         if (this.mode === "skip") skip();
       };
@@ -889,14 +970,16 @@ export class Player implements PlayerCommands {
     }
     this.setState("waiting-wait");
     const { controller, dispose } = childController(signal);
-    const interrupt = () => {
+    const interrupt = (force = false) => {
+      // « Arrêt des animations en cours » : un clic ne coupe les effets que si activé (#177).
+      if (!isAudio && !force && !this.settings.display.stopAnimations) return;
       controller.abort();
       if (!isAudio) this.stage.hurry();
     };
     if (stop.skippable) {
-      this.onAdvance = interrupt;
+      this.onAdvance = () => interrupt(false);
       this.rearm = () => {
-        if (this.mode === "skip" && this.stopWasRead) interrupt();
+        if (this.mode === "skip" && this.stopWasRead) interrupt(true);
       };
     } else {
       this.setLockedWait(true);
@@ -920,7 +1003,7 @@ export class Player implements PlayerCommands {
    */
   private waitUser(
     signal: AbortSignal,
-    opts: { clickable: boolean; skipOk: boolean; fixedMs?: number; autoMs?: number },
+    opts: { clickable: boolean; skipOk: boolean; fixedMs?: number; autoKind?: "line" | "page" },
   ): Promise<void> {
     return new Promise<void>((resolve) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -951,7 +1034,9 @@ export class Player implements PlayerCommands {
         }
         if (opts.fixedMs !== undefined) timer = setTimeout(finish, opts.fixedMs);
         else if (this.mode === "auto" && !this.autoPaused) {
-          timer = setTimeout(finish, this.settings.display.autoDelay);
+          const delay =
+            opts.autoKind === "line" ? this.settings.display.autoLineDelay : this.settings.display.autoPageDelay;
+          timer = setTimeout(finish, delay);
         }
       };
       this.onAdvance = opts.clickable ? finish : null;
@@ -1101,6 +1186,8 @@ export class Player implements PlayerCommands {
     this.audioSnap = { loops: [] };
     this.history = [];
     this.userHidden = false;
+    this.autoSkipConfirmed = false;
+    this.autoSkipDeclined = false;
     this.stage.setUserHidden(false);
   }
 
@@ -1113,6 +1200,19 @@ export class Player implements PlayerCommands {
   private applySettings(): void {
     this.stage.setSettings(this.settings.display);
     this.audio.setSettings(this.settings.audio);
+    this.applyViewportScale();
+  }
+
+  /** Applique l'échelle du viewport (mode plein écran et taille d'affichage, #177). */
+  private applyViewportScale(): void {
+    const root = this.deps.root;
+    if (!root) return;
+    const scale = computeViewportScale(window.innerWidth, window.innerHeight, {
+      fullscreen: Boolean(document.fullscreenElement),
+      mode: this.settings.display.fullscreenMode,
+      windowSize: this.settings.display.windowSize,
+    });
+    applyViewportScale(root, scale);
   }
 
   private setState(state: PlayerState): void {
@@ -1129,6 +1229,10 @@ export class Player implements PlayerCommands {
       canRollback: this.canRollback(),
       quickMenuLocked: this.quickMenuLocked,
       autoPaused: this.autoPaused,
+      mouseMode: this.settings.display.mouseMode,
+      autoHideCursor: this.settings.display.autoHideCursor,
+      fastForwardKey: this.settings.display.fastForwardKey,
+      shortcuts: this.settings.shortcuts,
     });
   }
 

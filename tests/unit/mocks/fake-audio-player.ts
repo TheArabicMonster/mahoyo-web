@@ -34,6 +34,10 @@ export class FakeAudioPlayer implements AudioPlayer {
     this.events.push({ kind: "stop", channel: "allSe" });
   }
 
+  testSe(): void {
+    // Les tests vérifient seulement que le player relaie la commande.
+  }
+
   setSettings(settings: Readonly<AudioSettings>): void {
     this.settings = { ...settings };
   }

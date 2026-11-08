@@ -3,14 +3,17 @@
  * Interface asynchrone pour pouvoir passer à IndexedDB sans toucher au player.
  */
 import { isGameLanguage, type GameLanguage } from "@/core/language.js";
+import { defaultShortcuts, mergeShortcuts } from "@/core/shortcuts.js";
+import { DEFAULT_AUDIO_SETTINGS, DEFAULT_DISPLAY_SETTINGS } from "@/renderer/types.js";
 import type { GameSettings, ScriptProgress } from "@/ui/types.js";
 
 export const DEFAULT_SETTINGS: GameSettings = {
-  display: { textSpeed: 30, autoDelay: 2000, fontScale: 1, textboxOpacity: 0.8 },
-  audio: { master: 1, bgm: 0.6, se: 0.5, voice: 1, muted: false },
+  display: { ...DEFAULT_DISPLAY_SETTINGS },
+  audio: { ...DEFAULT_AUDIO_SETTINGS },
   skipUnread: false,
   // Français par défaut ; le player retombe sur "ja" si aucune traduction n'est installée.
   language: "fr",
+  shortcuts: defaultShortcuts(),
 };
 
 export interface SettingsStore {
@@ -23,16 +26,54 @@ export interface SettingsStore {
   saveProgress(progress: { completed: readonly string[] }): Promise<void>;
 }
 
+type LegacyDisplay = Partial<GameSettings["display"]> & {
+  /** Anciens réglages plats (#177) : migrés vers les vitesses lu/non lu. */
+  textSpeed?: number;
+  autoDelay?: number;
+};
+
 /** Fusionne un patch partiel (y compris les sous-objets) dans des réglages. */
 export function mergeSettings(base: Readonly<GameSettings>, patch: Partial<GameSettings>): GameSettings {
   const language: GameLanguage =
     patch.language && isGameLanguage(patch.language) ? patch.language : base.language;
+  const displayBase = base.display as LegacyDisplay;
+  const displayPatch = (patch.display ?? {}) as LegacyDisplay;
+  const display: LegacyDisplay = {
+    ...DEFAULT_SETTINGS.display,
+    ...displayBase,
+    ...displayPatch,
+  };
+  // Migration des anciennes sauvegardes : textSpeed/autoDelay → vitesses et délais séparés.
+  if (displayPatch.textSpeed !== undefined && displayPatch.textSpeedUnread === undefined) {
+    display.textSpeedUnread = displayPatch.textSpeed;
+    if (displayPatch.textSpeedRead === undefined) {
+      display.textSpeedRead = Math.max(0, displayPatch.textSpeed - 10);
+    }
+  }
+  if (displayPatch.autoDelay !== undefined) {
+    display.autoPageDelay = displayPatch.autoDelay;
+    if (displayPatch.autoLineDelay === undefined) display.autoLineDelay = displayPatch.autoDelay;
+  }
+  delete display.textSpeed;
+  delete display.autoDelay;
+
+  const audio = { ...DEFAULT_SETTINGS.audio, ...base.audio, ...patch.audio };
+  // Ancien « Muet » global : le convertir en mutes par canal (l'écran d'origine n'a pas de
+  // mute global, et un `muted: true` orphelin laisserait le jeu silencieux sans contrôle).
+  if (audio.muted && patch.audio?.bgmMuted === undefined) {
+    audio.bgmMuted = true;
+    audio.seMuted = true;
+    audio.systemMuted = true;
+    audio.muted = false;
+  }
+
   return {
     ...base,
     ...patch,
     language,
-    display: { ...base.display, ...patch.display },
-    audio: { ...base.audio, ...patch.audio },
+    display: display as GameSettings["display"],
+    audio,
+    shortcuts: mergeShortcuts(base.shortcuts ?? defaultShortcuts(), patch.shortcuts),
   };
 }
 
