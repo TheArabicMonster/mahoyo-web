@@ -47,6 +47,14 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`ui-manager.ts`** : écrans DOM (titre, pause, sauvegarde/chargement, historique, flowchart, configuration) et gestion des entrées.
 - **`ui-manager.css`**, **`tokens.css`** : styles des écrans et tokens du design system (palette, typo, durées, états).
 - **`toast.ts`**, **`toast.css`** : composant `ToastStack` des messages éphémères (cadre sarcelle bas droite, 3 au plus, `aria-live="polite"`) ; `DomUIManager.toast()` y délègue.
+- **`confirm-dialog.ts`** / **`confirm-dialog.css`** : boîte de confirmation au design d'origine (HUD-05, #190), composant
+  autonome en CSS pur. `openConfirmDialog(parent, { message, yesLabel, noLabel, defaultButton? })` renvoie
+  `{ element, result, close }` ; `result` se résout par `true` (Oui) ou `false` (Non, Échap, fermeture forcée).
+  `UIManager.confirm(message, { defaultButton? })` s'appuie dessus : **Non** est présélectionné par défaut (actions
+  destructrices), `{ defaultButton: "yes" }` présélectionne **Oui** (charger). Clavier : `Entrée` valide la sélection,
+  `Échap` répond Non, `←`/`→` sélectionnent Oui/Non, `Tab` boucle dans la boîte, le focus ne peut pas en sortir et
+  revient à l'élément précédent à la fermeture. Sémantique : `role="dialog"`, `aria-modal="true"`, nom accessible =
+  message. Il n'existe plus de `window.confirm` ni de confirmation « quitter le jeu » (bouton Exit retiré).
 - **`chapter-list.ts`** : construction de la liste des chapitres/scripts.
 - **`i18n.ts`** et **`locales/`** : dictionnaire d'interface FR/JA/EN (`t(clé)`, repli sur le français). Voir [`I18N.md`](I18N.md).
 

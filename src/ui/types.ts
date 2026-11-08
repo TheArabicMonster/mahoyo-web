@@ -151,6 +151,15 @@ export type UIView =
   | { screen: "backlog"; entries: readonly BacklogEntry[] }
   | { screen: "flowchart"; scripts: readonly ScriptSummary[]; progress: ScriptProgress };
 
+/** Options de `UIManager.confirm` (HUD-05, #190). */
+export interface ConfirmOptions {
+  /**
+   * Bouton présélectionné : `"no"` (défaut) pour une action destructrice (retour au titre, suppression,
+   * écrasement), `"yes"` pour une action sans perte (charger).
+   */
+  defaultButton?: "yes" | "no";
+}
+
 export interface UIManager {
   /** Commandes injectées une seule fois. Installe aussi les listeners clavier et souris. */
   init(root: HTMLElement, commands: PlayerCommands): void;
@@ -164,7 +173,8 @@ export interface UIManager {
   showChoices(options: readonly string[]): void;
   hideChoices(): void;
 
-  confirm(message: string): Promise<boolean>;
+  /** Boîte de confirmation. Sans option, *Non* est présélectionné (actions destructrices). */
+  confirm(message: string, options?: ConfirmOptions): Promise<boolean>;
   toast(message: string, duration?: Ms): void;
 
   /** Bloque les entrées (chargement en cours). */

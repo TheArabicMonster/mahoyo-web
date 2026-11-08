@@ -325,6 +325,49 @@ describe("DomUIManager", () => {
       expect(await p2).toBe(false);
       expect(q(".mh-ui-confirm")).toBeNull();
     });
+    it("confirm : Non est présélectionné par défaut, Oui avec defaultButton: yes", async () => {
+      const p = ui.confirm("effacer ?");
+      expect(document.activeElement).toBe(q(".mh-ui-confirm-no"));
+      key("Enter");
+      expect(await p).toBe(false);
+      const p2 = ui.confirm("charger ?", { defaultButton: "yes" });
+      expect(document.activeElement).toBe(q(".mh-ui-confirm-yes"));
+      key("Enter");
+      expect(await p2).toBe(true);
+      expect(q(".mh-ui-confirm")).toBeNull();
+    });
+    it("confirm : boîte accessible (dialog modal nommé par le message), pilotée aux flèches", async () => {
+      const p = ui.confirm("ok ?");
+      const box = q('.mh-ui-confirm [role="dialog"]')!;
+      expect(box.getAttribute("aria-modal")).toBe("true");
+      expect(document.getElementById(box.getAttribute("aria-labelledby")!)!.textContent).toBe("ok ?");
+      key("ArrowLeft");
+      key("Enter");
+      expect(await p).toBe(true);
+    });
+    it("confirm : pendant la boîte, les raccourcis du jeu et le clic ne font rien", async () => {
+      const p = ui.confirm("ok ?");
+      key(" ");
+      key("Enter", { repeat: true });
+      q("#ui-overlay")!.click();
+      expect(cmd.advance).not.toHaveBeenCalled();
+      key("Escape");
+      expect(await p).toBe(false);
+    });
+    it("confirm : une nouvelle demande répond Non à la précédente et la remplace", async () => {
+      const first = ui.confirm("un ?");
+      const second = ui.confirm("deux ?");
+      expect(await first).toBe(false);
+      expect(qa(".mh-ui-confirm")).toHaveLength(1);
+      expect(q(".mh-ui-confirm-message")!.textContent).toBe("deux ?");
+      q(".mh-ui-confirm-yes")!.click();
+      expect(await second).toBe(true);
+    });
+    it("confirm : dispose répond Non à une boîte ouverte", async () => {
+      const p = ui.confirm("ok ?");
+      ui.dispose();
+      expect(await p).toBe(false);
+    });
     it("toast disparaît après la durée", () => {
       vi.useFakeTimers();
       ui.toast("hi", 100);
