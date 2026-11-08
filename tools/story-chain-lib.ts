@@ -363,3 +363,43 @@ function buildChapters(
 export function buildStoryChainFromGc(buffer: Buffer): ChainBuild {
   return buildStoryChain(parseTjs(decodeGc(buffer)));
 }
+
+// ── Rattachement des scripts aux chapitres (pour le graphe de scénario) ──
+
+/** Page (arc) et chapitre auxquels appartient un script. */
+export type ScriptPlacement = { chapter?: string; arc: string };
+
+/**
+ * Pour chaque script, la page du graphe d'origine qui le porte (`arc`, son titre) et le
+ * chapitre principal de cette page (`chapter`, le premier de `chapters` portant le même arc).
+ *
+ * Un script qui figure sur plusieurs pages (interlude partagé : `teatime.ks`) n'appartient
+ * à aucune : il est absent du résultat. Les clés sont des identifiants de nœud (nom sans `.ks`, en minuscules).
+ */
+export function scriptPlacements(graph: TjsValue, chapters: ChainChapter[] = []): Map<string, ScriptPlacement> {
+  const pagesOf = new Map<string, Set<number>>();
+  const arcOf: string[] = [];
+  if (isDict(graph) && Array.isArray(graph.pages)) {
+    graph.pages.forEach((page, index) => {
+      if (!isDict(page) || !Array.isArray(page.blocks)) return;
+      arcOf[index] = asString(page.title) ?? `page ${index}`;
+      for (const b of page.blocks) {
+        if (!isDict(b)) continue;
+        for (const s of scriptsOf(b)) {
+          const key = s.toLowerCase();
+          pagesOf.set(key, (pagesOf.get(key) ?? new Set()).add(index));
+        }
+      }
+    });
+  }
+
+  const out = new Map<string, ScriptPlacement>();
+  for (const [script, pages] of pagesOf) {
+    if (pages.size !== 1) continue;
+    const id = script.replace(/\.ks$/, "");
+    const arc = arcOf[[...pages][0]!]!;
+    const chapter = chapters.find((c) => c.arc === arc)?.id;
+    out.set(id, chapter === undefined ? { arc } : { chapter, arc });
+  }
+  return out;
+}
