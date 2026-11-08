@@ -144,3 +144,24 @@ sautable (la capture montre « Non ») ; le volume système est mémorisé mais 
 d'interface n'est encore émis ; la taille de fenêtre plafonne l'affichage au lieu de
 redimensionner la fenêtre du système ; « Quitter » utilise `window.close()` avec repli
 sur un message.
+
+## 6. Direction visuelle (2026-11-08)
+
+Référence de qualité : la config de **Tsukiweb** (`tsukiweb.holofield.fr/config`), avec
+reprise de la sobriété bleu nuit du jeu d'origine. Tokens retenus :
+
+- **Fond** `#03102a → #061b3f → #020817`, étoiles discrètes en dégradés radiaux, vignettage
+  léger ; aucun asset du jeu.
+- **Accent** `#56d8ff` / `#8be9ff` ; texte `#e8f4ff`, secondaire `#8fb6e6` ; règles
+  `rgba(120,180,255,.14)`.
+- **Typographie** : titre et entrées de menu en display serif (`Didot`, `Bodoni 72`,
+  `Cormorant Garamond`, `Georgia`) ; libellés et contrôles en sans humaniste (`Optima`,
+  `Avenir Next`, `system-ui`).
+- **Structure** : lignes de réglage pleine largeur (libellé à gauche, contrôle à droite,
+  46 px), pas de cartes ; groupes signalés par un petit losange et une règle fine.
+- **Contrôles** : segments sans cadre au repos, cadre cyan lumineux sur l'actif ; curseurs
+  à piste fine et pastille en losange ; cases cyan ; touches en capsules monospace.
+- **Navigation** : onglets en fil d'Ariane (`›`), losange devant l'onglet actif.
+- **Mouvement** : ouverture en fondu 300 ms, désactivée sous `prefers-reduced-motion`.
+- **Accessibilité** : `role=tablist/tab/tabpanel`, focus clavier visible, cibles de 46 px,
+  contraste élevé, responsive sous 900 px.

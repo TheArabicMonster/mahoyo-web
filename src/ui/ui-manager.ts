@@ -488,7 +488,10 @@ export class DomUIManager implements UIManager {
     brand.append(h("h2", "mh-ui-title", "Config"), h("p", "mh-ui-config-subtitle", "Réglages du jeu"));
     header.appendChild(brand);
     const tabs = h("nav", "mh-ui-tabs");
+    tabs.setAttribute("role", "tablist");
+    tabs.setAttribute("aria-label", "Sections de configuration");
     const content = h("div", "mh-ui-config");
+    content.setAttribute("role", "tabpanel");
     // Copies locales : `Partial<GameSettings>` est superficiel, on renvoie les groupes entiers.
     const display = { ...settings.display };
     const audio = { ...settings.audio };
@@ -536,6 +539,8 @@ export class DomUIManager implements UIManager {
         this.show(this.view);
       }, "mh-ui-tab");
       tab.dataset.tab = id;
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-selected", String(id === this.settingsTab));
       if (id === this.settingsTab) tab.classList.add("active");
       tabs.appendChild(tab);
     }
@@ -592,24 +597,30 @@ export class DomUIManager implements UIManager {
       format: (v: number) => string = (v) => String(v),
     ) => {
       const row = field(parent, label);
+      row.classList.add("mh-ui-field-slider");
+      const labelEl = row.querySelector<HTMLElement>(".mh-ui-field-label");
+      const output = h("span", "mh-ui-field-value", format(value));
+      labelEl?.appendChild(output);
       const input = h("input");
       input.type = "range";
       input.name = name;
+      input.setAttribute("aria-label", label);
       input.min = String(min);
       input.max = String(max);
       input.step = String(step);
       input.value = String(value);
-      const output = h("output", "mh-ui-field-value", format(value));
       input.addEventListener("input", () => {
         if (!this.inputEnabled) return;
         const v = Number(input.value);
         output.textContent = format(v);
         onInput(v);
       });
-      row.append(input, output);
+      const controls = h("div", "mh-ui-range");
+      controls.append(h("span", "mh-ui-range-mark", "−"), input, h("span", "mh-ui-range-mark", "+"));
+      row.appendChild(controls);
     };
     const check = (parent: El, label: string, name: string, value: boolean, onChange: (v: boolean) => void) => {
-      const row = h("label", "mh-ui-field mh-ui-check");
+      const row = h("label", "mh-ui-field mh-ui-field-check");
       const input = h("input");
       input.type = "checkbox";
       input.name = name;
@@ -617,7 +628,7 @@ export class DomUIManager implements UIManager {
       input.addEventListener("change", () => {
         if (this.inputEnabled) onChange(input.checked);
       });
-      row.append(input, h("span", "mh-ui-field-label", label));
+      row.append(h("span", "mh-ui-field-label", label), input);
       parent.appendChild(row);
     };
     const yesNo = (parent: El, label: string, name: string, value: boolean, onChange: (v: boolean) => void) => {
@@ -634,6 +645,7 @@ export class DomUIManager implements UIManager {
       const row = field(parent, label);
       const el = h("select");
       el.name = name;
+      el.setAttribute("aria-label", label);
       for (const option of options) {
         const o = h("option", undefined, option.label);
         o.value = option.value;
@@ -848,7 +860,12 @@ export class DomUIManager implements UIManager {
         audio.seMuted = v;
         pushAudio();
       });
-      se.appendChild(this.button("Tester le volume", () => this.commands?.testSe(), "mh-ui-test-se"));
+      const testRow = h("div", "mh-ui-field mh-ui-field-action");
+      testRow.append(
+        h("span", "mh-ui-field-label", ""),
+        this.button("Tester le volume", () => this.commands?.testSe(), "mh-ui-test-se"),
+      );
+      se.appendChild(testRow);
 
       const system = section("Volume des sons système");
       slider(system, "Volume", "system", 0, 100, 5, Math.round(audio.system * 100), (v) => {
@@ -883,13 +900,9 @@ export class DomUIManager implements UIManager {
       keys.appendChild(
         h("p", "mh-ui-hint", "Cliquez sur une touche puis appuyez sur la combinaison voulue. Échap annule la capture."),
       );
-      const grid = h("div", "mh-ui-shortcut-grid");
-      const columns = [h("div", "mh-ui-shortcut-col"), h("div", "mh-ui-shortcut-col")];
-      SHORTCUT_DEFINITIONS.forEach((definition, index) => {
-        keyRow(columns[Math.floor(index / 7)]!, definition.id, definition.label);
-      });
-      grid.append(...columns);
-      keys.appendChild(grid);
+      for (const definition of SHORTCUT_DEFINITIONS) {
+        keyRow(keys, definition.id, definition.label);
+      }
     }
 
     const footer = h("div", "mh-ui-config-footer");
