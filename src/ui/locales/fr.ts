@@ -179,4 +179,6 @@ export const fr = {
   "toast.languageNextChapter": "La langue s'appliquera au prochain chapitre.",
   "toast.skipStoppedUnread": "Texte non lu : skip interrompu.",
   "toast.closeRefused": "Le navigateur refuse de fermer l'onglet.",
+  "toast.slotLockedOverwrite": "Cet emplacement est verrouillé : sauvegarde impossible.",
+  "toast.slotLockedDelete": "Cet emplacement est verrouillé : suppression impossible.",
 } as const;

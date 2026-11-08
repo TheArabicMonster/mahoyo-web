@@ -174,4 +174,6 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   "toast.languageNextChapter": "言語は次の章から切り替わります。",
   "toast.skipStoppedUnread": "未読テキスト：スキップを停止しました。",
   "toast.closeRefused": "ブラウザがタブを閉じることを拒否しました。",
+  "toast.slotLockedOverwrite": "このスロットはロックされているため、セーブできません。",
+  "toast.slotLockedDelete": "このスロットはロックされているため、削除できません。",
 };

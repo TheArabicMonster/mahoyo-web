@@ -60,7 +60,6 @@ src/renderer/ + src/ui/  ── rendu navigateur
   - **Verrou** : `put` et `delete` rejettent avec `SaveLockedError` sur un emplacement verrouillé (le player vérifie
     aussi avant la confirmation et affiche un message). `update(slot, { comment, locked })` modifie ces deux
     métadonnées, y compris sur un emplacement verrouillé.
-- **`save-messages.ts`** : libellés FR des messages de sauvegarde, en attendant le dictionnaire d'interface (#184).
 - **`settings-store.ts`** : réglages (`mahoyo.settings`), « déjà lu » (`mahoyo.read`), progression par chapitre
   (`mahoyo.progress`) et progression par scène (`mahoyo.story-progress`). Lecture tolérante (absent, partiel,
   corrompu ou stockage inaccessible = valeurs vides/par défaut).

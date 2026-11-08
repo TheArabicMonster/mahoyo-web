@@ -9,7 +9,7 @@ import { defaultShortcuts } from "@/core/shortcuts.js";
 import { hasTranslation, parseLanguageIndex, type LanguageIndex } from "@/core/language.js";
 import { parseStoryChain, resolveNext, type StoryChain } from "@/core/story-chain.js";
 import { parseTimelineData, type TimelineData } from "@/core/timeline.js";
-import { SAVE_MESSAGES } from "@/player/save-messages.js";
+import { setUiLanguage, t } from "@/ui/i18n.js";
 import {
   createLocalSaveStore,
   deriveSceneTitle,
@@ -340,6 +340,7 @@ export class Player implements PlayerCommands {
   private async init(): Promise<void> {
     const store = this.deps.settingsStore;
     this.settings = await store.loadSettings();
+    setUiLanguage(this.settings.language); // langue demandée, avant le repli éventuel sur le japonais
     this.readSet = await store.loadRead();
     this.completed = (await store.loadProgress()).completed;
     this.chain = await this.deps.loadChain().catch(() => null);
@@ -467,7 +468,7 @@ export class Player implements PlayerCommands {
   /** Vrai (avec un message) si le script a verrouillé le menu rapide pendant la partie. */
   private quickMenuRefused(): boolean {
     if (!this.quickMenuLocked || this.state === "title") return false;
-    this.ui.toast("Sauvegarde et chargement indisponibles pendant cette séquence.");
+    this.ui.toast(t("toast.quickMenuLocked"));
     return true;
   }
 
@@ -509,7 +510,7 @@ export class Player implements PlayerCommands {
     try {
       const script = await this.getScript(file);
       if (!script) {
-        this.ui.toast(`Script introuvable : ${file}`);
+        this.ui.toast(t("toast.scriptNotFound", { file }));
         await this.showTitle();
         return;
       }
@@ -581,29 +582,29 @@ export class Player implements PlayerCommands {
     if (this.quickMenuRefused()) return;
     const entry = this.history[this.history.length - 1];
     if (!entry || !this.runtime) {
-      this.ui.toast("Impossible de sauvegarder à cet instant.");
+      this.ui.toast(t("toast.saveUnavailable"));
       return;
     }
     const existing = await this.deps.saveStore.get(slot);
     if (existing?.locked) {
-      this.ui.toast(SAVE_MESSAGES.lockedOverwrite);
+      this.ui.toast(t("toast.slotLockedOverwrite"));
       return;
     }
-    if (existing && !(await this.ui.confirm("Écraser cette sauvegarde ?"))) return;
+    if (existing && !(await this.ui.confirm(t("confirm.overwriteSave")))) return;
     const blob = await this.stage.captureThumbnail(THUMBNAIL_WIDTH).catch(() => null);
     const thumbnailUrl = blob ? await blobToDataUrl(blob) : null;
     try {
       await this.deps.saveStore.put(slot, this.toRecord(entry, thumbnailUrl));
     } catch (err) {
       if (err instanceof SaveLockedError) {
-        this.ui.toast(SAVE_MESSAGES.lockedOverwrite);
+        this.ui.toast(t("toast.slotLockedOverwrite"));
         return;
       }
       console.error("save failed", err);
-      this.ui.toast("Échec de la sauvegarde.");
+      this.ui.toast(t("toast.saveFailed"));
       return;
     }
-    this.ui.toast("Sauvegardé.");
+    this.ui.toast(t("toast.saved"));
     if (this.overlays[this.overlays.length - 1] === "save") await this.showOverlay("save");
   }
 
@@ -614,7 +615,7 @@ export class Player implements PlayerCommands {
     if (this.quickMenuRefused()) return;
     const record = await this.deps.saveStore.get(slot);
     if (!record) {
-      this.ui.toast("Sauvegarde vide.");
+      this.ui.toast(t("toast.saveEmpty"));
       return;
     }
     this.scriptFile = record.scriptFile;
@@ -634,15 +635,15 @@ export class Player implements PlayerCommands {
 
   async deleteSave(slot: SlotId): Promise<void> {
     if ((await this.deps.saveStore.get(slot))?.locked) {
-      this.ui.toast(SAVE_MESSAGES.lockedDelete);
+      this.ui.toast(t("toast.slotLockedDelete"));
       return;
     }
-    if (!(await this.ui.confirm("Supprimer cette sauvegarde ?"))) return;
+    if (!(await this.ui.confirm(t("confirm.deleteSave")))) return;
     try {
       await this.deps.saveStore.delete(slot);
     } catch (err) {
       if (!(err instanceof SaveLockedError)) throw err;
-      this.ui.toast(SAVE_MESSAGES.lockedDelete);
+      this.ui.toast(t("toast.slotLockedDelete"));
       return;
     }
     const top = this.overlays[this.overlays.length - 1];
@@ -655,6 +656,7 @@ export class Player implements PlayerCommands {
   updateSettings(patch: Partial<GameSettings>): void {
     const previousLanguage = this.settings.language;
     this.settings = mergeSettings(this.settings, patch);
+    if (patch.language) setUiLanguage(this.settings.language); // langue demandée, avant le repli éventuel
     if (this.settings.language !== "ja" && !this.languageIndexes.has(this.settings.language)) {
       this.settings = { ...this.settings, language: "ja" };
     }
@@ -666,7 +668,7 @@ export class Player implements PlayerCommands {
     this.pushStatus();
     void this.deps.settingsStore.saveSettings(this.settings).catch(() => {});
     if (patch.language && this.settings.language !== previousLanguage && this.state !== "title") {
-      this.ui.toast("La langue s'appliquera au prochain chapitre.");
+      this.ui.toast(t("toast.languageNextChapter"));
     }
   }
 
@@ -749,7 +751,7 @@ export class Player implements PlayerCommands {
         let accepted = this.autoSkipConfirmed || !display.autoSkipConfirm;
         if (!this.autoSkipConfirmed && display.autoSkipConfirm) {
           this.autoSkipConfirmed = true;
-          accepted = await this.ui.confirm("Passer les scènes déjà lues ?");
+          accepted = await this.ui.confirm(t("confirm.skipRead"));
         }
         if (accepted) this.setMode("skip");
         else this.autoSkipDeclined = true;
@@ -848,7 +850,7 @@ export class Player implements PlayerCommands {
         const ok = await this.runtime!.loadScript(stop.file, stop.label, push);
         if (signal.aborted) return false;
         if (!ok) {
-          this.ui.toast(`Script introuvable : ${stop.file}`);
+          this.ui.toast(t("toast.scriptNotFound", { file: stop.file }));
           void this.returnToTitle();
           return false;
         }
@@ -980,7 +982,7 @@ export class Player implements PlayerCommands {
     const ok = await this.runtime!.loadScript(file, undefined, false);
     if (signal.aborted) return false;
     if (!ok) {
-      this.ui.toast(`Script introuvable : ${file}`);
+      this.ui.toast(t("toast.scriptNotFound", { file }));
       return false;
     }
     this.scriptFile = file;
@@ -1052,7 +1054,7 @@ export class Player implements PlayerCommands {
             // puis le skip reprend. Elle ne doit pas le couper.
             timer = setTimeout(finish, opts.fixedMs);
           } else {
-            this.ui.toast("Texte non lu : skip interrompu.");
+            this.ui.toast(t("toast.skipStoppedUnread"));
             this.setMode("normal");
           }
           return;
@@ -1162,7 +1164,7 @@ export class Player implements PlayerCommands {
       return true;
     } catch (err) {
       console.error("restore failed", err);
-      this.ui.toast("Chargement impossible.");
+      this.ui.toast(t("toast.loadFailed"));
       await this.returnToTitle();
       return false;
     } finally {

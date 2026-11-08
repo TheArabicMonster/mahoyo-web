@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultShortcuts } from "@/core/shortcuts.js";
 import { DEFAULT_AUDIO_SETTINGS, DEFAULT_DISPLAY_SETTINGS } from "@/renderer/types.js";
+import { setUiLanguage } from "@/ui/i18n.js";
 import { DomUIManager } from "@/ui/ui-manager.js";
 import type { GameSettings, PlayerCommands, PlayerStatus, UIView } from "@/ui/types.js";
 
@@ -381,5 +382,71 @@ describe("DomUIManager", () => {
     key(" ");
     expect(cmd.advance).not.toHaveBeenCalled();
     expect(q("#ui-overlay")).toBeNull();
+  });
+
+  describe("langue de l'interface (#184)", () => {
+    afterEach(() => setUiLanguage("fr"));
+
+    it("pose lang sur la racine de l'interface et sur le document", () => {
+      expect(q("#ui-overlay")!.lang).toBe("fr");
+      expect(document.documentElement.lang).toBe("fr");
+    });
+
+    it("par défaut, les écrans sont en français", () => {
+      ui.show({ screen: "pause" });
+      expect(qa(".mh-ui-pause-screen .mh-ui-col button").map((b) => b.textContent)).toEqual([
+        "Reprendre", "Sauvegarder", "Charger", "Réglages", "Historique", "Flowchart", "Retour au titre",
+      ]);
+      ui.show({ screen: "title", scripts, hasContinue: true });
+      expect(q(".mh-ui-new-game")!.textContent).toBe("Nouvelle partie");
+      expect(q(".mh-ui-continue")!.textContent).toBe("Continuer");
+    });
+
+    it("un changement de langue met à jour lang et redessine l'écran courant", () => {
+      ui.show({ screen: "pause" });
+      setUiLanguage("en");
+      expect(q("#ui-overlay")!.lang).toBe("en");
+      expect(document.documentElement.lang).toBe("en");
+      expect(q(".mh-ui-resume")!.textContent).toBe("Resume");
+      setUiLanguage("ja");
+      expect(q("#ui-overlay")!.lang).toBe("ja");
+      expect(q(".mh-ui-resume")!.textContent).toBe("ゲームに戻る");
+    });
+
+    it("l'écran de configuration, les emplacements et la confirmation suivent la langue", async () => {
+      setUiLanguage("en");
+      ui.show({ screen: "settings", settings, availableLanguages: ["ja", "en", "fr"] });
+      expect(q(".mh-ui-tab[data-tab='system']")!.textContent).toBe("System");
+      expect(q(".mh-ui-reset")!.textContent).toBe("Restore defaults");
+      ui.show({ screen: "save", slots: [{ id: 3, data: slotData }, { id: "quick", data: null }] });
+      expect(qa(".mh-ui-slot-label").map((e) => e.textContent)).toEqual(["Slot 3", "Quick save"]);
+      expect(q(".mh-ui-slot-empty .mh-ui-slot-preview")!.textContent).toBe("— empty —");
+      q(".mh-ui-slot[data-slot='3'] .mh-ui-slot-action")!.click();
+      await Promise.resolve();
+      expect(q(".mh-ui-confirm-message")!.textContent).toBe("Overwrite “Slot 3”?");
+      expect(q(".mh-ui-confirm-yes")!.textContent).toBe("Yes");
+    });
+
+    it("les noms de langue restent dans leur propre langue", () => {
+      setUiLanguage("en");
+      ui.show({ screen: "settings", settings, availableLanguages: ["ja", "en", "fr"] });
+      q(".mh-ui-tab[data-tab='message']")!.click();
+      expect(qa("select[name='language'] option").map((o) => o.textContent)).toEqual(["日本語", "English", "Français"]);
+    });
+
+    it("dispose restaure lang du document", () => {
+      ui.dispose();
+      document.documentElement.lang = "fr";
+      ui.init(root, cmd);
+      setUiLanguage("ja");
+      expect(document.documentElement.lang).toBe("ja");
+      ui.dispose();
+      expect(document.documentElement.lang).toBe("fr");
+    });
+
+    it("après dispose, un changement de langue ne touche plus l'interface", () => {
+      ui.dispose();
+      expect(() => setUiLanguage("en")).not.toThrow();
+    });
   });
 });

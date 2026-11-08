@@ -174,4 +174,6 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "toast.languageNextChapter": "The language will apply from the next chapter.",
   "toast.skipStoppedUnread": "Unread text: skip stopped.",
   "toast.closeRefused": "The browser refuses to close the tab.",
+  "toast.slotLockedOverwrite": "This slot is locked: saving is not possible.",
+  "toast.slotLockedDelete": "This slot is locked: deletion is not possible.",
 };
