@@ -198,9 +198,9 @@ describe("DomUIManager", () => {
       expect(q("#ui-overlay")!.dataset.screen).toBe(v.screen);
       // Menu système plein cadre (HUD-06, #194), écran titre plein cadre (HUD-07, #195) et flowchart (FLOW-05, #197) : pas de panneau centré.
       const full: Record<string, string> = { pause: ".mh-sysmenu", title: ".mh-ui-title-screen", flowchart: ".mh-flow-screen" };
-      expect(q(full[v.screen] ?? ".mh-ui-panel")).not.toBeNull();
+      expect(q(full[v.screen] ?? ".mh-ui-panel, .mh-sl")).not.toBeNull();
       ui.show({ screen: "game" });
-      expect(q(".mh-ui-panel")).toBeNull();
+      expect(q(".mh-ui-panel, .mh-sl")).toBeNull();
       expect(q(".mh-sysmenu")).toBeNull();
       expect(q(".mh-ui-title-screen")).toBeNull();
       expect(q(".mh-flow-screen")).toBeNull();
@@ -257,20 +257,22 @@ describe("DomUIManager", () => {
       await Promise.resolve();
       expect(cmd.returnToTitle).toHaveBeenCalled();
     });
-    it("save : slot vide sauvegarde directement, occupé confirme", async () => {
+    it("save : le bouton Sauvegarder appelle la commande (la confirmation d'écrasement est celle du player)", async () => {
       ui.show({ screen: "save", slots: [{ id: 1, data: slotData }, { id: 2, data: null }] });
-      q('[data-slot="2"] .mh-ui-slot-action')!.click();
+      q('[data-slot="2"] .mh-sl-save')!.click();
       await vi.waitFor(() => expect(cmd.save).toHaveBeenCalledWith(2));
-      q('[data-slot="1"] .mh-ui-slot-action')!.click();
-      expect(q(".mh-ui-confirm")).not.toBeNull();
-      q(".mh-ui-confirm-yes")!.click();
+      q('[data-slot="1"] .mh-sl-save')!.click();
       await vi.waitFor(() => expect(cmd.save).toHaveBeenCalledWith(1));
+      expect(q(".mh-ui-confirm")).toBeNull();
     });
-    it("load : slot vide désactivé", () => {
+    it("load : slot vide sans bouton, charger confirme avec Oui présélectionné", async () => {
       ui.show({ screen: "load", slots: [{ id: 1, data: slotData }, { id: 2, data: null }] });
-      expect((q('[data-slot="2"] .mh-ui-slot-action') as HTMLButtonElement).disabled).toBe(true);
-      q('[data-slot="1"] .mh-ui-slot-action')!.click();
-      expect(cmd.load).toHaveBeenCalledWith(1);
+      expect(q('[data-slot="2"] .mh-sl-load')).toBeNull();
+      q('[data-slot="1"] .mh-sl-load')!.click();
+      await vi.waitFor(() => expect(q(".mh-ui-confirm")).not.toBeNull());
+      expect(cmd.load).not.toHaveBeenCalled();
+      q(".mh-ui-confirm-yes")!.click();
+      await vi.waitFor(() => expect(cmd.load).toHaveBeenCalledWith(1));
     });
     it("settings : envoie le groupe audio complet depuis l'onglet Son/Effet", () => {
       ui.show({ screen: "settings", settings, availableLanguages: ["ja", "fr", "en"] });
@@ -499,11 +501,13 @@ describe("DomUIManager", () => {
       expect(q(".mh-ui-tab[data-tab='system']")!.textContent).toBe("System");
       expect(q(".mh-ui-reset")!.textContent).toBe("Restore defaults");
       ui.show({ screen: "save", slots: [{ id: 3, data: slotData }, { id: "quick", data: null }] });
-      expect(qa(".mh-ui-slot-label").map((e) => e.textContent)).toEqual(["Slot 3", "Quick save"]);
-      expect(q(".mh-ui-slot-empty .mh-ui-slot-preview")!.textContent).toBe("— empty —");
-      q(".mh-ui-slot[data-slot='3'] .mh-ui-slot-action")!.click();
-      await Promise.resolve();
-      expect(q(".mh-ui-confirm-message")!.textContent).toBe("Overwrite “Slot 3”?");
+      expect(q(".mh-sl-title")!.textContent).toBe("Save");
+      expect(q("[data-slot='3']")!.getAttribute("aria-label")).toContain("Slot 3");
+      expect(q("[data-slot='quick'] .mh-sl-badge")!.textContent).toBe("Quick");
+      ui.show({ screen: "load", slots: [{ id: 3, data: slotData }] });
+      q("[data-slot='3'] .mh-sl-load")!.click();
+      await vi.waitFor(() => expect(q(".mh-ui-confirm-message")).not.toBeNull());
+      expect(q(".mh-ui-confirm-message")!.textContent).toBe("Load “Slot 3”?");
       expect(q(".mh-ui-confirm-yes")!.textContent).toBe("Yes");
     });
 

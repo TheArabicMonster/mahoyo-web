@@ -44,7 +44,8 @@ src/renderer/ + src/ui/  ── rendu navigateur
 
 - **`types.ts`** : interfaces `UIManager`, `PlayerCommands`, `UIView`, `GameSettings` et progression.
 - **`player.ts`** : orchestrateur Runtime ↔ StageRenderer ↔ AudioPlayer ↔ UIManager, boucle de lecture, modes auto/skip, sauvegardes et viewport.
-- **`ui-manager.ts`** : écrans DOM (titre, menu système, sauvegarde/chargement, historique, flowchart, configuration) et gestion des entrées.
+- **`ui-manager.ts`** : écrans DOM (titre, menu système, historique, flowchart, configuration) et gestion des entrées.
+- **`save-load-screen.ts`** / **`save-pages.ts`** : écrans de sauvegarde et de chargement (grille 2×4, 15 pages, fiches, verrou, commentaire) et leur modèle pur ; voir `docs/DESIGN.md` §9.5.
 - **`ui-manager.css`**, **`tokens.css`** : styles des écrans et tokens du design system (palette, typo, durées, états).
 - **`toast.ts`**, **`toast.css`** : composant `ToastStack` des messages éphémères (cadre sarcelle bas droite, 3 au plus, `aria-live="polite"`) ; `DomUIManager.toast()` y délègue.
 - **`confirm-dialog.ts`** / **`confirm-dialog.css`** : boîte de confirmation au design d'origine (HUD-05, #190), composant

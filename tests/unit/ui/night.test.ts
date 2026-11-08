@@ -20,10 +20,22 @@ describe("isNightDemoRequested", () => {
 describe("syncNightDemo", () => {
   it("pose la classe sur les écrans système quand la démonstration est demandée", () => {
     const el = document.createElement("div");
-    for (const screen of ["save", "load", "backlog"] as const) {
+    for (const screen of ["backlog"] as const) {
       syncNightDemo(el, screen, "?night");
       expect(el.classList.contains(NIGHT_CLASS), screen).toBe(true);
     }
+  });
+
+  it("sauvegarde et chargement portent toujours la nuit bleue, sans ?night (HUD-10)", () => {
+    const el = document.createElement("div");
+    for (const screen of ["save", "load"] as const) {
+      syncNightDemo(el, screen, "");
+      expect(el.classList.contains(NIGHT_CLASS), screen).toBe(true);
+      syncNightDemo(el, screen, "?night=0");
+      expect(el.classList.contains(NIGHT_CLASS), screen).toBe(true);
+    }
+    syncNightDemo(el, "title", "");
+    expect(el.classList.contains(NIGHT_CLASS)).toBe(false);
   });
 
   it("ne touche pas au jeu, aux réglages (habillage propre) ni sans paramètre", () => {
@@ -42,6 +54,21 @@ describe("syncNightDemo", () => {
 });
 
 describe("DomUIManager : branchement", () => {
+  it("les écrans de sauvegarde et de chargement posent la classe nuit sans ?night", () => {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const ui = new DomUIManager();
+    ui.init(root, {} as never);
+    for (const screen of ["save", "load"] as const) {
+      ui.show({ screen, slots: [] });
+      expect(root.querySelector("#ui-menu")?.classList.contains(NIGHT_CLASS), screen).toBe(true);
+    }
+    ui.show({ screen: "game" });
+    expect(root.querySelector("#ui-menu")?.classList.contains(NIGHT_CLASS)).toBe(false);
+    ui.dispose();
+    root.remove();
+  });
+
   it("n'ajoute aucune classe nuit par défaut", () => {
     const root = document.createElement("div");
     document.body.appendChild(root);

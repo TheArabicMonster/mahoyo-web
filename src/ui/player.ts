@@ -12,6 +12,7 @@ import type { StoryGraph } from "@/core/story-graph.js";
 import { parseStoryChain, resolveNext, type StoryChain } from "@/core/story-chain.js";
 import { parseTimelineData, type TimelineData } from "@/core/timeline.js";
 import { setUiLanguage, t } from "@/ui/i18n.js";
+import { SAVE_COMMENT_MAX_LENGTH, saveSlotIds } from "@/ui/save-pages.js";
 import {
   createLocalSaveStore,
   deriveSceneTitle,
@@ -51,6 +52,7 @@ import type {
   OverlayScreen,
   PlayMode,
   PlayerCommands,
+  SaveMetaUpdate,
   SaveSlot,
   ScriptSummary,
   StoryProgress,
@@ -113,7 +115,6 @@ const DEFAULT_SCRIPTS: ScriptSummary[] = [
   { id: "1-2", label: "Chapitre 1 — Partie 2", file: "1-2.ks", x: 512, y: 260, arc: "Chapitre 1" },
 ];
 
-const NUMBERED_SLOTS = 12;
 const HISTORY_LIMIT = 100;
 const THUMBNAIL_WIDTH = 320;
 
@@ -397,6 +398,7 @@ export class Player implements PlayerCommands {
       save: (s) => this.save(s),
       load: (s) => this.load(s),
       deleteSave: (s) => this.deleteSave(s),
+      updateSave: (s, p) => this.updateSave(s, p),
       updateSettings: (p) => this.updateSettings(p),
       resetSettings: () => this.resetSettings(),
       toggleFullscreen: () => this.toggleFullscreen(),
@@ -702,6 +704,21 @@ export class Player implements PlayerCommands {
     const top = this.overlays[this.overlays.length - 1];
     if (top === "save" || top === "load") await this.showOverlay(top);
     else if (this.state === "title") await this.showTitle();
+  }
+
+  /** Commentaire et/ou verrou d'un emplacement (HUD-10, #196) ; rafraîchit toujours l'écran, même en cas d'échec. */
+  async updateSave(slot: SlotId, patch: SaveMetaUpdate): Promise<void> {
+    const clean: SaveMetaUpdate = {};
+    if (typeof patch.comment === "string") clean.comment = patch.comment.trim().slice(0, SAVE_COMMENT_MAX_LENGTH);
+    if (typeof patch.locked === "boolean") clean.locked = patch.locked;
+    try {
+      await this.deps.saveStore.update(slot, clean);
+    } catch (err) {
+      console.error("save update failed", err);
+      this.ui.toast(t("toast.saveFailed"));
+    }
+    const top = this.overlays[this.overlays.length - 1];
+    if (top === "save" || top === "load") await this.showOverlay(top);
   }
 
   // ── Commandes : système ──
@@ -1343,8 +1360,7 @@ export class Player implements PlayerCommands {
   }
 
   private async slots(): Promise<SaveSlot[]> {
-    const ids: SlotId[] = ["auto", "quick", ...Array.from({ length: NUMBERED_SLOTS }, (_, i) => i + 1)];
-    return Promise.all(ids.map(async (id) => ({ id, data: await this.deps.saveStore.get(id) })));
+    return Promise.all(saveSlotIds().map(async (id) => ({ id, data: await this.deps.saveStore.get(id) })));
   }
 
   /** Langues disponibles : japonais toujours, plus celles dont l'index est chargé. */

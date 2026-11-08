@@ -76,6 +76,11 @@ export interface PlayerCommands {
   save(slot: SlotId): Promise<void>;
   load(slot: SlotId): Promise<void>;
   deleteSave(slot: SlotId): Promise<void>;
+  /**
+   * Met à jour le commentaire et/ou le verrou d'un emplacement (HUD-10, #196), y compris verrouillé
+   * (c'est ainsi qu'on le déverrouille), puis rafraîchit l'écran de sauvegarde/chargement.
+   */
+  updateSave(slot: SlotId, patch: SaveMetaUpdate): Promise<void>;
 
   // Système
   updateSettings(patch: Partial<GameSettings>): void;
@@ -120,6 +125,9 @@ export type StoryProgress = {
   endings: readonly string[];
 };
 
+/** Métadonnées d'un emplacement modifiables par le joueur (commentaire, verrou). */
+export type SaveMetaUpdate = { comment?: string; locked?: boolean };
+
 export type SaveSlot = {
   id: SlotId;
   /** null = slot vide. */
@@ -129,6 +137,12 @@ export type SaveSlot = {
     previewText: string;
     thumbnailUrl: string | null;
     stage: StageSnapshot;
+    /** Titre de scène de la fiche (absent : nom du fichier de script). Ajout optionnel (HUD-10, #196). */
+    sceneTitle?: string;
+    /** Commentaire du joueur (absent : aucun). */
+    comment?: string;
+    /** Emplacement verrouillé : écrasement et suppression refusés (absent : non). */
+    locked?: boolean;
   } | null;
 };
 

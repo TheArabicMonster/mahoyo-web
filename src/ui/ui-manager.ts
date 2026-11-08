@@ -19,12 +19,12 @@ import type {
   PlayerStatus,
   SaveSlot,
   ScriptSummary,
-  SlotId,
   UIManager,
   UIView,
 } from "@/ui/types.js";
 import { openConfirmDialog, type ConfirmDialog } from "@/ui/confirm-dialog.js";
-import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t, uiLocale } from "@/ui/i18n.js";
+import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t } from "@/ui/i18n.js";
+import { createSaveLoadScreen, type SaveLoadScreen } from "@/ui/save-load-screen.js";
 import { ToastStack } from "@/ui/toast.js";
 import { renderFlowchartScreen } from "@/ui/flowchart-view.js";
 import { syncNightDemo } from "@/ui/night.js";
@@ -59,16 +59,6 @@ function h<K extends keyof HTMLElementTagNameMap>(
   if (cls) el.className = cls;
   if (text !== undefined) el.textContent = text;
   return el;
-}
-
-function slotKey(id: SlotId): string {
-  return String(id);
-}
-
-function slotLabel(id: SlotId): string {
-  if (id === "quick") return t("slot.quick");
-  if (id === "auto") return t("slot.auto");
-  return t("slot.numbered", { n: id });
 }
 
 export type DomUIManagerOptions = {
@@ -111,6 +101,7 @@ export class DomUIManager implements UIManager {
   private cursorTimer: ReturnType<typeof setTimeout> | undefined;
 
   private confirmDialog: ConfirmDialog | null = null;
+  private saveLoad: SaveLoadScreen | null = null;
   private cleanups: (() => void)[] = [];
   private previousDocumentLang: string | null = null;
   private readonly uiAssets: UiAssets;
@@ -192,6 +183,8 @@ export class DomUIManager implements UIManager {
   show(view: UIView): void {
     this.view = view;
     if (!this.root) return;
+    if (this.refreshSaveLoad(view)) return;
+    this.saveLoad = null;
     this.menu.replaceChildren();
     this.flowchart.replaceChildren();
     this.pause.replaceChildren();
@@ -210,7 +203,7 @@ export class DomUIManager implements UIManager {
         break;
       case "save":
       case "load":
-        this.menu.appendChild(this.renderSlots(view.screen, view.slots));
+        this.menu.appendChild(this.renderSaveLoad(view.screen, view.slots));
         break;
       case "settings":
         this.settings = view.settings;
@@ -423,58 +416,28 @@ export class DomUIManager implements UIManager {
     );
   }
 
-  private renderSlots(mode: "save" | "load", slots: readonly SaveSlot[]): El {
-    const p = this.panel(mode === "save" ? t("slots.saveTitle") : t("slots.loadTitle"), `mh-ui-slots-screen mh-ui-${mode}`);
-    const grid = h("div", "mh-ui-slots");
-    for (const slot of slots) {
-      const card = h("div", "mh-ui-slot");
-      card.dataset.slot = slotKey(slot.id);
-      card.appendChild(h("div", "mh-ui-slot-label", slotLabel(slot.id)));
-
-      const d = slot.data;
-      if (d) {
-        if (d.thumbnailUrl) {
-          const img = h("img", "mh-ui-slot-thumb");
-          img.src = d.thumbnailUrl;
-          img.alt = "";
-          card.appendChild(img);
-        }
-        card.appendChild(h("div", "mh-ui-slot-date", new Date(d.timestamp).toLocaleString(uiLocale())));
-        card.appendChild(h("div", "mh-ui-slot-preview", d.previewText));
-      } else {
-        card.classList.add("mh-ui-slot-empty");
-        card.appendChild(h("div", "mh-ui-slot-preview", t("slot.empty")));
-      }
-
-      const row = h("div", "mh-ui-row");
-      if (mode === "save") {
-        row.appendChild(
-          this.button(t("slot.saveHere"), () => void this.saveInto(slot), "mh-ui-slot-action"),
-        );
-      } else {
-        const load = this.button(t("slot.load"), () => void this.commands?.load(slot.id), "mh-ui-slot-action");
-        load.disabled = !d;
-        row.appendChild(load);
-      }
-      if (d) {
-        row.appendChild(
-          this.button(t("slot.delete"), () => void this.deleteSlot(slot.id), "mh-ui-slot-delete"),
-        );
-      }
-      card.appendChild(row);
-      grid.appendChild(card);
-    }
-    p.append(grid, this.backButton());
-    return p;
+  /**
+   * Écran de sauvegarde/chargement (HUD-10, #196). Une action du joueur (suppression, verrou…) fait renvoyer la
+   * même vue par le player : on met alors la grille à jour sur place (page, focus et saisie conservés).
+   */
+  private refreshSaveLoad(view: UIView): boolean {
+    if ((view.screen !== "save" && view.screen !== "load") || this.saveLoad?.mode !== view.screen) return false;
+    if (!this.menu.contains(this.saveLoad.element)) return false;
+    this.saveLoad.setSlots(view.slots);
+    return true;
   }
 
-  private async saveInto(slot: SaveSlot): Promise<void> {
-    if (slot.data && !(await this.confirm(t("slot.confirmOverwrite", { name: slotLabel(slot.id) })))) return;
-    await this.commands?.save(slot.id);
-  }
-
-  private async deleteSlot(id: SlotId): Promise<void> {
-    if (await this.confirm(t("slot.confirmDelete", { name: slotLabel(id) }))) await this.commands?.deleteSave(id);
+  private renderSaveLoad(mode: "save" | "load", slots: readonly SaveSlot[]): El {
+    const screen = createSaveLoadScreen({
+      mode,
+      commands: this.commands!,
+      confirm: (message, options) => this.confirm(message, options),
+      toast: (message) => this.toast(message),
+      isInputEnabled: () => this.inputEnabled,
+    });
+    screen.setSlots(slots);
+    this.saveLoad = screen;
+    return screen.element;
   }
 
   private renderSettings(settings: Readonly<GameSettings>, availableLanguages: readonly GameLanguage[]): El {

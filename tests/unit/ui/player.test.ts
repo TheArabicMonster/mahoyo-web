@@ -322,6 +322,38 @@ describe("Player", () => {
     expect(ctx.saveStore.records.has("2")).toBe(true);
   });
 
+  it("updateSave enregistre commentaire (nettoyé) et verrou, y compris pour déverrouiller, puis rafraîchit l'écran", async () => {
+    const ctx = setup();
+    await start(ctx);
+    await ctx.player.save(1);
+    ctx.player.openScreen("load");
+    await until(() => ctx.ui.views.at(-1)?.screen === "load");
+    const before = ctx.ui.views.length;
+
+    await ctx.player.updateSave(1, { comment: `  ${"x".repeat(100)}  `, locked: true });
+    expect(ctx.saveStore.records.get("1")).toMatchObject({ comment: "x".repeat(60), locked: true });
+    expect(ctx.ui.views.length).toBeGreaterThan(before);
+    const view = ctx.ui.views.at(-1)!;
+    if (view.screen !== "load") throw new Error("écran de chargement attendu");
+    const slot = view.slots.find((s) => s.id === 1);
+    expect(slot?.data).toMatchObject({ locked: true, comment: "x".repeat(60) });
+
+    await ctx.player.updateSave(1, { locked: false });
+    expect(ctx.saveStore.records.get("1")?.locked).toBe(false);
+  });
+
+  it("l'écran de chargement propose toute la grille : 2 emplacements spéciaux puis 118 numérotés", async () => {
+    const ctx = setup();
+    await start(ctx);
+    ctx.player.openScreen("load");
+    await until(() => ctx.ui.views.at(-1)?.screen === "load");
+    const view = ctx.ui.views.at(-1);
+    if (view?.screen !== "load") throw new Error("écran de chargement attendu");
+    expect(view.slots).toHaveLength(120);
+    expect(view.slots.slice(0, 3).map((s) => s.id)).toEqual(["auto", "quick", 1]);
+    expect(view.slots.at(-1)?.id).toBe(118);
+  });
+
   it("une ancienne sauvegarde sans titre ni verrou se charge dans le player", async () => {
     const ctx = setup();
     await start(ctx);
