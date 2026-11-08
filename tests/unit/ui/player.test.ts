@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Player, type PlayerDeps, type RuntimeLike } from "@/ui/player.js";
-import { createMemorySaveStore } from "@/player/save-store.js";
+import { createMemorySaveStore, type SaveRecord } from "@/player/save-store.js";
 import { createMemorySettingsStore } from "@/player/settings-store.js";
 import { FakeAudioPlayer } from "../mocks/fake-audio-player.js";
 import { FakeUIManager } from "../mocks/fake-ui-manager.js";
@@ -264,6 +264,72 @@ describe("Player", () => {
     await ctx.player.deleteSave(2);
     expect(ctx.ui.confirms).toHaveLength(1);
     expect(ctx.saveStore.records.has("2")).toBe(false);
+  });
+
+  it("save enregistre le titre de scène dérivé du sommaire local, sans commentaire ni verrou", async () => {
+    const ctx = setup(prologue as Step[], {
+      scripts: [{ id: "t", label: "Libellé local", file: "t.ks", arc: "Test", x: 0, y: 0 }],
+    });
+    await start(ctx);
+    await ctx.player.save(1);
+    expect(ctx.saveStore.records.get("1")).toMatchObject({ sceneTitle: "Libellé local", comment: "", locked: false });
+  });
+
+  it("save retombe sur le nom du fichier si le script est absent du sommaire", async () => {
+    const ctx = setup(prologue as Step[], { scripts: [] });
+    await start(ctx);
+    await ctx.player.save(1);
+    expect(ctx.saveStore.records.get("1")?.sceneTitle).toBe("t.ks");
+  });
+
+  it("save refuse d'écraser un emplacement verrouillé, sans confirmation", async () => {
+    const ctx = setup();
+    await start(ctx);
+    await ctx.player.save(1);
+    const before = ctx.saveStore.records.get("1")!;
+    await ctx.saveStore.update(1, { locked: true });
+    ctx.ui.toasts = [];
+
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "waiting-click" || ctx.player.currentState === "title");
+    await ctx.player.save(1);
+    expect(ctx.ui.confirms).toHaveLength(0);
+    expect(ctx.ui.toasts.at(-1)?.message).toContain("verrouillé");
+    expect(ctx.saveStore.records.get("1")).toEqual({ ...before, locked: true });
+  });
+
+  it("save peut de nouveau écraser après déverrouillage", async () => {
+    const ctx = setup();
+    await start(ctx);
+    await ctx.player.save(1);
+    await ctx.saveStore.update(1, { locked: true });
+    await ctx.saveStore.update(1, { locked: false });
+    await ctx.player.save(1);
+    expect(ctx.ui.toasts.at(-1)?.message).toBe("Sauvegardé.");
+  });
+
+  it("deleteSave refuse de supprimer un emplacement verrouillé, sans confirmation", async () => {
+    const ctx = setup();
+    await start(ctx);
+    await ctx.player.save(2);
+    await ctx.saveStore.update(2, { locked: true });
+    await ctx.player.deleteSave(2);
+    expect(ctx.ui.confirms).toHaveLength(0);
+    expect(ctx.ui.toasts.at(-1)?.message).toContain("verrouillé");
+    expect(ctx.saveStore.records.has("2")).toBe(true);
+  });
+
+  it("une ancienne sauvegarde sans titre ni verrou se charge dans le player", async () => {
+    const ctx = setup();
+    await start(ctx);
+    await ctx.player.save(1);
+    const old = ctx.saveStore.records.get("1")! as Partial<SaveRecord>;
+    delete old.sceneTitle;
+    delete old.comment;
+    delete old.locked;
+    await ctx.player.load(1);
+    await until(() => ctx.player.currentState === "waiting-click", "chargement");
+    expect(ctx.stage.restores).toBe(1);
   });
 
   it("autosave à chaque clic et hasContinue au retour au titre", async () => {

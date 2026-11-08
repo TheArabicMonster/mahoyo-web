@@ -9,7 +9,14 @@ import { defaultShortcuts } from "@/core/shortcuts.js";
 import { hasTranslation, parseLanguageIndex, type LanguageIndex } from "@/core/language.js";
 import { parseStoryChain, resolveNext, type StoryChain } from "@/core/story-chain.js";
 import { parseTimelineData, type TimelineData } from "@/core/timeline.js";
-import { createLocalSaveStore, type SaveRecord, type SaveStore } from "@/player/save-store.js";
+import { SAVE_MESSAGES } from "@/player/save-messages.js";
+import {
+  createLocalSaveStore,
+  deriveSceneTitle,
+  SaveLockedError,
+  type SaveRecord,
+  type SaveStore,
+} from "@/player/save-store.js";
 import {
   DEFAULT_SETTINGS,
   createLocalSettingsStore,
@@ -578,12 +585,20 @@ export class Player implements PlayerCommands {
       return;
     }
     const existing = await this.deps.saveStore.get(slot);
+    if (existing?.locked) {
+      this.ui.toast(SAVE_MESSAGES.lockedOverwrite);
+      return;
+    }
     if (existing && !(await this.ui.confirm("Écraser cette sauvegarde ?"))) return;
     const blob = await this.stage.captureThumbnail(THUMBNAIL_WIDTH).catch(() => null);
     const thumbnailUrl = blob ? await blobToDataUrl(blob) : null;
     try {
       await this.deps.saveStore.put(slot, this.toRecord(entry, thumbnailUrl));
     } catch (err) {
+      if (err instanceof SaveLockedError) {
+        this.ui.toast(SAVE_MESSAGES.lockedOverwrite);
+        return;
+      }
       console.error("save failed", err);
       this.ui.toast("Échec de la sauvegarde.");
       return;
@@ -618,8 +633,18 @@ export class Player implements PlayerCommands {
   }
 
   async deleteSave(slot: SlotId): Promise<void> {
+    if ((await this.deps.saveStore.get(slot))?.locked) {
+      this.ui.toast(SAVE_MESSAGES.lockedDelete);
+      return;
+    }
     if (!(await this.ui.confirm("Supprimer cette sauvegarde ?"))) return;
-    await this.deps.saveStore.delete(slot);
+    try {
+      await this.deps.saveStore.delete(slot);
+    } catch (err) {
+      if (!(err instanceof SaveLockedError)) throw err;
+      this.ui.toast(SAVE_MESSAGES.lockedDelete);
+      return;
+    }
     const top = this.overlays[this.overlays.length - 1];
     if (top === "save" || top === "load") await this.showOverlay(top);
     else if (this.state === "title") await this.showTitle();
@@ -1077,6 +1102,9 @@ export class Player implements PlayerCommands {
       scriptFile: entry.runtime.scriptName,
       timestamp: this.deps.now(),
       previewText: entry.text,
+      sceneTitle: deriveSceneTitle(entry.runtime.scriptName, this.deps.scripts),
+      comment: "",
+      locked: false,
       thumbnailUrl,
       stage: entry.stage,
       position: entry.position,
