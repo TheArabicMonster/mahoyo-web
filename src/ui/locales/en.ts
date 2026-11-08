@@ -19,16 +19,19 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "title.entry.config": "Config",
   "title.entry.extra": "Extra",
 
-  // ── Pause menu ──
-  "pause.title": "Pause",
-  "pause.resume": "Resume",
-  "pause.save": "Save",
-  "pause.load": "Load",
-  "pause.settings": "Settings",
-  "pause.history": "History",
-  "pause.flowchart": "Flowchart",
-  "pause.returnToTitle": "Return to title",
-  "pause.quickMenuLocked": "Unavailable during this sequence",
+  // ── System menu (right click) ──
+  "systemMenu.title": "System",
+  "systemMenu.title.deco": "システム",
+  "systemMenu.entry.save": "Save",
+  "systemMenu.entry.load": "Load",
+  "systemMenu.entry.config": "Config",
+  "systemMenu.entry.auto": "Auto",
+  "systemMenu.entry.skip": "Skip",
+  "systemMenu.entry.backlog": "History",
+  "systemMenu.entry.flowchart": "Flowchart",
+  "systemMenu.entry.graphic": "Hide",
+  "systemMenu.entry.title": "Title",
+  "systemMenu.quickMenuLocked": "Unavailable during this sequence",
 
   // ── Confirmations ──
   "confirm.returnToTitle": "Return to the title screen? Unsaved progress will be lost.",

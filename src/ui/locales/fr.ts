@@ -24,16 +24,19 @@ export const fr = {
   "title.entry.config": "Config",
   "title.entry.extra": "Extra",
 
-  // ── Menu pause ──
-  "pause.title": "Pause",
-  "pause.resume": "Reprendre",
-  "pause.save": "Sauvegarder",
-  "pause.load": "Charger",
-  "pause.settings": "Réglages",
-  "pause.history": "Historique",
-  "pause.flowchart": "Flowchart",
-  "pause.returnToTitle": "Retour au titre",
-  "pause.quickMenuLocked": "Indisponible pendant cette séquence",
+  // ── Menu système (clic droit) ──
+  "systemMenu.title": "Système",
+  "systemMenu.title.deco": "システム",
+  "systemMenu.entry.save": "Sauvegarder",
+  "systemMenu.entry.load": "Charger",
+  "systemMenu.entry.config": "Config",
+  "systemMenu.entry.auto": "Auto",
+  "systemMenu.entry.skip": "Skip",
+  "systemMenu.entry.backlog": "Historique",
+  "systemMenu.entry.flowchart": "Flowchart",
+  "systemMenu.entry.graphic": "Masquer",
+  "systemMenu.entry.title": "Titre",
+  "systemMenu.quickMenuLocked": "Indisponible pendant cette séquence",
 
   // ── Confirmations ──
   "confirm.returnToTitle": "Retourner au titre ? La progression non sauvegardée sera perdue.",

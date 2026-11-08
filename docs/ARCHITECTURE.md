@@ -44,7 +44,7 @@ src/renderer/ + src/ui/  ── rendu navigateur
 
 - **`types.ts`** : interfaces `UIManager`, `PlayerCommands`, `UIView`, `GameSettings` et progression.
 - **`player.ts`** : orchestrateur Runtime ↔ StageRenderer ↔ AudioPlayer ↔ UIManager, boucle de lecture, modes auto/skip, sauvegardes et viewport.
-- **`ui-manager.ts`** : écrans DOM (titre, pause, sauvegarde/chargement, historique, flowchart, configuration) et gestion des entrées.
+- **`ui-manager.ts`** : écrans DOM (titre, menu système, sauvegarde/chargement, historique, flowchart, configuration) et gestion des entrées.
 - **`ui-manager.css`**, **`tokens.css`** : styles des écrans et tokens du design system (palette, typo, durées, états).
 - **`toast.ts`**, **`toast.css`** : composant `ToastStack` des messages éphémères (cadre sarcelle bas droite, 3 au plus, `aria-live="polite"`) ; `DomUIManager.toast()` y délègue.
 - **`confirm-dialog.ts`** / **`confirm-dialog.css`** : boîte de confirmation au design d'origine (HUD-05, #190), composant
@@ -56,6 +56,12 @@ src/renderer/ + src/ui/  ── rendu navigateur
   `Échap` répond Non, `←`/`→` sélectionnent Oui/Non, `Tab` boucle dans la boîte, le focus ne peut pas en sortir et
   revient à l'élément précédent à la fermeture. Sémantique : `role="dialog"`, `aria-modal="true"`, nom accessible =
   message. Il n'existe plus de `window.confirm` ni de confirmation « quitter le jeu » (bouton Exit retiré).
+- **`system-menu.ts`** / **`system-menu.css`** : menu système plein cadre (HUD-06, #194), ouvert par clic droit ou `Échap`
+  (vue `pause`, slot `#ui-pause`). Composant autonome : `renderSystemMenu(ctx)` construit l'en-tête, la colonne
+  d'entrées issue du tableau `SYSTEM_MENU_ENTRIES` (insérer ou retirer une entrée = une ligne) et « Back » ;
+  `syncSystemMenu` reflète `PlayerStatus` (verrou `quickMenuLocked`, `aria-pressed` d'auto et skip) ;
+  `syncSystemMenuVeil` pose `mh-ui-night mh-ui-night-veil` sur le slot seulement quand il a du contenu.
+  Voir [`DESIGN.md`](DESIGN.md) §9.2.
 - **`chapter-list.ts`** : construction de la liste des chapitres/scripts.
 - **`i18n.ts`** et **`locales/`** : dictionnaire d'interface FR/JA/EN (`t(clé)`, repli sur le français). Voir [`I18N.md`](I18N.md).
 
