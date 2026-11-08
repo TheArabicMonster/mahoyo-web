@@ -369,6 +369,8 @@ Légende priorité : p0 = bloquant v1.0, p1 = important, p2 = utile, p3 = confor
 | E35 | Nom du locuteur | absent du jeu | absent | — | — |
 | E36 | Pagination des sauvegardes | 15 pages × 8 | 2 + N emplacements dans une grille unique | structure | p1 |
 
+> **Correction de E1 (#182).** Les 25,6 px / 41 px de la ligne E1 sont les valeurs de `getComputedStyle`, mesurées avant l'agrandissement ×1,25 du stage (1024×576 → 1280×720). À l'écran, le port rendait déjà 32 px de corps et 51 px d'interligne : l'écart réel portait sur le corps (≈ 6 % trop petit), pas sur l'interligne. Depuis #182 : 34 px / 51 px à l'écran (1,7 rem / 1,5 dans le repère du stage), voir `docs/DESIGN.md` §3.
+
 ## 5. Fonctions de l'original absentes de notre app
 
 1. Sous-menu **Extra** (Archive, CG mode, Sound mode).

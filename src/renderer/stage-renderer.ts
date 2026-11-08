@@ -25,7 +25,16 @@ import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-c
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
-import { dimmedUnitCount, fitTextBox, frameTextAreaHeight, FRAME_TEXT_AREA, textBoxHeight, TEXT_FIT_DEFAULTS } from "./text-fit.js";
+import {
+  dimmedUnitCount,
+  fitTextBox,
+  frameTextAreaHeight,
+  FRAME_TEXT_AREA,
+  FRAME_TEXT_LINE_HEIGHT,
+  FRAME_TEXT_REM,
+  textBoxHeight,
+  TEXT_FIT_DEFAULTS,
+} from "./text-fit.js";
 import { CLICK_GLYPHS, frameImageOpacity, indicatorOffset, resolveFrameStyle, type FrameStyle } from "./text-frame.js";
 import { cssEasing, easeProgress } from "@/core/easing.js";
 
@@ -34,19 +43,13 @@ import { cssEasing, easeProgress } from "@/core/easing.js";
  * Toute `transform` posée en ligne sur `.mh-stage` doit le conserver, sinon l'écran retombe
  * à 1024×576 (80 %), collé en haut à gauche, avec des bandes noires à droite et en bas.
  */
-const STAGE_SCALE = 1.25;
+export const STAGE_SCALE = 1.25;
 
 /** Taille nominale du texte en rem (avant `fontScale`), hauteur de ligne et marge verticale (CSS ci-dessous). */
 const TEXT_REM = 1.5;
 const TEXT_LINE_HEIGHT = 1.6;
 const TEXT_PADDING_Y = 20;
-/**
- * Style « cadre image » (#173), mesuré sur la capture d'origine (1920x1080, repère 1024x576) :
- * hauteur des lettres (ascendante à descendante) 45/1080, soit une police d'environ 25 px ;
- * interligne 77/1080, soit 41 px ; interlettrage large.
- */
-const FRAME_TEXT_REM = 1.6;
-const FRAME_TEXT_LINE_HEIGHT = 1.6;
+/** Style « cadre image » : taille et interligne du texte dans `text-fit.ts` (FRAME_TEXT_REM, #182). */
 const FRAME_TEXT_LETTER_SPACING = "0.06em";
 /** Opacité du texte déjà lu de la page (capture : ~120 sur un fond à ~30, soit 40 %). */
 const READ_TEXT_OPACITY = 0.4;

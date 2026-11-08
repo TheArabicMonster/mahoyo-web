@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createDomStageRenderer } from "@/renderer/stage-renderer.js";
+import { createDomStageRenderer, STAGE_SCALE } from "@/renderer/stage-renderer.js";
+import { FRAME_TEXT_LINE_HEIGHT, FRAME_TEXT_REM } from "@/renderer/text-fit.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import { compileAction } from "@/renderer/action-compiler.js";
 import { partbgInnerTransform } from "@/renderer/transform-helpers.js";
@@ -426,30 +427,45 @@ describe("DomStageRenderer", () => {
     });
 
     it("dispose de presque toute la hauteur de scène avant de réduire la police", async () => {
-      // jsdom : pas de mise en page, hauteur simulée (lignes de 1,6 fois la taille, sans marge).
+      // jsdom : pas de mise en page, hauteur simulée (lignes de FRAME_TEXT_LINE_HEIGHT fois la taille, sans marge).
       let lines = 11;
       const spy = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
         if (!this.classList.contains("mh-stage-text")) return 0;
-        return lines * parseFloat(this.style.fontSize) * 16 * 1.6;
+        return lines * parseFloat(this.style.fontSize) * 16 * FRAME_TEXT_LINE_HEIGHT;
       });
       try {
         renderer.setSettings(display({ textSpeedUnread: 0, textSpeedRead: 0, fontScale: 1, textboxOpacity: 0.8 }));
         await renderer.apply([{ kind: "text", segments: [{ text: "onze lignes" }] }], { instant: true, signal: sig() });
         expect(box().dataset.textFit).toBe("nominal");
-        expect(text().style.fontSize).toBe("1.6rem");
+        expect(parseFloat(text().style.fontSize)).toBeCloseTo(FRAME_TEXT_REM, 6);
         lines = 13;
         await renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text: "treize lignes" }] }], { instant: true, signal: sig() });
         expect(box().dataset.textFit).toBe("shrunk");
-        expect(parseFloat(text().style.fontSize)).toBeLessThan(1.6);
+        expect(parseFloat(text().style.fontSize)).toBeLessThan(FRAME_TEXT_REM);
       } finally {
         spy.mockRestore();
       }
     });
 
+    it("pose dans le CSS un corps de 34 px et un interligne de 51 px à l'écran à 1280×720 (#182)", () => {
+      const css = document.getElementById("mh-stage-styles")?.textContent ?? "";
+      const rule = css.slice(css.indexOf('.mh-stage-textbox[data-frame-style="image"] .mh-stage-text {'));
+      const rem = parseFloat(/font-size:\s*([\d.]+)rem/.exec(rule)![1]!);
+      const leading = parseFloat(/line-height:\s*([\d.]+);/.exec(rule)![1]!);
+      expect(rem).toBe(FRAME_TEXT_REM);
+      expect(leading).toBe(FRAME_TEXT_LINE_HEIGHT);
+      // Le stage (1024×576) est agrandi de STAGE_SCALE vers 1280×720 : on compare le rendu à l'écran.
+      const bodyPx = rem * 16 * STAGE_SCALE;
+      expect(bodyPx).toBeGreaterThanOrEqual(33);
+      expect(bodyPx).toBeLessThanOrEqual(35);
+      expect(bodyPx * leading).toBeGreaterThanOrEqual(50);
+      expect(bodyPx * leading).toBeLessThanOrEqual(52);
+    });
+
     it("respecte fontScale", async () => {
       renderer.setSettings(display({ textSpeedUnread: 0, textSpeedRead: 0, fontScale: 1.25, textboxOpacity: 0.8 }));
       await renderer.apply([{ kind: "text", segments: [{ text: "court" }] }], { instant: true, signal: sig() });
-      expect(text().style.fontSize).toBe("2rem");
+      expect(parseFloat(text().style.fontSize)).toBeCloseTo(FRAME_TEXT_REM * 1.25, 6);
     });
 
     it("masquage par l'utilisateur et @textoff cachent aussi le cadre", async () => {

@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { fitTextBox, textBoxHeight, TEXT_FIT_DEFAULTS, type TextFitParams } from "@/renderer/text-fit.js";
+import {
+  fitTextBox,
+  frameTextAreaHeight,
+  FRAME_TEXT_AREA,
+  FRAME_TEXT_LINE_HEIGHT,
+  FRAME_TEXT_REM,
+  textBoxHeight,
+  TEXT_FIT_DEFAULTS,
+  type TextFitParams,
+} from "@/renderer/text-fit.js";
 
 const LINE = 38.4;
 const PAD = 20;
@@ -97,5 +106,57 @@ describe("fitTextBox", () => {
     expect(fit.maxHeight).toBe(40);
     expect(fit.overflow).toBe(true);
     expect(fit.scale).toBe(TEXT_FIT_DEFAULTS.minScale);
+  });
+});
+
+describe("échelle du texte du cadre image (#182)", () => {
+  // Stage 1024x576 agrandi à 1280x720 (facteur 1,25), voir stage-renderer.ts.
+  const SCALE = 1.25;
+  const STAGE_H = 576;
+  const bodyPx = FRAME_TEXT_REM * 16 * SCALE;
+  const linePx = bodyPx * FRAME_TEXT_LINE_HEIGHT;
+  const AREA = frameTextAreaHeight(STAGE_H);
+  /** Hauteur d'un texte de `lines` lignes à l'échelle de police `scale` (la zone du cadre image n'a pas de marge interne). */
+  const heightOf = (lines: number) => (scale: number) => lines * FRAME_TEXT_REM * 16 * FRAME_TEXT_LINE_HEIGHT * scale;
+
+  it("rend un corps de 33 à 35 px et un interligne de 50 à 52 px à 1280x720", () => {
+    expect(bodyPx).toBeGreaterThanOrEqual(33);
+    expect(bodyPx).toBeLessThanOrEqual(35);
+    expect(linePx).toBeGreaterThanOrEqual(50);
+    expect(linePx).toBeLessThanOrEqual(52);
+  });
+
+  it("garde les marges 14 % / 9 % et 8,1 % du jeu d'origine", () => {
+    expect(FRAME_TEXT_AREA.left).toBe(0.14);
+    expect(FRAME_TEXT_AREA.right).toBe(0.09);
+    expect(AREA / STAGE_H).toBeCloseTo(1 - 2 * FRAME_TEXT_AREA.top, 6);
+  });
+
+  it("garde 11 lignes à la taille nominale", () => {
+    const fit = fitTextBox({ ...TEXT_FIT_DEFAULTS, boxHeight: AREA, measureHeight: heightOf(11) });
+    expect(fit.scale).toBe(1);
+    expect(fit.overflow).toBe(false);
+  });
+
+  it("réduit une page longue pour la faire tenir dans la zone sans déborder", () => {
+    for (const lines of [12, 13, 14, 15]) {
+      const fit = fitTextBox({ ...TEXT_FIT_DEFAULTS, boxHeight: AREA, measureHeight: heightOf(lines) });
+      expect(fit.overflow).toBe(false);
+      expect(fit.scale).toBeLessThan(1);
+      expect(heightOf(lines)(fit.scale)).toBeLessThanOrEqual(AREA);
+    }
+  });
+
+  it("signale le débordement (zone défilable) quand même la police minimale ne suffit pas", () => {
+    const fit = fitTextBox({ ...TEXT_FIT_DEFAULTS, boxHeight: AREA, measureHeight: heightOf(40) });
+    expect(fit.overflow).toBe(true);
+    expect(fit.scale).toBe(TEXT_FIT_DEFAULTS.minScale);
+    expect(fit.maxHeight).toBe(AREA);
+  });
+
+  it("réduit aussi la police sur une petite zone plutôt que de déborder", () => {
+    const small = frameTextAreaHeight(240);
+    const fit = fitTextBox({ ...TEXT_FIT_DEFAULTS, boxHeight: small, measureHeight: heightOf(8) });
+    expect(fit.scale).toBeLessThan(1);
   });
 });

@@ -24,4 +24,40 @@ test.describe("Player e2e", () => {
     const stage = page.locator(".mh-stage");
     await expect(stage).toBeVisible();
   });
+
+  test("le texte de jeu fait 34 px de corps et 51 px d'interligne à 1280×720 (#182)", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto("/");
+    // Le player démarre sur le menu titre : lancer une nouvelle partie.
+    await page.getByText("Nouvelle partie").click();
+    const textEl = page.locator("#text");
+    // Langue du texte selon les traductions disponibles : on attend simplement une première page.
+    await expect(textEl).toContainText(/\S{5}/, { timeout: 15000 });
+
+    const m = await page.evaluate(() => {
+      const text = document.querySelector<HTMLElement>(".mh-stage-text")!;
+      const stage = document.querySelector<HTMLElement>(".mh-stage")!;
+      const box = document.querySelector<HTMLElement>(".mh-stage-textbox")!;
+      const cs = getComputedStyle(text);
+      // Le stage est dessiné en 1024×576 puis agrandi : getComputedStyle donne la valeur avant agrandissement.
+      const k = stage.getBoundingClientRect().width / stage.offsetWidth;
+      const area = text.getBoundingClientRect();
+      const stageRect = stage.getBoundingClientRect();
+      return {
+        frame: box.dataset.frameStyle,
+        bodyPx: parseFloat(cs.fontSize) * k,
+        linePx: parseFloat(cs.lineHeight) * k,
+        textBottom: (area.bottom - stageRect.top) / stageRect.height,
+        scrollOverflow: text.scrollHeight > text.clientHeight + 1,
+      };
+    });
+    expect(m.frame).toBe("image");
+    expect(m.bodyPx).toBeGreaterThanOrEqual(33);
+    expect(m.bodyPx).toBeLessThanOrEqual(35);
+    expect(m.linePx).toBeGreaterThanOrEqual(50);
+    expect(m.linePx).toBeLessThanOrEqual(52);
+    // La zone de texte s'arrête à 91,9 % de la hauteur (marge basse de 8,1 %) et ne défile pas.
+    expect(m.textBottom).toBeLessThanOrEqual(0.92);
+    expect(m.scrollOverflow).toBe(false);
+  });
 });
