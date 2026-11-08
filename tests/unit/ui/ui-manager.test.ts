@@ -190,31 +190,40 @@ describe("DomUIManager", () => {
     it.each(views.map((v) => [v.screen, v] as const))("affiche %s", (_n, v) => {
       ui.show(v);
       expect(q("#ui-overlay")!.dataset.screen).toBe(v.screen);
-      // Le menu système (« pause ») est plein cadre : pas de panneau centré (HUD-06, #194).
-      expect(q(v.screen === "pause" ? ".mh-sysmenu" : ".mh-ui-panel")).not.toBeNull();
+      // Menu système plein cadre (HUD-06, #194) et écran titre plein cadre (HUD-07, #195) : pas de panneau centré.
+      const full: Record<string, string> = { pause: ".mh-sysmenu", title: ".mh-ui-title-screen" };
+      expect(q(full[v.screen] ?? ".mh-ui-panel")).not.toBeNull();
       ui.show({ screen: "game" });
       expect(q(".mh-ui-panel")).toBeNull();
       expect(q(".mh-sysmenu")).toBeNull();
+      expect(q(".mh-ui-title-screen")).toBeNull();
     });
 
-    it("title : script et continuer", () => {
+    it("title : la grille de chapitres n'est plus au titre, Extra l'ouvre (provisoire)", () => {
       ui.show(views[0]!);
+      expect(q(".mh-ui-script")).toBeNull();
+      q('[data-entry="extra"]')!.click();
+      expect(qa(".mh-ui-script").map((b) => b.textContent)).toEqual(["A", "B"]);
+    });
+    it("title : chapitre (via Extra) et continuer", () => {
+      ui.show(views[0]!);
+      q('[data-entry="extra"]')!.click();
       q('[data-file="b.ks"]')!.click();
       expect(cmd.startScript).toHaveBeenCalledWith("b.ks");
       q(".mh-ui-continue")!.click();
       expect(cmd.load).toHaveBeenCalledWith("auto");
     });
-    it("title : « Nouvelle partie » lance le premier script de la liste", () => {
+    it("title : « Start » lance le premier script de la liste", () => {
       ui.show(views[0]!);
       q(".mh-ui-new-game")!.click();
       expect(cmd.startScript).toHaveBeenCalledWith("a.ks");
     });
-    it("title : sans « Continuer » quand il n'y a pas d'autosave, « Nouvelle partie » reste là", () => {
+    it("title : sans « Continuer » quand il n'y a pas d'autosave, « Start » reste là", () => {
       ui.show({ screen: "title", scripts, hasContinue: false });
       expect(q(".mh-ui-continue")).toBeNull();
       expect(q(".mh-ui-new-game")).not.toBeNull();
     });
-    it("title : liste vide, pas de « Nouvelle partie »", () => {
+    it("title : liste vide, pas de « Start »", () => {
       ui.show({ screen: "title", scripts: [], hasContinue: false });
       expect(q(".mh-ui-new-game")).toBeNull();
     });
@@ -450,7 +459,7 @@ describe("DomUIManager", () => {
       ]);
       expect(q(".mh-sysmenu-back")!.textContent).toBe("Retour");
       ui.show({ screen: "title", scripts, hasContinue: true });
-      expect(q(".mh-ui-new-game")!.textContent).toBe("Nouvelle partie");
+      expect(q(".mh-ui-new-game")!.textContent).toBe("Start");
       expect(q(".mh-ui-continue")!.textContent).toBe("Continuer");
     });
 

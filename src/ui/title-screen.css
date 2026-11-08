@@ -1,0 +1,193 @@
+/*
+ * Écran titre (HUD-07, #195 ; docs/DESIGN.md §2.1, §3, §4 et docs/ANALYSE_HUD_ORIGINAL.md §2.1).
+ *
+ * Mesures du jeu d'origine (capture 1920x1080), converties en pourcentages du conteneur : l'écran
+ * est un conteneur (`container-type: size`), donc `cqh`/`cqw` valent 1 % de sa hauteur/largeur et
+ * la mise en page ne dépend d'aucun repère de pixels (1280x720 pour le HUD, 1024x576 avant l'x1,25
+ * de la scène). Les mesures de §4 donnent, à 1280x720 :
+ *   - logo      : x 334-941, y 123-295           -> 26,094 % ; 47,422 % ; 17,083 % ; 23,889 %
+ *   - menu      : centre x = 50 %, premier centre y = 415 (57,639 %), pas 49 (6,806 %)
+ *   - droits    : y 684-693, bas à 3,75 % du bord
+ *
+ * Aucun asset dans ce fichier : l'illustration et le logo arrivent par `--mh-asset-title_background`
+ * et `--mh-asset-title_titlelogo` (posées par `createUiAssets().apply`, convention HUD-03 / #189 ;
+ * absentes = `none`, donc aucune requête). Le repli est un dégradé crème et un titre textuel.
+ */
+.mh-ui-title-screen {
+  /* Variables propres à l'écran (les couleurs de base restent les tokens --mh-*). */
+  --mh-title-sky: #b3b6b4; /* haut du repli : ciel adouci, assez clair pour garder l'encre à >= 4,5:1 */
+  --mh-title-haze: #e4e0d6;
+  --mh-title-haze-end: #f2f3ea; /* bas de l'écran d'origine (DESIGN §2.1) */
+  --mh-title-legal: #514b46; /* mention de droits (DESIGN §2.1) */
+  --mh-title-menu-pitch: 6.806cqh; /* 49 px @720 */
+  --mh-title-legal-size: 0.7rem; /* ~11 px : jamais sous 10 px réels (DESIGN §10) */
+
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  overflow: hidden;
+  color: var(--mh-ink);
+  font-family: var(--mh-font-text);
+  background-color: var(--mh-paper);
+  background-image:
+    var(--mh-asset-title_background, none),
+    linear-gradient(
+      to bottom,
+      var(--mh-title-sky) 0%,
+      var(--mh-title-haze) 42%,
+      var(--mh-paper) 72%,
+      var(--mh-title-haze-end) 100%
+    );
+  background-size: cover, auto;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+}
+
+.mh-ui-title-main {
+  position: absolute;
+  inset: 0;
+}
+
+/* ── Logo : image du manifeste, ou titre textuel de repli ── */
+.mh-ui-title-logo {
+  position: absolute;
+  left: 26.094%;
+  top: 17.083%;
+  width: 47.422%;
+  height: 23.889%;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: var(--mh-font-title);
+  font-weight: 400;
+  font-size: 3.2rem;
+  line-height: 1.1;
+  letter-spacing: 0.06em;
+  color: var(--mh-ink);
+}
+
+.mh-ui-title-logo-image {
+  background: var(--mh-asset-title_titlelogo, none) center / contain no-repeat;
+}
+
+/* Avec l'image, le texte reste dans l'arbre d'accessibilité mais n'est plus dessiné. */
+.mh-ui-title-logo-image .mh-ui-title-logo-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── Menu vertical centré ── */
+.mh-ui-title-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* premier centre à 57,639 % moins la moitié d'un pas */
+  top: calc(57.639% - var(--mh-title-menu-pitch) / 2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mh-ui-title-menu:focus {
+  outline: none;
+}
+
+.mh-ui-title-entry {
+  appearance: none;
+  box-sizing: border-box;
+  height: var(--mh-title-menu-pitch);
+  min-height: 44px;
+  min-width: 18rem;
+  margin: 0;
+  /* le interlettrage ajoute un blanc après la dernière lettre : on le compense pour centrer le texte */
+  padding: 0 0 0 0.25em;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--mh-ink);
+  font-family: var(--mh-font-text);
+  font-size: var(--mh-title-menu-size);
+  font-weight: 400; /* aucune bascule de graisse au survol */
+  line-height: 1;
+  letter-spacing: 0.25em;
+  text-align: center;
+  cursor: pointer;
+  transition: color var(--mh-dur-fast) var(--mh-ease);
+}
+
+.mh-ui-title-entry:hover,
+.mh-ui-title-entry:focus-visible {
+  color: var(--mh-ink-hover);
+}
+
+.mh-ui-title-entry:focus-visible {
+  outline: 2px solid var(--mh-ink-hover);
+  outline-offset: 2px;
+}
+
+/* ── Mention de droits ── */
+.mh-ui-title-legal {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 3.5%;
+  margin: 0 auto;
+  max-width: 70%;
+  text-align: center;
+  font-size: var(--mh-title-legal-size);
+  line-height: 1.3;
+  color: var(--mh-title-legal);
+}
+
+/* ── Extra (provisoire) : liste des chapitres sur le fond « nuit bleue » ── */
+.mh-ui-title-screen .mh-ui-title-extra {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 13cqh 8cqw; /* sous les bandeaux de feuillage de la nuit bleue (13 % et 14 %) */
+  color: var(--mh-text-ui);
+}
+
+.mh-ui-title-extra-heading {
+  margin: 0;
+  font-family: var(--mh-font-title);
+  font-weight: 400;
+  font-size: var(--mh-screen-title-size);
+  letter-spacing: 0.1em;
+  color: var(--mh-text-title);
+}
+
+.mh-ui-title-extra .mh-ui-title-chapters {
+  width: min(100%, 60rem);
+  max-height: 56cqh; /* 8 rangées de 44 px : les 31 chapitres tiennent sans défiler */
+  margin: 0;
+  padding: 4px; /* laisse la place au contour de focus, que le défilement rognerait */
+  overflow-y: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* CHAPTER_COLUMNS dans title-screen.ts */
+}
+
+.mh-ui-title-extra .mh-ui-script,
+.mh-ui-title-extra .mh-ui-title-back {
+  min-height: 44px;
+  color: var(--mh-text-menu);
+}
+
+.mh-ui-title-extra .mh-ui-button:hover:not(:disabled) {
+  color: var(--mh-text-menu-hover);
+}
+
+.mh-ui-title-extra .mh-ui-button:focus-visible {
+  outline: 2px solid var(--mh-focus);
+  outline-offset: 2px;
+}

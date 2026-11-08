@@ -75,8 +75,8 @@ Le dépôt ne contient aucun asset du jeu : il faut posséder une copie du jeu e
    Sans `story-chain.json`, le jeu ne propose que le prologue et s'arrête à la fin du script ; sans
    `timelines.json`, l'ouverture est sautée ; sans `story-graph.json`, le flowchart n'a pas de données de graphe.
    Voir [`docs/ENCHAINEMENT_SCRIPTS.md`](docs/ENCHAINEMENT_SCRIPTS.md) et [`docs/TIMELINES.md`](docs/TIMELINES.md).
-3. **Lancer** : `npm run dev`, puis ouvrir l'adresse affichée. L'écran titre propose *Nouvelle partie*,
-   *Continuer* (autosave), *Charger*, *Réglages*, *Flowchart* et la liste des chapitres.
+3. **Lancer** : `npm run dev`, puis ouvrir l'adresse affichée. L'écran titre propose *Start*, *Load*,
+   *Continuer* (autosave), *Flowchart*, *Config* et *Extra* ; *Extra* ouvre la liste des chapitres.
 
 > `npm run build` copie `public/assets/` dans `dist/` (environ **7 Go** avec le jeu complet). Pour jouer
 > en local, `npm run dev` suffit.
@@ -115,7 +115,7 @@ Détail complet : [`docs/CONFIG_PLAN.md`](docs/CONFIG_PLAN.md).
 
 - L'ouverture est un diaporama (images, musique, pluie) **toujours sautable** : ses panoramiques, calques et effets ne sont pas encore rendus (#125).
 - Les bulles des scripts « omake » (`@ploysay`) sont positionnées mais pas dessinées.
-- Un chapitre choisi à l'écran titre démarre avec un **état vide** : les variables posées par le jeu en entrant dans un chapitre ne sont pas reprises.
+- Un chapitre choisi dans *Extra* démarre avec un **état vide** : les variables posées par le jeu en entrant dans un chapitre ne sont pas reprises.
 - Une quinzaine d'images de personnages sont introuvables dans les assets convertis (#110).
 - Quelques gros plans de sprites restent mal ancrés (#171).
 - L'écran de sauvegarde/chargement utilise encore l'ancienne interface ; le modèle enrichi (titre, commentaire, verrou) n'est pas encore exposé (#196).

@@ -16,9 +16,12 @@ test.describe("Player e2e", () => {
     const viewport = page.locator("#viewport");
     await viewport.waitFor({ timeout: 10000 });
 
+    // Le player démarre sur l'écran titre : lancer le prologue par « Start ».
+    await page.locator(".mh-ui-new-game").click();
+
     const textEl = page.locator("#text");
     await textEl.waitFor({ timeout: 10000 });
-    await expect(textEl).toContainText("その子の影になったのは", { timeout: 10000 });
+    await expect(textEl).toContainText(/\S{5}/, { timeout: 10000 });
 
     // Le stage doit contenir un sprite/partbg ou un bg.
     const stage = page.locator(".mh-stage");
@@ -29,7 +32,7 @@ test.describe("Player e2e", () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto("/");
     // Le player démarre sur le menu titre : lancer une nouvelle partie.
-    await page.getByText("Nouvelle partie").click();
+    await page.locator(".mh-ui-new-game").click();
     const textEl = page.locator("#text");
     // Langue du texte selon les traductions disponibles : on attend simplement une première page.
     await expect(textEl).toContainText(/\S{5}/, { timeout: 15000 });

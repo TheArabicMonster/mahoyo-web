@@ -20,7 +20,7 @@ describe("isNightDemoRequested", () => {
 describe("syncNightDemo", () => {
   it("pose la classe sur les écrans système quand la démonstration est demandée", () => {
     const el = document.createElement("div");
-    for (const screen of ["title", "save", "load", "backlog"] as const) {
+    for (const screen of ["save", "load", "backlog"] as const) {
       syncNightDemo(el, screen, "?night");
       expect(el.classList.contains(NIGHT_CLASS), screen).toBe(true);
     }
@@ -33,7 +33,10 @@ describe("syncNightDemo", () => {
     expect(el.classList.contains(NIGHT_CLASS)).toBe(false);
     syncNightDemo(el, "settings", "?night");
     expect(el.classList.contains(NIGHT_CLASS)).toBe(false);
-    syncNightDemo(el, "title", "");
+    syncNightDemo(el, "title", "?night"); // l'écran titre est clair : il ne prend jamais le fond nuit (HUD-07, #195)
+    expect(el.classList.contains(NIGHT_CLASS)).toBe(false);
+    el.classList.add(NIGHT_CLASS);
+    syncNightDemo(el, "save", "");
     expect(el.classList.contains(NIGHT_CLASS)).toBe(false);
   });
 });
