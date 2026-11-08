@@ -247,3 +247,52 @@ Texte inventé.
     expect(restored.getSaveData().state.textbox?.visible).toBe(true);
   });
 });
+
+describe("@position frame= (#173)", () => {
+  it("retient l'image de cadre, la garde après @invisibleframe, @textoff et le réaffichage", () => {
+    const runtime = runtimeOf(`
+*p0|
+@position frame=txtwindow01
+@invisibleframe
+@textoff
+Texte inventé.
+@pg
+`);
+    const step = runtime.step();
+    const boxes = textboxEvents(step.events);
+    expect(boxes.map((b) => b.state.frameImage)).toEqual(["txtwindow01", "txtwindow01", "txtwindow01", "txtwindow01"]);
+    expect(boxes.map((b) => b.state.frame)).toEqual([true, false, false, false]);
+    expect(boxes.at(-1)?.state.visible).toBe(true);
+  });
+
+  it("ne pose pas d'image sans attribut frame, et accepte frame vide", () => {
+    const runtime = runtimeOf(`
+*p0|
+@position visible=false
+@position frame=""
+@pg
+`);
+    const boxes = textboxEvents(runtime.step().events);
+    expect(boxes[0]?.state.frameImage).toBeUndefined();
+    expect(boxes[1]?.state.frameImage).toBe("");
+  });
+
+  it("garde l'image de cadre dans les sauvegardes", async () => {
+    const SRC = `
+*p0|
+@position frame=txtwindow00
+@pg
+*p1|
+Texte inventé.
+@pg
+`;
+    const script = parse(lex(SRC));
+    const runtime = new Runtime(script, "test.ks");
+    runtime.step();
+    const data = runtime.getSaveData();
+    expect(data.state.textbox?.frameImage).toBe("txtwindow00");
+    const restored = new Runtime(script, "test.ks");
+    expect(await restored.loadSaveData(data, new Map([["test.ks", script]]))).toBe(true);
+    expect(restored.getSaveData().state.textbox?.frameImage).toBe("txtwindow00");
+  });
+});

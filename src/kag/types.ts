@@ -150,7 +150,7 @@ export type Instruction =
   | { kind: "resumeautomode" }
   | { kind: "textoff"; time: number }
   | { kind: "texton" }
-  | { kind: "position"; visible?: boolean }
+  | { kind: "position"; visible?: boolean; frame?: string }
   | { kind: "invisibleframe" }
   | { kind: "visibleframe" }
   | { kind: "noise"; opacity: number; monocro?: boolean; page?: PageLayer }

@@ -19,7 +19,8 @@ import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-c
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
-import { fitTextBox, textBoxHeight, TEXT_FIT_DEFAULTS } from "./text-fit.js";
+import { dimmedUnitCount, fitTextBox, frameTextAreaHeight, FRAME_TEXT_AREA, textBoxHeight, TEXT_FIT_DEFAULTS } from "./text-fit.js";
+import { CLICK_GLYPHS, frameImageOpacity, resolveFrameStyle, type FrameStyle } from "./text-frame.js";
 import { cssEasing, easeProgress } from "@/core/easing.js";
 
 /**
@@ -33,6 +34,16 @@ const STAGE_SCALE = 1.25;
 const TEXT_REM = 1.5;
 const TEXT_LINE_HEIGHT = 1.6;
 const TEXT_PADDING_Y = 20;
+/**
+ * Style « cadre image » (#173), mesuré sur la capture d'origine (1920x1080, repère 1024x576) :
+ * hauteur des lettres (ascendante à descendante) 45/1080, soit une police d'environ 25 px ;
+ * interligne 77/1080, soit 41 px ; interlettrage large.
+ */
+const FRAME_TEXT_REM = 1.6;
+const FRAME_TEXT_LINE_HEIGHT = 1.6;
+const FRAME_TEXT_LETTER_SPACING = "0.06em";
+/** Opacité du texte déjà lu de la page (capture : ~120 sur un fond à ~30, soit 40 %). */
+const READ_TEXT_OPACITY = 0.4;
 /** Hauteur du stage en repère logique (1024×576), repli quand le conteneur n'a pas de mise en page. */
 const STAGE_HEIGHT = 576;
 
@@ -97,6 +108,15 @@ export class DomStageRenderer implements StageRenderer {
   private currentScene: SceneState = { bg: null, sprites: [], effect: null };
   private text: TextSegment[] = [];
   private textbox: TextboxState = { visible: true, frame: true };
+  /** Style courant de la fenêtre de message (#173) : cadre image plein écran, ou ancienne boîte. */
+  private frameStyle: FrameStyle = { mode: "image", image: null };
+  /** Images de cadre déjà demandées, et celles qui n'ont pas pu être chargées (repli sur la boîte). */
+  private frameRequested = new Set<string>();
+  private frameFailed = new Set<string>();
+  /** Indicateur d'attente affiché (`[l]` ou fin de page), `null` sinon. */
+  private clickStyle: "line" | "page" | null = null;
+  /** Unités de la page déjà lues (avant le dernier clic) : affichées atténuées (#173). */
+  private readUnits = 0;
   /** Bulle « ploy » active (@ploysay) ; exposée sur la textbox en attributs data-*. */
   private ploy: PloyState | null = null;
   private staffroll: StaffrollState | null = null;
@@ -204,6 +224,8 @@ export class DomStageRenderer implements StageRenderer {
     this.indicatorEl = document.createElement("div");
     this.indicatorEl.className = "mh-stage-indicator";
     this.indicatorEl.id = "textbox-indicator";
+    this.indicatorEl.style.visibility = "hidden";
+    this.loadClickGlyphs();
 
     this.textboxEl.append(frame, this.textEl, this.indicatorEl);
 
@@ -289,8 +311,37 @@ export class DomStageRenderer implements StageRenderer {
 
   setClickIndicator(style: "line" | "page" | null): void {
     if (!this.indicatorEl) return;
+    const previous = this.clickStyle;
+    this.clickStyle = style;
     this.indicatorEl.textContent = style === "page" ? "▼" : style === "line" ? "▽" : "";
     this.indicatorEl.style.visibility = style ? "visible" : "hidden";
+    if (style) this.indicatorEl.dataset.style = style;
+    else delete this.indicatorEl.dataset.style;
+    // Fin d'une attente : le texte affiché jusqu'ici devient « lu » et s'atténue (#173).
+    if (previous && !style && !this.typewriterResolve) {
+      const units = this.buildTextUnits();
+      if (units.length !== this.readUnits) {
+        this.readUnits = units.length;
+        this.renderTextUpTo(units, this.typedUnits);
+      }
+    }
+  }
+
+  /**
+   * Charge les bandes d'animation des indicateurs (`linebreak_a`, `pagebreak_a`) par l'AssetResolver.
+   * Tant qu'une bande n'est pas chargée (ou si elle manque), l'indicateur garde son glyphe ▽/▼.
+   */
+  private loadClickGlyphs(): void {
+    const el = this.indicatorEl;
+    if (!el || typeof Image === "undefined") return;
+    for (const [style, glyph] of Object.entries(CLICK_GLYPHS)) {
+      const url = this.resolver.image(glyph.storage);
+      el.style.setProperty(`--mh-glyph-${style}`, cssUrl(url));
+      const img = new Image();
+      img.onload = () => el.classList.add(`mh-glyph-${style}-ok`);
+      img.onerror = () => this.resolver.reportMissing("image", glyph.storage);
+      img.src = url;
+    }
   }
 
   setWaitIndicator(active: boolean): void {
@@ -324,6 +375,8 @@ export class DomStageRenderer implements StageRenderer {
     this.currentScene = snapshot.scene;
     this.text = [...snapshot.text];
     this.typedUnits = this.buildTextUnits().length;
+    // La sauvegarde ne garde pas la limite du texte lu : la page restaurée s'affiche en entier.
+    this.readUnits = 0;
     this.textbox = snapshot.textbox;
     this.staffroll = snapshot.staffroll;
     this.renderScene(true);
@@ -372,7 +425,7 @@ export class DomStageRenderer implements StageRenderer {
     this.settings = { ...settings };
     this.applyTextbox();
     if (this.textEl) {
-      this.textEl.style.fontSize = `${TEXT_REM * settings.fontScale}rem`;
+      this.textEl.style.fontSize = `${this.nominalTextRem()}rem`;
       this.fitText(this.buildTextUnits(), this.typedUnits);
     }
   }
@@ -388,6 +441,7 @@ export class DomStageRenderer implements StageRenderer {
     this.currentScene = { bg: null, sprites: [], effect: null };
     this.text = [];
     this.typedUnits = 0;
+    this.readUnits = 0;
     this.textbox = { visible: true, frame: true };
     this.staffroll = null;
     this.renderScene(true);
@@ -514,18 +568,22 @@ export class DomStageRenderer implements StageRenderer {
       }
       .mh-stage-textbox {
         position: absolute;
-        left: 10%;
-        right: 10%;
-        bottom: 5%;
-        /* Hauteur fixe (#163) : la boîte ne change jamais de position ni de taille, seule la police s'adapte. */
-        height: ${TEXT_FIT_DEFAULTS.boxHeightRatio * 100}%;
         z-index: 30;
         transition: opacity 0.3s ease;
         pointer-events: auto;
       }
+      /* Ancienne boîte (#163), repli quand l'image de cadre manque : position et hauteur fixes. */
+      .mh-stage-textbox[data-frame-style="box"] {
+        left: 10%;
+        right: 10%;
+        bottom: 5%;
+        height: ${TEXT_FIT_DEFAULTS.boxHeightRatio * 100}%;
+      }
       .mh-stage-textbox-frame {
         position: absolute;
         inset: 0;
+      }
+      .mh-stage-textbox[data-frame-style="box"] .mh-stage-textbox-frame {
         background: rgba(0,0,0,0.7);
         border: 2px solid rgba(255,255,255,0.3);
         border-radius: 8px;
@@ -538,13 +596,79 @@ export class DomStageRenderer implements StageRenderer {
         line-height: ${TEXT_LINE_HEIGHT};
         white-space: pre-wrap;
       }
+      /*
+       * Cadre image (#173) : l'image txtwindowNN (1024x576) couvre la scène, le texte est posé dessus
+       * sans boîte, dans la zone mesurée sur le jeu d'origine (voir FRAME_TEXT_AREA).
+       */
+      .mh-stage-textbox[data-frame-style="image"] {
+        inset: 0;
+      }
+      .mh-stage-textbox[data-frame-style="image"] .mh-stage-textbox-frame {
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+      }
+      .mh-stage-textbox[data-frame-style="image"] .mh-stage-text {
+        position: absolute;
+        left: ${FRAME_TEXT_AREA.left * 100}%;
+        right: ${FRAME_TEXT_AREA.right * 100}%;
+        top: ${FRAME_TEXT_AREA.top * 100}%;
+        padding: 0;
+        font-size: ${FRAME_TEXT_REM}rem;
+        line-height: ${FRAME_TEXT_LINE_HEIGHT};
+        letter-spacing: ${FRAME_TEXT_LETTER_SPACING};
+        text-shadow: 0 0 3px rgba(0,0,0,0.85), 1px 1px 2px rgba(0,0,0,0.7);
+      }
+      .mh-stage-text-read {
+        opacity: ${READ_TEXT_OPACITY};
+      }
       .mh-stage-indicator {
+        color: #fff;
+        animation: mh-indicator-blink 1s infinite;
+      }
+      .mh-stage-textbox[data-frame-style="box"] .mh-stage-indicator {
         position: absolute;
         right: 24px;
         bottom: 16px;
-        color: #fff;
         font-size: 1.2rem;
-        animation: mh-indicator-blink 1s infinite;
+      }
+      /* Cadre image : l'indicateur suit le dernier caractère, posé sur la ligne de base. */
+      .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator {
+        display: inline-block;
+        letter-spacing: 0;
+        font-size: 0.8em;
+        line-height: 1;
+        margin-left: 2px;
+      }
+      .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator:not([data-style]) {
+        display: none;
+      }
+      .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator.mh-glyph-line-ok[data-style="line"],
+      .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator.mh-glyph-page-ok[data-style="page"] {
+        color: transparent;
+        font-size: 0;
+        vertical-align: -2px;
+        background-repeat: no-repeat;
+        background-position: 0 0;
+        animation: none;
+        text-shadow: none;
+      }
+      .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator.mh-glyph-line-ok[data-style="line"] {
+        width: ${CLICK_GLYPHS.line.width}px;
+        height: ${CLICK_GLYPHS.line.height}px;
+        background-image: var(--mh-glyph-line);
+        animation: mh-glyph-line 2s steps(${CLICK_GLYPHS.line.frames}) infinite;
+      }
+      .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator.mh-glyph-page-ok[data-style="page"] {
+        width: ${CLICK_GLYPHS.page.width}px;
+        height: ${CLICK_GLYPHS.page.height}px;
+        background-image: var(--mh-glyph-page);
+        animation: mh-glyph-page 2s steps(${CLICK_GLYPHS.page.frames}) infinite;
+      }
+      @keyframes mh-glyph-line {
+        to { background-position: -${CLICK_GLYPHS.line.width * CLICK_GLYPHS.line.frames}px 0; }
+      }
+      @keyframes mh-glyph-page {
+        to { background-position: -${CLICK_GLYPHS.page.width * CLICK_GLYPHS.page.frames}px 0; }
       }
       .mh-stage-wait {
         position: absolute;
@@ -606,6 +730,7 @@ export class DomStageRenderer implements StageRenderer {
       case "clearText": {
         this.text = [];
         this.typedUnits = 0;
+        this.readUnits = 0;
         break;
       }
       case "textbox": {
@@ -1312,11 +1437,56 @@ export class DomStageRenderer implements StageRenderer {
     if (!this.textboxEl || !this.textbox) return;
     const hidden = this.userHidden || !this.textbox.visible;
     this.textboxEl.style.opacity = hidden ? "0" : "1";
+    const style = resolveFrameStyle(this.textbox, this.frameFailed);
+    const modeChanged = style.mode !== this.frameStyle.mode;
+    this.frameStyle = style;
+    this.textboxEl.dataset.frameStyle = style.mode;
     const frame = this.textboxEl.querySelector(".mh-stage-textbox-frame") as HTMLElement | null;
     if (frame) {
-      frame.style.opacity = String(this.settings.textboxOpacity);
-      frame.style.display = this.textbox.frame ? "block" : "none";
+      if (style.mode === "box") {
+        frame.style.backgroundImage = "";
+        frame.style.opacity = String(this.settings.textboxOpacity);
+        frame.style.display = this.textbox.frame ? "block" : "none";
+      } else {
+        frame.style.opacity = String(frameImageOpacity(this.settings.textboxOpacity));
+        frame.style.display = style.image ? "block" : "none";
+        frame.style.backgroundImage = style.image ? cssUrl(this.resolver.image(style.image)) : "";
+        if (style.image) this.requestFrameImage(style.image);
+      }
     }
+    if (modeChanged) this.fitText(this.buildTextUnits(), this.typedUnits);
+    this.placeIndicator();
+  }
+
+  /**
+   * Vérifie qu'une image de cadre existe (AssetResolver). En cas d'échec, la fenêtre repasse à
+   * l'ancienne boîte pour que le texte reste lisible sur la scène.
+   */
+  private requestFrameImage(storage: string): void {
+    if (this.frameRequested.has(storage) || typeof Image === "undefined") return;
+    this.frameRequested.add(storage);
+    const img = new Image();
+    img.onerror = () => {
+      this.resolver.reportMissing("image", storage);
+      this.frameFailed.add(storage);
+      this.applyTextbox();
+    };
+    img.src = this.resolver.image(storage);
+  }
+
+  /** Taille nominale de la police (rem) du style courant, `fontScale` compris. */
+  private nominalTextRem(): number {
+    const base = this.frameStyle.mode === "image" ? FRAME_TEXT_REM : TEXT_REM;
+    return base * this.settings.fontScale;
+  }
+
+  /** Hauteur disponible pour le texte, en pixels du repère de la scène. */
+  private textAreaHeight(): number {
+    const boxEl = this.textboxEl;
+    if (this.frameStyle.mode === "image") {
+      return frameTextAreaHeight(boxEl?.clientHeight || this.container?.clientHeight || STAGE_HEIGHT);
+    }
+    return boxEl?.clientHeight || textBoxHeight(this.container?.clientHeight || STAGE_HEIGHT);
   }
 
   /**
@@ -1344,7 +1514,15 @@ export class DomStageRenderer implements StageRenderer {
     this.textEl.replaceChildren();
     const frag = document.createDocumentFragment();
     const limit = Math.min(n, units.length);
+    // Texte déjà lu de la page : regroupé dans un span atténué (#173).
+    const dim = dimmedUnitCount(this.readUnits, limit);
+    const readEl = dim > 0 ? document.createElement("span") : null;
+    if (readEl) {
+      readEl.className = "mh-stage-text-read";
+      frag.appendChild(readEl);
+    }
     for (let i = 0; i < limit; i++) {
+      const parent: Node = readEl && i < dim ? readEl : frag;
       const u = units[i];
       const hasCss = u.css !== undefined && Object.keys(u.css).length > 0;
       let node: Node;
@@ -1371,9 +1549,18 @@ export class DomStageRenderer implements StageRenderer {
       if (hasCss && node instanceof HTMLElement) {
         for (const [prop, value] of Object.entries(u.css!)) node.style.setProperty(prop, value);
       }
-      frag.appendChild(node);
+      parent.appendChild(node);
     }
     this.textEl.appendChild(frag);
+    this.placeIndicator();
+  }
+
+  /** Cadre image : l'indicateur suit le texte ; ancienne boîte : il reste dans le coin de la boîte. */
+  private placeIndicator(): void {
+    const el = this.indicatorEl;
+    if (!el || !this.textEl || !this.textboxEl) return;
+    const parent = this.frameStyle.mode === "image" ? this.textEl : this.textboxEl;
+    if (el.parentNode !== parent || el !== parent.lastChild) parent.appendChild(el);
   }
 
   /**
@@ -1386,13 +1573,13 @@ export class DomStageRenderer implements StageRenderer {
     const boxEl = this.textboxEl;
     if (!textEl || !boxEl) return;
     this.renderTextUpTo(units, units.length);
-    const nominalRem = TEXT_REM * this.settings.fontScale;
+    const nominalRem = this.nominalTextRem();
     // Mesure à zone libre : sans plafond ni défilement hérités de la page précédente.
     textEl.style.maxHeight = "";
     textEl.style.overflowY = "";
     const fit = fitTextBox({
       ...TEXT_FIT_DEFAULTS,
-      boxHeight: boxEl.clientHeight || textBoxHeight(this.container?.clientHeight || STAGE_HEIGHT),
+      boxHeight: this.textAreaHeight(),
       measureHeight: (scale) => {
         textEl.style.fontSize = `${nominalRem * scale}rem`;
         return textEl.offsetHeight;

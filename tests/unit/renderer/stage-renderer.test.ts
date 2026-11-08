@@ -182,6 +182,29 @@ describe("DomStageRenderer", () => {
   });
 
   describe("boîte de texte fixe et police réduite (#163)", () => {
+    // L'ancienne boîte n'est plus que le repli quand l'image de cadre manque (#173) : on simule un
+    // échec de chargement pour l'obtenir.
+    beforeEach(async () => {
+      vi.stubGlobal(
+        "Image",
+        class {
+          onload: (() => void) | null = null;
+          onerror: (() => void) | null = null;
+          set src(_url: string) {
+            this.onerror?.();
+          }
+        },
+      );
+      await renderer.apply([{ kind: "textbox", state: { visible: true, frame: true, frameImage: "absent" }, time: 0 }], {
+        instant: true,
+        signal: new AbortController().signal,
+      });
+      expect((root.querySelector("#textbox") as HTMLElement).dataset.frameStyle).toBe("box");
+    });
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
     // jsdom n'a pas de mise en page : on simule la hauteur de la zone de texte (24 px = 1,5 rem,
     // lignes de 1,6 fois la taille, marges de 20 px) en fonction de la police et du nombre de lignes.
     function mockTextHeight(linesOf: (el: HTMLElement) => number): () => void {
@@ -289,6 +312,119 @@ describe("DomStageRenderer", () => {
       } finally {
         restore();
       }
+    });
+
+    it("garde l'indicateur dans le coin de la boîte", async () => {
+      await show("texte");
+      renderer.setClickIndicator("page");
+      const indicator = root.querySelector("#textbox-indicator") as HTMLElement;
+      expect(indicator.parentElement?.id).toBe("textbox");
+    });
+  });
+
+  describe("cadre image du jeu d'origine (#173)", () => {
+    const sig = () => new AbortController().signal;
+    const box = () => root.querySelector("#textbox") as HTMLElement;
+    const frame = () => root.querySelector("#textbox-frame") as HTMLElement;
+    const text = () => root.querySelector("#text") as HTMLElement;
+    const textbox = (state: { visible: boolean; frame: boolean; frameImage?: string }): RenderEvent => ({
+      kind: "textbox",
+      state,
+      time: 0,
+    });
+
+    it("applique par défaut le cadre txtwindow02 plein écran, sans boîte", () => {
+      expect(box().dataset.frameStyle).toBe("image");
+      expect(frame().style.backgroundImage).toContain("txtwindow02");
+      expect(frame().style.display).toBe("block");
+    });
+
+    it("suit @position frame= et le masquage du cadre", async () => {
+      await renderer.apply([textbox({ visible: true, frame: true, frameImage: "txtwindow01" })], { instant: true, signal: sig() });
+      expect(frame().style.backgroundImage).toContain("txtwindow01");
+      await renderer.apply([textbox({ visible: true, frame: false, frameImage: "txtwindow01" })], { instant: true, signal: sig() });
+      expect(box().dataset.frameStyle).toBe("image");
+      expect(frame().style.display).toBe("none");
+      await renderer.apply([textbox({ visible: true, frame: true, frameImage: "" })], { instant: true, signal: sig() });
+      expect(frame().style.display).toBe("none");
+    });
+
+    it("garde l'image d'origine au réglage d'opacité par défaut", () => {
+      renderer.setSettings({ textSpeed: 0, autoDelay: 2000, fontScale: 1, textboxOpacity: 0.8 });
+      expect(frame().style.opacity).toBe("1");
+      renderer.setSettings({ textSpeed: 0, autoDelay: 2000, fontScale: 1, textboxOpacity: 0.4 });
+      expect(frame().style.opacity).toBe("0.5");
+    });
+
+    it("pose l'indicateur à la suite du texte", async () => {
+      await renderer.apply([{ kind: "text", segments: [{ text: "Texte inventé." }] }], { instant: true, signal: sig() });
+      renderer.setClickIndicator("page");
+      const indicator = root.querySelector("#textbox-indicator") as HTMLElement;
+      expect(indicator.parentElement).toBe(text());
+      expect(text().lastChild).toBe(indicator);
+      expect(indicator.dataset.style).toBe("page");
+      renderer.setClickIndicator(null);
+      expect(indicator.dataset.style).toBeUndefined();
+    });
+
+    it("atténue le texte déjà lu de la page après le clic, jusqu'au changement de page", async () => {
+      await renderer.apply([{ kind: "text", segments: [{ text: "Premier." }] }], { instant: true, signal: sig() });
+      expect(text().querySelector(".mh-stage-text-read")).toBeNull();
+      renderer.setClickIndicator("line");
+      renderer.setClickIndicator(null);
+      expect(text().querySelector(".mh-stage-text-read")?.textContent).toBe("Premier.");
+      await renderer.apply([{ kind: "lineBreak" }, { kind: "text", segments: [{ text: "Second." }] }], { instant: true, signal: sig() });
+      expect(text().querySelector(".mh-stage-text-read")?.textContent).toBe("Premier.");
+      expect(text().textContent).toBe("Premier.\nSecond.");
+      await renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text: "Page suivante." }] }], { instant: true, signal: sig() });
+      expect(text().querySelector(".mh-stage-text-read")).toBeNull();
+    });
+
+    it("affiche une page restaurée sans atténuation", async () => {
+      await renderer.apply([{ kind: "text", segments: [{ text: "Lu." }] }], { instant: true, signal: sig() });
+      renderer.setClickIndicator("line");
+      renderer.setClickIndicator(null);
+      await renderer.restore(
+        { scene: { bg: null, sprites: [], effect: null }, textbox: { visible: true, frame: true, frameImage: "txtwindow00" }, text: [{ text: "Restauré." }], staffroll: null },
+        sig(),
+      );
+      expect(text().querySelector(".mh-stage-text-read")).toBeNull();
+      expect(frame().style.backgroundImage).toContain("txtwindow00");
+    });
+
+    it("dispose de presque toute la hauteur de scène avant de réduire la police", async () => {
+      // jsdom : pas de mise en page, hauteur simulée (lignes de 1,6 fois la taille, sans marge).
+      let lines = 11;
+      const spy = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+        if (!this.classList.contains("mh-stage-text")) return 0;
+        return lines * parseFloat(this.style.fontSize) * 16 * 1.6;
+      });
+      try {
+        renderer.setSettings({ textSpeed: 0, autoDelay: 2000, fontScale: 1, textboxOpacity: 0.8 });
+        await renderer.apply([{ kind: "text", segments: [{ text: "onze lignes" }] }], { instant: true, signal: sig() });
+        expect(box().dataset.textFit).toBe("nominal");
+        expect(text().style.fontSize).toBe("1.6rem");
+        lines = 13;
+        await renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text: "treize lignes" }] }], { instant: true, signal: sig() });
+        expect(box().dataset.textFit).toBe("shrunk");
+        expect(parseFloat(text().style.fontSize)).toBeLessThan(1.6);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("respecte fontScale", async () => {
+      renderer.setSettings({ textSpeed: 0, autoDelay: 2000, fontScale: 1.25, textboxOpacity: 0.8 });
+      await renderer.apply([{ kind: "text", segments: [{ text: "court" }] }], { instant: true, signal: sig() });
+      expect(text().style.fontSize).toBe("2rem");
+    });
+
+    it("masquage par l'utilisateur et @textoff cachent aussi le cadre", async () => {
+      renderer.setUserHidden(true);
+      expect(box().style.opacity).toBe("0");
+      renderer.setUserHidden(false);
+      await renderer.apply([textbox({ visible: false, frame: true })], { instant: true, signal: sig() });
+      expect(box().style.opacity).toBe("0");
     });
   });
 

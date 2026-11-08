@@ -270,14 +270,56 @@ Sémantique implémentée (la plus simple compatible avec ces indices) :
   comptent pas comme du contenu visible : une pause `[l]` qui ne suit qu'eux reste « morte ».
 - Pas d'effet sur le déroulement du script, qui ne s'arrête sur aucune de ces commandes.
 
-### Boîte de texte fixe et pages longues (#161, #163)
+### Fenêtre de message : cadre image du jeu (#173)
 
-La zone de texte du port est un choix du player (le jeu d'origine règle la sienne par les
-cadres `txtwindow01`/`txtwindow02` et le moteur, non reproduits) : ancrée à 5 % du bas de la
-scène (repère 1024x576), marges de 10 % à gauche et à droite. Les scripts posent des calques
-décoratifs dans la bande basse (carte du titre de chapitre `ch01タイトル`, sprite plein écran
-dont les pixels opaques vont de y 445 à 537 sur 576, soit 77 % à 93 % de la hauteur) : leur
-position vient du script et n'est pas modifiée.
+Le jeu d'origine ne dessine pas de boîte : `@position frame=txtwindowNN` pose une image
+1024×576 sur toute la scène (voile noir fondu sur les côtés, ornements en arabesque en haut
+et en bas) et le texte s'écrit par-dessus. L'image vient des assets de l'utilisateur, jamais
+du dépôt. Mesures sur une capture du jeu (1920×1080, `1-2.ks`, cadre `txtwindow02`) ramenées
+au repère 1024×576 :
+
+- bord gauche du texte à 268/1920 (14 %), bord droit retenu à 91 % (la coupure des lignes
+  tombe entre 89 % et 93 %) ;
+- première ligne centrée à 126/1080, interligne 77/1080 : haut de la zone à 8,1 % ; bas pris
+  symétrique du haut (hypothèse, le bas n'est pas visible sur la capture) ;
+- police nominale `1,6 rem` (25 px sur 1080), interligne `1,6`, interlettrage `0,06 em`,
+  ombre portée pour la lisibilité ;
+- après un clic sur une attente `[l]`, le texte déjà affiché de la page reste visible à 40 %
+  d'opacité jusqu'au changement de page ;
+- indicateur d'attente : bandes animées `linebreak_a` (feuille, 40 vignettes de 24 px) et
+  `pagebreak_a` (livre, 40 vignettes de 32 px), posées à la suite du dernier caractère ;
+  glyphes `▽`/`▼` si l'asset manque.
+
+Sémantique retenue (`src/renderer/text-frame.ts`, fonctions pures) :
+
+- `@position frame=…` conserve le nom de l'image dans l'état (`textbox.frameImage`), donc dans
+  les sauvegardes ; une sauvegarde antérieure sans ce champ reste valide.
+- `@invisibleframe` masque le cadre mais garde l'image choisie ; `@visibleframe` le réaffiche.
+  `frame=""` laisse le texte seul sur la scène.
+- Tant qu'aucun script n'a posé de cadre, le renderer applique `txtwindow02` : hypothèse (le
+  défaut réel est fixé hors des scripts, dans les fichiers système absents), c'est le cadre le
+  plus employé du corpus et celui de la capture.
+- Si l'image de cadre ne charge pas (asset absent), repli sur l'ancienne boîte fixe décrite
+  ci-dessous, pour que le texte reste lisible.
+- Le réglage d'opacité de la boîte (0,8 par défaut) rend d'abord l'image telle quelle (son
+  voile est déjà dans son alpha) ; en dessous, il l'éclaircit proportionnellement.
+- `fontScale`, masquage utilisateur, `@textoff`/`@texton`, recul et chargement s'appliquent ;
+  une page restaurée s'affiche en entier, sans atténuation (la sauvegarde ne conserve pas la
+  limite de lecture).
+
+Vérifié le 2026-11-08 dans Chromium 1280×720 avec les assets réels : le cadre `txtwindow02`
+couvre la scène, le texte commence à 14 % / 8,1 % (mesuré au DOM), l'attente `[l]` affiche
+`linebreak_a`, le clic passe le texte déjà lu à 40 % et la fin de page affiche `pagebreak_a`.
+La superposition exacte à la capture d'origine reste à confirmer quand elle sera jointe à
+l'issue ; seules ses mesures chiffrées ont servi de référence.
+
+### Ancienne boîte fixe (#161, #163), repli
+
+Quand l'image de cadre manque, la fenêtre reprend la boîte fixe du port : ancrée à 5 % du bas
+de la scène (repère 1024x576), marges de 10 % à gauche et à droite. Les scripts posent des
+calques décoratifs dans la bande basse (carte du titre de chapitre `ch01タイトル`, sprite plein
+écran dont les pixels opaques vont de y 445 à 537 sur 576, soit 77 % à 93 % de la hauteur) :
+leur position vient du script et n'est pas modifiée.
 
 Règle retenue (`src/renderer/text-fit.ts`, fonction pure `fitTextBox`, appliquée par le renderer
 sur la **page entière** avant la frappe, donc sans changement de taille en cours de texte) :
