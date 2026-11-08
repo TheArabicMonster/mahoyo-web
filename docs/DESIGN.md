@@ -233,9 +233,9 @@ Un utilisateur sans extraction complète, ou la CI, ne dispose d'aucune image du
 - **Couleur seule** : un état ne dépend jamais de la seule couleur (survol = couleur + lueur ; sélection de grille =
   bord épais + marqueur).
 
-## 11. Tokens CSS proposés
+## 11. Tokens CSS
 
-À regrouper dans `src/ui/tokens.css` (tâche HUD-01), préfixe `--mh-`.
+Implémentés dans `src/ui/tokens.css` (tâche HUD-01 / #181), importés par `src/main.ts` ; préfixe `--mh-`.
 
 ```css
 :root {

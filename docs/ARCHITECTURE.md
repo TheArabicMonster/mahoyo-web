@@ -33,13 +33,20 @@ src/renderer/ + src/ui/  ── rendu navigateur
 
 ### `src/renderer/` — rendu navigateur
 
-- **`types.ts`** : interfaces `StageRenderer` et `AudioPlayer`, settings.
-- **`audio-manager.ts`** : implémentation web de `AudioPlayer`.
+- **`types.ts`** : interfaces `StageRenderer` et `AudioPlayer`, `DisplaySettings` et `AudioSettings`.
+- **`stage-renderer.ts`** : scène, sprites, fonds, transitions, effets, texte, cadre image et indicateurs.
+- **`text-fit.ts`** : calculs purs de la police, de la zone de texte et de l'atténuation du texte lu.
+- **`text-frame.ts`** : choix du cadre de message, opacité, glyphes `linebreak_a`/`pagebreak_a` et position de l'indicateur.
+- **`audio-manager.ts`** : implémentation web de `AudioPlayer` (BGM, SE, voix, fondus, volumes et mutes par canal).
+- **`action-compiler.ts`**, **`transform-helpers.ts`**, **`css-url.ts`** : compilation des animations, géométrie des calques et URLs CSS.
 
 ### `src/ui/` — interface utilisateur
 
-- **`types.ts`** : interfaces `UIManager`, `PlayerCommands`, `UIView`.
-- **`player.ts`** : orchestrateur (stub temporaire).
+- **`types.ts`** : interfaces `UIManager`, `PlayerCommands`, `UIView`, `GameSettings` et progression.
+- **`player.ts`** : orchestrateur Runtime ↔ StageRenderer ↔ AudioPlayer ↔ UIManager, boucle de lecture, modes auto/skip, sauvegardes et viewport.
+- **`ui-manager.ts`** : écrans DOM (titre, pause, sauvegarde/chargement, historique, flowchart, configuration) et gestion des entrées.
+- **`ui-manager.css`**, **`tokens.css`** : styles des écrans et tokens du design system (palette, typo, durées, états).
+- **`chapter-list.ts`** : construction de la liste des chapitres/scripts.
 
 ### `src/player/` — persistance
 
@@ -63,13 +70,28 @@ src/renderer/ + src/ui/  ── rendu navigateur
 
 ### `src/core/` — utilitaires
 
-- **`asset-resolver.ts`** : résolution des URLs d'assets.
+- **`asset-resolver.ts`** / **`asset-manifest.ts`** : résolution des URLs d'assets et manifeste.
+- **`story-chain.ts`** : types de la table d'enchaînement des scripts et des choix.
+- **`story-graph.ts`** : types du graphe de scénario (nœuds, arêtes, conditions).
+- **`timeline.ts`** : parsing et validation des timelines d'ouverture.
+- **`shortcuts.ts`** : définition, normalisation et résolution des 14 raccourcis configurables.
+- **`display.ts`** : calcul pur de l'échelle du viewport (fit/fill/1:1, taille maximale).
+- **`language.ts`** : langues disponibles et index du patch de traduction.
+- **`easing.ts`** : courbes d'animation partagées.
 
 ### `tools/` — pipeline d'assets (hors dépôt pour les assets)
 
-- Extraction `.xp3`.
-- Conversion `.tlg` → WebP.
-- Préparation des assets par script.
+- Extraction `.xp3`, conversion `.tlg` → WebP, audio OGG, normalisation des `.ks`.
+- **`story-chain.ts`** : génère `story-chain.json` (enchaînement, chapitres, choix) et `story-graph.json` (graphe de scénario).
+- **`timelines.ts`** : génère `timelines.json` pour l'ouverture.
+- **`audit-scenario.ts`** : audit des commandes KAG et des assets référencés.
+
+### Configuration et design system
+
+- Les réglages sont décrits dans [`CONFIG_PLAN.md`](CONFIG_PLAN.md) (quatre onglets, valeurs par défaut, adaptations web).
+- Le langage visuel du HUD est dans [`DESIGN.md`](DESIGN.md) ; l'analyse écran par écran et le backlog UI dans
+  [`ANALYSE_HUD_ORIGINAL.md`](ANALYSE_HUD_ORIGINAL.md).
+- Les tokens CSS sont déclarés une seule fois dans `src/ui/tokens.css` et importés par `src/main.ts`.
 
 ## Flux de lecture
 

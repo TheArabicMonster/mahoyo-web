@@ -4,6 +4,19 @@ Découpage en épics. Chaque épic est une milestone GitHub, et chaque ligne est
 
 Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (voir la fin du document).
 
+## État au 2026-11-08
+
+- **v1.0 : 74/82 (90 %)** — 8 issues restantes ; **v1.1 : 13/52 (25 %)**.
+- **E1–E4** : livrés (extraction, parser KAG3, runtime/rendu, pipeline et traductions).
+- **E7** : avancé — player complet, lecture du corpus, sauvegardes, historique, configuration à quatre onglets,
+  sélecteur de langue et contrôle du viewport.
+- **E5** : en cours — analyse du HUD d'origine, design system et tokens CSS livrés (#179, #181) ; refonte des
+  écrans système suivie par le backlog `HUD-xx`, `WEB-xx` et `FLOW-xx` (issues #182 à #213).
+- **E6** : en cours — 1014 tests unitaires et 20 tests d'intégration, build et `check:assets` verts ; e2e
+  Chrome/Firefox, mobile et migration ESLint 9 encore ouverts.
+- Dernières briques : fenêtre de message sans boîte (#173), indicateur de page (#175), configuration (#177),
+  sauvegardes enrichies côté modèle (#183), progression par scène (#186) et graphe de scénario (#185).
+
 ## E0 — Gouvernance & socle 🔄
 
 - Structure du repo, docs, templates, Project GitHub, backlog initial.
