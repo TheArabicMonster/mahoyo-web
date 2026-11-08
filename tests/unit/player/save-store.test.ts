@@ -43,7 +43,7 @@ function legacyRecord(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 function record(overrides: Partial<SaveRecord> = {}): SaveRecord {
-  return { ...(legacyRecord() as unknown as SaveRecord), sceneTitle: "Scène", comment: "", locked: false, ...overrides };
+  return { ...(legacyRecord() as unknown as SaveRecord), sceneTitle: "Scène", comment: "", locked: false, choices: [], ...overrides };
 }
 
 describe("deriveSceneTitle", () => {
@@ -76,6 +76,31 @@ describe("migrateSaveRecord", () => {
   it("remplace les valeurs de type invalide par les défauts", () => {
     const migrated = migrateSaveRecord(legacyRecord({ sceneTitle: 3, comment: null, locked: "oui" }));
     expect(migrated).toMatchObject({ sceneTitle: "1-1.ks", comment: "", locked: false });
+  });
+
+  it("ajoute un historique de choix vide aux anciennes sauvegardes", () => {
+    expect(migrateSaveRecord(legacyRecord())).toMatchObject({ choices: [] });
+  });
+
+  it("conserve l'historique de choix et ne garde que des identifiants de scripts", () => {
+    const migrated = migrateSaveRecord(
+      legacyRecord({
+        choices: [
+          { from: "a-3", to: "c-1", label: "texte du jeu", extra: 1 },
+          { from: "a-3", to: "c-1" },
+          { from: "", to: "x" },
+          { from: 3, to: "x" },
+          "n'importe quoi",
+        ],
+      }),
+    );
+    expect(migrated?.choices).toEqual([{ from: "a-3", to: "c-1" }]);
+    expect(JSON.stringify(migrated)).not.toContain("texte du jeu");
+  });
+
+  it("remplace un historique de choix invalide par une liste vide", () => {
+    expect(migrateSaveRecord(legacyRecord({ choices: "oui" }))?.choices).toEqual([]);
+    expect(migrateSaveRecord(legacyRecord({ choices: null }))?.choices).toEqual([]);
   });
 
   it("est idempotente", () => {

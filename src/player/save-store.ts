@@ -6,11 +6,12 @@
  *
  * Les enregistrements sont migrés à la lecture (`migrateSaveRecord`) : les
  * sauvegardes écrites avant l'ajout du titre de scène, du commentaire et du
- * verrou restent chargeables, sans réécriture du stockage.
+ * verrou, ou de l'historique de choix, restent chargeables, sans réécriture du stockage.
  */
 import type { AudioSnapshot, Position, StopReason } from "@/kag/events.js";
 import type { RuntimeSaveData } from "@/kag/runtime.js";
-import type { SaveSlot, SlotId } from "@/ui/types.js";
+import type { SaveSlot, SlotId, TakenChoice } from "@/ui/types.js";
+import { normalizeStoryProgress } from "./story-progress.js";
 
 export type SaveRecord = NonNullable<SaveSlot["data"]> & {
   runtime: RuntimeSaveData;
@@ -31,6 +32,12 @@ export type SaveRecord = NonNullable<SaveSlot["data"]> & {
   comment: string;
   /** Emplacement verrouillé : écrasement et suppression refusés. */
   locked: boolean;
+  /**
+   * Arêtes de choix prises depuis le début de la partie en cours (scripts uniquement, jamais le
+   * libellé), pour reprendre le chemin à l'identique. Absent des sauvegardes antérieures : la
+   * migration le ramène à `[]`. C'est un état de la partie, distinct de la progression globale.
+   */
+  choices?: readonly TakenChoice[];
 };
 
 /** Métadonnées modifiables sans réécrire la sauvegarde (y compris sur un emplacement verrouillé). */
@@ -74,6 +81,8 @@ export function migrateSaveRecord(raw: unknown): SaveRecord | null {
     sceneTitle: typeof r.sceneTitle === "string" && r.sceneTitle !== "" ? r.sceneTitle : scriptFile,
     comment: typeof r.comment === "string" ? r.comment : "",
     locked: r.locked === true,
+    // Réduit à des paires de scripts : aucun autre champ (libellé, texte) n'est conservé.
+    choices: normalizeStoryProgress({ choices: r.choices }).choices,
   } as SaveRecord;
 }
 
