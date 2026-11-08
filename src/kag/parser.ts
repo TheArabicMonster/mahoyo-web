@@ -444,6 +444,9 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       return {
         kind: "position",
         visible: args.visible !== undefined ? args.visible !== "false" : undefined,
+        // Image de cadre de la fenêtre de message (`txtwindow02`…), `""` = sans image (#173).
+        // `page=back` n'est pas distingué : le port n'a qu'une fenêtre de message.
+        ...(args.frame !== undefined ? { frame: args.frame } : {}),
       };
     case "invisibleframe":
       return { kind: "invisibleframe" };

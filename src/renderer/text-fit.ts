@@ -44,6 +44,36 @@ export function textBoxHeight(stageHeight: number): number {
   return stageHeight * TEXT_FIT_DEFAULTS.boxHeightRatio;
 }
 
+/**
+ * Zone de texte du style « cadre image » (#173), en fractions de la scène, mesurée sur une capture
+ * du jeu d'origine (1920x1080, `1-2.ks`, cadre `txtwindow02`) :
+ * - bord gauche des lignes à x = 268/1920 (14 %) ;
+ * - bord droit : la coupure des lignes le place entre 1713 et ~1790/1920 (89 % à 93 %), 91 % retenu ;
+ * - première ligne de la page centrée à y = 126/1080, interligne 77/1080 : haut de la zone à
+ *   126 - 77/2 = 87,5/1080 (8,1 %) ;
+ * - bas : non visible sur la capture, pris symétrique du haut (hypothèse).
+ */
+export const FRAME_TEXT_AREA = {
+  left: 0.14,
+  right: 0.09,
+  top: 0.081,
+  bottom: 0.081,
+} as const;
+
+/** Hauteur de la zone de texte du style « cadre image » pour une scène de `stageHeight`. */
+export function frameTextAreaHeight(stageHeight: number): number {
+  return stageHeight * (1 - FRAME_TEXT_AREA.top - FRAME_TEXT_AREA.bottom);
+}
+
+/**
+ * Nombre d'unités de texte à atténuer : le texte déjà lu de la page (avant le dernier clic sur une
+ * attente `[l]`) reste affiché, atténué (capture d'origine, #173). `readUnits` est la longueur du
+ * texte au moment de ce clic ; on ne dépasse jamais le texte affiché.
+ */
+export function dimmedUnitCount(readUnits: number, shownUnits: number): number {
+  return Math.max(0, Math.min(readUnits, shownUnits));
+}
+
 export function fitTextBox(p: TextFitParams): TextFit {
   const steps = Math.round((1 - p.minScale) / p.step);
   for (let i = 0; i <= steps; i++) {

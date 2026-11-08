@@ -1433,6 +1433,7 @@ export class Runtime {
     let visible: boolean | undefined;
     let time = 300;
     let frame: boolean | undefined;
+    let frameImage: string | undefined;
 
     if (instruction.kind === "textoff") {
       visible = false;
@@ -1442,6 +1443,7 @@ export class Runtime {
       time = 300;
     } else if (instruction.kind === "position") {
       if (instruction.visible !== undefined) visible = instruction.visible;
+      frameImage = instruction.frame;
     } else if (instruction.kind === "invisibleframe") {
       frame = false;
     } else if (instruction.kind === "visibleframe") {
@@ -1452,6 +1454,7 @@ export class Runtime {
     const state = { ...this.buildTextboxState() };
     if (visible !== undefined) state.visible = visible;
     if (frame !== undefined) state.frame = frame;
+    if (frameImage !== undefined) state.frameImage = frameImage;
     this.state.textbox = state;
 
     return { kind: "textbox", state, time };

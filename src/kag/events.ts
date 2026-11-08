@@ -141,8 +141,14 @@ export type TimelineLayerState = {
   afy?: number;
 };
 
-/** État de la textbox et de sa bordure. */
-export type TextboxState = { visible: boolean; frame: boolean };
+/**
+ * État de la textbox et de son cadre.
+ * - `frame` : cadre affiché (`@visibleframe`) ou masqué (`@invisibleframe`).
+ * - `frameImage` : image de cadre posée par `@position frame=…` (`txtwindow00/01/02`) ; absente
+ *   tant qu'aucun script ne l'a fixée (le renderer applique alors son cadre par défaut), `""` pour
+ *   un cadre sans image (#173).
+ */
+export type TextboxState = { visible: boolean; frame: boolean; frameImage?: string };
 
 /**
  * Bulle « ploy » active (scripts omake). `mode` est la valeur brute de
