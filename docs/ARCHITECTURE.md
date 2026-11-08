@@ -66,6 +66,21 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`story-progress.ts`** : fonctions pures de la progression par scène pour le flowchart (`StoryProgress` :
   `visited`, `finished`, `choices` = arêtes `{from, to}` en scripts, **jamais de libellé**, `endings`).
   `normalizeStoryProgress` sert aussi à l'import ; `mergeStoryProgress` à l'union de deux exports.
+- **`progress-tracker.ts`** : `ProgressTracker`, qui alimente la progression par scène pendant la partie (#193).
+  La progression est gardée en mémoire (un seul blob, chargé une fois) et réécrite en entier par des écritures
+  sérialisées et regroupées ; un échec d'écriture (quota dépassé) est toléré (avertissement unique, progression
+  conservée en mémoire, nouvel essai à la modification suivante). `scriptIdOf` donne l'identifiant d'un script (nom
+  sans extension, minuscules, comme les nœuds du graphe) ; `reachableEndings(chain)` calcule les fins du parcours :
+  scripts sans suite **atteignables depuis le premier script** (un bonus isolé n'en est pas une).
+- **Événements branchés dans `Player`** : démarrage d'un script (nouvelle partie, enchaînement, interlude, restauration)
+  → `visited` (et `endings` si c'est une fin du parcours) ; `@return` → `finished` ; menu de choix de l'enchaînement →
+  arête `{from, to}` en scripts. Les menus internes à un script (`@s`, cibles = labels du même script) ne créent
+  pas d'arête. `Player.currentScript` (null au titre) est transmis à la vue `flowchart` avec la progression
+  (`currentScript`, `story`).
+- **Sauvegarde et progression** : `SaveRecord.choices` (optionnel, `[]` par défaut à la migration, réduit à des paires
+  d'identifiants de scripts) garde le chemin de la **partie** en cours, restauré au chargement et au retour arrière.
+  La progression **globale** est cumulative : charger une sauvegarde ou revenir en arrière n'y retire rien ; le
+  chargement y ajoute seulement les arêtes de la sauvegarde (utile pour une sauvegarde importée).
 - Réglage `flowchartRevealAll` (défaut `false`) : anti-spoiler du flowchart actif tant qu'il est faux.
 
 ### `src/core/` — utilitaires

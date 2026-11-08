@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { Player, type PlayerDeps, type RuntimeLike } from "@/ui/player.js";
 import { createMemorySaveStore, type SaveRecord } from "@/player/save-store.js";
 import { createMemorySettingsStore } from "@/player/settings-store.js";
@@ -117,6 +117,7 @@ function setup(steps: Step[] = prologue as Step[], extra: Partial<PlayerDeps> = 
   const audio = new FakeAudioPlayer();
   const ui = new FakeUIManager();
   const saveStore = createMemorySaveStore();
+  const settingsStore = extra.settingsStore ?? createMemorySettingsStore();
   const runtimes: ScriptedRuntime[] = [];
   const player = new Player({
     root: document.body,
@@ -130,11 +131,11 @@ function setup(steps: Step[] = prologue as Step[], extra: Partial<PlayerDeps> = 
     },
     loadScript: async () => ({ pages: [], labels: {} }) as unknown as ParsedScript,
     saveStore,
-    settingsStore: createMemorySettingsStore(),
+    settingsStore,
     skipDelay: 1,
     ...extra,
   });
-  return { player, stage, audio, ui, saveStore, runtimes };
+  return { player, stage, audio, ui, saveStore, settingsStore, runtimes };
 }
 
 let current: Player | null = null;
@@ -701,9 +702,10 @@ class ChainRuntime implements RuntimeLike {
   }
 }
 
-function chainSetup(chain: StoryChain | null, makeRuntime: () => ChainRuntime) {
+function chainSetup(chain: StoryChain | null, makeRuntime: () => ChainRuntime, extra: Partial<PlayerDeps> = {}) {
   const runtimes: ChainRuntime[] = [];
   const ctx = setup([], {
+    ...extra,
     loadChain: async () => chain,
     createRuntime: () => {
       const rt = makeRuntime();
@@ -1249,6 +1251,201 @@ describe("Player — vitesses et avance rapide (#177)", () => {
     expect(ctx.stage.hurries).toBe(before + 1);
     release();
     await until(() => ctx.player.currentState === "waiting-click", "fin de page");
+  });
+});
+
+// ── Progression par scène (flowchart) : événements du player ──
+
+describe("Player — événements de progression (flowchart)", () => {
+  /** a -> menu (b | c) ; c -> tea (puis d) ; b et d sont des fins ; z est un bonus isolé. */
+  const menuChain: StoryChain = {
+    version: 1,
+    first: "a.ks",
+    next: {
+      "a.ks": [
+        { to: "b.ks", choice: "Option B" },
+        { to: "c.ks", choice: "Option C" },
+      ],
+      "b.ks": [],
+      "c.ks": [{ to: "tea.ks", then: ["d.ks"] }],
+      "d.ks": [],
+      "z.ks": [],
+    },
+  };
+
+  const progressSetup = (extra: Partial<PlayerDeps> = {}) => chainSetup(menuChain, () => new ChainRuntime("a.ks"), extra);
+
+  async function playToChoice(ctx: ReturnType<typeof chainSetup>) {
+    await startChain(ctx, "a.ks");
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "waiting-choice", "menu");
+  }
+
+  const reached = (ctx: ReturnType<typeof chainSetup>, script: string) =>
+    until(() => ctx.player.currentScript === script && ctx.player.currentState === "waiting-click", script);
+
+  it("un enchaînement avec un choix alimente visited, choices, finished et endings", async () => {
+    const ctx = progressSetup();
+    await playToChoice(ctx);
+    expect(ctx.player.currentScript).toBe("a");
+
+    ctx.player.choose(1); // Option C
+    await reached(ctx, "c");
+    ctx.player.advance(); // c terminé -> tea (interlude)
+    await reached(ctx, "tea");
+    ctx.player.advance(); // tea terminé -> d (fin)
+    await reached(ctx, "d");
+    ctx.player.advance(); // d terminé : plus de suite
+    await until(() => ctx.player.currentState === "title", "titre");
+    await ctx.player.flushProgress();
+
+    expect(ctx.player.storyProgress).toEqual({
+      visited: ["a", "c", "tea", "d"],
+      finished: ["a", "c", "tea", "d"],
+      choices: [{ from: "a", to: "c" }],
+      endings: ["d"],
+    });
+    expect(await ctx.settingsStore.loadStoryProgress()).toEqual(ctx.player.storyProgress);
+  });
+
+  it("ne stocke jamais le libellé du choix, seulement des identifiants de scripts", async () => {
+    const ctx = progressSetup();
+    await playToChoice(ctx);
+    ctx.player.choose(0);
+    await reached(ctx, "b");
+    await ctx.player.flushProgress();
+    await ctx.player.save(1);
+
+    expect(JSON.stringify(await ctx.settingsStore.loadStoryProgress())).not.toContain("Option");
+    const rec = await ctx.saveStore.get(1);
+    expect(rec?.choices).toEqual([{ from: "a", to: "b" }]);
+    expect(JSON.stringify(rec?.choices)).not.toContain("Option");
+  });
+
+  it("un script terminal hors du parcours n'est pas compté comme une fin", async () => {
+    const ctx = progressSetup();
+    await startChain(ctx, "z.ks");
+    await ctx.player.flushProgress();
+    expect(ctx.player.storyProgress.visited).toEqual(["z"]);
+    expect(ctx.player.storyProgress.endings).toEqual([]);
+  });
+
+  it("expose le script courant (null au titre) et le fournit à la vue du flowchart", async () => {
+    const ctx = progressSetup();
+    current = ctx.player;
+    await ctx.player.ready;
+    expect(ctx.player.currentScript).toBeNull();
+
+    await startChain(ctx, "a.ks");
+    ctx.player.openScreen("flowchart");
+    await until(() => ctx.ui.views.at(-1)?.screen === "flowchart", "vue flowchart");
+    expect(ctx.ui.views.at(-1)).toMatchObject({ screen: "flowchart", currentScript: "a", story: { visited: ["a"] } });
+    ctx.player.closeScreen();
+  });
+
+  describe("sauvegarde et chargement", () => {
+    it("restitue l'historique de choix et la position, sans toucher à la progression cumulée", async () => {
+      const ctx = progressSetup();
+      await playToChoice(ctx);
+      ctx.player.choose(1);
+      await reached(ctx, "c");
+      await ctx.player.save(1);
+      expect((await ctx.saveStore.get(1))?.choices).toEqual([{ from: "a", to: "c" }]);
+
+      // La partie continue jusqu'à la fin, puis on recommence ailleurs.
+      ctx.player.advance();
+      await reached(ctx, "tea");
+      ctx.player.advance();
+      await reached(ctx, "d");
+      await ctx.player.flushProgress();
+      const before = ctx.player.storyProgress;
+      expect(before.endings).toEqual(["d"]);
+
+      ctx.player.startScript("b.ks"); // nouvelle partie : le chemin repart de zéro
+      await reached(ctx, "b");
+      expect(ctx.player.choiceHistory).toEqual([]);
+
+      await ctx.player.load(1);
+      await reached(ctx, "c");
+      expect(ctx.player.choiceHistory).toEqual([{ from: "a", to: "c" }]);
+
+      // Cumulative : le chargement n'a rien retiré (fin d, scripts b et tea déjà acquis).
+      await ctx.player.flushProgress();
+      const after = ctx.player.storyProgress;
+      for (const key of ["visited", "finished", "endings"] as const) {
+        for (const id of before[key]) expect(after[key]).toContain(id);
+      }
+      expect(after.choices).toEqual(expect.arrayContaining([{ from: "a", to: "c" }]));
+      expect(after.visited).toContain("b");
+    });
+
+    it("une sauvegarde chargée sur un autre appareil ajoute son chemin à la progression", async () => {
+      const first = progressSetup();
+      await playToChoice(first);
+      first.player.choose(1);
+      await reached(first, "c");
+      await first.player.save(1);
+      const record = (await first.saveStore.get(1))!;
+      await first.player.dispose();
+      current = null;
+
+      const other = progressSetup();
+      await other.saveStore.put(1, record);
+      current = other.player;
+      await other.player.ready;
+      expect(other.player.storyProgress.choices).toEqual([]);
+      await other.player.load(1);
+      await reached(other, "c");
+      await other.player.flushProgress();
+      expect(other.player.storyProgress.choices).toEqual([{ from: "a", to: "c" }]);
+      expect(other.player.storyProgress.visited).toContain("c");
+    });
+
+    it("une ancienne sauvegarde sans historique de choix se charge toujours", async () => {
+      const ctx = progressSetup();
+      await startChain(ctx, "a.ks");
+      await ctx.player.save(2);
+      const rec = await ctx.saveStore.get(2);
+      delete (rec as { choices?: unknown }).choices;
+      await ctx.saveStore.put(2, rec!);
+      await ctx.player.load(2);
+      await reached(ctx, "a");
+      expect(ctx.player.choiceHistory).toEqual([]);
+    });
+
+    it("un retour arrière avant le choix rend le chemin de la partie, mais pas la progression", async () => {
+      const ctx = progressSetup();
+      await playToChoice(ctx);
+      ctx.player.choose(0);
+      await reached(ctx, "b");
+      expect(ctx.player.choiceHistory).toEqual([{ from: "a", to: "b" }]);
+
+      await ctx.player.rollback();
+      await reached(ctx, "a");
+      expect(ctx.player.choiceHistory).toEqual([]);
+      expect(ctx.player.storyProgress.choices).toEqual([{ from: "a", to: "b" }]);
+    });
+  });
+
+  it("quota dépassé : la partie continue et la progression reste en mémoire", async () => {
+    const failing = createMemorySettingsStore();
+    failing.saveStoryProgress = async () => {
+      throw new DOMException("quota", "QuotaExceededError");
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const ctx = progressSetup({ settingsStore: failing });
+      await playToChoice(ctx);
+      ctx.player.choose(1);
+      await reached(ctx, "c");
+      await ctx.player.flushProgress();
+      expect(ctx.player.storyProgress).toMatchObject({ visited: ["a", "c"], choices: [{ from: "a", to: "c" }] });
+      expect(warn).toHaveBeenCalledTimes(1);
+      await ctx.player.save(1); // la sauvegarde de partie n'est pas affectée
+      expect((await ctx.saveStore.get(1))?.choices).toEqual([{ from: "a", to: "c" }]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 
