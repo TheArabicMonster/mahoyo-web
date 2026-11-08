@@ -21,6 +21,7 @@ const settings: GameSettings = {
   skipUnread: false,
   language: "ja",
   shortcuts: defaultShortcuts(),
+  flowchartRevealAll: false,
 };
 const status = (p: Partial<PlayerStatus> = {}): PlayerStatus => ({
   mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, autoPaused: false,

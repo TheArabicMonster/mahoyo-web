@@ -41,6 +41,16 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`types.ts`** : interfaces `UIManager`, `PlayerCommands`, `UIView`.
 - **`player.ts`** : orchestrateur (stub temporaire).
 
+### `src/player/` — persistance
+
+- **`settings-store.ts`** : réglages (`mahoyo.settings`), « déjà lu » (`mahoyo.read`), progression par chapitre
+  (`mahoyo.progress`) et progression par scène (`mahoyo.story-progress`). Lecture tolérante (absent, partiel,
+  corrompu ou stockage inaccessible = valeurs vides/par défaut).
+- **`story-progress.ts`** : fonctions pures de la progression par scène pour le flowchart (`StoryProgress` :
+  `visited`, `finished`, `choices` = arêtes `{from, to}` en scripts, **jamais de libellé**, `endings`).
+  `normalizeStoryProgress` sert aussi à l'import ; `mergeStoryProgress` à l'union de deux exports.
+- Réglage `flowchartRevealAll` (défaut `false`) : anti-spoiler du flowchart actif tant qu'il est faux.
+
 ### `src/core/` — utilitaires
 
 - **`asset-resolver.ts`** : résolution des URLs d'assets.
