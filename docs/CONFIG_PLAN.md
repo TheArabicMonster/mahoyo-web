@@ -128,7 +128,7 @@ rechargement et les anciennes sauvegardes restent lisibles.
 |---|---|---|
 | Modèle et migration | `src/renderer/types.ts`, `src/player/settings-store.ts` | fait (anciens `textSpeed`/`autoDelay` et « Muet » global migrés) |
 | Raccourcis | `src/core/shortcuts.ts`, `src/ui/ui-manager.ts` | fait (14 actions, deux touches, capture, réinitialisation) |
-| Écran 4 onglets | `src/ui/ui-manager.ts`, `src/ui/ui-manager.css` | fait (segments, curseurs, cases, sélecteurs, pied de page fixe) |
+| Écran 4 onglets | `src/ui/ui-manager.ts`, `src/ui/ui-manager.css` | fait (plein écran sombre, en-tête « Config », onglets serif, cadres lumineux, boutons verts, curseurs or, pied de page fixe) |
 | Lecture et affichage | `src/ui/player.ts`, `src/renderer/stage-renderer.ts` | fait (vitesses lu/non lu, page entière, délais page/ligne, clic auto, skip automatique, avance rapide, police, fondu, effets) |
 | Système | `src/core/display.ts`, `src/ui/player.ts` | fait (plein écran fit/fill/1:1, plafond de taille, souris, curseur) |
 | Audio | `src/renderer/audio-manager.ts` | fait (BGM/SE/système, mutes, test SE synthétique) |

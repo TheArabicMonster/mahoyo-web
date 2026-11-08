@@ -169,6 +169,7 @@ export class DomUIManager implements UIManager {
     this.menu.replaceChildren();
     this.flowchart.replaceChildren();
     this.pause.replaceChildren();
+    this.menu.classList.toggle("mh-ui-settings-open", view.screen === "settings");
     this.overlay.dataset.screen = view.screen;
 
     switch (view.screen) {
@@ -481,8 +482,12 @@ export class DomUIManager implements UIManager {
   }
 
   private renderSettings(settings: Readonly<GameSettings>, availableLanguages: readonly GameLanguage[]): El {
-    const p = this.panel("Config", "mh-ui-settings-screen");
-    const tabs = h("div", "mh-ui-tabs");
+    const p = h("section", "mh-ui-panel mh-ui-settings-screen");
+    const header = h("header", "mh-ui-config-header");
+    const brand = h("div", "mh-ui-config-brand");
+    brand.append(h("h2", "mh-ui-title", "Config"), h("p", "mh-ui-config-subtitle", "Réglages du jeu"));
+    header.appendChild(brand);
+    const tabs = h("nav", "mh-ui-tabs");
     const content = h("div", "mh-ui-config");
     // Copies locales : `Partial<GameSettings>` est superficiel, on renvoie les groupes entiers.
     const display = { ...settings.display };
@@ -534,6 +539,10 @@ export class DomUIManager implements UIManager {
       if (id === this.settingsTab) tab.classList.add("active");
       tabs.appendChild(tab);
     }
+    header.appendChild(tabs);
+    p.appendChild(header);
+    const currentLabel = tabDefs.find(([id]) => id === this.settingsTab)?.[1] ?? "";
+    content.appendChild(h("div", "mh-ui-config-heading", currentLabel));
 
     const section = (title: string): El => {
       const s = h("section", "mh-ui-config-section");
@@ -870,12 +879,17 @@ export class DomUIManager implements UIManager {
       });
     } else {
       const keys = section("Raccourcis clavier");
+      keys.classList.add("mh-ui-shortcuts-section");
       keys.appendChild(
         h("p", "mh-ui-hint", "Cliquez sur une touche puis appuyez sur la combinaison voulue. Échap annule la capture."),
       );
-      for (const definition of SHORTCUT_DEFINITIONS) {
-        keyRow(keys, definition.id, definition.label);
-      }
+      const grid = h("div", "mh-ui-shortcut-grid");
+      const columns = [h("div", "mh-ui-shortcut-col"), h("div", "mh-ui-shortcut-col")];
+      SHORTCUT_DEFINITIONS.forEach((definition, index) => {
+        keyRow(columns[Math.floor(index / 7)]!, definition.id, definition.label);
+      });
+      grid.append(...columns);
+      keys.appendChild(grid);
     }
 
     const footer = h("div", "mh-ui-config-footer");
@@ -883,7 +897,7 @@ export class DomUIManager implements UIManager {
       this.backButton(),
       this.button("Réglages par défaut", () => this.commands?.resetSettings(), "mh-ui-reset"),
     );
-    p.append(tabs, content, footer);
+    p.append(content, footer);
     return p;
   }
 
