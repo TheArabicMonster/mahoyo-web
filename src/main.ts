@@ -9,6 +9,10 @@ import { Player } from "./ui/player.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
 import { parseStoryChain, type StoryChain } from "@/core/story-chain.js";
 import { chaptersToScripts } from "./ui/chapter-list.js";
+import { createSaveStore, type ResilientSaveStore } from "./player/save-store-idb.js";
+import { createLocalSettingsStore } from "./player/settings-store.js";
+import type { ProgressAccess } from "./player/save-transfer.js";
+import { downloadSaveExport, importSaveFile, pickSaveFile } from "./ui/save-transfer.js";
 
 const ASSET_BASE = "/assets";
 const MANIFEST_URL = `${ASSET_BASE}/asset-manifest.json`;
@@ -63,6 +67,11 @@ async function main() {
 
   // Instancie le player avec les vraies factories. L'écran titre propose « Nouvelle
   // partie », « Continuer » (autosave) et la liste des chapitres.
+  // Sauvegardes : IndexedDB (migration auto des anciennes clés localStorage), repli localStorage puis mémoire.
+  const saveStore = createSaveStore();
+  const settingsStore = createLocalSettingsStore();
+  exposeSaveTransfer(saveStore, settingsStore);
+
   new Player({
     root: viewport,
     resolver,
@@ -70,7 +79,26 @@ async function main() {
     createUIManager: () => new DomUIManager(),
     scripts: chaptersToScripts(chain),
     loadChain: async () => chain,
+    saveStore,
+    settingsStore,
   });
+}
+
+/**
+ * API d'export/import en attendant les boutons de l'écran de sauvegarde (HUD-10, #196) :
+ * `await mahoyoSaves.export()` télécharge un JSON ; `await mahoyoSaves.import()` ouvre le sélecteur de fichier.
+ * Recharger la page après un import pour que la progression fusionnée soit prise en compte par le player.
+ */
+function exposeSaveTransfer(saveStore: ResilientSaveStore, progress: ProgressAccess): void {
+  const api = {
+    backend: () => saveStore.backend(),
+    export: () => downloadSaveExport(saveStore, progress),
+    import: async () => {
+      const file = await pickSaveFile();
+      return file ? (await importSaveFile(file, saveStore, progress)).message : null;
+    },
+  };
+  (window as unknown as { mahoyoSaves?: typeof api }).mahoyoSaves = api;
 }
 
 main().catch((err) => {

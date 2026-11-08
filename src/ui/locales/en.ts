@@ -176,4 +176,14 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "toast.closeRefused": "The browser refuses to close the tab.",
   "toast.slotLockedOverwrite": "This slot is locked: saving is not possible.",
   "toast.slotLockedDelete": "This slot is locked: deletion is not possible.",
+
+  // ── Save export / import (#198) ──
+  "saveTransfer.exported": "{n} slot(s) exported.",
+  "saveTransfer.imported": "{n} slot(s) imported.",
+  "saveTransfer.skippedLocked": "{n} locked slot(s) kept unchanged.",
+  "saveTransfer.invalid": "{n} invalid entry(ies) ignored.",
+  "saveTransfer.failed": "{n} slot(s) could not be written (storage full?).",
+  "saveTransfer.nothing": "No save to import.",
+  "saveTransfer.unreadable": "Unreadable save file.",
+  "saveTransfer.unsupported": "Unsupported save file version.",
 };

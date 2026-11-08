@@ -176,4 +176,14 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   "toast.closeRefused": "ブラウザがタブを閉じることを拒否しました。",
   "toast.slotLockedOverwrite": "このスロットはロックされているため、セーブできません。",
   "toast.slotLockedDelete": "このスロットはロックされているため、削除できません。",
+
+  // ── セーブのエクスポート／インポート (#198) ──
+  "saveTransfer.exported": "{n}件のスロットをエクスポートしました。",
+  "saveTransfer.imported": "{n}件のスロットをインポートしました。",
+  "saveTransfer.skippedLocked": "ロックされた{n}件のスロットは変更されませんでした。",
+  "saveTransfer.invalid": "無効な{n}件のデータを無視しました。",
+  "saveTransfer.failed": "{n}件のスロットを書き込めませんでした（容量不足の可能性があります）。",
+  "saveTransfer.nothing": "インポートするセーブがありません。",
+  "saveTransfer.unreadable": "セーブファイルを読み込めません。",
+  "saveTransfer.unsupported": "このバージョンのセーブファイルには対応していません。",
 };
