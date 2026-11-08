@@ -1228,6 +1228,8 @@ describe("Player — vitesses et avance rapide (#177)", () => {
     // La page lue est sautée ; le skip s'arrête sur la page non lue avec un message.
     await until(() => ctx.ui.toasts.some((t) => t.message.includes("non lu")), "skip interrompu");
     expect(ctx.ui.confirms.some((m) => m.includes("scènes déjà lues"))).toBe(true);
+    const index = ctx.ui.confirms.findIndex((m) => m.includes("scènes déjà lues"));
+    expect(ctx.ui.confirmOptions[index]).toEqual({ defaultButton: "yes" });
     expect(ctx.stage.events.some((e) => e.kind === "text" && e.segments.some((s) => "text" in s && s.text === "Second"))).toBe(true);
     expect(ctx.player.currentState).toBe("waiting-click");
   });

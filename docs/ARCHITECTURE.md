@@ -51,7 +51,8 @@ src/renderer/ + src/ui/  ── rendu navigateur
   autonome en CSS pur. `openConfirmDialog(parent, { message, yesLabel, noLabel, defaultButton? })` renvoie
   `{ element, result, close }` ; `result` se résout par `true` (Oui) ou `false` (Non, Échap, fermeture forcée).
   `UIManager.confirm(message, { defaultButton? })` s'appuie dessus : **Non** est présélectionné par défaut (actions
-  destructrices), `{ defaultButton: "yes" }` présélectionne **Oui** (charger). Clavier : `Entrée` valide la sélection,
+  destructrices : retour au titre, écrasement, suppression), `{ defaultButton: "yes" }` présélectionne **Oui**
+  (charger, et « sauter les scènes déjà lues » dans `player.ts`). Clavier : `Entrée` valide la sélection,
   `Échap` répond Non, `←`/`→` sélectionnent Oui/Non, `Tab` boucle dans la boîte, le focus ne peut pas en sortir et
   revient à l'élément précédent à la fermeture. Sémantique : `role="dialog"`, `aria-modal="true"`, nom accessible =
   message. Il n'existe plus de `window.confirm` ni de confirmation « quitter le jeu » (bouton Exit retiré).
