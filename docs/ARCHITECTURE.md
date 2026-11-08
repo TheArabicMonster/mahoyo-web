@@ -43,6 +43,16 @@ src/renderer/ + src/ui/  ── rendu navigateur
 
 ### `src/player/` — persistance
 
+- **`save-store.ts`** : `SaveStore` (clés `localStorage` `mahoyo.save.<slot>`). Un `SaveRecord` porte l'état de reprise
+  (runtime, scène, audio, arrêt) et, depuis HUD-11 (#183), `sceneTitle` (libellé du sommaire local de l'utilisateur,
+  sinon nom du fichier de script), `comment` (libre, `""` par défaut) et `locked`.
+  - **Migration à la lecture** (`migrateSaveRecord`) : une sauvegarde sans ces champs reçoit `sceneTitle` = nom du
+    fichier, `comment` = `""`, `locked` = `false` ; aucun champ existant n'est modifié et le stockage n'est pas réécrit
+    à la lecture. Elle est idempotente.
+  - **Verrou** : `put` et `delete` rejettent avec `SaveLockedError` sur un emplacement verrouillé (le player vérifie
+    aussi avant la confirmation et affiche un message). `update(slot, { comment, locked })` modifie ces deux
+    métadonnées, y compris sur un emplacement verrouillé.
+- **`save-messages.ts`** : libellés FR des messages de sauvegarde, en attendant le dictionnaire d'interface (#184).
 - **`settings-store.ts`** : réglages (`mahoyo.settings`), « déjà lu » (`mahoyo.read`), progression par chapitre
   (`mahoyo.progress`) et progression par scène (`mahoyo.story-progress`). Lecture tolérante (absent, partiel,
   corrompu ou stockage inaccessible = valeurs vides/par défaut).
