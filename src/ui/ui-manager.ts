@@ -18,7 +18,6 @@ import type {
   PlayerCommands,
   PlayerStatus,
   SaveSlot,
-  ScriptProgress,
   ScriptSummary,
   SlotId,
   UIManager,
@@ -27,15 +26,12 @@ import type {
 import { openConfirmDialog, type ConfirmDialog } from "@/ui/confirm-dialog.js";
 import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t, uiLocale } from "@/ui/i18n.js";
 import { ToastStack } from "@/ui/toast.js";
+import { renderFlowchartScreen } from "@/ui/flowchart-view.js";
 import { syncNightDemo } from "@/ui/night.js";
 import { focusSystemMenu, renderSystemMenu, syncSystemMenu, syncSystemMenuVeil } from "@/ui/system-menu.js";
 import { createTitleScreen, TITLE_ASSET_KEYS } from "@/ui/title-screen.js";
 import { createUiAssets, UI_ASSET_KEYS, type UiAssets, type UiImageSource } from "@/ui/ui-assets.js";
 import "./ui-manager.css";
-
-/** Taille logique du viewport, utilisée pour positionner le flowchart. */
-const LOGICAL_W = 1280;
-const LOGICAL_H = 720;
 
 const DEFAULT_STATUS: PlayerStatus = {
   mode: "normal",
@@ -224,7 +220,7 @@ export class DomUIManager implements UIManager {
         this.menu.appendChild(this.renderBacklog(view.entries));
         break;
       case "flowchart":
-        this.flowchart.appendChild(this.renderFlowchart(view.scripts, view.progress));
+        this.flowchart.appendChild(this.renderFlowchart(view));
         break;
     }
     syncSystemMenuVeil(this.pause);
@@ -934,25 +930,21 @@ export class DomUIManager implements UIManager {
     return p;
   }
 
-  private renderFlowchart(scripts: readonly ScriptSummary[], progress: ScriptProgress): El {
-    const p = this.panel(t("flowchart.title"), "mh-ui-flowchart-screen");
-    const unlocked = new Set(progress.unlocked);
-    const completed = new Set(progress.completed);
-    const map = h("div", "mh-ui-flow-map");
-    for (const s of scripts) {
-      const node = this.button(s.label, () => this.commands?.startScript(s.file), "mh-ui-flow-node");
-      node.dataset.id = s.id;
-      node.title = s.arc;
-      node.style.left = `${(s.x / LOGICAL_W) * 100}%`;
-      node.style.top = `${(s.y / LOGICAL_H) * 100}%`;
-      const isUnlocked = unlocked.has(s.id) || completed.has(s.id);
-      node.disabled = !isUnlocked;
-      node.classList.toggle("mh-ui-flow-locked", !isUnlocked);
-      node.classList.toggle("mh-ui-flow-done", completed.has(s.id));
-      map.appendChild(node);
-    }
-    p.append(map, this.backButton());
-    return p;
+  /** Écran refait en FLOW-05 (#197) : voir `flowchart-view.ts`. */
+  private renderFlowchart(view: Extract<UIView, { screen: "flowchart" }>): El {
+    return renderFlowchartScreen(
+      {
+        graph: view.graph,
+        chapters: view.scripts,
+        currentScript: view.currentScript,
+        story: view.story,
+        revealAll: view.revealAll ?? false,
+        thumbnail: view.thumbnail,
+      },
+      () => {
+        if (this.inputEnabled) this.commands?.closeScreen();
+      },
+    );
   }
 
   // ── Entrées ──

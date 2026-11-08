@@ -1,0 +1,557 @@
+/*
+ * Écran « Flowchart » (FLOW-05 / #197 ; docs/ANALYSE_HUD_ORIGINAL.md §7.4, docs/DESIGN.md).
+ * CSS pur, tokens --mh-* de tokens.css (jamais redéclarés), fond `mh-ui-night` (night.css), aucune image du jeu.
+ * Repère : viewport logique 1280x720 ; les unités de la mise en page (`layoutFlowchart`) sont des pixels logiques.
+ *
+ * Formes (l'état n'est jamais codé par la seule couleur) :
+ *   silhouette (non découvert)  rectangle en pointillé, vide
+ *   non visité (révélé)         pointillé + pastille ○
+ *   visité                      plein + pastille ●
+ *   terminé                     plein + pastille ✓
+ *   courant                     halo + bord épais + repère « ◀ Ici »
+ *   choix = losange, interlude = hexagone, fin = double bord + drapeau ⚑
+ */
+
+.mh-ui-flowchart > .mh-flow-screen {
+  --mh-flow-node-radius: 6px;
+  --mh-flow-edge: var(--mh-panel-border-light);
+  --mh-flow-edge-taken: var(--mh-cyan-rail);
+
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-rows: 78px minmax(0, 1fr) 70px;
+  column-gap: 20px;
+  padding: 0 var(--mh-margin-screen) 0 21px;
+  color: var(--mh-text-ui);
+  font-family: var(--mh-font-ui);
+  pointer-events: auto;
+  animation: mh-flow-in var(--mh-dur-menu) var(--mh-ease);
+}
+
+@keyframes mh-flow-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── Titre (x 21-25, y 27-63 @720) ── */
+.mh-flow-head {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding-top: 20px;
+}
+
+.mh-flow-title {
+  margin: 0;
+  font-family: var(--mh-font-title);
+  font-size: var(--mh-screen-title-size);
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--mh-text-title);
+  text-shadow: 0 0 12px rgba(0, 192, 192, 0.45);
+}
+
+.mh-flow-title-deco {
+  font-family: var(--mh-font-ja);
+  font-size: var(--mh-screen-subtitle-size, 0.8rem);
+  color: var(--mh-text-menu);
+}
+
+/* ── Colonne latérale : compteurs et légende ── */
+.mh-flow-aside {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.mh-flow-counters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--mh-panel-fill);
+  border: 2px solid var(--mh-panel-border);
+}
+
+.mh-flow-counters:empty {
+  display: none;
+}
+
+.mh-flow-counter {
+  margin: 0;
+  font-size: var(--mh-control-size);
+  color: var(--mh-panel-label);
+}
+
+.mh-flow-legend {
+  padding: 10px 12px 12px;
+  background: var(--mh-panel-fill);
+  border: 2px solid var(--mh-panel-border);
+}
+
+.mh-flow-legend-title {
+  margin: 0 0 8px;
+  font-family: var(--mh-font-title);
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: var(--mh-panel-label);
+  text-shadow: 0 0 12px rgba(0, 192, 192, 0.45);
+}
+
+.mh-flow-legend-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mh-flow-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mh-flow-legend-text {
+  font-size: 0.95rem;
+  color: var(--mh-text-menu);
+}
+
+.mh-flow-legend-item > .mh-flow-legend-sample {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 22px;
+}
+
+.mh-flow-legend-edge {
+  flex: none;
+  overflow: visible;
+}
+
+/* ── Carte défilante ── */
+.mh-flow-scroll {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: rgba(7, 17, 27, 0.4);
+  border: 2px solid var(--mh-panel-border);
+  scrollbar-color: var(--mh-cyan-rail) var(--mh-field-fill);
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+  /* Plus de lignes que d'écran : le défilement au doigt reste natif. */
+  touch-action: pan-x pan-y;
+}
+
+.mh-flow-scroll:focus-visible {
+  outline: 2px solid var(--mh-focus);
+  outline-offset: 2px;
+}
+
+.mh-flow-stage {
+  position: relative;
+  margin: 0 auto;
+  user-select: none;
+}
+
+/* ── Groupes (un par chapitre) et section Bonus ── */
+.mh-flow-group {
+  position: absolute;
+  box-sizing: border-box;
+  background: rgba(21, 31, 43, 0.55);
+  border: 2px solid var(--mh-panel-border);
+  border-radius: 4px;
+}
+
+.mh-flow-group[data-locked="true"] {
+  border-style: dashed;
+}
+
+.mh-flow-group-title {
+  box-sizing: border-box;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--mh-font-title);
+  font-size: 1.1rem;
+  color: var(--mh-panel-label);
+  text-shadow: 0 0 12px rgba(0, 192, 192, 0.45);
+  border-bottom: 1px solid var(--mh-panel-border-dark);
+}
+
+.mh-flow-group[data-locked="true"] .mh-flow-group-title {
+  color: var(--mh-text-menu);
+  text-shadow: none;
+  font-size: 0.9rem;
+}
+
+.mh-flow-section-title {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 0 16px;
+  font-family: var(--mh-font-title);
+  font-size: 1.5rem;
+  color: var(--mh-text-title);
+  text-shadow: 0 0 12px rgba(0, 192, 192, 0.45);
+  border-top: 2px solid var(--mh-cyan-rail);
+}
+
+/* ── Arêtes ── */
+.mh-flow-edges,
+.mh-flow-labels {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.mh-flow-edge {
+  fill: none;
+  stroke: var(--mh-flow-edge);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.mh-flow-edge[data-kind="conditional"] {
+  stroke-dasharray: 6 4;
+}
+
+.mh-flow-edge[data-taken="true"] {
+  stroke: var(--mh-flow-edge-taken);
+}
+
+/* Interlude partagé (26 arêtes dans un même couloir) : estompées, sauf parcourues ou survolées. */
+.mh-flow-edge[data-hub="true"]:not([data-taken="true"]) {
+  opacity: 0.25;
+}
+
+.mh-flow-edge[data-hub="true"][data-taken="true"] {
+  opacity: 0.7;
+}
+
+.mh-flow-edge.is-lit {
+  stroke: var(--mh-cyan-glint);
+  opacity: 1;
+}
+
+.mh-flow-arrow {
+  fill: var(--mh-flow-edge);
+}
+
+.mh-flow-arrow-taken {
+  fill: var(--mh-flow-edge-taken);
+}
+
+.mh-flow-choice {
+  font-family: var(--mh-font-ui);
+  font-size: 12px;
+  fill: var(--mh-text-ui);
+  paint-order: stroke;
+  stroke: var(--mh-bg-night-top);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+/* ── Nœuds ── */
+.mh-flow-node {
+  position: absolute;
+  box-sizing: border-box;
+  color: var(--mh-text-ui);
+}
+
+.mh-flow-shape {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  display: block;
+  background: var(--mh-flow-shape-border, var(--mh-teal-on-border));
+  border-radius: var(--mh-flow-node-radius);
+}
+
+.mh-flow-fill {
+  position: absolute;
+  inset: 2px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  background: linear-gradient(to bottom, var(--mh-teal-on-top), var(--mh-teal-on-bottom));
+  border-radius: calc(var(--mh-flow-node-radius) - 2px);
+}
+
+.mh-flow-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Révélé mais non visité (mode « tout révéler ») : vignette atténuée. */
+.mh-flow-node[data-state="unvisited"] .mh-flow-thumb {
+  opacity: 0.45;
+  filter: grayscale(0.85);
+}
+
+/* Dégradé sombre sous l'identifiant : lisible sur n'importe quelle vignette. */
+.mh-flow-fill:has(.mh-flow-thumb)::after {
+  content: "";
+  position: absolute;
+  inset: 55% 0 0;
+  background: linear-gradient(to bottom, transparent, rgba(7, 17, 27, 0.85));
+}
+
+.mh-flow-id {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 0 3px 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 14px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+/* Pastille d'état (coin supérieur droit) et drapeau de fin (coin supérieur gauche). */
+.mh-flow-glyph,
+.mh-flow-flag {
+  position: absolute;
+  top: -6px;
+  box-sizing: border-box;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 2px;
+  font-size: 10px;
+  line-height: 13px;
+  text-align: center;
+  color: var(--mh-text-ui);
+  background: var(--mh-bg-night-top);
+  border: 1px solid var(--mh-cyan-rail);
+  border-radius: 8px;
+}
+
+.mh-flow-glyph {
+  right: -6px;
+}
+
+.mh-flow-flag {
+  left: -6px;
+  border-color: var(--mh-dialog-border);
+}
+
+/* Silhouette et nœud révélé mais non visité : pointillé, fond de panneau. */
+.mh-flow-node[data-state="hidden"] .mh-flow-shape,
+.mh-flow-node[data-state="unvisited"] .mh-flow-shape {
+  background: transparent;
+  border: 2px dashed var(--mh-panel-border-light);
+}
+
+.mh-flow-node[data-state="hidden"] .mh-flow-fill,
+.mh-flow-node[data-state="unvisited"] .mh-flow-fill {
+  inset: 0;
+  background: var(--mh-panel-fill);
+  border-radius: calc(var(--mh-flow-node-radius) - 2px);
+}
+
+.mh-flow-node[data-state="unvisited"] .mh-flow-id {
+  color: var(--mh-text-menu);
+  text-shadow: none;
+}
+
+.mh-flow-node[data-state="unvisited"] .mh-flow-glyph {
+  border-color: var(--mh-panel-border-light);
+  color: var(--mh-text-menu);
+}
+
+/* Terminé : même teinte que visité, avec la coche de la pastille. */
+.mh-flow-node[data-state="finished"] .mh-flow-glyph {
+  background: var(--mh-teal-on-bottom);
+  border-color: var(--mh-teal-on-border);
+}
+
+/* Courant : halo, bord épais, repère. */
+.mh-flow-node[data-state="current"] {
+  z-index: 2;
+  filter: drop-shadow(0 0 3px var(--mh-cyan-glint)) drop-shadow(0 0 9px var(--mh-cyan-glint));
+}
+
+.mh-flow-node[data-state="current"] .mh-flow-shape {
+  --mh-flow-shape-border: var(--mh-cyan-glint);
+}
+
+.mh-flow-node[data-state="current"] .mh-flow-fill {
+  inset: 3px;
+}
+
+.mh-flow-marker {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  display: flex;
+  align-items: center;
+  margin: -10px 0 0 8px;
+  white-space: nowrap;
+}
+
+.mh-flow-marker-arrow {
+  width: 0;
+  height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-right: 9px solid var(--mh-cyan-glint);
+}
+
+.mh-flow-marker-text {
+  box-sizing: border-box;
+  height: 20px;
+  padding: 0 7px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--mh-bg-night-bottom);
+  background: var(--mh-cyan-glint);
+  border-radius: 0 3px 3px 0;
+}
+
+/* Choix = losange (le bord est le calque `shape`, le fond le calque `fill` réduit). */
+.mh-flow-node[data-kind="choice"] .mh-flow-shape {
+  --mh-flow-shape-border: var(--mh-select);
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.mh-flow-node[data-kind="choice"] .mh-flow-fill {
+  inset: 0;
+  border-radius: 0;
+  clip-path: polygon(50% 9%, 94% 50%, 50% 91%, 6% 50%);
+  align-items: center;
+}
+
+/* Interlude = hexagone. */
+.mh-flow-node[data-kind="interlude"] .mh-flow-shape {
+  --mh-flow-shape-border: var(--mh-cyan-glint);
+  border-radius: 0;
+  clip-path: polygon(14% 0, 86% 0, 100% 50%, 86% 100%, 14% 100%, 0 50%);
+}
+
+.mh-flow-node[data-kind="interlude"] .mh-flow-fill {
+  inset: 0;
+  border-radius: 0;
+  clip-path: polygon(15.5% 7%, 84.5% 7%, 96% 50%, 84.5% 93%, 15.5% 93%, 4% 50%);
+  align-items: center;
+}
+
+/* Fin = double bord. */
+.mh-flow-node[data-kind="end"] .mh-flow-shape {
+  --mh-flow-shape-border: var(--mh-dialog-border);
+  padding: 2px;
+  background: transparent;
+  border: 2px solid var(--mh-dialog-border);
+}
+
+.mh-flow-node[data-kind="end"] .mh-flow-fill {
+  inset: 3px;
+  outline: 1px solid var(--mh-dialog-border);
+  outline-offset: -1px;
+}
+
+.mh-flow-node[data-kind="end"][data-ending="pending"] .mh-flow-fill {
+  background: var(--mh-panel-fill);
+}
+
+/* Un nœud révélé non visité (diamant, hexagone) garde la forme avec le fond de panneau. */
+.mh-flow-node[data-state="unvisited"][data-kind="choice"] .mh-flow-shape,
+.mh-flow-node[data-state="unvisited"][data-kind="interlude"] .mh-flow-shape {
+  border: 0;
+  background: var(--mh-panel-border-light);
+}
+
+.mh-flow-node[data-state="unvisited"][data-kind="choice"] .mh-flow-fill,
+.mh-flow-node[data-state="unvisited"][data-kind="interlude"] .mh-flow-fill {
+  background: var(--mh-panel-fill);
+}
+
+.mh-flow-node[data-kind="choice"] .mh-flow-id,
+.mh-flow-node[data-kind="interlude"] .mh-flow-id {
+  padding-bottom: 0;
+}
+
+/* Un nœud de la légende est un petit échantillon sans texte. */
+.mh-flow-legend-sample .mh-flow-glyph {
+  top: -5px;
+  right: -5px;
+}
+
+/* ── État vide et pied d'écran ── */
+.mh-flow-empty {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-self: start;
+  max-width: 560px;
+  margin: 24px 0 0;
+  padding: 16px 20px;
+  font-size: var(--mh-control-size);
+  line-height: 1.6;
+  color: var(--mh-text-menu);
+  background: var(--mh-panel-fill);
+  border: 2px solid var(--mh-panel-border);
+}
+
+/* « Back » : 1095-1161 x 666-687 @720 (DESIGN §4). */
+.mh-flow-foot {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 14px 104px 0 0;
+}
+
+.mh-flow-back {
+  min-width: 66px;
+  min-height: 28px;
+  padding: 0 4px;
+  font-family: var(--mh-font-title);
+  font-size: var(--mh-back-size, 1.8rem);
+  line-height: 1;
+  color: #c7dfe1;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.mh-flow-back:hover {
+  color: var(--mh-text-menu-hover);
+  text-shadow: 0 0 12px rgba(0, 192, 192, 0.45);
+}
+
+.mh-flow-back:focus-visible {
+  outline: 2px solid var(--mh-focus);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .mh-flow-back {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

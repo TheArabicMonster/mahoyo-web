@@ -3,6 +3,7 @@
  */
 import type { Ms, StageSnapshot } from "@/kag/events.js";
 import type { ShortcutBindings } from "@/core/shortcuts.js";
+import type { StoryGraph } from "@/core/story-graph.js";
 import type { AudioSettings, DisplaySettings, MouseMode } from "@/renderer/types.js";
 
 // ── Réglages et état du player ──
@@ -151,12 +152,22 @@ export type UIView =
   | { screen: "backlog"; entries: readonly BacklogEntry[] }
   | {
       screen: "flowchart";
+      /** Chapitres (titres des groupes) ; `id` = `story-chain.json.chapters[].id`. */
       scripts: readonly ScriptSummary[];
       progress: ScriptProgress;
       /** Identifiant du script en cours (nom sans extension, minuscules) ; null au titre. */
-      currentScript?: string | null;
+      currentScript: string | null;
       /** Progression par scène (cumulative, indépendante de la sauvegarde chargée). */
-      story?: StoryProgress;
+      story: StoryProgress;
+      /**
+       * Graphe de scénario (`story-graph.json`, local et jamais commité). Absent ou `null` : l'écran
+       * affiche un état vide (utilisateur sans assets, CI).
+       */
+      graph?: StoryGraph | null;
+      /** `GameSettings.flowchartRevealAll` : true = tout révéler. Absent = anti-spoiler actif. */
+      revealAll?: boolean;
+      /** URL de la vignette d'une clé d'image du manifeste (`GraphNode.thumb`), ou `null` si absente. */
+      thumbnail?: (key: string) => string | null;
     };
 
 /** Options de `UIManager.confirm` (HUD-05, #190). */

@@ -1345,6 +1345,39 @@ describe("Player — événements de progression (flowchart)", () => {
     ctx.player.closeScreen();
   });
 
+  it("la vue du flowchart porte le graphe (chargé à la demande), le réglage « tout révéler » et la résolution des vignettes", async () => {
+    const graph = { version: 1 as const, first: "a", nodes: [{ id: "a", file: "a.ks", kind: "normal" as const }], edges: [] };
+    const loadGraph = vi.fn(async () => graph);
+    const ctx = progressSetup({ loadGraph });
+    current = ctx.player;
+    await ctx.player.ready;
+    expect(loadGraph).not.toHaveBeenCalled();
+
+    ctx.player.openScreen("flowchart");
+    await until(() => ctx.ui.views.at(-1)?.screen === "flowchart", "vue flowchart");
+    const view = ctx.ui.views.at(-1) as { graph?: unknown; revealAll?: boolean; thumbnail?: unknown };
+    expect(view.graph).toBe(graph);
+    expect(view.revealAll).toBe(false);
+    expect(typeof view.thumbnail).toBe("function");
+    ctx.player.closeScreen();
+
+    ctx.player.updateSettings({ flowchartRevealAll: true });
+    ctx.player.openScreen("flowchart");
+    await until(() => (ctx.ui.views.at(-1) as { revealAll?: boolean }).revealAll === true, "révéler tout");
+    expect(loadGraph).toHaveBeenCalledTimes(1);
+    ctx.player.closeScreen();
+  });
+
+  it("sans graphe (assets absents), la vue du flowchart reçoit null", async () => {
+    const ctx = progressSetup({ loadGraph: async () => null });
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.openScreen("flowchart");
+    await until(() => ctx.ui.views.at(-1)?.screen === "flowchart", "vue flowchart");
+    expect((ctx.ui.views.at(-1) as { graph?: unknown }).graph).toBeNull();
+    ctx.player.closeScreen();
+  });
+
   describe("sauvegarde et chargement", () => {
     it("restitue l'historique de choix et la position, sans toucher à la progression cumulée", async () => {
       const ctx = progressSetup();

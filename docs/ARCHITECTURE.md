@@ -104,6 +104,10 @@ src/renderer/ + src/ui/  ── rendu navigateur
   La progression **globale** est cumulative : charger une sauvegarde ou revenir en arrière n'y retire rien ; le
   chargement y ajoute seulement les arêtes de la sauvegarde (utile pour une sauvegarde importée).
 - Réglage `flowchartRevealAll` (défaut `false`) : anti-spoiler du flowchart actif tant qu'il est faux.
+- **`flowchart-view.ts`** / **`flowchart-view.css`** : rendu statique de l'écran Flowchart (FLOW-05, #197) ; voir
+  `ENCHAINEMENT_SCRIPTS.md` (« Rendu du flowchart »). `DomUIManager` n'y délègue que `renderFlowchartScreen`.
+  `Player` charge `story-graph.json` (`AssetResolver.graph()`) à la première ouverture de l'écran, puis le fournit à
+  la vue `flowchart` avec `revealAll` (réglage) et `thumbnail` (clé du manifeste -> URL, `AssetResolver.uiImage`).
 
 ### `src/core/` — utilitaires
 

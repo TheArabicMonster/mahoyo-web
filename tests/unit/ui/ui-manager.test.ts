@@ -185,18 +185,25 @@ describe("DomUIManager", () => {
       { screen: "load", slots: [{ id: 1, data: slotData }] },
       { screen: "settings", settings, availableLanguages: ["ja", "fr"] },
       { screen: "backlog", entries: [{ text: "t1" }, { text: "t2", voice: "v" }] },
-      { screen: "flowchart", scripts, progress: { unlocked: ["a"], completed: [] } },
+      {
+        screen: "flowchart",
+        scripts,
+        progress: { unlocked: ["a"], completed: [] },
+        currentScript: null,
+        story: { visited: [], finished: [], choices: [], endings: [] },
+      },
     ];
     it.each(views.map((v) => [v.screen, v] as const))("affiche %s", (_n, v) => {
       ui.show(v);
       expect(q("#ui-overlay")!.dataset.screen).toBe(v.screen);
-      // Menu système plein cadre (HUD-06, #194) et écran titre plein cadre (HUD-07, #195) : pas de panneau centré.
-      const full: Record<string, string> = { pause: ".mh-sysmenu", title: ".mh-ui-title-screen" };
+      // Menu système plein cadre (HUD-06, #194), écran titre plein cadre (HUD-07, #195) et flowchart (FLOW-05, #197) : pas de panneau centré.
+      const full: Record<string, string> = { pause: ".mh-sysmenu", title: ".mh-ui-title-screen", flowchart: ".mh-flow-screen" };
       expect(q(full[v.screen] ?? ".mh-ui-panel")).not.toBeNull();
       ui.show({ screen: "game" });
       expect(q(".mh-ui-panel")).toBeNull();
       expect(q(".mh-sysmenu")).toBeNull();
       expect(q(".mh-ui-title-screen")).toBeNull();
+      expect(q(".mh-flow-screen")).toBeNull();
     });
 
     it("title : la grille de chapitres n'est plus au titre, Extra l'ouvre (provisoire)", () => {
@@ -226,6 +233,16 @@ describe("DomUIManager", () => {
     it("title : liste vide, pas de « Start »", () => {
       ui.show({ screen: "title", scripts: [], hasContinue: false });
       expect(q(".mh-ui-new-game")).toBeNull();
+    });
+    it("les entrées Flowchart du titre et du menu système ouvrent le nouvel écran (FLOW-05)", () => {
+      ui.show({ screen: "title", scripts, hasContinue: false });
+      q('[data-entry="flowchart"]')!.click();
+      expect(cmd.openScreen).toHaveBeenLastCalledWith("flowchart");
+      ui.show({ screen: "pause" });
+      q('[data-entry="flowchart"]')!.click();
+      expect(cmd.openScreen).toHaveBeenCalledTimes(2);
+      ui.show(views[6]!);
+      expect(q(".mh-flow-screen")).not.toBeNull();
     });
     it("pause : « Back » referme le menu", () => {
       ui.show({ screen: "pause" });
@@ -299,11 +316,11 @@ describe("DomUIManager", () => {
       (q(".mh-ui-reset") as HTMLButtonElement).click();
       expect(cmd.resetSettings).toHaveBeenCalled();
     });
-    it("flowchart : scripts verrouillés désactivés", () => {
+    it("flowchart : sans graphe, état vide et « Retour » fonctionnel", () => {
       ui.show(views[6]!);
-      expect((q('[data-id="b"]') as HTMLButtonElement).disabled).toBe(true);
-      q('[data-id="a"]')!.click();
-      expect(cmd.startScript).toHaveBeenCalledWith("a.ks");
+      expect(q(".mh-flow-empty")).not.toBeNull();
+      q(".mh-flow-back")!.click();
+      expect(cmd.closeScreen).toHaveBeenCalled();
     });
   });
 

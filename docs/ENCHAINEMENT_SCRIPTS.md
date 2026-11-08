@@ -192,6 +192,44 @@ interlude partagé, cycle, sections, performance) et, sur les vrais assets locau
 `tests/integration/flow-layout.test.ts` (ignoré sans `MAHOYO_ASSETS_DIR` ; `MAHOYO_STORY_GRAPH` désigne un
 `story-graph.json` ailleurs que dans le dossier d'assets).
 
+## Rendu du flowchart (`flowchart-view.ts`)
+
+L'écran (`src/ui/flowchart-view.ts` + `flowchart-view.css`, FLOW-05 / #197) dessine la mise en page de
+`layoutFlowchart` sans rien recalculer : groupes (DOM), arêtes (SVG), nœuds (DOM), libellés de choix (SVG au-dessus des
+nœuds). Fond `mh-ui-night`, tokens de `tokens.css`, aucune image du jeu. L'écran défile nativement (la colonne mesure
+environ 790 × 15 900 unités) et se positionne d'abord sur le nœud courant ; le pan, le zoom, le clic sur un nœud sont
+prévus en #202, le clavier et le lecteur d'écran en #206.
+
+**Données** : `Player` charge `story-graph.json` (`AssetResolver.graph()`, `<assets>/story-graph.json`) à la première
+ouverture, la vue `flowchart` porte `graph`, `revealAll` (`flowchartRevealAll`), `thumbnail` (clé -> URL via
+`AssetResolver.uiImage`, `null` si la clé n'est pas au manifeste). Les titres de groupes viennent de `scripts`
+(`story-chain.json.chapters`). Sans graphe (CI, utilisateur sans assets) : message d'état vide (`flowchart.empty`) et
+bouton « Retour ».
+
+**États d'un nœud** (`data-state`, jamais la seule couleur) :
+
+| État | Forme | Pastille | Texte accessible |
+|---|---|---|---|
+| `hidden` (silhouette) | pointillé, vide | aucune | aucun (`aria-hidden`) |
+| `unvisited` (mode « tout révéler ») | pointillé, id, vignette atténuée | ○ | « Scène x, non visitée » |
+| `visited` | plein, id, vignette | ● | « Scène x, visitée » |
+| `finished` | plein | ✓ | « Scène x, terminée » |
+| `current` | halo `--mh-cyan-glint`, bord épais, repère « Ici » | repère | « Scène x, position actuelle » + `aria-current="location"` |
+
+Le type se lit sur la forme : choix = losange (bord `--mh-select`), interlude = hexagone, fin = double bord + drapeau ⚑
+(« fin atteinte » ou « fin » dans le texte accessible). Les 26 arêtes de l'interlude partagé sont estompées, sauf
+parcourues ou survolées (le survol d'un nœud éclaire ses arêtes).
+
+**Anti-spoiler** : sans `revealAll`, une silhouette ne porte ni identifiant (même pas en `data-*`), ni titre, ni
+vignette, ni `aria-label`. Le titre d'un chapitre dont aucun script n'est ouvert est remplacé par « ??? ». Un libellé de
+choix n'apparaît que sur l'arête empruntée ; la progression n'enregistre que le script cible : quand **plusieurs options
+mènent au même script**, aucun libellé n'est affiché (on ne sait pas laquelle fut choisie), sauf en mode « tout révéler ».
+Une arête non-choix est dite parcourue quand ses deux extrémités ont été ouvertes (approximation).
+
+**Compteurs** : « Scènes lues x/N » (scripts ouverts / nœuds du graphe) et « Fins atteintes x/y » (`endingProgress` :
+seules les fins atteignables depuis le début comptent ; masqué quand y = 0). Pas de « x/4 ». Les isolés et pages annexes
+sont dans la section « Bonus ».
+
 ## Résultat sur le corpus de référence
 
 194 blocs dont 161 avec script, 200 scripts dans la table dont 19 avec plusieurs suites,

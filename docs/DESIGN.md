@@ -299,6 +299,13 @@ Premier composant à suivre ce principe : `src/ui/night.css` (importé par `src/
 - **Menu** : `<nav aria-label>` de `<button>` : *Start*, *Load*, *Continuer* (si autosave), *Flowchart*, *Config*, *Extra*. Pas d'Exit. Serif, interlettrage 0,25 em, repos `--mh-ink`, survol et focus `--mh-ink-hover`, contour de 2 px au clavier. Flèches, Début, Fin déplacent le focus ; Entrée et Espace activent (natif).
 - **Extra (provisoire)** : ouvre sur place la liste des chapitres (fond nuit bleue, 4 colonnes, Échap ou Retour pour fermer) jusqu'à HUD-08 (#199), qui la remplace par le vrai sous-menu (Archive, CG, Sound, Back). Les classes `mh-ui-scripts` / `mh-ui-script` et l'attribut `data-file` sont conservés.
 
+### 9.4 Écran « Flowchart » (FLOW-05 / #197)
+
+`src/ui/flowchart-view.css` : CSS pur sur les tokens, fond `mh-ui-night`. Mesures @720 : titre en x 21, y 20-62 (`--mh-screen-title-size`) ;
+colonne latérale (compteurs, légende) 236 px ; carte défilante x 277-1265, y 78-650 ; « Retour » en bas à droite (x 1065-1161, `--mh-font-title`).
+Nœud 64 x 40 (unités de `layoutFlowchart`), arêtes 2 px `--mh-panel-border-light`, parcourues `--mh-cyan-rail`. Libellés de choix à 12 px (en dessous des
+16 px@720 recommandés : le graphe est dense, le zoom de #202 compensera). Détail des états et de l'anti-spoiler : `ENCHAINEMENT_SCRIPTS.md`.
+
 ## 10. Accessibilité minimale à conserver
 
 - **Contraste** : texte clair sur fond sombre ≥ 7:1 (ex. `#a9c8cc` sur `#132337` ≈ 9:1). Le texte lu à 40 % d'opacité
