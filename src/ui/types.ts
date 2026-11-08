@@ -149,7 +149,15 @@ export type UIView =
   | { screen: "save" | "load"; slots: readonly SaveSlot[] }
   | { screen: "settings"; settings: Readonly<GameSettings>; availableLanguages: readonly GameLanguage[] }
   | { screen: "backlog"; entries: readonly BacklogEntry[] }
-  | { screen: "flowchart"; scripts: readonly ScriptSummary[]; progress: ScriptProgress };
+  | {
+      screen: "flowchart";
+      scripts: readonly ScriptSummary[];
+      progress: ScriptProgress;
+      /** Identifiant du script en cours (nom sans extension, minuscules) ; null au titre. */
+      currentScript?: string | null;
+      /** Progression par scène (cumulative, indépendante de la sauvegarde chargée). */
+      story?: StoryProgress;
+    };
 
 export interface UIManager {
   /** Commandes injectées une seule fois. Installe aussi les listeners clavier et souris. */

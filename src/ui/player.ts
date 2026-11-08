@@ -17,6 +17,7 @@ import {
   type SaveRecord,
   type SaveStore,
 } from "@/player/save-store.js";
+import { ProgressTracker, reachableEndings, scriptIdOf } from "@/player/progress-tracker.js";
 import {
   DEFAULT_SETTINGS,
   createLocalSettingsStore,
@@ -50,7 +51,9 @@ import type {
   PlayerCommands,
   SaveSlot,
   ScriptSummary,
+  StoryProgress,
   SlotId,
+  TakenChoice,
   UIManager,
 } from "./types.js";
 
@@ -120,6 +123,8 @@ type HistoryEntry = {
   text: string;
   /** Scripts d'interlude encore à jouer (voir `chainQueue`) : à restaurer avec le point. */
   chainQueue: string[];
+  /** Chemin de choix de la partie à ce point (restauré avec lui). */
+  choices: readonly TakenChoice[];
 };
 
 async function defaultLoadScript(resolver: AssetResolver, file: string, language?: string): Promise<ParsedScript | null> {
@@ -231,6 +236,10 @@ export class Player implements PlayerCommands {
   private settings: GameSettings;
   private readSet = new Set<string>();
   private completed: string[] = [];
+  /** Progression par scène (flowchart) : cumulative, jamais réinitialisée par un chargement. */
+  private readonly progress: ProgressTracker;
+  /** Arêtes de choix prises depuis le début de la partie en cours (état, enregistré dans les sauvegardes). */
+  private choicePath: readonly TakenChoice[] = [];
 
   private state: PlayerState = "title";
   private mode: PlayMode = "normal";
@@ -323,6 +332,7 @@ export class Player implements PlayerCommands {
       skipDelay: deps.skipDelay ?? 25,
     };
     this.settings = DEFAULT_SETTINGS;
+    this.progress = new ProgressTracker(this.deps.settingsStore);
 
     this.stage = this.deps.createStageRenderer({ resolver });
     this.audio = this.deps.createAudioPlayer({ resolver });
@@ -344,6 +354,8 @@ export class Player implements PlayerCommands {
     this.readSet = await store.loadRead();
     this.completed = (await store.loadProgress()).completed;
     this.chain = await this.deps.loadChain().catch(() => null);
+    this.progress.setEndings(this.chain ? reachableEndings(this.chain) : new Set());
+    await this.progress.load();
     this.timelines = await this.deps.loadTimelines().catch(() => null);
     this.languageIndexes = await this.deps.loadLanguages().catch(() => new Map());
     if (this.settings.language !== "ja" && !this.languageIndexes.has(this.settings.language)) {
@@ -383,6 +395,26 @@ export class Player implements PlayerCommands {
 
   get currentMode(): PlayMode {
     return this.mode;
+  }
+
+  /** Identifiant du script en cours (nom sans extension, minuscules) ; null au titre. */
+  get currentScript(): string | null {
+    return this.state === "title" || this.scriptFile === "" ? null : scriptIdOf(this.scriptFile);
+  }
+
+  /** Progression par scène cumulée (copie immuable). */
+  get storyProgress(): StoryProgress {
+    return this.progress.snapshot;
+  }
+
+  /** Arêtes de choix de la partie en cours (celles que la sauvegarde embarque). */
+  get choiceHistory(): readonly TakenChoice[] {
+    return this.choicePath;
+  }
+
+  /** Résolue quand les écritures de progression en attente sont terminées (tests). */
+  flushProgress(): Promise<void> {
+    return this.progress.flush();
   }
 
   /** Résolue quand la boucle de lecture est suspendue ou terminée. */
@@ -518,6 +550,7 @@ export class Player implements PlayerCommands {
       if (label && !runtime.jump(label)) console.warn(`label introuvable : ${label}`);
       this.runtime = runtime;
       this.scriptFile = file;
+      this.progress.enter(scriptIdOf(file));
       this.chainQueue = [];
       this.quickMenuLocked = false;
       this.autoPaused = false;
@@ -628,8 +661,11 @@ export class Player implements PlayerCommands {
         audio: record.audio,
         text: record.previewText,
         chainQueue: record.chainQueue ?? [],
+        choices: record.choices ?? [],
       },
     ];
+    // Ajout seul : une sauvegarde ne retire ni n'écrase jamais la progression cumulée.
+    this.progress.absorbChoices(this.history[0]!.choices);
     if (await this.restoreEntry(this.history[0])) this.overlays = [];
   }
 
@@ -857,6 +893,7 @@ export class Player implements PlayerCommands {
         return true;
       }
       case "end": {
+        this.progress.finish(scriptIdOf(position.scriptName));
         this.markCompleted();
         if (await this.chainToNext(position.scriptName, signal)) return true;
         if (signal.aborted) return false;
@@ -972,6 +1009,7 @@ export class Player implements PlayerCommands {
         this.ui.hideChoices();
         const option = next.options[index];
         if (signal.aborted || !option) return false;
+        this.takeChoice(current, option.file);
         file = option.file;
         this.chainQueue = [...option.then];
       }
@@ -986,7 +1024,16 @@ export class Player implements PlayerCommands {
       return false;
     }
     this.scriptFile = file;
+    this.progress.enter(scriptIdOf(file));
     return true;
+  }
+
+  /** Menu de choix : arête `from -> to` en scripts (jamais le libellé), dans la partie et la progression. */
+  private takeChoice(fromFile: string, toFile: string): void {
+    const from = scriptIdOf(fromFile);
+    const to = scriptIdOf(toFile);
+    this.choicePath = [...this.choicePath, { from, to }];
+    this.progress.choose(from, to);
   }
 
   private async waitForEffect(stop: Extract<StopReason, { kind: "waitFor" }>, signal: AbortSignal): Promise<void> {
@@ -1092,6 +1139,7 @@ export class Player implements PlayerCommands {
       audio: this.audioSnap,
       text: previewOf(this.stageSnap),
       chainQueue: [...this.chainQueue],
+      choices: this.choicePath,
     };
     this.history.push(entry);
     if (this.history.length > HISTORY_LIMIT) this.history.shift();
@@ -1114,6 +1162,7 @@ export class Player implements PlayerCommands {
       audio: entry.audio,
       stop: entry.stop,
       chainQueue: entry.chainQueue,
+      choices: entry.choices.map((c) => ({ ...c })),
     };
   }
 
@@ -1150,6 +1199,8 @@ export class Player implements PlayerCommands {
 
       this.runtime = runtime;
       this.scriptFile = data.scriptName;
+      this.progress.enter(scriptIdOf(data.scriptName));
+      this.choicePath = entry.choices;
       this.quickMenuLocked = data.state.quickMenuLocked ?? false;
       this.autoPaused = data.state.autoModePaused ?? false;
       this.chainQueue = [...entry.chainQueue];
@@ -1215,6 +1266,7 @@ export class Player implements PlayerCommands {
     this.stageSnap = { scene: { bg: null, sprites: [], effect: null }, textbox: { visible: true, frame: true }, text: [], staffroll: null };
     this.audioSnap = { loops: [] };
     this.history = [];
+    this.choicePath = [];
     this.userHidden = false;
     this.autoSkipConfirmed = false;
     this.autoSkipDeclined = false;
@@ -1317,6 +1369,8 @@ export class Player implements PlayerCommands {
             this.deps.scripts.map((s) => s.id),
             this.completed,
           ),
+          currentScript: this.currentScript,
+          story: this.progress.snapshot,
         });
         break;
     }
