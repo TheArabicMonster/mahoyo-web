@@ -363,8 +363,38 @@ describe("DomStageRenderer", () => {
       expect(indicator.parentElement).toBe(text());
       expect(text().lastChild).toBe(indicator);
       expect(indicator.dataset.style).toBe("page");
+      expect(getComputedStyle(indicator).position).toBe("absolute");
       renderer.setClickIndicator(null);
       expect(indicator.dataset.style).toBeUndefined();
+    });
+
+    it("positionne l'indicateur hors du flux sur le dernier caractère (#175)", async () => {
+      const rect = (left: number, top: number, width: number, height: number) =>
+        ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() { return this; } }) as DOMRect;
+      const widthSpy = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+        return this.id === "text" ? 100 : 0;
+      });
+      const boxSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+        return this.id === "text" ? rect(10, 20, 100, 40) : rect(0, 0, 0, 0);
+      });
+      // jsdom n'implémente pas la mise en page : on fournit la boîte du dernier caractère.
+      const rangeProto = Range.prototype as unknown as { getClientRects?: () => DOMRectList };
+      const originalGetClientRects = rangeProto.getClientRects;
+      rangeProto.getClientRects = () => [rect(90, 30, 10, 20)] as unknown as DOMRectList;
+      try {
+        await renderer.apply([{ kind: "text", segments: [{ text: "Texte inventé." }] }], { instant: true, signal: sig() });
+        renderer.setClickIndicator("page");
+        const indicator = root.querySelector("#textbox-indicator") as HTMLElement;
+        // Dernier caractère : right = 100, text.left = 10, scale = 1 → 92 px.
+        // Boîte du caractère : top 30, hauteur 20 ; icône 24 px → 30 - 20 + (20 - 24) / 2 = 8 px.
+        expect(indicator.style.left).toBe("92px");
+        expect(indicator.style.top).toBe("8px");
+      } finally {
+        if (originalGetClientRects) rangeProto.getClientRects = originalGetClientRects;
+        else delete rangeProto.getClientRects;
+        boxSpy.mockRestore();
+        widthSpy.mockRestore();
+      }
     });
 
     it("atténue le texte déjà lu de la page après le clic, jusqu'au changement de page", async () => {

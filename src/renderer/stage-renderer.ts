@@ -20,7 +20,7 @@ import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spri
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
 import { dimmedUnitCount, fitTextBox, frameTextAreaHeight, FRAME_TEXT_AREA, textBoxHeight, TEXT_FIT_DEFAULTS } from "./text-fit.js";
-import { CLICK_GLYPHS, frameImageOpacity, resolveFrameStyle, type FrameStyle } from "./text-frame.js";
+import { CLICK_GLYPHS, frameImageOpacity, indicatorOffset, resolveFrameStyle, type FrameStyle } from "./text-frame.js";
 import { cssEasing, easeProgress } from "@/core/easing.js";
 
 /**
@@ -317,6 +317,8 @@ export class DomStageRenderer implements StageRenderer {
     this.indicatorEl.style.visibility = style ? "visible" : "hidden";
     if (style) this.indicatorEl.dataset.style = style;
     else delete this.indicatorEl.dataset.style;
+    // La taille de l'icône dépend du style affiché (glyphe de secours ou bande chargée) : replacer.
+    this.placeIndicator();
     // Fin d'une attente : le texte affiché jusqu'ici devient « lu » et s'atténue (#173).
     if (previous && !style && !this.typewriterResolve) {
       const units = this.buildTextUnits();
@@ -338,7 +340,11 @@ export class DomStageRenderer implements StageRenderer {
       const url = this.resolver.image(glyph.storage);
       el.style.setProperty(`--mh-glyph-${style}`, cssUrl(url));
       const img = new Image();
-      img.onload = () => el.classList.add(`mh-glyph-${style}-ok`);
+      img.onload = () => {
+        el.classList.add(`mh-glyph-${style}-ok`);
+        // La bande chargée a une taille connue : recentrer l'indicateur si c'est le style courant.
+        if (this.clickStyle === style) this.placeIndicator();
+      };
       img.onerror = () => this.resolver.reportMissing("image", glyph.storage);
       img.src = url;
     }
@@ -631,13 +637,19 @@ export class DomStageRenderer implements StageRenderer {
         bottom: 16px;
         font-size: 1.2rem;
       }
-      /* Cadre image : l'indicateur suit le dernier caractère, posé sur la ligne de base. */
+      /*
+       * Cadre image : l'indicateur est hors du flux, positionné sur le dernier caractère par
+       * placeIndicator (#175). Il n'élargit donc pas la ligne et ne peut pas la faire passer
+       * à la ligne suivante.
+       */
       .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator {
-        display: inline-block;
+        position: absolute;
+        display: block;
         letter-spacing: 0;
         font-size: 0.8em;
         line-height: 1;
-        margin-left: 2px;
+        margin: 0;
+        pointer-events: none;
       }
       .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator:not([data-style]) {
         display: none;
@@ -646,7 +658,6 @@ export class DomStageRenderer implements StageRenderer {
       .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator.mh-glyph-page-ok[data-style="page"] {
         color: transparent;
         font-size: 0;
-        vertical-align: -2px;
         background-repeat: no-repeat;
         background-position: 0 0;
         animation: none;
@@ -1558,9 +1569,58 @@ export class DomStageRenderer implements StageRenderer {
   /** Cadre image : l'indicateur suit le texte ; ancienne boîte : il reste dans le coin de la boîte. */
   private placeIndicator(): void {
     const el = this.indicatorEl;
-    if (!el || !this.textEl || !this.textboxEl) return;
-    const parent = this.frameStyle.mode === "image" ? this.textEl : this.textboxEl;
-    if (el.parentNode !== parent || el !== parent.lastChild) parent.appendChild(el);
+    const textEl = this.textEl;
+    if (!el || !textEl || !this.textboxEl) return;
+    if (this.frameStyle.mode === "box") {
+      el.style.left = "";
+      el.style.top = "";
+      if (el.parentNode !== this.textboxEl || el !== this.textboxEl.lastChild) {
+        this.textboxEl.appendChild(el);
+      }
+      return;
+    }
+    if (el.parentNode !== textEl || el !== textEl.lastChild) textEl.appendChild(el);
+
+    // L'indicateur est hors du flux : on le centre sur la boîte du dernier caractère (#175).
+    const node = this.lastVisibleTextNode();
+    if (!node?.data) return;
+    let end = node.data.length;
+    while (end > 0 && /\s/.test(node.data[end - 1]!)) end--;
+    if (end === 0 || typeof document.createRange !== "function") return;
+    const range = document.createRange();
+    range.setStart(node, end - 1);
+    range.setEnd(node, end);
+    const rects = typeof range.getClientRects === "function" ? range.getClientRects() : [];
+    const char = rects[rects.length - 1];
+    const textRect = textEl.getBoundingClientRect();
+    // Largeur logique du contenu : `clientWidth` exclut la barre de défilement d'une page qui
+    // déborde ; la largeur calculée, elle, reste fiable pour retrouver l'échelle de la scène.
+    const computedWidth = Number.parseFloat(getComputedStyle(textEl).width);
+    const logicalWidth = computedWidth > 0 ? computedWidth : textEl.clientWidth;
+    if (!char || char.width === 0 || char.height === 0 || textRect.width === 0 || logicalWidth <= 0) {
+      return;
+    }
+    const height = el.offsetHeight || CLICK_GLYPHS.page.height;
+    const pos = indicatorOffset(char, textRect, textRect.width / logicalWidth, height);
+    el.style.left = `${pos.left}px`;
+    el.style.top = `${pos.top}px`;
+  }
+
+  /** Dernier nœud de texte visible, hors indicateur et hors furigana (`rt`/`rp`). */
+  private lastVisibleTextNode(): Text | null {
+    if (!this.textEl) return null;
+    const indicator = this.indicatorEl;
+    const walker = document.createTreeWalker(this.textEl, NodeFilter.SHOW_TEXT);
+    let last: Text | null = null;
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (!(node instanceof Text)) continue;
+      if (indicator?.contains(node)) continue;
+      const parent = node.parentElement;
+      if (parent && (parent.tagName === "RT" || parent.tagName === "RP")) continue;
+      if (/\S/.test(node.data)) last = node;
+    }
+    return last;
   }
 
   /**
@@ -1592,6 +1652,8 @@ export class DomStageRenderer implements StageRenderer {
     }
     boxEl.dataset.textFit = fit.overflow ? "overflow" : fit.scale < 1 ? "shrunk" : "nominal";
     if (keep < units.length) this.renderTextUpTo(units, keep);
+    // La police finale peut avoir changé : replacer l'indicateur sur le dernier caractère.
+    this.placeIndicator();
   }
 
   private renderText(instant: boolean): void {

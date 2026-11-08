@@ -57,3 +57,31 @@ export const CLICK_GLYPHS = {
   line: { storage: "linebreak_a", width: 24, height: 24, frames: 40 },
   page: { storage: "pagebreak_a", width: 32, height: 24, frames: 40 },
 } as const;
+
+/** Écart horizontal entre le dernier caractère et l'indicateur, en pixels du repère logique. */
+export const INDICATOR_GAP = 2;
+
+/** Rectangle réduit aux valeurs utiles (`DOMRect` de `getClientRects`/`getBoundingClientRect`). */
+export type RectLike = { top: number; left: number; right: number; height: number };
+
+/**
+ * Coordonnées de l'indicateur dans la zone de texte, pour le style « cadre image » (#175).
+ *
+ * L'indicateur est hors du flux : il ne doit ni élargir la ligne ni la faire passer à la ligne
+ * suivante. `char` est la boîte du dernier caractère et `text` celle de la zone de texte, toutes
+ * deux mesurées à l'écran (`getBoundingClientRect`) ; `scale` est le facteur appliqué à la scène
+ * (1,25 dans le player) et `height` la hauteur logique de l'icône. L'icône est centrée
+ * verticalement sur la boîte du caractère et posée à `INDICATOR_GAP` de son bord droit.
+ */
+export function indicatorOffset(
+  char: RectLike,
+  text: Pick<RectLike, "top" | "left">,
+  scale: number,
+  height: number,
+): { left: number; top: number } {
+  const s = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  return {
+    left: (char.right - text.left) / s + INDICATOR_GAP,
+    top: (char.top - text.top) / s + (char.height / s - height) / 2,
+  };
+}
