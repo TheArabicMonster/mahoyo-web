@@ -219,6 +219,34 @@ Un utilisateur sans extraction complète, ou la CI, ne dispose d'aucune image du
    `image-set`/`var(--mh-asset-*)`) ;
 3. rester lisible et utilisable sans elle (contraste, tailles de cibles).
 
+### Convention de clés et variables `--mh-asset-*` (HUD-03, #189)
+
+Le module `src/ui/ui-assets.ts` fait le pont entre le manifeste de l'utilisateur et les feuilles de style.
+
+- **Clé** : le nom de l'image dans `images` du manifeste, tel que listé en §5 (sans dossier ni extension). La recherche
+  est tolérante comme celle du reste du player (`foldKey` : NFKC, casse, espaces de bordure). Le dépôt ne contient que
+  des clés, jamais d'URL ni de nom de fichier.
+- **API** : `createUiAssets(resolver)` renvoie `{ uiAsset, apply, clear }`.
+  - `uiAsset(key)` : URL complète (préfixe de base compris) ou `null` si la clé est absente. Aucune requête, aucun
+    avertissement : l'absence est un cas normal.
+  - `apply(root, keys = UI_ASSET_KEYS)` : pose `--mh-asset-<clé>: url("…")` sur la racine de l'UI **uniquement pour les
+    clés présentes**, et retire celles qu'une application précédente avait posées et qui ont disparu. `clear(root)`
+    les retire toutes. `UI_ASSET_KEYS` liste les clés exactes de §5 ; un écran passe ses propres clés pour les autres.
+- **Nom de variable** : `--mh-asset-` + clé repliée (NFKC, minuscules), toute suite de caractères hors lettres, chiffres,
+  `_` et `-` devenant `-` (`c_background` donne `--mh-asset-c_background`, `cadre test (a)` donne
+  `--mh-asset-cadre-test-a`). Les lettres japonaises sont conservées (`--mh-asset-c_titleバー`).
+- **Usage CSS** : toujours en surcouche du repli, avec `none` comme valeur de secours pour la variable absente :
+
+  ```css
+  .mh-ui-screen {
+    /* l'image du jeu, si elle existe, au-dessus du dégradé en CSS pur */
+    background-image: var(--mh-asset-c_background, none), linear-gradient(var(--mh-bg-night-top), var(--mh-bg-night-bottom));
+  }
+  ```
+
+  Sans variable, la déclaration se résout en `none` + dégradé : le navigateur ne lance aucune requête et l'écran garde son
+  aspect de repli.
+
 ## 10. Accessibilité minimale à conserver
 
 - **Contraste** : texte clair sur fond sombre ≥ 7:1 (ex. `#a9c8cc` sur `#132337` ≈ 9:1). Le texte lu à 40 % d'opacité

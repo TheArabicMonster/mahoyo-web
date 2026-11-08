@@ -176,3 +176,25 @@ describe("AssetResolver — assets absents du manifest (#143)", () => {
     }
   });
 });
+
+describe("AssetResolver.uiImage (#189)", () => {
+  const m: AssetManifest = {
+    version: 1,
+    generatedAt: "2026-01-01T00:00:00Z",
+    images: { "cadre test": { url: "image/cadre.webp", source: "image/cadre.tlg", kind: "image" } },
+    audio: {},
+    scenarios: {},
+  };
+
+  it("renvoie l URL complète d une clé présente, null sinon, sans avertissement", () => {
+    const onMissing = vi.fn();
+    const resolver = createAssetResolver({ baseUrl: "/a", manifest: m, onMissing });
+    expect(resolver.uiImage("Cadre Test")).toBe("/a/image/cadre.webp");
+    expect(resolver.uiImage("absente")).toBeNull();
+    expect(onMissing).not.toHaveBeenCalled();
+  });
+
+  it("sans manifest : null (aucune convention de dossier)", () => {
+    expect(createAssetResolver().uiImage("cadre test")).toBeNull();
+  });
+});

@@ -34,6 +34,13 @@ export type AssetResolver = {
   image(storage: string): string;
   /** Résout une image de rule pour les transitions. */
   rule(storage: string): string;
+  /**
+   * Résout une image d'interface (cadre, fond, illustration de titre…) : l'URL complète si la clé
+   * figure au manifest, sinon `null`. Sans manifest, aucune convention de dossier n'est tentée :
+   * une image d'interface est facultative, son absence est normale (repli CSS) et ne déclenche
+   * ni avertissement ni requête (#189).
+   */
+  uiImage(key: string): string | null;
   /** Résout un fichier BGM. */
   bgm(storage: string): string;
   /** Résout un fichier SE. */
@@ -132,6 +139,10 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
     },
     se(storage: string): string {
       return resolveAudio(storage, "se", "ogg");
+    },
+    uiImage(key: string): string | null {
+      const url = lookupImg(manifest, storageKey(key));
+      return url ? `${baseUrl}/${url}` : null;
     },
     scenario(storage: string): string {
       const key = storageKey(storage);
