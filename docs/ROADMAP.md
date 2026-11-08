@@ -39,6 +39,7 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
 
 ## E5 — UI/UX
 
+- Analyse du HUD d'origine et design system : [`ANALYSE_HUD_ORIGINAL.md`](ANALYSE_HUD_ORIGINAL.md), [`DESIGN.md`](DESIGN.md) (backlog atomique HUD-xx, WEB-xx, FLOW-xx).
 - Thème Mahoyo, animations fluides.
 - Accessibilité.
 - PWA / offline.
