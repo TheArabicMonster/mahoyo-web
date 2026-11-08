@@ -25,6 +25,7 @@ import type {
 } from "@/ui/types.js";
 import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t, uiLocale } from "@/ui/i18n.js";
 import { ToastStack } from "@/ui/toast.js";
+import { syncNightDemo } from "@/ui/night.js";
 import "./ui-manager.css";
 
 /** Taille logique du viewport, utilisée pour positionner le flowchart. */
@@ -182,6 +183,7 @@ export class DomUIManager implements UIManager {
     this.flowchart.replaceChildren();
     this.pause.replaceChildren();
     this.menu.classList.toggle("mh-ui-settings-open", view.screen === "settings");
+    syncNightDemo(this.menu, view.screen);
     this.overlay.dataset.screen = view.screen;
 
     switch (view.screen) {
