@@ -7,6 +7,8 @@ import { createAssetResolver, type AssetResolver } from "@/core/asset-resolver.j
 import { applyViewportScale, computeViewportScale } from "@/core/display.js";
 import { defaultShortcuts } from "@/core/shortcuts.js";
 import { hasTranslation, parseLanguageIndex, type LanguageIndex } from "@/core/language.js";
+import { parseStoryGraph } from "@/core/flow-graph.js";
+import type { StoryGraph } from "@/core/story-graph.js";
 import { parseStoryChain, resolveNext, type StoryChain } from "@/core/story-chain.js";
 import { parseTimelineData, type TimelineData } from "@/core/timeline.js";
 import { setUiLanguage, t } from "@/ui/i18n.js";
@@ -91,6 +93,8 @@ export type PlayerDeps = {
   loadScript: (file: string, language?: string) => Promise<ParsedScript | null>;
   /** Charge la table d'enchaînement des scripts ; null si absente (pas d'enchaînement). */
   loadChain: () => Promise<StoryChain | null>;
+  /** Charge le graphe de scénario du flowchart (`story-graph.json`) ; null si absent. Appelé à l'ouverture de l'écran. */
+  loadGraph: () => Promise<StoryGraph | null>;
   /** Charge les timelines d'animation ; null si absentes (@playtimeline sans effet). */
   loadTimelines: () => Promise<TimelineData | null>;
   /** Charge les index des langues traduites disponibles. */
@@ -153,6 +157,16 @@ async function defaultLoadChain(resolver: AssetResolver): Promise<StoryChain | n
     const res = await fetch(resolver.chain());
     if (!res.ok) return null;
     return parseStoryChain(await res.json());
+  } catch {
+    return null;
+  }
+}
+
+async function defaultLoadGraph(resolver: AssetResolver): Promise<StoryGraph | null> {
+  try {
+    const res = await fetch(resolver.graph());
+    if (!res.ok) return null;
+    return parseStoryGraph(await res.json());
   } catch {
     return null;
   }
@@ -284,6 +298,8 @@ export class Player implements PlayerCommands {
   private pendingChoice: ((index: number) => void) | null = null;
   /** Table d'enchaînement des scripts (null si le pipeline ne l'a pas générée). */
   private chain: StoryChain | null = null;
+  /** Graphe du flowchart, chargé à la première ouverture de l'écran (null = absent). */
+  private graphPromise: Promise<StoryGraph | null> | undefined;
   /** Timelines d'animation (null si le pipeline ne les a pas générées). */
   private timelines: TimelineData | null = null;
   /** Index des langues traduites disponibles. */
@@ -323,6 +339,7 @@ export class Player implements PlayerCommands {
       createRuntime: deps.createRuntime ?? ((script, name) => new Runtime(script, name)),
       loadScript: deps.loadScript ?? ((file, language) => defaultLoadScript(resolver, file, language)),
       loadChain: deps.loadChain ?? (() => defaultLoadChain(resolver)),
+      loadGraph: deps.loadGraph ?? (() => defaultLoadGraph(resolver)),
       loadTimelines: deps.loadTimelines ?? (() => defaultLoadTimelines(resolver)),
       loadLanguages: deps.loadLanguages ?? (() => defaultLoadLanguages(resolver)),
       scripts: deps.scripts ?? DEFAULT_SCRIPTS,
@@ -1361,7 +1378,9 @@ export class Player implements PlayerCommands {
       case "backlog":
         this.ui.show({ screen: "backlog", entries: this.backlog() });
         break;
-      case "flowchart":
+      case "flowchart": {
+        this.graphPromise ??= this.deps.loadGraph().catch(() => null);
+        const graph = await this.graphPromise;
         this.ui.show({
           screen: "flowchart",
           scripts: this.deps.scripts,
@@ -1371,8 +1390,12 @@ export class Player implements PlayerCommands {
           ),
           currentScript: this.currentScript,
           story: this.progress.snapshot,
+          graph,
+          revealAll: this.settings.flowchartRevealAll,
+          thumbnail: (key) => this.deps.resolver.uiImage(key),
         });
         break;
+      }
     }
   }
 

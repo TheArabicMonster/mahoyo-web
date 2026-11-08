@@ -53,6 +53,8 @@ export type AssetResolver = {
   languageIndex(language: string): string;
   /** URL de la table d'enchaînement des scripts (`story-chain.json`). */
   chain(): string;
+  /** URL du graphe de scénario du flowchart (`story-graph.json`, généré par `npm run chain`). */
+  graph(): string;
   /** URL des timelines d'animation extraites des scripts (`timelines.json`). */
   timelines(): string;
   /**
@@ -161,6 +163,9 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
     },
     chain(): string {
       return `${baseUrl}/story-chain.json`;
+    },
+    graph(): string {
+      return `${baseUrl}/story-graph.json`;
     },
     timelines(): string {
       return `${baseUrl}/timelines.json`;
