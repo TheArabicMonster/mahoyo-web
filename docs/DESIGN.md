@@ -262,7 +262,7 @@ Premier composant à suivre ce principe : `src/ui/night.css` (importé par `src/
 - **Rendu sans asset** (repli, toujours présent) : dégradé vertical `--mh-bg-night-top` → `-mid` → `-bottom` avec éclaircie `-mid-right` à droite et vignettage ; bandeaux de feuillage haut (13 %) et bas (14 %) de la hauteur, silhouettes `--mh-bg-night-top` sur un lit `#101c27` ; arabesques en arcs et volutes sur la bande droite et en pied d'écran. Tout est en **pourcentages** du conteneur : les mesures @1080 (140 px et 150 px de bandeau, colonne droite x ≥ 1638 sur 1920) ne dépendent d'aucun repère de pixels.
 - **Surcouche d'image** : suit la convention de clés ci-dessus : le calque lit `var(--mh-asset-night, var(--mh-asset-c_background, none))`. `--mh-asset-c_background` (clé du manifeste, posée par `createUiAssets().apply`) est l'image par défaut ; un écran qui veut une autre image pose `--mh-asset-night: var(--mh-asset-<clé>)`. Aucune des deux présente : `none`, donc aucune requête. Le CSS ne contient aucune URL.
 - **Contraste** : les ornements sont plafonnés (arabesques à 14 % et 9 % de `--mh-cyan-rail`) pour que tout texte clair des tokens reste ≥ 7:1, même sur un trait d'arabesque posé sur le fond le plus clair. `tests/unit/ui/night-css.test.ts` recalcule ces rapports à partir de `tokens.css` : modifier une opacité ou un token qui casse le seuil fait échouer le test.
-- **Démonstration** : `?night` dans l'URL pose la classe sur le slot `#ui-menu` pour les écrans titre, sauvegarde, chargement et historique (`syncNightDemo`, une ligne dans `ui-manager.ts`). Les autres écrans, dont la config, sont inchangés ; les tâches HUD-09, HUD-10 et suivantes adopteront (HUD-06 : menu système, §9.2) la classe écran par écran.
+- **Démonstration** : `?night` dans l'URL pose la classe sur le slot `#ui-menu` pour les écrans sauvegarde, chargement et historique (`syncNightDemo`, une ligne dans `ui-manager.ts`). L'écran titre en est sorti (HUD-07, #195) : il est clair ; seule la liste de chapitres d'Extra porte `mh-ui-night` en dur. Les autres écrans, dont la config, sont inchangés ; les tâches HUD-09, HUD-10 et suivantes adopteront (HUD-06 : menu système, §9.2) la classe écran par écran.
 
 ### 9.2 Menu système plein cadre (`src/ui/system-menu.ts`, HUD-06 / #194)
 
@@ -290,6 +290,14 @@ Premier composant à suivre ce principe : `src/ui/night.css` (importé par `src/
   `aria-modal="true"`, nommé par l'en-tête ; sous-titre japonais `aria-hidden`.
 - **Rendu sans asset** : aucune image ; seule la surcouche `--mh-asset-*` de night.css s'applique aux autres écrans
   (la variante voile ne peint pas d'image).
+
+### 9.3 Écran titre (`title-screen.ts`, HUD-07 / #195)
+
+- **Module** : `src/ui/title-screen.ts` + `title-screen.css` ; `ui-manager.ts` ne fait que l'instancier (`renderTitle`) et appeler `createUiAssets(resolver).apply(overlay, [...UI_ASSET_KEYS, ...TITLE_ASSET_KEYS])` à l'init (le résolveur arrive par `new DomUIManager({ resolver })`, voir `main.ts`).
+- **Clés du manifeste** : `title_background` (illustration plein cadre, `background-size: cover`) et `title_titlelogo` (logo, `contain` dans la boîte du logo). Absentes : dégradé crème (`--mh-title-sky` → `--mh-paper` → `#f2f3ea`) et titre textuel `<h1>` (`common.gameTitle`). Avec l'image, le texte reste dans le DOM mais n'est plus dessiné.
+- **Mesures** (§4, converties en % du cadre via `container-type: size` + `cqh`/`cqw`) : logo x 334-941, y 123-295 ; menu centré, premier centre y = 415, pas 49 px ; mention de droits y 684-693. Mesurées au navigateur à 1280×720 : écart < 1 px.
+- **Menu** : `<nav aria-label>` de `<button>` : *Start*, *Load*, *Continuer* (si autosave), *Flowchart*, *Config*, *Extra*. Pas d'Exit. Serif, interlettrage 0,25 em, repos `--mh-ink`, survol et focus `--mh-ink-hover`, contour de 2 px au clavier. Flèches, Début, Fin déplacent le focus ; Entrée et Espace activent (natif).
+- **Extra (provisoire)** : ouvre sur place la liste des chapitres (fond nuit bleue, 4 colonnes, Échap ou Retour pour fermer) jusqu'à HUD-08 (#199), qui la remplace par le vrai sous-menu (Archive, CG, Sound, Back). Les classes `mh-ui-scripts` / `mh-ui-script` et l'attribut `data-file` sont conservés.
 
 ## 10. Accessibilité minimale à conserver
 

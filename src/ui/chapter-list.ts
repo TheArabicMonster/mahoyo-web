@@ -1,5 +1,5 @@
 /**
- * Liste des chapitres affichée à l'écran titre et dans le flowchart.
+ * Liste des chapitres affichée dans Extra (écran titre, provisoire jusqu'à HUD-08) et dans le flowchart.
  *
  * Fonction pure : transforme la table d'enchaînement (`story-chain.json`) en
  * `ScriptSummary`. Sans table, le jeu se limite à son prologue.

@@ -65,8 +65,8 @@ async function main() {
 
   const chain = await loadChain(resolver);
 
-  // Instancie le player avec les vraies factories. L'écran titre propose « Nouvelle
-  // partie », « Continuer » (autosave) et la liste des chapitres.
+  // Instancie le player avec les vraies factories. L'écran titre propose Start, Load,
+  // « Continuer » (autosave), Flowchart, Config et Extra (liste des chapitres).
   // Sauvegardes : IndexedDB (migration auto des anciennes clés localStorage), repli localStorage puis mémoire.
   const saveStore = createSaveStore();
   const settingsStore = createLocalSettingsStore();
@@ -76,7 +76,7 @@ async function main() {
     root: viewport,
     resolver,
     createStageRenderer: createDomStageRenderer,
-    createUIManager: () => new DomUIManager(),
+    createUIManager: () => new DomUIManager({ resolver }),
     scripts: chaptersToScripts(chain),
     loadChain: async () => chain,
     saveStore,

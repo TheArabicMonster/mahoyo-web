@@ -5,7 +5,7 @@ import { test, expect, type Page } from "@playwright/test";
 async function startGame(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");
-  await page.getByText("Nouvelle partie").click();
+  await page.locator(".mh-ui-new-game").click();
   await expect(page.locator("#text")).toContainText(/\S{5}/, { timeout: 15000 });
 }
 
@@ -76,7 +76,7 @@ test.describe("Menu système (HUD-06)", () => {
     await page.mouse.click(400, 300, { button: "right" });
     await page.locator('[data-entry="title"]').click();
     await page.locator(".mh-ui-confirm-yes").click();
-    await expect(page.getByText("Nouvelle partie")).toBeVisible({ timeout: 15000 });
+    await expect(page.locator(".mh-ui-new-game")).toBeVisible({ timeout: 15000 });
     await expect(menu(page)).toHaveCount(0);
   });
 

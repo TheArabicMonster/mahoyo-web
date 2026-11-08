@@ -9,11 +9,11 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   "common.gameTitle": "魔法使いの夜",
 
   // ── タイトル画面 ──
-  "title.newGame": "はじめから",
   "title.continue": "つづきから",
-  "title.load": "ロード",
-  "title.settings": "設定",
   "title.flowchart": "フローチャート",
+  "title.menu": "メインメニュー",
+  "title.legal": "非公式のファンプロジェクトです。魔法使いの夜は TYPE-MOON の作品であり、ゲームの素材は配布していません。",
+  "title.extra.chapters": "チャプター",
   "title.entry.start": "スタート",
   "title.entry.load": "ロード",
   "title.entry.config": "コンフィグ",

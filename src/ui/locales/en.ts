@@ -9,11 +9,11 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "common.gameTitle": "Mahoutsukai no Yoru",
 
   // ── Title screen ──
-  "title.newGame": "New game",
   "title.continue": "Continue",
-  "title.load": "Load",
-  "title.settings": "Settings",
   "title.flowchart": "Flowchart",
+  "title.menu": "Main menu",
+  "title.legal": "Unofficial fan project. Mahoutsukai no Yoru belongs to TYPE-MOON; no game assets are distributed here.",
+  "title.extra.chapters": "Chapters",
   "title.entry.start": "Start",
   "title.entry.load": "Load",
   "title.entry.config": "Config",

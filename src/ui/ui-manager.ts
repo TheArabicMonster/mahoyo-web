@@ -29,6 +29,8 @@ import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t, uiLocale } from "
 import { ToastStack } from "@/ui/toast.js";
 import { syncNightDemo } from "@/ui/night.js";
 import { focusSystemMenu, renderSystemMenu, syncSystemMenu, syncSystemMenuVeil } from "@/ui/system-menu.js";
+import { createTitleScreen, TITLE_ASSET_KEYS } from "@/ui/title-screen.js";
+import { createUiAssets, UI_ASSET_KEYS, type UiAssets, type UiImageSource } from "@/ui/ui-assets.js";
 import "./ui-manager.css";
 
 /** Taille logique du viewport, utilisée pour positionner le flowchart. */
@@ -73,6 +75,11 @@ function slotLabel(id: SlotId): string {
   return t("slot.numbered", { n: id });
 }
 
+export type DomUIManagerOptions = {
+  /** Source des images d'interface (le résolveur d'assets) ; absente = repli CSS partout (HUD-03, #189). */
+  resolver?: UiImageSource;
+};
+
 /**
  * Implémentation DOM de UIManager.
  *
@@ -110,6 +117,11 @@ export class DomUIManager implements UIManager {
   private confirmDialog: ConfirmDialog | null = null;
   private cleanups: (() => void)[] = [];
   private previousDocumentLang: string | null = null;
+  private readonly uiAssets: UiAssets;
+
+  constructor(options: DomUIManagerOptions = {}) {
+    this.uiAssets = createUiAssets(options.resolver);
+  }
 
   // ── Cycle de vie ──
 
@@ -123,6 +135,7 @@ export class DomUIManager implements UIManager {
     this.overlay = existing ?? h("div");
     this.overlay.id = "ui-overlay";
     this.overlay.classList.add("mh-ui-overlay");
+    this.uiAssets.apply(this.overlay, [...UI_ASSET_KEYS, ...TITLE_ASSET_KEYS]);
     this.applyLang();
     this.overlay.replaceChildren();
     this.menu = this.slot("ui-menu", "mh-ui-menu");
@@ -164,6 +177,7 @@ export class DomUIManager implements UIManager {
     this.resolveConfirm(false);
     if (this.root) {
       this.overlay.replaceChildren();
+      this.uiAssets.clear(this.overlay);
       this.overlay.classList.remove("mh-ui-overlay", "mh-ui-user-hidden", "mh-ui-disabled");
       this.overlay.removeAttribute("lang");
       if (this.previousDocumentLang !== null) document.documentElement.lang = this.previousDocumentLang;
@@ -193,7 +207,7 @@ export class DomUIManager implements UIManager {
       case "game":
         break;
       case "title":
-        this.menu.appendChild(this.renderTitle(view.scripts, view.hasContinue));
+        this.renderTitle(view.scripts, view.hasContinue);
         break;
       case "pause":
         if (this.commands) this.pause.appendChild(this.renderSystemMenu(this.commands));
@@ -377,33 +391,26 @@ export class DomUIManager implements UIManager {
 
   // ── Écrans ──
 
-  private renderTitle(scripts: readonly ScriptSummary[], hasContinue: boolean): El {
-    const p = this.panel(t("common.gameTitle"), "mh-ui-title-screen");
-    const menu = h("div", "mh-ui-col");
-    const first = scripts[0];
-    if (first) {
-      menu.appendChild(this.button(t("title.newGame"), () => this.commands?.startScript(first.file), "mh-ui-new-game"));
-    }
-    if (hasContinue) {
-      menu.appendChild(this.button(t("title.continue"), () => void this.commands?.load("auto"), "mh-ui-continue"));
-    }
-    menu.append(
-      this.button(t("title.load"), () => this.commands?.openScreen("load")),
-      this.button(t("title.settings"), () => this.commands?.openScreen("settings")),
-      this.button(t("title.flowchart"), () => this.commands?.openScreen("flowchart")),
-    );
-    p.appendChild(menu);
-
-    const list = h("ul", "mh-ui-scripts");
-    for (const s of scripts) {
-      const li = h("li");
-      const btn = this.button(s.label, () => this.commands?.startScript(s.file), "mh-ui-script");
-      btn.dataset.file = s.file;
-      li.appendChild(btn);
-      list.appendChild(li);
-    }
-    p.appendChild(list);
-    return p;
+  private renderTitle(scripts: readonly ScriptSummary[], hasContinue: boolean): void {
+    // Les actions passent par la garde `inputEnabled` (entrées bloquées pendant un chargement).
+    const run = (fn: (c: PlayerCommands) => void): void => {
+      if (this.inputEnabled && this.commands) fn(this.commands);
+    };
+    const screen = createTitleScreen({
+      scripts,
+      hasContinue,
+      uiAssets: this.uiAssets,
+      actions: {
+        start: (file) => run((c) => c.startScript(file)),
+        startChapter: (file) => run((c) => c.startScript(file)),
+        continueGame: () => run((c) => void c.load("auto")),
+        load: () => run((c) => c.openScreen("load")),
+        flowchart: () => run((c) => c.openScreen("flowchart")),
+        config: () => run((c) => c.openScreen("settings")),
+      },
+    });
+    this.menu.appendChild(screen.el);
+    screen.focusMenu();
   }
 
   private renderSystemMenu(commands: PlayerCommands): El {

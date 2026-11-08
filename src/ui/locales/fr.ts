@@ -13,12 +13,13 @@ export const fr = {
   "common.gameTitle": "Mahoutsukai no Yoru",
 
   // ── Écran titre ──
-  "title.newGame": "Nouvelle partie",
   "title.continue": "Continuer",
-  "title.load": "Charger",
-  "title.settings": "Réglages",
   "title.flowchart": "Flowchart",
-  // Entrées d'origine : en anglais même en français (docs/ANALYSE_HUD_ORIGINAL.md §2.1), réservées à l'écran titre refait.
+  "title.menu": "Menu principal",
+  "title.legal": "Projet de fan non officiel. Mahoutsukai no Yoru appartient à TYPE-MOON ; aucune ressource du jeu n'est distribuée ici.",
+  // Sous-menu Extra provisoire (liste des chapitres, remplacé par HUD-08 / #199).
+  "title.extra.chapters": "Chapitres",
+  // Entrées d'origine : en anglais même en français (docs/ANALYSE_HUD_ORIGINAL.md §2.1).
   "title.entry.start": "Start",
   "title.entry.load": "Load",
   "title.entry.config": "Config",
