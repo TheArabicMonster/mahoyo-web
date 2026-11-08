@@ -47,6 +47,7 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`ui-manager.ts`** : écrans DOM (titre, pause, sauvegarde/chargement, historique, flowchart, configuration) et gestion des entrées.
 - **`ui-manager.css`**, **`tokens.css`** : styles des écrans et tokens du design system (palette, typo, durées, états).
 - **`chapter-list.ts`** : construction de la liste des chapitres/scripts.
+- **`i18n.ts`** et **`locales/`** : dictionnaire d'interface FR/JA/EN (`t(clé)`, repli sur le français). Voir [`I18N.md`](I18N.md).
 
 ### `src/player/` — persistance
 
@@ -59,7 +60,6 @@ src/renderer/ + src/ui/  ── rendu navigateur
   - **Verrou** : `put` et `delete` rejettent avec `SaveLockedError` sur un emplacement verrouillé (le player vérifie
     aussi avant la confirmation et affiche un message). `update(slot, { comment, locked })` modifie ces deux
     métadonnées, y compris sur un emplacement verrouillé.
-- **`save-messages.ts`** : libellés FR des messages de sauvegarde, en attendant le dictionnaire d'interface (#184).
 - **`settings-store.ts`** : réglages (`mahoyo.settings`), « déjà lu » (`mahoyo.read`), progression par chapitre
   (`mahoyo.progress`) et progression par scène (`mahoyo.story-progress`). Lecture tolérante (absent, partiel,
   corrompu ou stockage inaccessible = valeurs vides/par défaut).

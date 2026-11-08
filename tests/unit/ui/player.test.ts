@@ -13,6 +13,7 @@ import type { RuntimeSaveData } from "@/kag/runtime.js";
 import type { ParsedScript } from "@/kag/types.js";
 import type { StoryChain } from "@/core/story-chain.js";
 import type { LanguageIndex } from "@/core/language.js";
+import { getUiLanguage, setUiLanguage, translate } from "@/ui/i18n.js";
 import prologue from "../../fixtures/prologue.json";
 import audioFixture from "../../fixtures/audio.json";
 
@@ -138,6 +139,7 @@ function setup(steps: Step[] = prologue as Step[], extra: Partial<PlayerDeps> = 
 
 let current: Player | null = null;
 afterEach(async () => {
+  setUiLanguage("fr");
   await current?.dispose();
   current = null;
 });
@@ -1057,7 +1059,21 @@ describe("Player — langues", () => {
     ctx.player.startScript("t.ks");
     await until(() => ctx.player.currentState === "waiting-click", "waiting-click");
     ctx.player.updateSettings({ language: "ja" });
-    expect(ctx.ui.toasts.some((t) => t.message.includes("prochain chapitre"))).toBe(true);
+    // Le toast est déjà dans la nouvelle langue de l'interface (#184).
+    expect(ctx.ui.toasts.some((t) => t.message === translate("ja", "toast.languageNextChapter"))).toBe(true);
+    expect(getUiLanguage()).toBe("ja");
+  });
+
+  it("la langue de l'interface suit le réglage chargé, même sans traduction installée", async () => {
+    const store = createMemorySettingsStore();
+    await store.saveSettings({ ...(await store.loadSettings()), language: "en" });
+    const ctx = setup([], { settingsStore: store });
+    current = ctx.player;
+    await ctx.player.ready;
+    expect(getUiLanguage()).toBe("en");
+    // Un réglage sans langue ne ramène pas l'interface au japonais de repli du texte.
+    ctx.player.updateSettings({ skipUnread: true });
+    expect(getUiLanguage()).toBe("en");
   });
 
   it("casse les scripts par langue", async () => {

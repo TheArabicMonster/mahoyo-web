@@ -23,6 +23,7 @@ import type {
   UIManager,
   UIView,
 } from "@/ui/types.js";
+import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t, uiLocale } from "@/ui/i18n.js";
 import "./ui-manager.css";
 
 const DEFAULT_TOAST_MS: Ms = 2500;
@@ -63,9 +64,9 @@ function slotKey(id: SlotId): string {
 }
 
 function slotLabel(id: SlotId): string {
-  if (id === "quick") return "Sauvegarde rapide";
-  if (id === "auto") return "Sauvegarde auto";
-  return `Slot ${id}`;
+  if (id === "quick") return t("slot.quick");
+  if (id === "auto") return t("slot.auto");
+  return t("slot.numbered", { n: id });
 }
 
 /**
@@ -105,6 +106,7 @@ export class DomUIManager implements UIManager {
   private pendingConfirm: ((v: boolean) => void) | null = null;
   private toastTimers = new Set<ReturnType<typeof setTimeout>>();
   private cleanups: (() => void)[] = [];
+  private previousDocumentLang: string | null = null;
 
   // ── Cycle de vie ──
 
@@ -118,6 +120,7 @@ export class DomUIManager implements UIManager {
     this.overlay = existing ?? h("div");
     this.overlay.id = "ui-overlay";
     this.overlay.classList.add("mh-ui-overlay");
+    this.applyLang();
     this.overlay.replaceChildren();
     this.menu = this.slot("ui-menu", "mh-ui-menu");
     this.flowchart = this.slot("ui-flowchart", "mh-ui-flowchart");
@@ -137,6 +140,13 @@ export class DomUIManager implements UIManager {
     this.listen(document, "keyup", (e) => this.onKeyUp(e as KeyboardEvent));
     this.listen(document, "mousemove", () => this.resetCursorTimer());
     this.listen(window, "blur", () => this.releaseCtrlSkip());
+    // Changement de langue : on pose `lang` et on redessine l'écran courant dans la nouvelle langue.
+    this.cleanups.push(
+      onUiLanguageChange(() => {
+        this.applyLang();
+        this.show(this.view);
+      }),
+    );
 
     this.show(this.view);
     this.renderStatus();
@@ -152,6 +162,9 @@ export class DomUIManager implements UIManager {
     if (this.root) {
       this.overlay.replaceChildren();
       this.overlay.classList.remove("mh-ui-overlay", "mh-ui-user-hidden", "mh-ui-disabled");
+      this.overlay.removeAttribute("lang");
+      if (this.previousDocumentLang !== null) document.documentElement.lang = this.previousDocumentLang;
+      this.previousDocumentLang = null;
       if (this.ownsOverlay) this.overlay.remove();
     }
     this.root = null;
@@ -252,8 +265,8 @@ export class DomUIManager implements UIManager {
       const dialog = h("div", "mh-ui-confirm-box");
       dialog.appendChild(h("p", "mh-ui-confirm-message", message));
       const row = h("div", "mh-ui-row");
-      const no = this.button("Non", () => this.resolveConfirm(false), "mh-ui-confirm-no");
-      const yes = this.button("Oui", () => this.resolveConfirm(true), "mh-ui-confirm-yes");
+      const no = this.button(t("common.no"), () => this.resolveConfirm(false), "mh-ui-confirm-no");
+      const yes = this.button(t("common.yes"), () => this.resolveConfirm(true), "mh-ui-confirm-yes");
       row.append(no, yes);
       dialog.appendChild(row);
       box.appendChild(dialog);
@@ -284,6 +297,14 @@ export class DomUIManager implements UIManager {
   }
 
   // ── Helpers internes ──
+
+  /** Pose `lang` sur la racine de l'interface et sur le document (lecteurs d'écran, césure, polices CJK). */
+  private applyLang(): void {
+    const lang = getUiLanguage();
+    this.overlay.lang = lang;
+    if (this.previousDocumentLang === null) this.previousDocumentLang = document.documentElement.lang;
+    document.documentElement.lang = lang;
+  }
 
   private slot(id: string, cls: string): El {
     const el = h("div", cls);
@@ -317,7 +338,7 @@ export class DomUIManager implements UIManager {
   }
 
   private backButton(): HTMLButtonElement {
-    return this.button("Retour", () => this.commands?.closeScreen(), "mh-ui-back");
+    return this.button(t("common.back"), () => this.commands?.closeScreen(), "mh-ui-back");
   }
 
   private resolveConfirm(value: boolean): void {
@@ -348,14 +369,14 @@ export class DomUIManager implements UIManager {
       const badge = h(
         "span",
         `mh-ui-badge mh-ui-badge-${this.status.mode}${suspended ? " mh-ui-badge-suspended" : ""}`,
-        suspended ? "AUTO ⏸" : this.status.mode.toUpperCase(),
+        suspended ? t("status.autoPaused") : t(this.status.mode === "auto" ? "status.auto" : "status.skip"),
       );
       this.statusEl.appendChild(badge);
     }
     // Menu rapide verrouillé : Sauvegarder et Charger du menu pause ne sont plus utilisables.
     for (const btn of this.overlay.querySelectorAll<HTMLButtonElement>("[data-quick-menu]")) {
       btn.disabled = this.status.quickMenuLocked;
-      btn.title = this.status.quickMenuLocked ? "Indisponible pendant cette séquence" : "";
+      btn.title = this.status.quickMenuLocked ? t("pause.quickMenuLocked") : "";
     }
     if (inGame && this.status.canRollback) {
       this.statusEl.appendChild(h("span", "mh-ui-badge mh-ui-badge-rollback", "↶"));
@@ -365,19 +386,19 @@ export class DomUIManager implements UIManager {
   // ── Écrans ──
 
   private renderTitle(scripts: readonly ScriptSummary[], hasContinue: boolean): El {
-    const p = this.panel("Mahoutsukai no Yoru", "mh-ui-title-screen");
+    const p = this.panel(t("common.gameTitle"), "mh-ui-title-screen");
     const menu = h("div", "mh-ui-col");
     const first = scripts[0];
     if (first) {
-      menu.appendChild(this.button("Nouvelle partie", () => this.commands?.startScript(first.file), "mh-ui-new-game"));
+      menu.appendChild(this.button(t("title.newGame"), () => this.commands?.startScript(first.file), "mh-ui-new-game"));
     }
     if (hasContinue) {
-      menu.appendChild(this.button("Continuer", () => void this.commands?.load("auto"), "mh-ui-continue"));
+      menu.appendChild(this.button(t("title.continue"), () => void this.commands?.load("auto"), "mh-ui-continue"));
     }
     menu.append(
-      this.button("Charger", () => this.commands?.openScreen("load")),
-      this.button("Réglages", () => this.commands?.openScreen("settings")),
-      this.button("Flowchart", () => this.commands?.openScreen("flowchart")),
+      this.button(t("title.load"), () => this.commands?.openScreen("load")),
+      this.button(t("title.settings"), () => this.commands?.openScreen("settings")),
+      this.button(t("title.flowchart"), () => this.commands?.openScreen("flowchart")),
     );
     p.appendChild(menu);
 
@@ -394,7 +415,7 @@ export class DomUIManager implements UIManager {
   }
 
   private renderPause(): El {
-    const p = this.panel("Pause", "mh-ui-pause-screen");
+    const p = this.panel(t("pause.title"), "mh-ui-pause-screen");
     const col = h("div", "mh-ui-col");
     const open = (s: OverlayScreen) => () => this.commands?.openScreen(s);
     // Sauvegarder et Charger appartiennent au menu rapide : verrouillés par @lockquickmenu.
@@ -402,20 +423,20 @@ export class DomUIManager implements UIManager {
       const btn = this.button(label, open(screen));
       btn.dataset.quickMenu = screen;
       btn.disabled = this.status.quickMenuLocked;
-      if (btn.disabled) btn.title = "Indisponible pendant cette séquence";
+      if (btn.disabled) btn.title = t("pause.quickMenuLocked");
       return btn;
     };
     col.append(
-      this.button("Reprendre", () => this.commands?.closeScreen(), "mh-ui-resume"),
-      quick("Sauvegarder", "save"),
-      quick("Charger", "load"),
-      this.button("Réglages", open("settings")),
-      this.button("Historique", open("backlog")),
-      this.button("Flowchart", open("flowchart")),
+      this.button(t("pause.resume"), () => this.commands?.closeScreen(), "mh-ui-resume"),
+      quick(t("pause.save"), "save"),
+      quick(t("pause.load"), "load"),
+      this.button(t("pause.settings"), open("settings")),
+      this.button(t("pause.history"), open("backlog")),
+      this.button(t("pause.flowchart"), open("flowchart")),
       this.button(
-        "Retour au titre",
+        t("pause.returnToTitle"),
         () =>
-          void this.confirm("Retourner au titre ? La progression non sauvegardée sera perdue.").then(
+          void this.confirm(t("confirm.returnToTitle")).then(
             (ok) => {
               if (ok) this.commands?.returnToTitle();
             },
@@ -428,7 +449,7 @@ export class DomUIManager implements UIManager {
   }
 
   private renderSlots(mode: "save" | "load", slots: readonly SaveSlot[]): El {
-    const p = this.panel(mode === "save" ? "Sauvegarder" : "Charger", `mh-ui-slots-screen mh-ui-${mode}`);
+    const p = this.panel(mode === "save" ? t("slots.saveTitle") : t("slots.loadTitle"), `mh-ui-slots-screen mh-ui-${mode}`);
     const grid = h("div", "mh-ui-slots");
     for (const slot of slots) {
       const card = h("div", "mh-ui-slot");
@@ -443,26 +464,26 @@ export class DomUIManager implements UIManager {
           img.alt = "";
           card.appendChild(img);
         }
-        card.appendChild(h("div", "mh-ui-slot-date", new Date(d.timestamp).toLocaleString("fr-FR")));
+        card.appendChild(h("div", "mh-ui-slot-date", new Date(d.timestamp).toLocaleString(uiLocale())));
         card.appendChild(h("div", "mh-ui-slot-preview", d.previewText));
       } else {
         card.classList.add("mh-ui-slot-empty");
-        card.appendChild(h("div", "mh-ui-slot-preview", "— vide —"));
+        card.appendChild(h("div", "mh-ui-slot-preview", t("slot.empty")));
       }
 
       const row = h("div", "mh-ui-row");
       if (mode === "save") {
         row.appendChild(
-          this.button("Sauvegarder ici", () => void this.saveInto(slot), "mh-ui-slot-action"),
+          this.button(t("slot.saveHere"), () => void this.saveInto(slot), "mh-ui-slot-action"),
         );
       } else {
-        const load = this.button("Charger", () => void this.commands?.load(slot.id), "mh-ui-slot-action");
+        const load = this.button(t("slot.load"), () => void this.commands?.load(slot.id), "mh-ui-slot-action");
         load.disabled = !d;
         row.appendChild(load);
       }
       if (d) {
         row.appendChild(
-          this.button("Supprimer", () => void this.deleteSlot(slot.id), "mh-ui-slot-delete"),
+          this.button(t("slot.delete"), () => void this.deleteSlot(slot.id), "mh-ui-slot-delete"),
         );
       }
       card.appendChild(row);
@@ -473,23 +494,23 @@ export class DomUIManager implements UIManager {
   }
 
   private async saveInto(slot: SaveSlot): Promise<void> {
-    if (slot.data && !(await this.confirm(`Écraser « ${slotLabel(slot.id)} » ?`))) return;
+    if (slot.data && !(await this.confirm(t("slot.confirmOverwrite", { name: slotLabel(slot.id) })))) return;
     await this.commands?.save(slot.id);
   }
 
   private async deleteSlot(id: SlotId): Promise<void> {
-    if (await this.confirm(`Supprimer « ${slotLabel(id)} » ?`)) await this.commands?.deleteSave(id);
+    if (await this.confirm(t("slot.confirmDelete", { name: slotLabel(id) }))) await this.commands?.deleteSave(id);
   }
 
   private renderSettings(settings: Readonly<GameSettings>, availableLanguages: readonly GameLanguage[]): El {
     const p = h("section", "mh-ui-panel mh-ui-settings-screen");
     const header = h("header", "mh-ui-config-header");
     const brand = h("div", "mh-ui-config-brand");
-    brand.append(h("h2", "mh-ui-title", "Config"), h("p", "mh-ui-config-subtitle", "Réglages du jeu"));
+    brand.append(h("h2", "mh-ui-title", t("config.title")), h("p", "mh-ui-config-subtitle", t("config.subtitle")));
     header.appendChild(brand);
     const tabs = h("nav", "mh-ui-tabs");
     tabs.setAttribute("role", "tablist");
-    tabs.setAttribute("aria-label", "Sections de configuration");
+    tabs.setAttribute("aria-label", t("config.tabsLabel"));
     const content = h("div", "mh-ui-config");
     content.setAttribute("role", "tabpanel");
     // Copies locales : `Partial<GameSettings>` est superficiel, on renvoie les groupes entiers.
@@ -527,10 +548,10 @@ export class DomUIManager implements UIManager {
     const refresh = () => this.show(this.view);
 
     const tabDefs: readonly [SettingsTab, string][] = [
-      ["system", "Système"],
-      ["message", "Message"],
-      ["sound", "Son/Effet"],
-      ["shortcuts", "Raccourcis"],
+      ["system", t("config.tab.system")],
+      ["message", t("config.tab.message")],
+      ["sound", t("config.tab.sound")],
+      ["shortcuts", t("config.tab.shortcuts")],
     ];
     for (const [id, label] of tabDefs) {
       const tab = this.button(label, () => {
@@ -632,7 +653,7 @@ export class DomUIManager implements UIManager {
       parent.appendChild(row);
     };
     const yesNo = (parent: El, label: string, name: string, value: boolean, onChange: (v: boolean) => void) => {
-      segmented(parent, label, name, [{ value: "yes", label: "Oui" }, { value: "no", label: "Non" }], value ? "yes" : "no", (v) => onChange(v === "yes"));
+      segmented(parent, label, name, [{ value: "yes", label: t("common.yes") }, { value: "no", label: t("common.no") }], value ? "yes" : "no", (v) => onChange(v === "yes"));
     };
     const select = <T extends string>(
       parent: El,
@@ -669,7 +690,7 @@ export class DomUIManager implements UIManager {
             pushShortcuts();
             refresh();
           };
-          b.textContent = "Appuyez…";
+          b.textContent = t("config.shortcuts.capturing");
           b.classList.add("capturing");
         }, "mh-ui-key");
         b.dataset.action = action;
@@ -680,159 +701,163 @@ export class DomUIManager implements UIManager {
       parent.appendChild(row);
     };
 
+    const fmtMs = (v: number) => t("config.unit.ms", { value: v });
+    const fmtPercent = (v: number) => t("config.unit.percent", { value: v });
+    const fmtMsPerChar = (v: number) => t("config.unit.msPerChar", { value: v });
+
     if (this.settingsTab === "system") {
-      const screen = section("Affichage à l'écran");
+      const screen = section(t("config.screen.section"));
       const fullscreenRow = h("div", "mh-ui-field");
-      fullscreenRow.appendChild(this.button("Mode plein écran", () => this.commands?.toggleFullscreen(), "mh-ui-fullscreen"));
+      fullscreenRow.appendChild(this.button(t("config.screen.fullscreenButton"), () => this.commands?.toggleFullscreen(), "mh-ui-fullscreen"));
       screen.appendChild(fullscreenRow);
-      segmented(screen, "Plein écran", "fullscreenMode", [
-        { value: "fit", label: "Adapter à l'écran" },
-        { value: "fill", label: "Afficher sur tout l'écran" },
-        { value: "none", label: "Pas étendu" },
+      segmented(screen, t("config.screen.fullscreen"), "fullscreenMode", [
+        { value: "fit", label: t("config.screen.fit") },
+        { value: "fill", label: t("config.screen.fill") },
+        { value: "none", label: t("config.screen.none") },
       ], display.fullscreenMode, (v) => {
         display.fullscreenMode = v;
         pushDisplay();
       });
-      select(screen, "Mode fenêtré — taille", "windowSize", WINDOW_SIZE_OPTIONS, display.windowSize, (v) => {
+      const windowSizes = WINDOW_SIZE_OPTIONS.map((o) => (o.value === "fit" ? { ...o, label: t("config.screen.windowSizeFit") } : o));
+      select(screen, t("config.screen.windowSize"), "windowSize", windowSizes, display.windowSize, (v) => {
         display.windowSize = v;
         pushDisplay();
       });
 
-      const text = section("Mise en scène du texte");
-      segmented(text, "Texte affiché", "textAnimation", [
-        { value: "fade", label: "Activée" },
-        { value: "none", label: "Sans" },
+      const text = section(t("config.textFx.section"));
+      segmented(text, t("config.textFx.display"), "textAnimation", [
+        { value: "fade", label: t("config.textFx.on") },
+        { value: "none", label: t("config.textFx.off") },
       ], display.textAnimation, (v) => {
         display.textAnimation = v;
         pushDisplay();
       });
-      segmented(text, "Texte déjà lu", "readFade", [
-        { value: "fade", label: "Fondu" },
-        { value: "none", label: "Sans" },
+      segmented(text, t("config.textFx.read"), "readFade", [
+        { value: "fade", label: t("config.textFx.readFade") },
+        { value: "none", label: t("config.textFx.off") },
       ], display.readFade ? "fade" : "none", (v) => {
         display.readFade = v === "fade";
         pushDisplay();
       });
-      slider(text, "Durée du fondu", "readFadeDuration", 0, 3000, 100, display.readFadeDuration, (v) => {
+      slider(text, t("config.textFx.fadeDuration"), "readFadeDuration", 0, 3000, 100, display.readFadeDuration, (v) => {
         display.readFadeDuration = v;
         pushDisplay();
-      }, (v) => `${v} ms`);
-      slider(text, "Opacité du texte lu", "readFadeOpacity", 0, 100, 5, Math.round(display.readFadeOpacity * 100), (v) => {
+      }, fmtMs);
+      slider(text, t("config.textFx.readOpacity"), "readFadeOpacity", 0, 100, 5, Math.round(display.readFadeOpacity * 100), (v) => {
         display.readFadeOpacity = v / 100;
         pushDisplay();
-      }, (v) => `${v} %`);
+      }, fmtPercent);
 
-      const mouse = section("Réglage de la souris");
-      segmented(mouse, "Clic droit", "mouseMode", [
-        { value: "menu", label: "1 clic : menu" },
-        { value: "hideThenMenu", label: "2 clics : cacher puis menu" },
+      const mouse = section(t("config.mouse.section"));
+      segmented(mouse, t("config.mouse.rightClick"), "mouseMode", [
+        { value: "menu", label: t("config.mouse.menu") },
+        { value: "hideThenMenu", label: t("config.mouse.hideThenMenu") },
       ], display.mouseMode, (v) => {
         display.mouseMode = v;
         pushDisplay();
       });
-      check(mouse, "Curseur autoguidé (masqué après inactivité)", "autoHideCursor", display.autoHideCursor, (v) => {
+      check(mouse, t("config.mouse.autoHideCursor"), "autoHideCursor", display.autoHideCursor, (v) => {
         display.autoHideCursor = v;
         pushDisplay();
       });
 
-      const layout = section("Texte et boîte");
-      slider(layout, "Taille du texte", "fontScale", 0.5, 2, 0.1, display.fontScale, (v) => {
+      const layout = section(t("config.box.section"));
+      slider(layout, t("config.box.fontScale"), "fontScale", 0.5, 2, 0.1, display.fontScale, (v) => {
         display.fontScale = v;
         pushDisplay();
-      }, (v) => `× ${v.toFixed(1)}`);
-      slider(layout, "Opacité de la boîte", "textboxOpacity", 0, 1, 0.05, display.textboxOpacity, (v) => {
+      }, (v) => t("config.unit.times", { value: v.toFixed(1) }));
+      slider(layout, t("config.box.opacity"), "textboxOpacity", 0, 1, 0.05, display.textboxOpacity, (v) => {
         display.textboxOpacity = v;
         pushDisplay();
-      }, (v) => `${Math.round(v * 100)} %`);
+      }, (v) => fmtPercent(Math.round(v * 100)));
     } else if (this.settingsTab === "message") {
-      const unread = section("Vitesse des scènes non lues");
-      slider(unread, "Vitesse", "textSpeedUnread", 0, 100, 1, display.textSpeedUnread, (v) => {
+      const unread = section(t("config.unread.section"));
+      slider(unread, t("config.speed"), "textSpeedUnread", 0, 100, 1, display.textSpeedUnread, (v) => {
         display.textSpeedUnread = v;
         pushDisplay();
-      }, (v) => `${v} ms/car.`);
-      check(unread, "Afficher toute la page", "instantUnreadPage", display.instantUnreadPage, (v) => {
+      }, fmtMsPerChar);
+      check(unread, t("config.wholePage"), "instantUnreadPage", display.instantUnreadPage, (v) => {
         display.instantUnreadPage = v;
         pushDisplay();
       });
 
-      const read = section("Vitesse des scènes déjà lues");
-      slider(read, "Vitesse", "textSpeedRead", 0, 100, 1, display.textSpeedRead, (v) => {
+      const read = section(t("config.read.section"));
+      slider(read, t("config.speed"), "textSpeedRead", 0, 100, 1, display.textSpeedRead, (v) => {
         display.textSpeedRead = v;
         pushDisplay();
-      }, (v) => `${v} ms/car.`);
-      check(read, "Afficher toute la page", "instantReadPage", display.instantReadPage, (v) => {
+      }, fmtMsPerChar);
+      check(read, t("config.wholePage"), "instantReadPage", display.instantReadPage, (v) => {
         display.instantReadPage = v;
         pushDisplay();
       });
 
-      const auto = section("Mode automatique");
-      slider(auto, "Délai entre les pages", "autoPageDelay", 0, 6000, 100, display.autoPageDelay, (v) => {
+      const auto = section(t("config.auto.section"));
+      slider(auto, t("config.auto.pageDelay"), "autoPageDelay", 0, 6000, 100, display.autoPageDelay, (v) => {
         display.autoPageDelay = v;
         pushDisplay();
-      }, (v) => `${v} ms`);
-      slider(auto, "Délai entre les lignes", "autoLineDelay", 0, 6000, 100, display.autoLineDelay, (v) => {
+      }, fmtMs);
+      slider(auto, t("config.auto.lineDelay"), "autoLineDelay", 0, 6000, 100, display.autoLineDelay, (v) => {
         display.autoLineDelay = v;
         pushDisplay();
-      }, (v) => `${v} ms`);
-      segmented(auto, "Clic en mode auto", "autoClick", [
-        { value: "skip", label: "Sauter l'animation" },
-        { value: "cancel", label: "Arrêt du mode auto" },
+      }, fmtMs);
+      segmented(auto, t("config.auto.click"), "autoClick", [
+        { value: "skip", label: t("config.auto.clickSkip") },
+        { value: "cancel", label: t("config.auto.clickCancel") },
       ], display.autoClick, (v) => {
         display.autoClick = v;
         pushDisplay();
       });
 
-      const skipping = section("Saut et avance rapide");
-      segmented(skipping, "Saut automatique des scènes déjà lues", "autoSkipRead", [
-        { value: "off", label: "Désactivé" },
-        { value: "on", label: "Activé" },
+      const skipping = section(t("config.skip.section"));
+      segmented(skipping, t("config.skip.autoSkipRead"), "autoSkipRead", [
+        { value: "off", label: t("config.skip.off") },
+        { value: "on", label: t("config.skip.on") },
       ], display.autoSkipRead ? "on" : "off", (v) => {
         display.autoSkipRead = v === "on";
         pushDisplay();
       });
-      check(skipping, "Afficher confirmation", "autoSkipConfirm", display.autoSkipConfirm, (v) => {
+      check(skipping, t("config.skip.confirm"), "autoSkipConfirm", display.autoSkipConfirm, (v) => {
         display.autoSkipConfirm = v;
         pushDisplay();
       });
-      segmented(skipping, "Touche d'avance rapide", "fastForwardKey", [
-        { value: "enter", label: "Entrée" },
-        { value: "shift", label: "Maj" },
-        { value: "ctrl", label: "Ctrl" },
+      segmented(skipping, t("config.skip.fastKey"), "fastForwardKey", [
+        { value: "enter", label: t("config.skip.keyEnter") },
+        { value: "shift", label: t("config.skip.keyShift") },
+        { value: "ctrl", label: t("config.skip.keyCtrl") },
       ], display.fastForwardKey, (v) => {
         display.fastForwardKey = v;
         pushDisplay();
       });
-      segmented(skipping, "Avance rapide du texte", "fastForwardScope", [
-        { value: "all", label: "Tous les textes" },
-        { value: "read", label: "Textes déjà lus" },
+      segmented(skipping, t("config.skip.scope"), "fastForwardScope", [
+        { value: "all", label: t("config.skip.scopeAll") },
+        { value: "read", label: t("config.skip.scopeRead") },
       ], display.fastForwardScope, (v) => {
         display.fastForwardScope = v;
         pushDisplay();
       });
-      check(skipping, "Le skip passe aussi le texte non lu", "skipUnread", skipUnread, (v) => {
+      check(skipping, t("config.skip.skipUnread"), "skipUnread", skipUnread, (v) => {
         skipUnread = v;
         updateView();
         this.commands?.updateSettings({ skipUnread: v });
       });
 
-      const font = section("Police");
-      select(font, "Police du texte", "fontFamily", [
-        { value: "", label: "Police du port" },
-        { value: '"Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif', label: "Serif japonaise" },
-        { value: '"Noto Sans JP", "Hiragino Sans", sans-serif', label: "Sans-serif" },
-        { value: "monospace", label: "Monospace" },
+      const font = section(t("config.font.section"));
+      select(font, t("config.font.family"), "fontFamily", [
+        { value: "", label: t("config.font.default") },
+        { value: '"Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif', label: t("config.font.serifJa") },
+        { value: '"Noto Sans JP", "Hiragino Sans", sans-serif', label: t("config.font.sansSerif") },
+        { value: "monospace", label: t("config.font.monospace") },
       ], display.fontFamily, (v) => {
         display.fontFamily = v;
         pushDisplay();
       });
 
-      const languageSection = section("Langue");
-      const labels: Record<GameLanguage, string> = { ja: "日本語", en: "English", fr: "Français" };
+      const languageSection = section(t("config.language.section"));
       select(
         languageSection,
-        "Langue",
+        t("config.language.label"),
         "language",
-        availableLanguages.map((value) => ({ value, label: labels[value] })),
+        availableLanguages.map((value) => ({ value, label: LANGUAGE_NAMES[value] })),
         language,
         (v) => {
           language = v;
@@ -841,81 +866,81 @@ export class DomUIManager implements UIManager {
         },
       );
     } else if (this.settingsTab === "sound") {
-      const bgm = section("Volume des musiques");
-      slider(bgm, "Volume", "bgm", 0, 100, 5, Math.round(audio.bgm * 100), (v) => {
+      const bgm = section(t("config.sound.bgm"));
+      slider(bgm, t("config.sound.volume"), "bgm", 0, 100, 5, Math.round(audio.bgm * 100), (v) => {
         audio.bgm = v / 100;
         pushAudio();
-      }, (v) => `${v} %`);
-      check(bgm, "Muet", "bgmMuted", audio.bgmMuted, (v) => {
+      }, fmtPercent);
+      check(bgm, t("config.sound.mute"), "bgmMuted", audio.bgmMuted, (v) => {
         audio.bgmMuted = v;
         pushAudio();
       });
 
-      const se = section("Volume des bruitages");
-      slider(se, "Volume", "se", 0, 100, 5, Math.round(audio.se * 100), (v) => {
+      const se = section(t("config.sound.se"));
+      slider(se, t("config.sound.volume"), "se", 0, 100, 5, Math.round(audio.se * 100), (v) => {
         audio.se = v / 100;
         pushAudio();
-      }, (v) => `${v} %`);
-      check(se, "Muet", "seMuted", audio.seMuted, (v) => {
+      }, fmtPercent);
+      check(se, t("config.sound.mute"), "seMuted", audio.seMuted, (v) => {
         audio.seMuted = v;
         pushAudio();
       });
       const testRow = h("div", "mh-ui-field mh-ui-field-action");
       testRow.append(
         h("span", "mh-ui-field-label", ""),
-        this.button("Tester le volume", () => this.commands?.testSe(), "mh-ui-test-se"),
+        this.button(t("config.sound.test"), () => this.commands?.testSe(), "mh-ui-test-se"),
       );
       se.appendChild(testRow);
 
-      const system = section("Volume des sons système");
-      slider(system, "Volume", "system", 0, 100, 5, Math.round(audio.system * 100), (v) => {
+      const system = section(t("config.sound.system"));
+      slider(system, t("config.sound.volume"), "system", 0, 100, 5, Math.round(audio.system * 100), (v) => {
         audio.system = v / 100;
         pushAudio();
-      }, (v) => `${v} %`);
-      check(system, "Muet", "systemMuted", audio.systemMuted, (v) => {
+      }, fmtPercent);
+      check(system, t("config.sound.mute"), "systemMuted", audio.systemMuted, (v) => {
         audio.systemMuted = v;
         pushAudio();
       });
 
-      const effects = section("Effets et pages");
-      yesNo(effects, "Affichage final des pages", "instantEffects", display.instantEffects, (v) => {
+      const effects = section(t("config.effects.section"));
+      yesNo(effects, t("config.effects.instant"), "instantEffects", display.instantEffects, (v) => {
         display.instantEffects = v;
         pushDisplay();
       });
-      yesNo(effects, "Arrêt des animations en cours", "stopAnimations", display.stopAnimations, (v) => {
+      yesNo(effects, t("config.effects.stopAnimations"), "stopAnimations", display.stopAnimations, (v) => {
         display.stopAnimations = v;
         pushDisplay();
       });
-      yesNo(effects, "Effacement du texte au changement de page", "clearTextOnPageChange", display.clearTextOnPageChange, (v) => {
+      yesNo(effects, t("config.effects.clearText"), "clearTextOnPageChange", display.clearTextOnPageChange, (v) => {
         display.clearTextOnPageChange = v;
         pushDisplay();
       });
-      yesNo(effects, "Affichage des effets spéciaux", "specialEffects", display.specialEffects, (v) => {
+      yesNo(effects, t("config.effects.special"), "specialEffects", display.specialEffects, (v) => {
         display.specialEffects = v;
         pushDisplay();
       });
     } else {
-      const keys = section("Raccourcis clavier");
+      const keys = section(t("config.shortcuts.section"));
       keys.classList.add("mh-ui-shortcuts-section");
       keys.appendChild(
-        h("p", "mh-ui-hint", "Cliquez sur une touche puis appuyez sur la combinaison voulue. Échap annule la capture."),
+        h("p", "mh-ui-hint", t("config.shortcuts.hint")),
       );
       for (const definition of SHORTCUT_DEFINITIONS) {
-        keyRow(keys, definition.id, definition.label);
+        keyRow(keys, definition.id, t(`shortcut.${definition.id}`));
       }
     }
 
     const footer = h("div", "mh-ui-config-footer");
     footer.append(
       this.backButton(),
-      this.button("Réglages par défaut", () => this.commands?.resetSettings(), "mh-ui-reset"),
+      this.button(t("config.reset"), () => this.commands?.resetSettings(), "mh-ui-reset"),
     );
     p.append(content, footer);
     return p;
   }
 
   private renderBacklog(entries: readonly BacklogEntry[]): El {
-    const p = this.panel("Historique", "mh-ui-backlog-screen");
+    const p = this.panel(t("history.title"), "mh-ui-backlog-screen");
     const list = h("ol", "mh-ui-backlog");
     for (const e of entries) {
       const li = h("li", "mh-ui-backlog-entry", e.text);
@@ -931,7 +956,7 @@ export class DomUIManager implements UIManager {
   }
 
   private renderFlowchart(scripts: readonly ScriptSummary[], progress: ScriptProgress): El {
-    const p = this.panel("Flowchart", "mh-ui-flowchart-screen");
+    const p = this.panel(t("flowchart.title"), "mh-ui-flowchart-screen");
     const unlocked = new Set(progress.unlocked);
     const completed = new Set(progress.completed);
     const map = h("div", "mh-ui-flow-map");
@@ -1127,13 +1152,13 @@ export class DomUIManager implements UIManager {
         this.commands.openScreen("backlog");
         break;
       case "returnTitle":
-        void this.confirm("Retourner au titre ? La progression non sauvegardée sera perdue.").then((ok) => {
+        void this.confirm(t("confirm.returnToTitle")).then((ok) => {
           if (ok) this.commands?.returnToTitle();
         });
         break;
       case "quit":
         window.close();
-        if (!window.closed) this.toast("Le navigateur refuse de fermer l'onglet.");
+        if (!window.closed) this.toast(t("toast.closeRefused"));
         break;
     }
   }
