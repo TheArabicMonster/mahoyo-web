@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { IDBFactory } from "fake-indexeddb";
+import { createSaveStore } from "@/player/save-store-idb.js";
 import {
   createLocalSaveStore,
   createMemorySaveStore,
@@ -118,6 +120,8 @@ describe("migrateSaveRecord", () => {
 describe.each([
   ["localStorage", () => createLocalSaveStore(memStorage)],
   ["mémoire", () => createMemorySaveStore()],
+  ["IndexedDB", () => createSaveStore({ indexedDB: new IDBFactory(), storage: null })],
+  ["repli localStorage", () => createSaveStore({ indexedDB: null, storage: memStorage })],
 ] as [string, () => SaveStore][])("SaveStore (%s)", (_name, make) => {
   let store: SaveStore;
   beforeEach(() => {
@@ -132,6 +136,28 @@ describe.each([
 
   it("renvoie null pour un emplacement vide", async () => {
     expect(await store.get(9)).toBeNull();
+  });
+
+  it("list renvoie les emplacements occupés avec leur enregistrement", async () => {
+    expect(await store.list()).toEqual([]);
+    await store.put(3, record({ comment: "trois" }));
+    await store.put("auto", record({ comment: "auto" }));
+    await store.put("quick", record({ locked: true }));
+    const entries = (await store.list()).sort((a, b) => String(a.slot).localeCompare(String(b.slot)));
+    expect(entries.map((e) => e.slot)).toEqual([3, "auto", "quick"]);
+    expect(entries.find((e) => e.slot === 3)?.record).toEqual(record({ comment: "trois" }));
+    expect(entries.find((e) => e.slot === "quick")?.record.locked).toBe(true);
+  });
+
+  it("conserve la vignette, le commentaire, le verrou et les choix à l'aller-retour", async () => {
+    const full = record({
+      thumbnailUrl: "data:image/webp;base64,AAAA",
+      comment: "note",
+      locked: true,
+      choices: [{ from: "a-1", to: "b-1" }],
+    });
+    await store.put(7, full);
+    expect(await store.get(7)).toEqual(full);
   });
 
   it("update modifie commentaire et verrou sans toucher au reste", async () => {

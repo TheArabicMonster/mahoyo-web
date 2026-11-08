@@ -61,7 +61,8 @@ src/renderer/ + src/ui/  ── rendu navigateur
 
 ### `src/player/` — persistance
 
-- **`save-store.ts`** : `SaveStore` (clés `localStorage` `mahoyo.save.<slot>`). Un `SaveRecord` porte l'état de reprise
+- **`save-store.ts`** : contrat `SaveStore` (`list`, `get`, `put`, `delete`, `update`, tous asynchrones) et magasins
+  simples (localStorage, clés `mahoyo.save.<slot>`, et mémoire). Un `SaveRecord` porte l'état de reprise
   (runtime, scène, audio, arrêt) et, depuis HUD-11 (#183), `sceneTitle` (libellé du sommaire local de l'utilisateur,
   sinon nom du fichier de script), `comment` (libre, `""` par défaut) et `locked`.
   - **Migration à la lecture** (`migrateSaveRecord`) : une sauvegarde sans ces champs reçoit `sceneTitle` = nom du
@@ -70,6 +71,11 @@ src/renderer/ + src/ui/  ── rendu navigateur
   - **Verrou** : `put` et `delete` rejettent avec `SaveLockedError` sur un emplacement verrouillé (le player vérifie
     aussi avant la confirmation et affiche un message). `update(slot, { comment, locked })` modifie ces deux
     métadonnées, y compris sur un emplacement verrouillé.
+- **`save-store-idb.ts`** (#198) : magasin IndexedDB (base `mahoyo-saves`, stores `saves` et `thumbnails`),
+  `createSaveStore()` (IndexedDB, sinon localStorage, sinon mémoire, sans exception) et `migrateLocalSaves`
+  (migration idempotente des anciennes clés). Voir [`SAUVEGARDES.md`](SAUVEGARDES.md).
+- **`save-transfer.ts`** (#198) : export / import JSON (`exportSaves`, `parseSaveExport`, `importSaves`) ; helpers DOM
+  (téléchargement, sélecteur de fichier, messages i18n) dans `src/ui/save-transfer.ts`.
 - **`settings-store.ts`** : réglages (`mahoyo.settings`), « déjà lu » (`mahoyo.read`), progression par chapitre
   (`mahoyo.progress`) et progression par scène (`mahoyo.story-progress`). Lecture tolérante (absent, partiel,
   corrompu ou stockage inaccessible = valeurs vides/par défaut).

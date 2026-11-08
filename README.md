@@ -120,7 +120,7 @@ Détail complet : [`docs/CONFIG_PLAN.md`](docs/CONFIG_PLAN.md).
 - Quelques gros plans de sprites restent mal ancrés (#171).
 - L'écran de sauvegarde/chargement utilise encore l'ancienne interface ; le modèle enrichi (titre, commentaire, verrou) n'est pas encore exposé (#196).
 - La refonte des écrans HUD (titre, menu système, chargement, historique, flowchart) est suivie dans le backlog `HUD-xx`, `WEB-xx` et `FLOW-xx` ; la configuration est déjà refaite (#177), les autres écrans restent à aligner (#200).
-- Les sauvegardes et vignettes vivent dans `localStorage` ; le passage à IndexedDB et l'export/import JSON sont prévus (#198).
+- Les sauvegardes et vignettes vivent dans IndexedDB (repli `localStorage`, puis mémoire) avec export/import JSON ; les boutons correspondants de l'écran de sauvegarde restent à faire (#196). En attendant : `mahoyoSaves.export()` / `mahoyoSaves.import()` dans la console du navigateur. Voir [`docs/SAUVEGARDES.md`](docs/SAUVEGARDES.md).
 - Le jeu est testé dans Chromium ; Firefox et le mobile restent à valider (v1.1).
 - `npm run lint` est indisponible tant que la configuration ESLint 9 n'est pas rétablie (#220).
 
@@ -173,7 +173,9 @@ src/ui/               Interface utilisateur
   types.ts            Contrats UIManager, PlayerCommands, UIView
 
 src/player/           Persistance
-  save-store.ts       Sauvegardes, métadonnées et migration
+  save-store.ts       Contrat SaveStore, métadonnées et migration des enregistrements
+  save-store-idb.ts   Stockage IndexedDB, migration depuis localStorage, repli
+  save-transfer.ts    Export / import JSON des sauvegardes et de la progression
   settings-store.ts   Réglages, lecture, progression
   story-progress.ts   Progression par scène et choix
   save-messages.ts    Libellés de sauvegarde

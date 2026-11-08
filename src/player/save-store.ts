@@ -7,6 +7,10 @@
  * Les enregistrements sont migrés à la lecture (`migrateSaveRecord`) : les
  * sauvegardes écrites avant l'ajout du titre de scène, du commentaire et du
  * verrou, ou de l'historique de choix, restent chargeables, sans réécriture du stockage.
+ *
+ * Ce module porte le contrat (`SaveStore`) et les magasins simples (localStorage, mémoire).
+ * Le magasin IndexedDB, la migration depuis localStorage et le repli sont dans
+ * `save-store-idb.ts` ; l'export/import JSON dans `save-transfer.ts`.
  */
 import type { AudioSnapshot, Position, StopReason } from "@/kag/events.js";
 import type { RuntimeSaveData } from "@/kag/runtime.js";
@@ -51,7 +55,12 @@ export class SaveLockedError extends Error {
   }
 }
 
+/** Un emplacement occupé, tel que renvoyé par `SaveStore.list`. */
+export type SaveEntry = { slot: SlotId; record: SaveRecord };
+
 export interface SaveStore {
+  /** Tous les emplacements occupés (ordre non garanti). Ne rejette pas : un stockage illisible donne []. */
+  list(): Promise<SaveEntry[]>;
   get(slot: SlotId): Promise<SaveRecord | null>;
   /** Écrase l'emplacement ; rejette avec `SaveLockedError` s'il est verrouillé. */
   put(slot: SlotId, record: SaveRecord): Promise<void>;
@@ -59,6 +68,27 @@ export interface SaveStore {
   delete(slot: SlotId): Promise<void>;
   /** Met à jour commentaire et/ou verrou. Renvoie false si l'emplacement est vide. */
   update(slot: SlotId, patch: SaveMetaPatch): Promise<boolean>;
+}
+
+/** Clé textuelle stable d'un emplacement ("auto", "quick", "3"). */
+export function slotKey(slot: SlotId): string {
+  return String(slot);
+}
+
+/** Inverse de `slotKey` ; null si la clé ne désigne pas un emplacement valide. */
+export function parseSlotKey(key: string): SlotId | null {
+  if (key === "auto" || key === "quick") return key;
+  if (!/^[1-9]\d{0,5}$/.test(key)) return null;
+  return Number(key);
+}
+
+/** `localStorage` s'il est accessible (l'accès lui-même peut lever en navigation privée ou sous Node), sinon null. */
+export function resolveLocalStorage(): Storage | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
 }
 
 /** Titre de scène d'un script : libellé du sommaire local, sinon nom du fichier. */
@@ -86,7 +116,10 @@ export function migrateSaveRecord(raw: unknown): SaveRecord | null {
   } as SaveRecord;
 }
 
-export function createLocalSaveStore(storage: Storage = localStorage, prefix = "mahoyo.save."): SaveStore {
+/** Préfixe des clés localStorage historiques des sauvegardes. */
+export const LOCAL_SAVE_PREFIX = "mahoyo.save.";
+
+export function createLocalSaveStore(storage: Storage = localStorage, prefix = LOCAL_SAVE_PREFIX): SaveStore {
   const read = (slot: SlotId): SaveRecord | null => {
     try {
       const raw = storage.getItem(prefix + String(slot));
@@ -97,6 +130,21 @@ export function createLocalSaveStore(storage: Storage = localStorage, prefix = "
   };
   const write = (slot: SlotId, record: SaveRecord): void => storage.setItem(prefix + String(slot), JSON.stringify(record));
   return {
+    async list() {
+      const entries: SaveEntry[] = [];
+      try {
+        for (let i = 0; i < storage.length; i++) {
+          const key = storage.key(i);
+          if (key === null || !key.startsWith(prefix)) continue;
+          const slot = parseSlotKey(key.slice(prefix.length));
+          const record = slot === null ? null : read(slot);
+          if (slot !== null && record) entries.push({ slot, record });
+        }
+      } catch {
+        return entries;
+      }
+      return entries;
+    },
     async get(slot) {
       return read(slot);
     },
@@ -121,6 +169,15 @@ export function createMemorySaveStore(): SaveStore & { records: Map<string, Save
   const records = new Map<string, SaveRecord>();
   return {
     records,
+    async list() {
+      const entries: SaveEntry[] = [];
+      for (const [key, value] of records) {
+        const slot = parseSlotKey(key);
+        const record = slot === null ? null : migrateSaveRecord(structuredClone(value));
+        if (slot !== null && record) entries.push({ slot, record });
+      }
+      return entries;
+    },
     async get(slot) {
       const r = records.get(String(slot));
       return r ? migrateSaveRecord(structuredClone(r)) : null;
@@ -142,7 +199,8 @@ export function createMemorySaveStore(): SaveStore & { records: Map<string, Save
   };
 }
 
-function applyMetaPatch(record: SaveRecord, patch: SaveMetaPatch): SaveRecord {
+/** Applique un patch de métadonnées (commentaire, verrou) sans toucher au reste de l'enregistrement. */
+export function applyMetaPatch(record: SaveRecord, patch: SaveMetaPatch): SaveRecord {
   return {
     ...record,
     ...(typeof patch.comment === "string" ? { comment: patch.comment } : {}),

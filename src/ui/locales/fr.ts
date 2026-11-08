@@ -181,4 +181,14 @@ export const fr = {
   "toast.closeRefused": "Le navigateur refuse de fermer l'onglet.",
   "toast.slotLockedOverwrite": "Cet emplacement est verrouillé : sauvegarde impossible.",
   "toast.slotLockedDelete": "Cet emplacement est verrouillé : suppression impossible.",
+
+  // ── Export / import des sauvegardes (#198) ──
+  "saveTransfer.exported": "{n} emplacement(s) exporté(s).",
+  "saveTransfer.imported": "{n} emplacement(s) importé(s).",
+  "saveTransfer.skippedLocked": "{n} emplacement(s) verrouillé(s) conservé(s) sans modification.",
+  "saveTransfer.invalid": "{n} entrée(s) ignorée(s) car invalide(s).",
+  "saveTransfer.failed": "{n} emplacement(s) non écrit(s) (stockage plein ?).",
+  "saveTransfer.nothing": "Aucune sauvegarde à importer.",
+  "saveTransfer.unreadable": "Fichier de sauvegarde illisible.",
+  "saveTransfer.unsupported": "Version de fichier de sauvegarde non prise en charge.",
 } as const;
