@@ -100,7 +100,7 @@ describe("night.css : surcouche d'image optionnelle (DESIGN §9)", () => {
     const after = bodies(nightCss, ".mh-ui-night::after").join("\n");
     expect(after).toContain("var(--mh-asset-night, var(--mh-asset-c_background, none))");
     expect(after).toMatch(/z-index:\s*-1/);
-    expect(nightCss).not.toMatch(/--mh-asset-night\s*:/); // optionnelle : posée par un écran, jamais par night.css
+    expect(nightCss.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/--mh-asset-night\s*:/); // optionnelle : posée par un écran, jamais par night.css
   });
 
   it("la variante voile n'affiche pas l'image (scène visible dessous)", () => {
