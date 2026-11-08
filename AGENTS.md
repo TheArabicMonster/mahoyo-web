@@ -28,6 +28,7 @@ Port web du visual novel **Mahoutsukai no Yoru** (Mahoyo), inspiré de l'archite
 | Vue technique | `docs/ARCHITECTURE.md` |
 | Analyse du HUD d'origine, écarts, backlog UI, flowchart | `docs/ANALYSE_HUD_ORIGINAL.md` |
 | Design system (palette, typo, tokens, états) | `docs/DESIGN.md` |
+| Libellés d'interface (dictionnaire FR/JA/EN, ajout de clés) | `docs/I18N.md` |
 | Suivi des tâches | Project GitHub (kanban) + issues |
 
 ## 4. Cycle de vie d'une tâche
