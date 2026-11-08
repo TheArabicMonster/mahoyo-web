@@ -1,0 +1,92 @@
+/*
+ * Tokens du design system (docs/DESIGN.md §11, tâche HUD-01 / #181).
+ * Déclarations seules : aucune règle visuelle ici. Préfixe --mh-.
+ * Valeurs mesurées sur le jeu d'origine ; aucune ressource sous copyright.
+ */
+:root {
+  /* Fonds */
+  --mh-bg-night-top: #0c1924;
+  --mh-bg-night-mid: #132337;
+  --mh-bg-night-mid-right: #17273c;
+  --mh-bg-night-bottom: #07111b;
+  --mh-paper: #eee8de;
+
+  /* Texte */
+  --mh-ink: #1f1816;
+  --mh-ink-hover: #2843ac;
+  --mh-text: #ffffff;
+  --mh-text-ui: #eef4f5;
+  --mh-text-menu: #a9c8cc;
+  --mh-text-menu-hover: #b1d6da;
+  --mh-text-title: #f2fbff;
+  --mh-text-read-opacity: 0.4;
+
+  /* Panneaux */
+  --mh-panel-fill: #151f2b;
+  --mh-panel-border: #444c56;
+  --mh-panel-border-light: #59616b;
+  --mh-panel-border-dark: #333b45;
+  --mh-panel-label: #c0d6d6;
+  --mh-field-fill: #04080e;
+
+  /* Accents */
+  --mh-teal-on-top: #3d746f;
+  --mh-teal-on-bottom: #133c39;
+  --mh-teal-on-border: #447671;
+  --mh-grey-off-top: #404342;
+  --mh-grey-off-bottom: #171717;
+  --mh-dialog-top: #083443;
+  --mh-dialog-bottom: #285e69;
+  --mh-dialog-border: #598f95;
+  --mh-dialog-ornament: #376b74;
+  --mh-pill-on: #33a9a9;
+  --mh-pill-off: #2e7179;
+  --mh-cyan-control: #08a8b8;
+  --mh-cyan-progress: #088888;
+  --mh-cyan-rail: #3f889c;
+  --mh-cyan-glint: #5fcfc5;
+  --mh-select: #c0f790;
+  --mh-slot-button-top: #586888;
+  --mh-slot-button-bottom: #283858;
+  --mh-toast-fill: #587888;
+  --mh-focus: #5fcfc5;
+
+  /* Typo */
+  --mh-font-text: "Hiragino Mincho ProN", "Yu Mincho", "Shippori Mincho", "Noto Serif JP", "EB Garamond", Georgia, serif;
+  --mh-font-title: "Cormorant Garamond", "EB Garamond", Georgia, serif;
+  --mh-font-ui: "Optima", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --mh-font-ja: "Noto Sans JP", "Hiragino Sans", sans-serif;
+  --mh-text-size: 2.1rem;
+  --mh-text-leading: 1.5;
+  --mh-title-menu-size: 1.7rem;
+  --mh-screen-title-size: 2.4rem;
+  --mh-sysmenu-size: 1.55rem;
+  --mh-control-size: 1.2rem;
+
+  /* Mouvement */
+  --mh-dur-fast: 150ms;
+  --mh-dur-menu: 270ms;
+  --mh-dur-fade-out: 400ms;
+  --mh-dur-fade-in: 800ms;
+  --mh-dur-scene-out: 1200ms;
+  --mh-dur-scene-in: 850ms;
+  --mh-ease: linear;
+
+  /* Espacement (échelle de 8 px@720) */
+  --mh-space-1: 8px;
+  --mh-space-2: 16px;
+  --mh-space-3: 24px;
+  --mh-space-4: 32px;
+  --mh-margin-screen: 15px; /* 22 px@1080 */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --mh-dur-fast: 0ms;
+    --mh-dur-menu: 0ms;
+    --mh-dur-fade-out: 0ms;
+    --mh-dur-fade-in: 0ms;
+    --mh-dur-scene-out: 0ms;
+    --mh-dur-scene-in: 0ms;
+  }
+}
