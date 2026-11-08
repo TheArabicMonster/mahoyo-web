@@ -11,10 +11,6 @@
 .mh-ui-button:disabled { opacity: 0.4; cursor: default; }
 .mh-ui-scripts { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
 .mh-ui-scripts .mh-ui-button { width: 100%; padding: 0.4rem 0.5rem; font-size: 0.9rem; }
-.mh-ui-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
-.mh-ui-slot { border: 1px solid #556; padding: 0.5rem; }
-.mh-ui-slot-thumb { width: 100%; }
-.mh-ui-slot-preview { font-size: 0.85rem; opacity: 0.8; }
 .mh-ui-field { display: flex; gap: 0.75rem; align-items: center; margin: 0.4rem 0; }
 .mh-ui-field-label { min-width: 16rem; }
 .mh-ui-backlog { max-height: 30rem; overflow: auto; padding-left: 1.5rem; user-select: text; }

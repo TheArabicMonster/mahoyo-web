@@ -5,6 +5,7 @@ import type { AssetResolver } from "@/core/asset-resolver.js";
 import { applyViewportScale, computeViewportScale } from "@/core/display.js";
 import { createDomStageRenderer } from "./renderer/stage-renderer.js";
 import { DomUIManager } from "./ui/ui-manager.js";
+import type { SaveTransferActions } from "./ui/save-load-screen.js";
 import { Player } from "./ui/player.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
 import { parseStoryChain, type StoryChain } from "@/core/story-chain.js";
@@ -76,7 +77,7 @@ async function main() {
     root: viewport,
     resolver,
     createStageRenderer: createDomStageRenderer,
-    createUIManager: () => new DomUIManager({ resolver }),
+    createUIManager: () => new DomUIManager({ resolver, saveTransfer: saveTransferActions(saveStore, settingsStore) }),
     scripts: chaptersToScripts(chain),
     loadChain: async () => chain,
     saveStore,
@@ -84,8 +85,21 @@ async function main() {
   });
 }
 
+/** Boutons Exporter / Importer de l'écran de sauvegarde (HUD-10, #196) ; la page est rechargée après un import. */
+function saveTransferActions(saveStore: ResilientSaveStore, progress: ProgressAccess): SaveTransferActions {
+  return {
+    export: () => downloadSaveExport(saveStore, progress),
+    import: async () => {
+      const file = await pickSaveFile();
+      if (!file) return null;
+      const { message, report } = await importSaveFile(file, saveStore, progress);
+      return { message, imported: (report?.imported.length ?? 0) > 0 };
+    },
+  };
+}
+
 /**
- * API d'export/import en attendant les boutons de l'écran de sauvegarde (HUD-10, #196) :
+ * API de console d'export/import (en plus des boutons de l'écran de sauvegarde, HUD-10 #196) :
  * `await mahoyoSaves.export()` télécharge un JSON ; `await mahoyoSaves.import()` ouvre le sélecteur de fichier.
  * Recharger la page après un import pour que la progression fusionnée soit prise en compte par le player.
  */
