@@ -1,0 +1,96 @@
+/* ── Toasts au design d'origine (HUD-13, #191) ───────────────────────────────
+   Cadre sarcelle gris (`--mh-toast-fill`) aux chevrons ornés, bas droite, rendu en CSS pur
+   (aucun asset, docs/DESIGN.md §9). Mesures de l'original : 510×90 px @1080, x 1370–1880,
+   y 950–1040, soit à ×2/3 dans le repère logique 1280×720 du port : 340×60 px, marges droite
+   et bas de 27 px (le HUD est dans #viewport, pas dans le repère 1024×576 de la scène).
+   Les dimensions sont en rem (1 rem = 16 px) : 340 px = 21,25 rem ; 60 px = 3,75 rem ;
+   27 px = 1,6875 rem. */
+
+.mh-toast-host {
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0 1.6875rem 1.6875rem 0;
+  box-sizing: border-box;
+}
+
+.mh-toast {
+  /* Teintes du cadre (DESIGN.md §2.4 : cadre #4a6b72 -> #8da9af) ; le remplissage est un token. */
+  --toast-frame-dark: #4a6b72;
+  --toast-frame-light: #8da9af;
+  --toast-enter: 200ms;
+
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 21.25rem;
+  min-height: 3.75rem;
+  padding: 0.5rem 2.25rem;
+  color: var(--mh-text, #fff);
+  font-family: var(--mh-font-ui, system-ui, sans-serif);
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1.25;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  user-select: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.08)), var(--mh-toast-fill, #587888);
+  border: 2px solid;
+  border-image: linear-gradient(180deg, var(--toast-frame-light), var(--toast-frame-dark)) 1;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 0.125rem 0.5rem rgba(0, 0, 0, 0.45);
+  animation: mh-toast-in var(--toast-enter) var(--mh-ease, linear) both;
+}
+
+/* Chevrons ornés aux deux extrémités : coin d'un carré tourné à 45° (« < » à gauche, « > » à droite). */
+.mh-toast::before,
+.mh-toast::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-style: solid;
+  border-color: #d3e4e6;
+  border-width: 0 0 2px 2px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
+}
+
+.mh-toast::before {
+  left: 1.25rem;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.mh-toast::after {
+  right: 1.25rem;
+  transform: translateY(-50%) rotate(-135deg);
+}
+
+.mh-toast[data-state="leaving"] {
+  animation: mh-toast-out var(--mh-dur-fast, 150ms) var(--mh-ease, linear) forwards;
+}
+
+@keyframes mh-toast-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mh-toast-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mh-toast,
+  .mh-toast[data-state="leaving"] {
+    --toast-enter: 0ms;
+    animation: none;
+  }
+}

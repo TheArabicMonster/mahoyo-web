@@ -24,9 +24,9 @@ import type {
   UIView,
 } from "@/ui/types.js";
 import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t, uiLocale } from "@/ui/i18n.js";
+import { ToastStack } from "@/ui/toast.js";
 import "./ui-manager.css";
 
-const DEFAULT_TOAST_MS: Ms = 2500;
 /** Taille logique du viewport, utilisée pour positionner le flowchart. */
 const LOGICAL_W = 1280;
 const LOGICAL_H = 720;
@@ -84,7 +84,7 @@ export class DomUIManager implements UIManager {
   private flowchart!: El;
   private pause!: El;
   private choicesEl!: El;
-  private toastEl!: El;
+  private toasts: ToastStack | null = null;
   private loading!: El;
   private statusEl!: El;
   private confirmEl: El | null = null;
@@ -104,7 +104,6 @@ export class DomUIManager implements UIManager {
   private cursorTimer: ReturnType<typeof setTimeout> | undefined;
 
   private pendingConfirm: ((v: boolean) => void) | null = null;
-  private toastTimers = new Set<ReturnType<typeof setTimeout>>();
   private cleanups: (() => void)[] = [];
   private previousDocumentLang: string | null = null;
 
@@ -126,7 +125,7 @@ export class DomUIManager implements UIManager {
     this.flowchart = this.slot("ui-flowchart", "mh-ui-flowchart");
     this.pause = this.slot("ui-pause", "mh-ui-pause");
     this.choicesEl = this.slot("ui-choices", "mh-ui-choices");
-    this.toastEl = this.slot("ui-toast", "mh-ui-toast");
+    this.toasts = new ToastStack(this.slot("ui-toast", "mh-ui-toast"));
     this.loading = this.slot("ui-loading", "mh-ui-loading");
     this.statusEl = h("div", "mh-ui-status");
     this.overlay.appendChild(this.statusEl);
@@ -155,8 +154,8 @@ export class DomUIManager implements UIManager {
   dispose(): void {
     for (const off of this.cleanups) off();
     this.cleanups = [];
-    for (const t of this.toastTimers) clearTimeout(t);
-    this.toastTimers.clear();
+    this.toasts?.dispose();
+    this.toasts = null;
     if (this.cursorTimer) clearTimeout(this.cursorTimer);
     this.resolveConfirm(false);
     if (this.root) {
@@ -276,16 +275,9 @@ export class DomUIManager implements UIManager {
     });
   }
 
-  toast(message: string, duration: Ms = DEFAULT_TOAST_MS): void {
+  toast(message: string, duration?: Ms): void {
     if (!this.root) return;
-    const el = h("div", "mh-ui-toast-item", message);
-    el.setAttribute("role", "status");
-    this.toastEl.appendChild(el);
-    const timer = setTimeout(() => {
-      this.toastTimers.delete(timer);
-      el.remove();
-    }, duration);
-    this.toastTimers.add(timer);
+    this.toasts?.show(message, duration);
   }
 
   setInputEnabled(enabled: boolean): void {

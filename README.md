@@ -168,6 +168,7 @@ src/ui/               Interface utilisateur
   ui-manager.ts       Écrans, configuration, raccourcis, toasts
   ui-manager.css      Styles de l'interface
   tokens.css          Tokens du design system
+  toast.ts / .css     Toasts au design d'origine (pile de 3, bas droite)
   chapter-list.ts     Chapitres et scripts
   types.ts            Contrats UIManager, PlayerCommands, UIView
 
