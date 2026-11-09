@@ -13,7 +13,7 @@ import type { Token } from "./types.js";
 
 function parseArgs(input: string): Record<string, string> {
   const args: Record<string, string> = {};
-  const regex = /\s*([a-zA-Z0-9_\-]+)=("([^"]*)"|'([^']*)'|([^\s]*))/g;
+  const regex = /\s*([a-zA-Z0-9_-]+)=("([^"]*)"|'([^']*)'|([^\s]*))/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(input)) !== null) {
     const key = match[1];

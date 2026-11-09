@@ -25,7 +25,7 @@ export function decodeGc(buffer: Buffer): string {
     throw new Error("main.gc : en-tête inattendu (attendu FE FE 02 FF FE)");
   }
   const raw = inflateSync(buffer.subarray(GC_HEADER_SIZE));
-  return raw.toString("utf16le").replace(/^﻿/, "").replace(/\r/g, "");
+  return raw.toString("utf16le").replace(/^\uFEFF/, "").replace(/\r/g, "");
 }
 
 const ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\r" };

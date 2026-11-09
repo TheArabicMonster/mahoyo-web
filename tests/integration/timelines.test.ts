@@ -64,7 +64,6 @@ describe.skipIf(!hasTimelines)("Timelines (vrais assets)", () => {
 
     // Information : les scripts système (logo, menus) peuvent citer des pistes absentes.
     const others = Object.keys(data!.scripts).filter((s) => s !== "opening.ks").flatMap(missing);
-    // eslint-disable-next-line no-console
     console.log(`Références absentes hors ouverture : ${others.length}`);
   });
 });

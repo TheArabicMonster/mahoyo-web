@@ -9,7 +9,7 @@
  * IDerr/mahoyo-french.
  */
 import { readFileSync, writeFileSync } from "fs";
-import { mkdir, readdir, writeFile } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { decodeTranslationScript, installTranslation } from "./translation-lib.js";

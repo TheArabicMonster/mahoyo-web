@@ -1,16 +1,5 @@
 import type { Ms } from "@/kag/events.js";
-import type {
-  BacklogEntry,
-  ConfirmOptions,
-  GameSettings,
-  OverlayScreen,
-  PlayerCommands,
-  PlayerStatus,
-  SaveSlot,
-  ScriptSummary,
-  UIManager,
-  UIView,
-} from "@/ui/types.js";
+import type { ConfirmOptions, PlayerCommands, PlayerStatus, UIManager, UIView } from "@/ui/types.js";
 
 /**
  * Mock d'UIManager pour les tests d'orchestration du player.

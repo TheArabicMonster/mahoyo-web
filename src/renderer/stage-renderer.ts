@@ -2,12 +2,10 @@ import type { AssetResolver } from "@/core/asset-resolver.js";
 import type {
   AssetRef,
   Awaitable,
-  EffectState,
   Ms,
   PloyState,
   RenderEvent,
   SceneState,
-  SpriteState,
   StaffrollState,
   StageSnapshot,
   TextboxState,
@@ -26,8 +24,6 @@ import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spri
 import {
   applyAppearance,
   feBlendModeForLayerType,
-  boxBlurSigma,
-  effectFilter,
   isEnvironmentEffect,
   type Appearance,
   type SvgFilterRegistry,
@@ -109,7 +105,6 @@ type TextUnit = {
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const BG_BOTTOM_MARGIN = 48;
-const BG_DEFAULT_POSITION = "50% calc(100% + 48px)";
 
 export class DomStageRenderer implements StageRenderer {
   private resolver: AssetResolver;
@@ -1373,7 +1368,8 @@ export class DomStageRenderer implements StageRenderer {
     img.style.position = "absolute";
     img.style.maxWidth = "none";
     const scale = `rotate(${rotate}deg) scale(${zoomx / 100}, ${zoomy / 100})`;
-    // Mêmes défauts que le fond non transformé (voir `BG_DEFAULT_POSITION`) : X centré si `left`
+    // Mêmes défauts que le fond non transformé (`background-position: 50% calc(100% + 48px)`) :
+    // X centré si `left`
     // est omis, bas de l'image à 48 px sous le bas de l'écran si `top` est omis. Chaque axe est
     // indépendant (issue #249).
     const centeredX = left === undefined;
@@ -2121,7 +2117,7 @@ class AnimationController {
     }
 
     // Changements discrets programmés.
-    this.scheduleDiscrete(compiled.discrete, def);
+    this.scheduleDiscrete(compiled.discrete);
 
     const hasWAAPI = this.el && typeof this.el.animate === "function";
     if (hasWAAPI) {
@@ -2164,13 +2160,13 @@ class AnimationController {
   }
 
   /** Applique les changements discrets selon leur timing absolu. */
-  private scheduleDiscrete(discrete: DiscreteChange[], def: AnimationDef): void {
+  private scheduleDiscrete(discrete: DiscreteChange[]): void {
     for (const change of discrete) {
       if (change.time <= 0) {
         // Immédiat.
-        this.applyDiscreteChange(change, def);
+        this.applyDiscreteChange(change);
       } else {
-        const t = setTimeout(() => this.applyDiscreteChange(change, def), change.time);
+        const t = setTimeout(() => this.applyDiscreteChange(change), change.time);
         this.discreteTimers.push(t);
       }
     }
@@ -2181,11 +2177,11 @@ class AnimationController {
     const compiled = compileAction(def);
     if (!compiled) return;
     for (const change of compiled.discrete) {
-      this.applyDiscreteChange(change, def);
+      this.applyDiscreteChange(change);
     }
   }
 
-  private applyDiscreteChange(change: DiscreteChange, def: AnimationDef): void {
+  private applyDiscreteChange(change: DiscreteChange): void {
     if (!this.el) return;
     switch (change.field) {
       case "storage": {

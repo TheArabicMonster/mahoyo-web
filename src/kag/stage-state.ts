@@ -8,17 +8,14 @@
  */
 import type {
   AudioChannel,
-  AudioEvent,
   AudioSnapshot,
-  EffectState,
   RenderEvent,
   SceneState,
-  SpriteState,
   StaffrollState,
   StageSnapshot,
   TextboxState,
 } from "./events.js";
-import type { AnimationDef, Layer, TextSegment } from "./types.js";
+import type { AnimationDef, TextSegment } from "./types.js";
 
 function emptyScene(): SceneState {
   return { bg: null, sprites: [], effect: null };
@@ -26,42 +23,6 @@ function emptyScene(): SceneState {
 
 function emptyTextbox(): TextboxState {
   return { visible: true, frame: true };
-}
-
-function emptyStageSnapshot(): StageSnapshot {
-  return {
-    scene: emptyScene(),
-    textbox: emptyTextbox(),
-    text: [],
-    staffroll: null,
-  };
-}
-
-function layerToSprite(layer: Layer): SpriteState {
-  const sprite: SpriteState = {
-    id: layer.id,
-    storage: layer.storage,
-    x: layer.center,
-    y: layer.vcenter,
-    z: layer.index,
-    opacity: layer.opacity,
-  };
-  if (layer.crop) {
-    sprite.crop = {
-      width: layer.crop.width,
-      height: layer.crop.height,
-      srcLeft: layer.crop.srcLeft,
-      srcTop: layer.crop.srcTop,
-      srcZoomX: layer.crop.srcZoomX,
-      srcZoomY: layer.crop.srcZoomY,
-      bgStorage: layer.crop.bgStorage,
-    };
-  }
-  if (layer.partbgId) sprite.partbgId = layer.partbgId;
-  if (layer.zoomx !== undefined) sprite.zoomx = layer.zoomx;
-  if (layer.zoomy !== undefined) sprite.zoomy = layer.zoomy;
-  if (layer.rotate !== undefined) sprite.rotate = layer.rotate;
-  return sprite;
 }
 
 /** État mutable interne utilisé par reduceStage. */

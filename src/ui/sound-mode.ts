@@ -426,13 +426,6 @@ export function createSoundMode(options: SoundModeOptions): SoundMode {
       else tile.removeAttribute("aria-current");
     }
   };
-  const selectIndex = (index: number): void => {
-    if (tiles.length === 0) return;
-    const wrapped = ((index % tiles.length) + tiles.length) % tiles.length;
-    select(tiles[wrapped]!.dataset.key ?? null);
-    tiles[wrapped]!.focus();
-  };
-
   const focusTile = (index: number): void => {
     const clamped = Math.min(tiles.length - 1, Math.max(0, index));
     tiles[clamped]?.focus();

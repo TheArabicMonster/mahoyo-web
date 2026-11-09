@@ -450,7 +450,7 @@ export async function runTrace(scriptPath: string, assetsDir: string, maxSteps =
   };
 }
 
-function formatMarkdown(script: string, samples: SampleTrace[], steps: StepTrace[]): string {
+function formatMarkdown(script: string, samples: SampleTrace[]): string {
   const lines: string[] = [];
   lines.push(`# Timeline visuelle — \`${script}\``);
   lines.push("");
@@ -506,7 +506,6 @@ function formatConsole(
   if (warnings.length > 0) out.push(`Warnings (${warnings.length}): ${warnings.slice(0, 10).join(" | ")}`);
   if (missing.length > 0) out.push(`Images absentes (${missing.length}): ${missing.slice(0, 10).join(", ")}`);
   if (!verbose) return out.join("\n");
-  let currentStep = -1;
   for (const sample of samples) {
     out.push("");
     out.push(`### ${sample.line ?? "?"}: ${sample.raw}`);
@@ -536,7 +535,7 @@ async function main(): Promise<void> {
   writeFileSync(cli.out, JSON.stringify({ ...report, stepDetails: steps }, null, 2));
   if (cli.md) {
     mkdirSync(dirname(cli.md), { recursive: true });
-    writeFileSync(cli.md, formatMarkdown(report.script, report.samples, steps));
+    writeFileSync(cli.md, formatMarkdown(report.script, report.samples));
   }
   console.log(
     formatConsole(report.script, report.samples, steps, report.warnings, report.missingImages, cli.verbose),

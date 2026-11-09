@@ -6,8 +6,8 @@ const SAMPLE = `
 *page0|
 @bg time=100 rule=crossfade storage=black
 @invisibleframe
-　その子の影になったのは８年前の冬のこと。[l][r]
-　彼女がはじめて命に[ruby text=ふ]触れた、[ruby char=1 text=しず]厳かな朝の出来事だ。
+\u3000その子の影になったのは８年前の冬のこと。[l][r]
+\u3000彼女がはじめて命に[ruby text=ふ]触れた、[ruby char=1 text=しず]厳かな朝の出来事だ。
 @pg
 `;
 
@@ -28,7 +28,7 @@ describe("lex", () => {
   });
 
   it("tokenizes text with inline tags", () => {
-    const tokens = lex("　その子の影になったのは８年前の冬のこと。[l][r]");
+    const tokens = lex("\u3000その子の影になったのは８年前の冬のこと。[l][r]");
     const [text1, l, r] = tokens;
     expect(text1.type).toBe("text");
     expect(l).toEqual({ type: "tag", name: "l", args: {} });

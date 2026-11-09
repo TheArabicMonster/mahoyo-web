@@ -32,7 +32,7 @@ export function normalizeScriptText(text: string): string {
     .replace(/^\uFEFF/, "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
-    .replace(/\u0000/g, "");
+    .split("\u0000").join("");
 }
 
 /**

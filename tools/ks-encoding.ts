@@ -7,7 +7,7 @@
  * Cette fonction unifie la détection qui était dupliquée entre normalize-ks.ts
  * et manifest.ts.
  */
-import { deflateSync, inflateSync } from "zlib";
+import { inflateSync } from "zlib";
 
 export type KsEncoding =
   | "utf-16le"
@@ -149,7 +149,7 @@ function decodeKirikiriEncrypted(buffer: Buffer, mode: number): DecodeResult {
       const text = decoder.decode(decompressed);
       return { text, encoding, bom: false, replacementCount: countReplacements(text) };
     }
-  } catch (err) {
+  } catch {
     // Échec de déchiffrement.
     return {
       text: "",

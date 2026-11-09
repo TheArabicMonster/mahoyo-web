@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";
-import { Runtime, createRuntimeState } from "@/kag/runtime.js";
+import { Runtime, type RuntimeSaveData } from "@/kag/runtime.js";
 
 describe("Runtime @eval — portées f/sf/tf", () => {
   it("expose f, sf, tf à l'expression eval", () => {
@@ -130,7 +130,7 @@ Texte.
       callStack: [],
     };
 
-    const ok = await runtime.loadSaveData(oldSave as any, new Map([["main", parsed]]));
+    const ok = await runtime.loadSaveData(oldSave as unknown as RuntimeSaveData, new Map([["main", parsed]]));
     expect(ok).toBe(true);
 
     const restored = runtime.getSaveData();

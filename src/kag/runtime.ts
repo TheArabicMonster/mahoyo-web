@@ -12,7 +12,6 @@
  */
 
 import type {
-  AnimationDef,
   Instruction,
   Layer,
   Page,
@@ -25,11 +24,9 @@ import { parseCommand } from "./parser.js";
 import { lookupTimeline, type TimelineBg, type TimelineData } from "@/core/timeline.js";
 import type { PageLayer } from "./types.js";
 import type {
-  AssetRef,
   AudioChannel,
   AudioEvent,
   EffectState,
-  Ms,
   PloyState,
   Position,
   QuakeSpec,

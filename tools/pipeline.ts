@@ -35,7 +35,7 @@
  *   --no-translation     Ne pas installer la traduction française (par défaut, installée
  *                        après la conversion ; un échec réseau n'est qu'un avertissement)
  */
-import { mkdir, rm } from "fs/promises";
+import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { spawnSync } from "child_process";
 import { join, resolve } from "path";
@@ -277,7 +277,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineReport
   // 4. Exécuter les tâches.
   console.log("[pipeline] Exécution...");
   await mkdir(outputDir, { recursive: true });
-  const taskResults = await executeAll(tasks, dryRun, (done, total, current) => {
+  const taskResults = await executeAll(tasks, dryRun, (done, total) => {
     if (done % 100 === 0 || done === total) {
       process.stdout.write(`\r[pipeline] ${done}/${total}...`);
     }

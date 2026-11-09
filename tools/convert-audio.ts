@@ -8,7 +8,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
-import { copyFile, mkdir } from "fs/promises";
+import { copyFile } from "fs/promises";
 import { dirname } from "path";
 import { ensureDirAsync, listFiles, outputPathFor, type PipelineContext } from "./pipeline-utils.js";
 

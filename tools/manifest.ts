@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 import { writeFileSync } from "fs";
 import { dirname } from "path";
 import { mkdirSync } from "fs";
-import type { AssetManifest, ManifestEntry, ScenarioEntry } from "../src/core/asset-manifest.js";
+import type { AssetManifest, ManifestEntry } from "../src/core/asset-manifest.js";
 import { lookupAudio, lookupImage } from "../src/core/asset-manifest.js";
 import { isSolidColor, storageKey } from "../src/core/storage-key.js";
 import type { InventoryEntry } from "./inventory.js";

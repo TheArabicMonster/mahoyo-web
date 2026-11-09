@@ -6,7 +6,6 @@
  * pour chaque archive .xp3 trouvée dans le dossier d'input.
  */
 import { execFile } from "child_process";
-import { existsSync } from "fs";
 import { basename } from "path";
 import { promisify } from "util";
 import { fileURLToPath } from "url";

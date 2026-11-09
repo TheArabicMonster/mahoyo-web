@@ -1,4 +1,4 @@
-import type { Position, Step, StopReason } from "@/kag/events.js";
+import type { Position, Step } from "@/kag/events.js";
 import type { RuntimeSaveData } from "@/kag/runtime.js";
 import type { ParsedScript } from "@/kag/types.js";
 
