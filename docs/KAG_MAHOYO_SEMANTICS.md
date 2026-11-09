@@ -272,6 +272,17 @@ Les noms de fichiers peuvent contenir des parenthèses :
   une chaîne latine mono-espacée).
 - Une commande `@ruby` **s'applique au texte qui suit** : le parser ne vide pas le tampon de texte
   avant de la traiter.
+- **Ruby sur une image inline `[graph]` (#300)** : le moteur compte l'image comme un **caractère de
+  base**. Vérifié dans `data/override/messagelayer.tjs` : `setRuby` mémorise `currentRuby` et
+  `rubyTargetCharLength` ; `putGraph` (appelé pour `[graph]` et les macros emoji `[ansz]`…)
+  **incrémente `rubyCharCount`**, puis `drawRuby` dessine la lecture au-dessus de l'image quand la
+  cible est atteinte. Le motif `[ruby text=アンサズ char=1][ansz]、` attache donc le ruby à **l'image**
+  (rendu `<ruby><img class="mh-stage-graph"><rt>アンサズ</rt></ruby>`), pas au « 、 » suivant.
+  Occurrences réelles : `c-1.ks` (554, 624, 797) et `c-11.ks` (501, 3 couples) = **6**
+  (l'issue #300 en annonçait 5). Pour `char=N > 1`, le ruby couvre l'image et les N-1 cellules
+  suivantes : le parser partage un `rubyGroup` entre l'image et les caractères couverts, et le
+  rendu les réunit dans un seul `<ruby>`. Testé dans `tests/unit/kag/ruby-graph.test.ts` et
+  `tests/unit/renderer/ruby-graph.test.ts`.
 
 ### Commandes KAG standard `@s`, `@image`, fermetures conditionnelles orphelines — #277
 
