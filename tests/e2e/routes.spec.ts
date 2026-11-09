@@ -103,7 +103,10 @@ test.describe("Routes d'URL (WEB-04)", () => {
     await page.goBack();
     await expect(screen(page)).toHaveAttribute("data-screen", "pause");
 
+    // L'historique vide ne s'ouvre pas (HUD-12, #201) : attendre le premier point d'arrêt, qui le remplit.
+    await expect(page.locator("#textbox-indicator")).toBeVisible({ timeout: 20000 });
     await page.locator('[data-entry="backlog"]').click();
+    await expect(screen(page)).toHaveAttribute("data-screen", "backlog");
     expect(await hash(page)).toBe("#/backlog");
     await page.goBack();
     await expect(screen(page)).toHaveAttribute("data-screen", "pause");

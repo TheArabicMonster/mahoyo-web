@@ -80,7 +80,7 @@ afterEach(async () => {
   current = null;
 });
 
-async function setup(initialHash = "") {
+async function setup(initialHash = "", steps: Step[] = prologue as Step[]) {
   const host = new FakeBrowserHistory(initialHash);
   const ui = new ConfirmingUI();
   const player = new Player({
@@ -88,7 +88,7 @@ async function setup(initialHash = "") {
     createStageRenderer: () => new RecordingStageRenderer(),
     createAudioPlayer: () => new FakeAudioPlayer(),
     createUIManager: () => ui,
-    createRuntime: () => new ScriptedRuntime(prologue as Step[]),
+    createRuntime: () => new ScriptedRuntime(steps),
     loadScript: async () => ({ pages: [], labels: {} }) as unknown as ParsedScript,
     loadChain: async () => null,
     loadGraph: async () => null,
@@ -202,6 +202,42 @@ describe("Player + routes d'URL", () => {
     ctx.host.go(-1);
     await until(() => ctx.player.currentState === "waiting-click", "reprise");
     expect(lastScreen(ctx.ui)).toBe("game");
+  });
+
+  describe("historique vide (HUD-12, #201)", () => {
+    const silent = [
+      { position: { scriptName: "t.ks", page: 0, instruction: 0 }, events: [], stop: { kind: "click", style: "line" } },
+    ] as Step[];
+
+    it("openScreen : toast, aucune entrée d'historique du navigateur, URL sur la partie", async () => {
+      const ctx = await setup("", silent);
+      await startGame(ctx);
+      const before = [...ctx.host.hashes];
+      ctx.player.openScreen("backlog");
+      expect(ctx.ui.toasts.at(-1)?.message).toBe("L'historique n'existe pas encore.");
+      expect(ctx.host.hashes).toEqual(before);
+      expect(ctx.host.location.hash).toBe("#/game");
+      expect(ctx.player.currentState).toBe("waiting-click");
+    });
+
+    it("lien #/backlog en partie : toast et l'URL revient à la partie", async () => {
+      const ctx = await setup("", silent);
+      await startGame(ctx);
+      ctx.host.typeHash("#/backlog");
+      await until(() => ctx.ui.toasts.length === 1, "toast");
+      await wait(5);
+      expect(lastScreen(ctx.ui)).not.toBe("backlog");
+      expect(ctx.host.location.hash).toBe("#/game");
+      expect(ctx.player.currentState).toBe("waiting-click");
+    });
+
+    it("avec du texte lu, #/backlog ouvre l'écran", async () => {
+      const ctx = await setup();
+      await startGame(ctx);
+      ctx.host.typeHash("#/backlog");
+      await until(() => lastScreen(ctx.ui) === "backlog", "backlog");
+      expect(ctx.ui.toasts).toHaveLength(0);
+    });
   });
 
   it("en partie : un lien #/config remplace l'écran ouvert au lieu d'empiler", async () => {
