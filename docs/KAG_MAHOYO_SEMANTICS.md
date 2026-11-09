@@ -585,6 +585,10 @@ visible/audible/de déroulement n'est classée no-op. Le lot #286 (crédits) est
 (`@wstaffroll`, `@staffrolluninit`, `@staffrollsetting`) : la baseline restante est de
 **46 commandes / 168 occurrences**, à résorber par leurs issues de suivi.
 
+**Suivi des lots** : #281 (effets d'écran plugin) est traité — voir §9 quater ; la baseline, déjà
+réduite à 46 commandes / 168 occurrences par #286, passe à **42 / 152**. Les autres lots (#85,
+#86, #282-#287) restent ouverts.
+
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
 Le générique de fin (`staffroll.ks`, fin de `wik_fin.ks`, `d-8.ks`) utilise six commandes ; quatre
@@ -608,15 +612,11 @@ implémentées ici. Sémantique vérifiée dans `data/scenario/staffrollplugin.t
 - `@staffrollappearimage` (images apparaissant pendant le défilement) n'est utilisé par aucun
   script du corpus.
 
-**Suivi des lots** : #281 (effets d'écran plugin) est traité — voir §9 ter ; la baseline est
-passée de 49 commandes / 174 occurrences à **42 / 152** (`npm run audit:baseline`). Les autres
-lots (#85, #86, #282-#287) restent ouverts.
-
-## 9 ter. Effets d'écran plugin — implémentation (#281)
+## 9 quater. Effets d'écran plugin — implémentation (#281)
 
 Traitement du lot « effets d'écran plugin » du triage #276 (22 occurrences) : les 7 commandes
-sortent de la baseline des inconnues, qui passe de **49 commandes / 174 occurrences** à
-**42 / 152** (`npm run audit:baseline` ; `npm run audit:guard -- --strict` OK). Sémantique lue
+sortent de la baseline des inconnues, qui passe de **46 commandes / 168 occurrences** (après
+#286) à **42 / 152** (`npm run audit:baseline` ; `npm run audit:guard -- --strict` OK). Sémantique lue
 dans les sources du moteur installé (`data/override/tagex.tjs`, `data/scenario/noiseplugin.tjs`,
 `data/scenario/focuslineplugin.tjs`) et args réels des scripts (`8.5.ks`, `1.5-4.ks`, `nz3.ks`,
 `wik_x-2.ks`, `wik_q-a.ks`, `call.ks`).
