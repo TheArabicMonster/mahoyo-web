@@ -1210,6 +1210,58 @@ describe("Runtime — commandes visuelles secondaires (#85)", () => {
     expect(runtime.getSaveData().state.clockHour).toBe(3);
   });
 
+  it("@dispclock time=0 pose fond + 4 aiguilles sur la page affichée (fore), sans transition (#297)", () => {
+    const runtime = run(`
+*page0|
+@dispclock h=3 m=0 left=-800 top=-600 time=0
+@pg
+`);
+    const step = runtime.step();
+    // Mise à jour immédiate : pas d'attente de transition (le script se poursuit jusqu'au @pg).
+    expect(step.stop.kind).not.toBe("waitFor");
+    const scenes = step.events.filter((event): event is Extract<RenderEvent, { kind: "scene" }> => event.kind === "scene");
+    expect(scenes.length).toBeGreaterThan(0);
+    // La DERNIÈRE scène de l'étape (après le fond) contient le fond d'horloge ET les 4 aiguilles.
+    const last = scenes.at(-1)!;
+    expect(last.scene.bg).toBe("im03lロビー時計(x2)");
+    expect(last.scene.sprites.map((sprite) => sprite.id).sort()).toEqual([
+      "clock1",
+      "clock2",
+      "clock3",
+      "clock4",
+    ]);
+    const state = runtime.getSaveData().state;
+    // État persisté cohérent : tout est sur fore, rien sur back (bug #297 : aiguilles invisibles).
+    expect(state.fore.background).toBe("im03lロビー時計(x2)");
+    expect(state.fore.layers.map((layer) => layer.id).sort()).toEqual([
+      "clock1",
+      "clock2",
+      "clock3",
+      "clock4",
+    ]);
+    expect(state.back.background).toBe("");
+    expect(state.back.layers).toEqual([]);
+    expect(state.clockHour).toBe(3);
+  });
+
+  it("@dispclock time>0 conserve la transition back→fore (#297 non-régression)", () => {
+    const runtime = run(`
+*page0|
+@dispclock h=3 m=0 left=-800 top=-600 time=300
+@pg
+`);
+    const step = runtime.step();
+    expect(step.stop).toMatchObject({ kind: "waitFor", what: "transition" });
+    const state = runtime.getSaveData().state;
+    expect(state.fore.background).toBe("im03lロビー時計(x2)");
+    expect(state.fore.layers.map((layer) => layer.id).sort()).toEqual([
+      "clock1",
+      "clock2",
+      "clock3",
+      "clock4",
+    ]);
+  });
+
   it("@tickclock anime les 4 aiguilles puis attend la fin des animations", () => {
     const runtime = run(`
 *page0|

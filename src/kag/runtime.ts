@@ -1471,6 +1471,11 @@ export class Runtime {
     const { h, m, left, top, zoomx, zoomy } = instruction;
     this.state.clockHour = h;
     this.state.clockMinute = m;
+    // `time=0` : mise à jour immédiate de la page **affichée** (fore) ; le fond et les aiguilles y
+    // sont posés ensemble, sans transition. `time>0` conserve le comportement moteur : calques sur
+    // back puis transition back→fore déclenchée par le `@bg` (#297).
+    const transition = (instruction.time ?? 0) > 0;
+    const targetPage: PageLayer = transition ? "back" : "fore";
     const mirror = zoomx < 0;
     const angles = clockHandAngles(h, m, mirror);
     const ratex = zoomx / 100;
@@ -1483,7 +1488,7 @@ export class Runtime {
         vcenter: top + 1050,
         index: 1200,
         opacity: 1,
-        page: "back",
+        page: targetPage,
         id: "clock1",
         zoomx,
         zoomy,
@@ -1499,7 +1504,7 @@ export class Runtime {
         vcenter: top + 954,
         index: 1300,
         opacity: 1,
-        page: "back",
+        page: targetPage,
         id: "clock2",
         zoomx,
         zoomy,
@@ -1515,7 +1520,7 @@ export class Runtime {
         vcenter: top + 1050 + ratey * 13,
         index: 1000,
         opacity: 64 / 255,
-        page: "back",
+        page: targetPage,
         id: "clock3",
         zoomx,
         zoomy,
@@ -1533,7 +1538,7 @@ export class Runtime {
         vcenter: top + 954 + ratey * 13,
         index: 1100,
         opacity: 64 / 255,
-        page: "back",
+        page: targetPage,
         id: "clock4",
         zoomx,
         zoomy,
@@ -1550,7 +1555,8 @@ export class Runtime {
       const res = this.applyFg(hand);
       events.push(...res.events);
     }
-    // Fond d'horloge : avec `time`, le moteur fait une transition back→fore (le port fait de même).
+    // Fond d'horloge : avec `time>0`, le moteur fait une transition back→fore (le port fait de même) ;
+    // avec `time=0`, le fond est posé directement sur la page affichée (fore).
     const bgInstruction: Extract<Instruction, { kind: "bg" }> = {
       kind: "bg",
       storage: CLOCK_BG_STORAGE,
@@ -1561,7 +1567,7 @@ export class Runtime {
       zoomy,
       effect: instruction.effect,
       time: instruction.time ?? 0,
-      ...((instruction.time ?? 0) > 0 ? {} : { page: "fore" as const }),
+      ...(transition ? {} : { page: "fore" as const }),
     };
     const bg = this.applyBg(bgInstruction);
     events.push(...bg.events);
