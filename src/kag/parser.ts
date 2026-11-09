@@ -116,6 +116,41 @@ function parseAppearanceArgs(args: Record<string, string>): AppearanceArgs {
   return out;
 }
 
+/**
+ * Arguments d'une annotation ruby (`[ruby]` ou `@ruby`).
+ *
+ * `text` est le ruby. `char` est soit un **nombre** de caractères du texte suivant couverts par le
+ * ruby (KAG3 standard), soit — extension TYPE-MOON (`data/override/tagex.tjs`, handler `ruby`) —
+ * une **chaîne de texte de base** qui est affichée, le ruby étant réparti sur ses caractères.
+ */
+function parseRubyArgs(args: Record<string, string>): { ruby: string; charCount: number; baseText?: string } {
+  const ruby = args.text ?? "";
+  const rawChar = args.char;
+  if (rawChar !== undefined && !/^[+-]?\d+$/.test(rawChar.trim())) {
+    return { ruby, charCount: 1, baseText: rawChar };
+  }
+  return { ruby, charCount: parseIntArg(rawChar, 1) };
+}
+
+/**
+ * Segments d'un ruby à texte de base explicite : chaque caractère de base est affiché avec une part
+ * du ruby (répartition proportionnelle, approximation de la répartition par largeur du moteur).
+ */
+function rubyBaseSegments(baseText: string, ruby: string): TextSegment[] {
+  if (baseText.length === 0) return [];
+  const segments: TextSegment[] = [];
+  for (let i = 0; i < baseText.length; i++) {
+    const start = Math.round((i * ruby.length) / baseText.length);
+    const end = Math.round(((i + 1) * ruby.length) / baseText.length);
+    const part = ruby.slice(start, end);
+    segments.push(part.length > 0 ? { text: baseText[i]!, ruby: part } : { text: baseText[i]! });
+  }
+  return segments;
+}
+
+/** Fermetures de blocs conditionnels/ignore : sans effet si le bloc n'a pas été ouvert. */
+const CONDITIONAL_CLOSERS = new Set(["endif", "else", "elsif", "endignore"]);
+
 function parsePageLayer(value: string | undefined): "fore" | "back" | undefined {
   if (value === "fore" || value === "back") return value;
   return undefined;
@@ -593,7 +628,37 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       const cond = args.cond;
       return { kind: "eval", expression: args.exp ?? "", cond };
     }
+    case "image": {
+      // @image : charge une image dans une couche, sans transition (KAG3 standard).
+      // `layer=base` (tous les usages du corpus) = fond de la page ; un numéro de couche
+      // pose un sprite (approximation : centré, comme @fg).
+      const layerArg = args.layer;
+      const layerNum = layerArg !== undefined && /^[0-9]+$/.test(layerArg) ? parseInt(layerArg, 10) : undefined;
+      const layer: "base" | number = layerNum !== undefined ? layerNum : "base";
+      const left = args.left === undefined ? undefined : parseIntArg(args.left, 0);
+      const top = args.top === undefined ? undefined : parseIntArg(args.top, 0);
+      const opacity = args.opacity === undefined ? undefined : parseIntArg(args.opacity, 255) / 255;
+      return {
+        kind: "image",
+        storage: normStorage(args.storage ?? ""),
+        page: parsePageLayer(args.page),
+        layer,
+        left,
+        top,
+        opacity,
+        visible: args.visible === undefined ? undefined : args.visible !== "0" && args.visible !== "false",
+        ...parseAppearanceArgs(args),
+      };
+    }
+    case "s":
+      // @s : arrête le déroulement en attendant une sélection (bouton/lien).
+      return { kind: "stop" };
     default:
+      if (CONDITIONAL_CLOSERS.has(name)) {
+        // @endif/@else/@elsif/@endignore orphelins (aucun @if ne les ouvre dans le script) :
+        // dans le moteur, ces tags terminent un bloc et sont sans effet hors bloc.
+        return { kind: "noop", command: name, reason: "fermeture de bloc conditionnel sans ouverture" };
+      }
       return { kind: "raw", command: name, args };
   }
 }
@@ -710,6 +775,16 @@ export function parse(tokens: Token[]): ParsedScript {
             const { instruction, nextIndex } = parseMacro(tokens, i);
             instructions.push(instruction);
             i = nextIndex;
+          } else if (token.name === "ruby") {
+            const rubyArgs = parseRubyArgs(token.args);
+            if (rubyArgs.baseText !== undefined) {
+              blockPending.push(...rubyBaseSegments(rubyArgs.baseText, rubyArgs.ruby));
+              blockRuby = null;
+            } else {
+              blockRuby = rubyArgs.ruby;
+              blockRubyCharCount = rubyArgs.charCount;
+            }
+            i++;
           } else {
             instructions.push(parseCommand(token));
             i++;
@@ -723,8 +798,14 @@ export function parse(tokens: Token[]): ParsedScript {
           } else if (token.name === "l") {
             blockPending.push({ pause: true });
           } else if (token.name === "ruby") {
-            blockRuby = token.args.text ?? null;
-            blockRubyCharCount = parseIntArg(token.args.char, 1);
+            const rubyArgs = parseRubyArgs(token.args);
+            if (rubyArgs.baseText !== undefined) {
+              blockPending.push(...rubyBaseSegments(rubyArgs.baseText, rubyArgs.ruby));
+              blockRuby = null;
+            } else {
+              blockRuby = rubyArgs.ruby;
+              blockRubyCharCount = rubyArgs.charCount;
+            }
           } else if (token.name === "p") {
             // [p] = page break inside a block: flush pending text and emit a pause.
             flushBlockText();
@@ -849,6 +930,16 @@ export function parse(tokens: Token[]): ParsedScript {
           const { instruction, nextIndex } = parseMacro(tokens, tokenIndex);
           current.instructions.push(instruction);
           tokenIndex = nextIndex - 1;
+        } else if (token.name === "ruby") {
+          // @ruby s'applique au texte qui suit : ne pas vider le tampon de texte ici.
+          const rubyArgs = parseRubyArgs(token.args);
+          if (rubyArgs.baseText !== undefined) {
+            pendingSegments.push(...rubyBaseSegments(rubyArgs.baseText, rubyArgs.ruby));
+            pendingRuby = null;
+          } else {
+            pendingRuby = rubyArgs.ruby;
+            pendingRubyCharCount = rubyArgs.charCount;
+          }
         } else {
           flushText();
           current.instructions.push(parseCommand(token));
@@ -865,10 +956,17 @@ export function parse(tokens: Token[]): ParsedScript {
           // [l] is a click-wait marker — insert a pause segment
           pendingSegments.push({ pause: true });
         } else if (token.name === "ruby") {
-          // Set pending ruby for next text — DON'T flush here
-          // The ruby applies to the next N characters of text
-          pendingRuby = token.args.text ?? null;
-          pendingRubyCharCount = parseIntArg(token.args.char, 1);
+          // Set pending ruby for next text — DON'T flush here.
+          // `char` numérique = nombre de caractères suivants ; `char` chaîne = texte de base
+          // affiché (extension TYPE-MOON de tagex.tjs), avec le ruby réparti dessus.
+          const rubyArgs = parseRubyArgs(token.args);
+          if (rubyArgs.baseText !== undefined) {
+            pendingSegments.push(...rubyBaseSegments(rubyArgs.baseText, rubyArgs.ruby));
+            pendingRuby = null;
+          } else {
+            pendingRuby = rubyArgs.ruby;
+            pendingRubyCharCount = rubyArgs.charCount;
+          }
         } else {
           // Inline tags like [chgfg ...], [fg ...], [se ...] are semantically
           // identical to their @command forms. Route through parseCommand.

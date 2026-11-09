@@ -218,6 +218,18 @@ export type Instruction =
   | { kind: "return" }
   | { kind: "eval"; expression: string; cond?: string }
   | { kind: "raw"; command: string; args: Record<string, string> }
+  /**
+   * `@image` (KAG3 standard) : charge une image dans une couche d'une page, sans transition.
+   * `layer` = `base` (fond de la page, cas de tous les usages du corpus) ou un numéro de couche.
+   */
+  | ({ kind: "image"; storage: string; page?: PageLayer; layer: "base" | number; left?: number; top?: number; opacity?: number; visible?: boolean } & AppearanceArgs)
+  /** `@s` (KAG3) : arrête le déroulement en attendant une sélection (bouton/lien). */
+  | { kind: "stop" }
+  /**
+   * Commande KAG standard volontairement sans effet ici (fermeture de bloc conditionnel
+   * orpheline, cf. `@endif` sans `@if`). N'est pas comptée comme commande inconnue.
+   */
+  | { kind: "noop"; command: string; reason: string }
   | { kind: "conditional"; branches: Array<{ cond?: string; instructions: Instruction[] }> }
   | { kind: "macrodef"; name: string; rawTokens: Token[] };
 
