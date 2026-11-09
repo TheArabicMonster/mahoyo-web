@@ -47,7 +47,8 @@ function buildSummary(report: AuditReport): string {
   const cmdCount = Object.values(report.unknownCommandsGlobal).reduce((a, b) => a + b, 0);
   lines.push(`Commandes inconnues : ${cmdCount}`);
   const assetCount = Object.values(report.missingAssetsGlobal).reduce((a, b) => a + b, 0);
-  lines.push(`Assets de base manquants : ${assetCount}`);
+  lines.push(`Assets de base absents : ${assetCount}`);
+  lines.push(`Variantes non résolues (base absente) : ${report.unresolvedVariantRefsGlobal ?? 0}`);
   lines.push(`Références à variante résolues : ${report.resolvedVariantRefsGlobal ?? 0}`);
   lines.push(`Références d'asset de nom vide : ${report.emptyAssetRefsGlobal ?? 0}`);
 
@@ -108,6 +109,8 @@ describe.skipIf(!hasAssets)("Lecture complète du corpus KAG", () => {
       missingAssetsGlobal,
       resolvedVariantRefsGlobal,
       emptyAssetRefsGlobal,
+      unresolvedVariantRefsGlobal,
+      unresolvedVariantsGlobal,
     } = aggregateGlobal(results);
     const totalDurationMs = results.reduce((acc, r) => acc + r.durationMs, 0);
     const scriptsWithErrors = results.filter((r) => r.errors.length > 0).length;
@@ -128,6 +131,8 @@ describe.skipIf(!hasAssets)("Lecture complète du corpus KAG", () => {
       missingAssetsGlobal,
       resolvedVariantRefsGlobal,
       emptyAssetRefsGlobal,
+      unresolvedVariantRefsGlobal,
+      unresolvedVariantsGlobal,
     };
 
     // Écrire le rapport (ignoré par git).

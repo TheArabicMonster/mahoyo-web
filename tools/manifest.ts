@@ -11,6 +11,8 @@ import { writeFileSync } from "fs";
 import { dirname } from "path";
 import { mkdirSync } from "fs";
 import type { AssetManifest, ManifestEntry, ScenarioEntry } from "../src/core/asset-manifest.js";
+import { lookupAudio, lookupImage } from "../src/core/asset-manifest.js";
+import { isSolidColor, storageKey } from "../src/core/storage-key.js";
 import type { InventoryEntry } from "./inventory.js";
 import { lex } from "../src/kag/lexer.js";
 import { parse } from "../src/kag/parser.js";
@@ -68,8 +70,12 @@ export function buildManifest(entries: InventoryEntry[]): AssetManifest {
  * Rapport de vérification : storages introuvables, expressions @eval, etc.
  */
 export type VerificationReport = {
-  /** Storages référencés dans les scripts mais absents du manifest. */
+  /** Storages référencés dans les scripts mais absents du manifest (clé de base normalisée). */
   missingStorages: { script: string; line: number; storage: string; kind: string }[];
+  /** Références storage vides (calques sans image), comptées à part. */
+  emptyStorageRefs?: number;
+  /** Références ignorées car paramètre de macro (`%…`) non résoluble statiquement. */
+  macroStorageRefs?: number;
   /** Expressions @eval trouvées (pour information). */
   evalExpressions: { script: string; expression: string }[];
   /** Expressions @eval dont la syntaxe n'est pas du JS valide (TJS spécifique). */
@@ -90,6 +96,8 @@ export function verifyReferences(
 ): VerificationReport {
   const report: VerificationReport = {
     missingStorages: [],
+    emptyStorageRefs: 0,
+    macroStorageRefs: 0,
     evalExpressions: [],
     evalSyntaxErrors: [],
     scriptsAnalyzed: 0,
@@ -135,7 +143,16 @@ export function verifyReferences(
   return report;
 }
 
-/** Collecte les références storage d'une instruction et vérifie le manifest. */
+/** Collecte les références storage d'une instruction et vérifie le manifest.
+ *
+ * La résolution est celle du player (`src/core/asset-resolver.ts`) : le parser a
+ * déjà normalisé chaque `storage` avec `storageKey` (suffixe de variante `|x`,
+ * dossier, extension, casse, espaces retirés) ; le manifest est ensuite cherché
+ * par clé exacte puis repliée (NFKC, casse, espaces de bordure), ce qui corrige
+ * les clés d'anciens manifest (ex. espace avant l'extension). Les références
+ * vides (calques sans image) et les paramètres de macro `%…` sont comptés à
+ * part : ils ne sont pas résolubles statiquement (le runtime les résout).
+ */
 function collectStorageRefs(
   instr: { kind: string; [key: string]: unknown },
   scriptPath: string,
@@ -143,12 +160,23 @@ function collectStorageRefs(
   report: VerificationReport,
 ): void {
   const storage = (instr as { storage?: string }).storage;
-  if (!storage) return;
+  if (typeof storage !== "string") return;
+  const raw = storage.trim();
 
-  // Couleurs solides : pas un fichier.
-  const SOLID = new Set(["black", "white", "red", "blue", "green", "yellow", "gray", "grey", "none"]);
-  if (SOLID.has(storage)) return;
+  // Calque sans image (storage vide) : pas un fichier à charger.
+  if (raw === "") {
+    report.emptyStorageRefs = (report.emptyStorageRefs ?? 0) + 1;
+    return;
+  }
+  // Paramètre de macro : la valeur réelle n'est connue qu'au site d'appel.
+  if (raw.includes("%")) {
+    report.macroStorageRefs = (report.macroStorageRefs ?? 0) + 1;
+    return;
+  }
+  // Couleurs unies : pas un asset du jeu (le pipeline en génère un fichier à part).
+  if (isSolidColor(raw)) return;
 
+  const key = storageKey(raw);
   let kind: string;
   let found: boolean;
 
@@ -158,18 +186,18 @@ function collectStorageRefs(
     case "animate":
     case "clfg":
       kind = "image";
-      found = !!manifest.images[storage];
+      found = lookupImage(manifest, key) !== null;
       break;
     case "play":
     case "fadebgm":
       kind = "bgm";
-      found = !!manifest.audio[storage];
+      found = lookupAudio(manifest, key) !== null;
       break;
     case "se":
     case "fadese":
     case "sestop":
       kind = "se";
-      found = !!manifest.audio[storage];
+      found = lookupAudio(manifest, key) !== null;
       break;
     case "jump":
     case "call":
@@ -180,14 +208,13 @@ function collectStorageRefs(
   }
 
   report.referencesChecked++;
-  if (!found) {
-    report.missingStorages.push({
-      script: scriptPath,
-      line: 0,
-      storage,
-      kind,
-    });
-  }
+  if (found) return;
+  report.missingStorages.push({
+    script: scriptPath,
+    line: 0,
+    storage: key,
+    kind,
+  });
 }
 
 // ── Manifest depuis résultats réels ──

@@ -114,6 +114,26 @@ npm run normalize-ks -- <input.ks>
   [playbgm storage=bgm_rain]
   ```
 
+### 5. Manifest et vérification des références
+
+Le pipeline écrit `asset-manifest.json` (clé de storage normalisée → URL web), puis
+vérifie les références des scripts dans `<work>/report.json` :
+
+- `missingStorages` : clé de base absente du manifest (image ou son) ;
+- `emptyStorageRefs` : références `storage` vides (calques sans image), comptées à part ;
+- `macroStorageRefs` : paramètres de macro `%…`, non résolubles statiquement (le
+  runtime les résout à l'exécution).
+
+La vérification résout comme le player (`src/core/asset-resolver.ts`) : le parser a
+déjà normalisé chaque `storage` avec `storageKey` — suffixe de variante `|x`, dossier,
+extension, casse et espaces retirés — puis la clé est cherchée dans le manifest, avec
+un repli NFKC (casse, espaces de bordure) pour les clés d'anciens manifests (par
+exemple un espace resté avant l'extension). Une référence à variante (`nom|x`) ou une
+clé à espace final n'est donc pas signalée à tort. Le manifest **généré** n'écrit que
+des clés normalisées (`storageKey` dans `tools/inventory.ts`) : le repli ne sert
+qu'aux installations antérieures, sans régénération obligatoire. `--strict` échoue
+s'il reste des `missingStorages`.
+
 ## Structure des dossiers
 
 ```

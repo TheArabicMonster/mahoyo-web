@@ -253,6 +253,10 @@ describe("formatMarkdownReport", () => {
       unknownCommandsGlobal: { ploysay: 30, seact: 5 },
       warningsGlobal: { "label not found": 2 },
       missingAssetsGlobal: { "image:bg01": 1 },
+      resolvedVariantRefsGlobal: 12,
+      emptyAssetRefsGlobal: 3,
+      unresolvedVariantRefsGlobal: 2,
+      unresolvedVariantsGlobal: { "image:bg01|e": 1, "image:bg01|b": 1 },
     };
 
     const md = formatMarkdownReport(report);
@@ -264,6 +268,12 @@ describe("formatMarkdownReport", () => {
     expect(md).toContain("5");
     expect(md).toContain("Assets manquants");
     expect(md).toContain("image:bg01");
+    expect(md).toContain("Assets de base absents (images/sons) : 1");
+    expect(md).toContain("Variantes non résolues (asset de base absent) : 2 référence(s), 2 variante(s) distincte(s)");
+    expect(md).toContain("### Variantes non résolues (base absente)");
+    // Les `|` sont échappés dans les cellules Markdown.
+    expect(md).toContain("image:bg01\\|e");
+    expect(md).toContain("Règle de résolution");
     expect(md).toContain("Détail par script");
     expect(md).toContain("a.ks");
     expect(md).toContain("b.ks");
@@ -291,7 +301,7 @@ describe("formatMarkdownReport", () => {
 
     expect(md).toContain("Aucune commande inconnue");
     expect(md).toContain("Aucun warning");
-    expect(md).toContain("Aucun asset manquant");
+    expect(md).toContain("Aucun asset de base manquant");
   });
 
   it("affiche les scripts en erreur", () => {

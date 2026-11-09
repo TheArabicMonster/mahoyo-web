@@ -131,6 +131,10 @@ export interface ScriptAuditResult {
   resolvedVariantRefs?: number;
   /** Références à un asset de nom vide (ex. effacement d'un calque). */
   emptyAssetRefs?: number;
+  /** Références `nom|x` dont l'asset de base est absent (occurrences). */
+  unresolvedVariantRefs?: number;
+  /** Références distinctes `kind:nom|x` dont l'asset de base est absent. */
+  unresolvedVariants?: string[];
   /** Erreurs fatales (runtime crash). */
   errors: string[];
   /** Compteur rawCount du runtime. */
@@ -170,6 +174,10 @@ export interface AuditReport {
   resolvedVariantRefsGlobal?: number;
   /** Total des références d'asset de nom vide. */
   emptyAssetRefsGlobal?: number;
+  /** Total des références à variante dont l'asset de base est absent. */
+  unresolvedVariantRefsGlobal?: number;
+  /** Synthèse : variantes non résolues (base absente) triées par fréquence. */
+  unresolvedVariantsGlobal?: Record<string, number>;
 }
 
 // ── Logique d'audit d'un script ──
@@ -278,6 +286,8 @@ export async function auditScript(
     missingAssets: Array.from(assets.missing).sort(),
     resolvedVariantRefs: assets.variantRefs,
     emptyAssetRefs: assets.emptyRefs,
+    unresolvedVariantRefs: assets.unresolvedVariantRefs,
+    unresolvedVariants: Array.from(assets.unresolvedVariants).sort(),
     errors,
     rawCount: runtime.rawCount,
     durationMs,
@@ -295,10 +305,20 @@ export interface AssetCollection {
   variantRefs: number;
   /** Références de nom vide. */
   emptyRefs: number;
+  /** Occurrences de références `nom|x` dont l'asset de base est absent. */
+  unresolvedVariantRefs: number;
+  /** Références distinctes `kind:nom|x` dont l'asset de base est absent. */
+  unresolvedVariants: Set<string>;
 }
 
 export function createAssetCollection(): AssetCollection {
-  return { missing: new Set<string>(), variantRefs: 0, emptyRefs: 0 };
+  return {
+    missing: new Set<string>(),
+    variantRefs: 0,
+    emptyRefs: 0,
+    unresolvedVariantRefs: 0,
+    unresolvedVariants: new Set<string>(),
+  };
 }
 
 export function collectAssets(
@@ -348,6 +368,12 @@ function checkAsset(
   // se regroupent en une seule entrée.
   const base = (storage.split("|")[0] ?? storage).trim();
   assets.missing.add(`${kind}:${base}`);
+  // Une variante dont la base est absente est comptée à part : le rapport la
+  // distingue d'une image de base absente (voir formatMarkdownReport).
+  if (storage.includes("|")) {
+    assets.unresolvedVariantRefs++;
+    assets.unresolvedVariants.add(`${kind}:${storage.trim()}`);
+  }
 }
 
 // ── Agrégation ──
@@ -358,16 +384,24 @@ export function aggregateGlobal(results: ScriptAuditResult[]): {
   missingAssetsGlobal: Record<string, number>;
   resolvedVariantRefsGlobal: number;
   emptyAssetRefsGlobal: number;
+  unresolvedVariantRefsGlobal: number;
+  unresolvedVariantsGlobal: Record<string, number>;
 } {
   const unknownCommandsGlobal: Record<string, number> = {};
   const warningsGlobal: Record<string, number> = {};
   const missingAssetsGlobal: Record<string, number> = {};
+  const unresolvedVariantsGlobal: Record<string, number> = {};
   let resolvedVariantRefsGlobal = 0;
   let emptyAssetRefsGlobal = 0;
+  let unresolvedVariantRefsGlobal = 0;
 
   for (const r of results) {
     resolvedVariantRefsGlobal += r.resolvedVariantRefs ?? 0;
     emptyAssetRefsGlobal += r.emptyAssetRefs ?? 0;
+    unresolvedVariantRefsGlobal += r.unresolvedVariantRefs ?? 0;
+    for (const ref of r.unresolvedVariants ?? []) {
+      unresolvedVariantsGlobal[ref] = (unresolvedVariantsGlobal[ref] ?? 0) + 1;
+    }
     for (const [cmd, count] of Object.entries(r.unknownCommands)) {
       unknownCommandsGlobal[cmd] = (unknownCommandsGlobal[cmd] ?? 0) + count;
     }
@@ -385,6 +419,8 @@ export function aggregateGlobal(results: ScriptAuditResult[]): {
     missingAssetsGlobal,
     resolvedVariantRefsGlobal,
     emptyAssetRefsGlobal,
+    unresolvedVariantRefsGlobal,
+    unresolvedVariantsGlobal,
   };
 }
 
@@ -443,22 +479,47 @@ export function formatMarkdownReport(report: AuditReport): string {
   // Assets manquants
   lines.push("## Assets manquants dans le manifest");
   lines.push("");
+  const sortedAssets = Object.entries(report.missingAssetsGlobal).sort((a, b) => b[1] - a[1]);
+  const sortedUnresolved = Object.entries(report.unresolvedVariantsGlobal ?? {}).sort((a, b) => b[1] - a[1]);
+  lines.push(`- Assets de base absents (images/sons) : ${sortedAssets.length}`);
+  lines.push(
+    `- Variantes non résolues (asset de base absent) : ${report.unresolvedVariantRefsGlobal ?? 0} référence(s), ${sortedUnresolved.length} variante(s) distincte(s)`,
+  );
   lines.push(
     `- Références à variante (\`nom|x\`) résolues via l'asset de base : ${report.resolvedVariantRefsGlobal ?? 0}`,
   );
   lines.push(`- Références d'asset de nom vide : ${report.emptyAssetRefsGlobal ?? 0}`);
   lines.push("");
-  const sortedAssets = Object.entries(report.missingAssetsGlobal).sort((a, b) => b[1] - a[1]);
+  lines.push(
+    "Règle de résolution (identique au player) : le suffixe de variante `|x` est retiré de la référence, puis la clé de base est normalisée (dossier, extension, casse, espaces de bordure) et cherchée dans le manifest (repli NFKC).",
+  );
+  lines.push("");
+  lines.push("### Assets de base absents");
+  lines.push("");
   if (sortedAssets.length === 0) {
-    lines.push("_Aucun asset manquant._");
+    lines.push("_Aucun asset de base manquant._");
   } else {
-    lines.push("| Asset | Scripts |");
+    lines.push("| Asset de base | Scripts |");
     lines.push("|---|---|");
     for (const [a, count] of sortedAssets) {
       lines.push(`| ${escapeMdPipe(a)} | ${count} |`);
     }
   }
   lines.push("");
+  if (sortedUnresolved.length > 0) {
+    lines.push("### Variantes non résolues (base absente)");
+    lines.push("");
+    lines.push(
+      "Une variante non résolue n'est pas un fichier supplémentaire : c'est une référence `nom|x` dont l'asset de base est listé ci-dessus.",
+    );
+    lines.push("");
+    lines.push("| Variante | Scripts |");
+    lines.push("|---|---|");
+    for (const [variant, count] of sortedUnresolved) {
+      lines.push(`| ${escapeMdPipe(variant)} | ${count} |`);
+    }
+    lines.push("");
+  }
 
   // Scripts en erreur
   const errorScripts = report.scripts.filter((s) => s.errors.length > 0);

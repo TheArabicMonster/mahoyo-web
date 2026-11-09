@@ -874,6 +874,20 @@ export class DomStageRenderer implements StageRenderer {
 
     for (const s of sprites) {
       seen.add(s.id);
+      // Calque sans image (placeholder d'animation : `@fg storage=` vide ou
+      // `@movefg` sur un calque pas encore créé) : rien à afficher. Sans ce
+      // garde-fou, le resolver produit une URL vide (`/assets/image/.webp`) et le
+      // DOM reçoit un `<img>` cassé. Le calque réapparaîtra si `@chgfg`/`@fg` lui
+      // donne ensuite une image.
+      if (!s.storage.trim()) {
+        const stale = this.spriteEls.get(s.id);
+        if (stale) {
+          this.stopAnimation(s.id);
+          stale.remove();
+          this.spriteEls.delete(s.id);
+        }
+        continue;
+      }
       const isPartbg = !!s.crop;
       let el = this.spriteEls.get(s.id);
       // Si le type a changé (partbg ↔ sprite simple), on recrée l'élément.
