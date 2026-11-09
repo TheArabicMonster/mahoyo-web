@@ -7,7 +7,6 @@ import type {
   PlayerCommands,
   PlayerStatus,
   SaveSlot,
-  ScriptProgress,
   ScriptSummary,
   UIManager,
   UIView,

@@ -28,7 +28,6 @@ import {
   DEFAULT_SETTINGS,
   createLocalSettingsStore,
   mergeSettings,
-  toScriptProgress,
   type SettingsStore,
 } from "@/player/settings-store.js";
 import type {
@@ -120,9 +119,9 @@ export type PlayerDeps = {
 };
 
 const DEFAULT_SCRIPTS: ScriptSummary[] = [
-  { id: "1-0", label: "Prologue", file: "1-0.ks", x: 512, y: 80, arc: "Prologue" },
-  { id: "1-1", label: "Chapitre 1 — Partie 1", file: "1-1.ks", x: 512, y: 180, arc: "Chapitre 1" },
-  { id: "1-2", label: "Chapitre 1 — Partie 2", file: "1-2.ks", x: 512, y: 260, arc: "Chapitre 1" },
+  { id: "1-0", label: "Prologue", file: "1-0.ks", arc: "Prologue" },
+  { id: "1-1", label: "Chapitre 1 — Partie 1", file: "1-1.ks", arc: "Chapitre 1" },
+  { id: "1-2", label: "Chapitre 1 — Partie 2", file: "1-2.ks", arc: "Chapitre 1" },
 ];
 
 const HISTORY_LIMIT = 100;
@@ -1545,10 +1544,6 @@ export class Player implements PlayerCommands {
         this.ui.show({
           screen: "flowchart",
           scripts: this.deps.scripts,
-          progress: toScriptProgress(
-            this.deps.scripts.map((s) => s.id),
-            this.completed,
-          ),
           currentScript: this.currentScript,
           story: this.progress.snapshot,
           graph,

@@ -27,8 +27,7 @@ describe("DomUIManager : flowchart interactif", () => {
   const openFlowchart = () => {
     ui.show({
       screen: "flowchart",
-      scripts: [{ id: "c1", label: "Chapitre", file: "a.ks", arc: "X", x: 0, y: 0 }],
-      progress: { unlocked: [], completed: [] },
+      scripts: [{ id: "c1", label: "Chapitre", file: "a.ks", arc: "X" }],
       currentScript: "a",
       story,
       graph,
@@ -75,6 +74,25 @@ describe("DomUIManager : flowchart interactif", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(startScript).toHaveBeenCalledTimes(1);
     expect(startScript).toHaveBeenCalledWith("a.ks");
+  });
+
+  it("FLOW-08 : la vue rendue respecte le réglage « tout révéler » (décision 5)", () => {
+    // Anti-spoiler par défaut : les scènes non visitées sont des silhouettes.
+    openFlowchart();
+    expect(root.querySelectorAll('.mh-flow-stage .mh-flow-node[data-state="hidden"]').length).toBe(1);
+    expect(root.querySelectorAll('.mh-flow-stage .mh-flow-node[data-state="unvisited"]').length).toBe(0);
+
+    // Option active (réglage HUD-09 relayé par le player) : plus de silhouette, les non visitées sont révélées.
+    ui.show({
+      screen: "flowchart",
+      scripts: [{ id: "c1", label: "Chapitre", file: "a.ks", arc: "X" }],
+      currentScript: "a",
+      story,
+      graph,
+      revealAll: true,
+    });
+    expect(root.querySelectorAll('.mh-flow-stage .mh-flow-node[data-state="hidden"]').length).toBe(0);
+    expect(root.querySelectorAll('.mh-flow-stage .mh-flow-node[data-state="unvisited"]').length).toBe(1);
   });
 
   it("entrées bloquées (chargement) : aucune relecture", async () => {

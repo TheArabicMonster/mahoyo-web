@@ -167,8 +167,8 @@ describe("Player", () => {
 
   it("titre : aucun chapitre déverrouillé au premier lancement, celui lancé l'est ensuite (Extra > Archive, #199)", async () => {
     const scripts = [
-      { id: "t", label: "Un", file: "t.ks", arc: "A", x: 0, y: 0 },
-      { id: "u", label: "Deux", file: "u.ks", arc: "A", x: 0, y: 0 },
+      { id: "t", label: "Un", file: "t.ks", arc: "A" },
+      { id: "u", label: "Deux", file: "u.ks", arc: "A" },
     ];
     const ctx = setup(prologue as Step[], { scripts });
     current = ctx.player;
@@ -293,7 +293,7 @@ describe("Player", () => {
 
   it("save enregistre le titre de scène dérivé du sommaire local, sans commentaire ni verrou", async () => {
     const ctx = setup(prologue as Step[], {
-      scripts: [{ id: "t", label: "Libellé local", file: "t.ks", arc: "Test", x: 0, y: 0 }],
+      scripts: [{ id: "t", label: "Libellé local", file: "t.ks", arc: "Test" }],
     });
     await start(ctx);
     await ctx.player.save(1);

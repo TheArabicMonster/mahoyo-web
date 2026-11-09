@@ -15,8 +15,6 @@ const chapters = Array.from({ length: 10 }, (_, i) => ({
   label: `Chapitre ${i}`,
   file: `c${i}.ks`,
   arc: "X",
-  x: 0,
-  y: 0,
 }));
 
 function makeActions() {

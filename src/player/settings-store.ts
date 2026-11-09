@@ -5,7 +5,7 @@
 import { isGameLanguage, type GameLanguage } from "@/core/language.js";
 import { defaultShortcuts, mergeShortcuts } from "@/core/shortcuts.js";
 import { DEFAULT_AUDIO_SETTINGS, DEFAULT_DISPLAY_SETTINGS } from "@/renderer/types.js";
-import type { GameSettings, ScriptProgress, StoryProgress } from "@/ui/types.js";
+import type { GameSettings, StoryProgress } from "@/ui/types.js";
 import { emptyStoryProgress, normalizeStoryProgress } from "./story-progress.js";
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -107,16 +107,6 @@ export function mergeSettings(base: Readonly<GameSettings>, patch: Partial<GameS
           ? base.flowchartRevealAll
           : false,
   };
-}
-
-/** Calcule l'état de progression affiché par le flowchart. */
-export function toScriptProgress(orderedIds: readonly string[], completed: readonly string[]): ScriptProgress {
-  const done = new Set(completed);
-  let lastDone = -1;
-  orderedIds.forEach((id, i) => {
-    if (done.has(id)) lastDone = i;
-  });
-  return { unlocked: orderedIds.slice(0, lastDone + 2), completed: [...completed] };
 }
 
 function readJson<T>(storage: Storage, key: string): T | null {

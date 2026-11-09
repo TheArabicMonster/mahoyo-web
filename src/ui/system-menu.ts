@@ -56,7 +56,7 @@ function thenResume(ctx: SystemMenuContext, action: () => void): void {
 /**
  * Entrées du menu, dans l'ordre. Insérer ou retirer une entrée = une ligne ici (plus son libellé dans
  * le dictionnaire). `exitgame` n'existe pas (décision 3 du propriétaire) ; `flowchart` ouvre l'écran
- * existant en attendant FLOW-08 (#207), qui le rebranchera.
+ * intégré (FLOW-05/06/07, branchement FLOW-08 / #207), entre `backlog` et `graphic`.
  */
 export const SYSTEM_MENU_ENTRIES: readonly SystemMenuEntry[] = [
   { id: "save", labelKey: "systemMenu.entry.save", lockedByQuickMenu: true, run: (c) => c.commands.openScreen("save") },
