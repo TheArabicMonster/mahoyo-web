@@ -1,16 +1,30 @@
 /**
- * Génère des images PNG 1×1 très petites (placeholders) pour les tests e2e.
+ * Génère les assets **synthétiques** servis aux tests e2e (mode placeholders).
  *
- * Aucun asset sous copyright : les images sont générées algorithmiquement.
+ * Aucun asset sous copyright : les images sont générées algorithmiquement (PNG uni) et le scénario
+ * est un texte original écrit pour les tests. Le jeu de placeholders est **autonome et
+ * déterministe** : il ne dépend pas des vrais assets locaux (`public/assets`, ignoré par git), ce
+ * qui permet à la CI de lancer la suite sans aucun asset du jeu.
+ *
+ * Le dossier passé ici est le `publicDir` de Vite (`MAHOYO_E2E_ASSETS`) : il est servi à la racine,
+ * donc les fichiers vont sous `<publicDir>/assets/**` pour répondre aux URLs `/assets/...` du
+ * player. C'est le même contrat qu'un `public/` local qui contient `public/assets/`.
+ *
+ * Choix de conception (issue #243) :
+ * - un `asset-manifest.json` minimal est écrit pour que le `AssetResolver` résolve les clés
+ *   logiques (`txtwindow02`, `black`, `linebreak_a`…) vers des fichiers `.png` **valides** : un PNG
+ *   renommé `.webp` n'est pas décodé par le navigateur (`<img>` en erreur) et faisait retomber la
+ *   fenêtre de message sur l'ancienne boîte ;
+ * - le scénario `1-0.ks` fournit assez de pages pour que les tests qui lisent une vingtaine de
+ *   pages (historique, menus) n'atteignent pas la fin du script ;
+ * - les vrais assets (`MAHOYO_E2E_REAL_ASSETS=1`) ne sont **pas** copiés ici : ils se servent
+ *   directement en pointant `MAHOYO_E2E_ASSETS` vers un dossier qui contient `assets/`.
  */
 import { deflateSync } from "zlib";
-import { writeFileSync, mkdirSync, copyFileSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
-import { fileURLToPath } from "url";
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function makeCrc32() {
   const table = new Uint32Array(256);
@@ -41,43 +55,104 @@ function pngChunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([lenBuf, combined, crcBuf]);
 }
 
-export function png1x1(r: number, g: number, b: number): Buffer {
+/** PNG RGB uni `width × height` (sans alpha), valide pour le navigateur. */
+export function pngSolid(width: number, height: number, r: number, g: number, b: number): Buffer {
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(1, 0); // width
-  ihdr.writeUInt32BE(1, 4); // height
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
   ihdr.writeUInt8(8, 8); // bit depth
   ihdr.writeUInt8(2, 9); // color type RGB
   ihdr.writeUInt8(0, 10); // compression
   ihdr.writeUInt8(0, 11); // filter method
   ihdr.writeUInt8(0, 12); // interlace
-  const raw = Buffer.from([0, r, g, b]); // filter byte + RGB
+  const stride = width * 3 + 1;
+  const raw = Buffer.alloc(stride * height);
+  for (let y = 0; y < height; y++) {
+    const row = y * stride;
+    raw[row] = 0; // filtre « none »
+    for (let x = 0; x < width; x++) {
+      raw[row + 1 + x * 3] = r;
+      raw[row + 2 + x * 3] = g;
+      raw[row + 3 + x * 3] = b;
+    }
+  }
   const idatData = deflateSync(raw);
   return Buffer.concat([PNG_SIGNATURE, pngChunk("IHDR", ihdr), pngChunk("IDAT", idatData), pngChunk("IEND", Buffer.alloc(0))]);
 }
 
-export function writePlaceholder(path: string, r: number, g: number, b: number): void {
+function writePng(path: string, width: number, height: number, r: number, g: number, b: number): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, png1x1(r, g, b));
+  writeFileSync(path, pngSolid(width, height, r, g, b));
 }
 
-export function generatePlaceholderAssets(outDir: string): void {
-  writePlaceholder(join(outDir, "bg", "black.webp"), 0, 0, 0);
-  writePlaceholder(join(outDir, "bg", "white.webp"), 255, 255, 255);
-  writePlaceholder(join(outDir, "image", "placeholder.webp"), 255, 0, 0);
-  writePlaceholder(join(outDir, "rule", "rule.png"), 128, 128, 128);
-  // Cadre de la fenêtre de message par défaut (#182) : sans lui, le player retombe sur l'ancienne boîte.
-  writePlaceholder(join(outDir, "image", "txtwindow02.webp"), 0, 0, 0);
+/** Dimensions des bandes d'indicateur (voir `CLICK_GLYPHS` dans `src/renderer/text-frame.ts`). */
+const LINE_GLYPH = { width: 24, height: 24, frames: 40 };
+const PAGE_GLYPH = { width: 32, height: 24, frames: 40 };
 
-  // Copie le manifest et le scénario depuis public/assets (non versionnés par le test).
-  const publicAssets = join(__dirname, "..", "..", "public", "assets");
-  const copy = (srcRel: string, dstRel: string) => {
-    const src = join(publicAssets, srcRel);
-    const dst = join(outDir, dstRel);
-    if (existsSync(src)) {
-      mkdirSync(dirname(dst), { recursive: true });
-      copyFileSync(src, dst);
-    }
-  };
-  copy("asset-manifest.json", "asset-manifest.json");
-  copy("scenario/1-0.ks", "scenario/1-0.ks");
+/**
+ * Scénario original de test : 40 pages, aucune commande qui dépend d'un asset réel.
+ *
+ * Les tests lisent jusqu'à 20 pages d'affilée (historique) après en avoir déjà lu quelques-unes :
+ * le script doit donc rester loin de sa fin. Chaque page produit un point clic (`#textbox-indicator`).
+ */
+export const PLACEHOLDER_SCENARIO_PAGES = 40;
+
+function placeholderScenario(): string {
+  const pages = Array.from({ length: PLACEHOLDER_SCENARIO_PAGES }, (_, i) => {
+    const n = String(i + 1).padStart(2, "0");
+    return `Page de test e2e ${n} — texte original généré pour le player. La lecture continue.[p]`;
+  });
+  return `${pages.join("\n")}\n@return\n`;
+}
+
+/** Manifest minimal : résout les clés logiques vers les PNG générés (jamais de vrai asset). */
+function placeholderManifest(): string {
+  const image = (url: string) => ({ url, source: url, kind: "image" as const });
+  return JSON.stringify(
+    {
+      version: 1,
+      generatedAt: new Date(0).toISOString(),
+      images: {
+        black: image("bg/black.png"),
+        white: image("bg/white.png"),
+        placeholder: image("image/placeholder.png"),
+        txtwindow02: image("image/txtwindow02.png"),
+        linebreak_a: image("image/linebreak_a.png"),
+        pagebreak_a: image("image/pagebreak_a.png"),
+      },
+      audio: {},
+      scenarios: {
+        "1-0": { url: "scenario/1-0.ks", source: "scenario/1-0.ks", encoding: "utf-8" },
+      },
+    },
+    null,
+    2,
+  );
+}
+
+/**
+ * Écrit le jeu de placeholders complet sous `<publicDir>/assets/` (le chemin que le player
+ * demande) et renvoie le nombre de fichiers écrits. Idempotent : réécrit les mêmes fichiers,
+ * ne supprime rien d'autre.
+ */
+export function generatePlaceholderAssets(publicDir: string): number {
+  const assets = join(publicDir, "assets");
+
+  // Fond et sprites : PNG 1×1 (les placeholders ne sont pas jugés sur leur contenu).
+  writePng(join(assets, "bg", "black.png"), 1, 1, 0, 0, 0);
+  writePng(join(assets, "bg", "white.png"), 1, 1, 255, 255, 255);
+  writePng(join(assets, "image", "placeholder.png"), 1, 1, 255, 0, 0);
+  // Cadre de la fenêtre de message par défaut (#182) : sans lui, le player retombe sur l'ancienne
+  // boîte. Vrai PNG, résolu par le manifeste (`txtwindow02` → `image/txtwindow02.png`).
+  writePng(join(assets, "image", "txtwindow02.png"), 1, 1, 0, 0, 0);
+  // Bandes d'animation des indicateurs d'attente (`linebreak_a`, `pagebreak_a`) : 40 vignettes.
+  writePng(join(assets, "image", "linebreak_a.png"), LINE_GLYPH.width * LINE_GLYPH.frames, LINE_GLYPH.height, 255, 255, 255);
+  writePng(join(assets, "image", "pagebreak_a.png"), PAGE_GLYPH.width * PAGE_GLYPH.frames, PAGE_GLYPH.height, 255, 255, 255);
+  writePng(join(assets, "rule", "rule.png"), 1, 1, 128, 128, 128);
+
+  mkdirSync(join(assets, "scenario"), { recursive: true });
+  writeFileSync(join(assets, "scenario", "1-0.ks"), placeholderScenario());
+  writeFileSync(join(assets, "asset-manifest.json"), placeholderManifest());
+
+  return 10;
 }
