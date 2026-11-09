@@ -41,8 +41,6 @@
     "setdefaultmessageaction": 11,
     "settracerreturn": 2,
     "shake": 4,
-    "staffrollsetting": 1,
-    "staffrolluninit": 3,
     "startchart": 1,
     "stopfocusline": 2,
     "stopswing": 6,
@@ -51,7 +49,6 @@
     "swing": 1,
     "tickclock": 11,
     "wb": 1,
-    "wstaffroll": 2,
     "xchgbgm": 7
   }
 }
