@@ -1,11 +1,7 @@
-import { WINDOW_SIZE_OPTIONS } from "@/core/display.js";
 import {
   actionForEvent,
   bindingFromEvent,
-  cloneShortcuts,
   defaultShortcuts,
-  formatBinding,
-  SHORTCUT_DEFINITIONS,
   type ShortcutAction,
 } from "@/core/shortcuts.js";
 import type { Ms } from "@/kag/events.js";
@@ -23,8 +19,9 @@ import type {
   UIView,
 } from "@/ui/types.js";
 import { createBacklogScreen } from "@/ui/backlog-screen.js";
+import { createConfigScreen, type ConfigScreen, type SettingsTab } from "@/ui/config-screen.js";
 import { openConfirmDialog, type ConfirmDialog } from "@/ui/confirm-dialog.js";
-import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t } from "@/ui/i18n.js";
+import { getUiLanguage, onUiLanguageChange, t } from "@/ui/i18n.js";
 import { createSaveLoadScreen, type SaveLoadScreen, type SaveTransferActions } from "@/ui/save-load-screen.js";
 import { ToastStack } from "@/ui/toast.js";
 import { renderFlowchartScreen } from "@/ui/flowchart-view.js";
@@ -47,8 +44,6 @@ const DEFAULT_STATUS: PlayerStatus = {
   fastForwardKey: "shift",
   shortcuts: defaultShortcuts(),
 };
-
-type SettingsTab = "system" | "message" | "sound" | "shortcuts";
 
 type El = HTMLElement;
 
@@ -204,7 +199,6 @@ export class DomUIManager implements UIManager {
     this.menu.replaceChildren();
     this.flowchart.replaceChildren();
     this.pause.replaceChildren();
-    this.menu.classList.toggle("mh-ui-settings-open", view.screen === "settings");
     syncNightDemo(this.menu, view.screen);
     this.overlay.dataset.screen = view.screen;
 
@@ -223,7 +217,11 @@ export class DomUIManager implements UIManager {
         break;
       case "settings":
         this.settings = view.settings;
-        this.menu.appendChild(this.renderSettings(view.settings, view.availableLanguages));
+        {
+          const screen = this.renderSettings(view.settings, view.availableLanguages);
+          this.menu.appendChild(screen.element);
+          screen.focusActiveTab();
+        }
         break;
       case "backlog":
         this.renderBacklog(view.entries);
@@ -459,441 +457,25 @@ export class DomUIManager implements UIManager {
     return screen.element;
   }
 
-  private renderSettings(settings: Readonly<GameSettings>, availableLanguages: readonly GameLanguage[]): El {
-    const p = h("section", "mh-ui-panel mh-ui-settings-screen");
-    const header = h("header", "mh-ui-config-header");
-    const brand = h("div", "mh-ui-config-brand");
-    brand.append(h("h2", "mh-ui-title", t("config.title")), h("p", "mh-ui-config-subtitle", t("config.subtitle")));
-    header.appendChild(brand);
-    const tabs = h("nav", "mh-ui-tabs");
-    tabs.setAttribute("role", "tablist");
-    tabs.setAttribute("aria-label", t("config.tabsLabel"));
-    const content = h("div", "mh-ui-config");
-    content.setAttribute("role", "tabpanel");
-    // Copies locales : `Partial<GameSettings>` est superficiel, on renvoie les groupes entiers.
-    const display = { ...settings.display };
-    const audio = { ...settings.audio };
-    const shortcuts = cloneShortcuts(settings.shortcuts);
-    let language = settings.language;
-    let skipUnread = settings.skipUnread;
-    const updateView = () => {
-      this.view = {
-        screen: "settings",
-        settings: {
-          ...settings,
-          display: { ...display },
-          audio: { ...audio },
-          shortcuts: cloneShortcuts(shortcuts),
-          language,
-          skipUnread,
-        },
-        availableLanguages,
-      };
-    };
-    const pushDisplay = () => {
-      updateView();
-      this.commands?.updateSettings({ display: { ...display } });
-    };
-    const pushAudio = () => {
-      updateView();
-      this.commands?.updateSettings({ audio: { ...audio } });
-    };
-    const pushShortcuts = () => {
-      updateView();
-      this.commands?.updateSettings({ shortcuts: cloneShortcuts(shortcuts) });
-    };
-    const refresh = () => this.show(this.view);
-
-    const tabDefs: readonly [SettingsTab, string][] = [
-      ["system", t("config.tab.system")],
-      ["message", t("config.tab.message")],
-      ["sound", t("config.tab.sound")],
-      ["shortcuts", t("config.tab.shortcuts")],
-    ];
-    for (const [id, label] of tabDefs) {
-      const tab = this.button(label, () => {
-        updateView();
-        this.settingsTab = id;
-        this.show(this.view);
-      }, "mh-ui-tab");
-      tab.dataset.tab = id;
-      tab.setAttribute("role", "tab");
-      tab.setAttribute("aria-selected", String(id === this.settingsTab));
-      if (id === this.settingsTab) tab.classList.add("active");
-      tabs.appendChild(tab);
-    }
-    header.appendChild(tabs);
-    p.appendChild(header);
-    const currentLabel = tabDefs.find(([id]) => id === this.settingsTab)?.[1] ?? "";
-    content.appendChild(h("div", "mh-ui-config-heading", currentLabel));
-
-    const section = (title: string): El => {
-      const s = h("section", "mh-ui-config-section");
-      s.appendChild(h("h3", "mh-ui-config-title", title));
-      content.appendChild(s);
-      return s;
-    };
-    const field = (parent: El, label: string): El => {
-      const row = h("div", "mh-ui-field");
-      row.appendChild(h("span", "mh-ui-field-label", label));
-      parent.appendChild(row);
-      return row;
-    };
-    const segmented = <T extends string>(
-      parent: El,
-      label: string,
-      name: string,
-      options: readonly { value: T; label: string }[],
-      value: T,
-      onChange: (v: T) => void,
-    ) => {
-      const row = field(parent, label);
-      const group = h("div", "mh-ui-segments");
-      const buttons: HTMLButtonElement[] = [];
-      for (const option of options) {
-        const b = this.button(option.label, () => {
-          onChange(option.value);
-          for (const other of buttons) other.classList.toggle("active", other === b);
-        }, "mh-ui-segment");
-        b.name = name;
-        b.dataset.value = option.value;
-        if (option.value === value) b.classList.add("active");
-        buttons.push(b);
-        group.appendChild(b);
-      }
-      row.appendChild(group);
-    };
-    const slider = (
-      parent: El,
-      label: string,
-      name: string,
-      min: number,
-      max: number,
-      step: number,
-      value: number,
-      onInput: (v: number) => void,
-      format: (v: number) => string = (v) => String(v),
-    ) => {
-      const row = field(parent, label);
-      row.classList.add("mh-ui-field-slider");
-      const labelEl = row.querySelector<HTMLElement>(".mh-ui-field-label");
-      const output = h("span", "mh-ui-field-value", format(value));
-      labelEl?.appendChild(output);
-      const input = h("input");
-      input.type = "range";
-      input.name = name;
-      input.setAttribute("aria-label", label);
-      input.min = String(min);
-      input.max = String(max);
-      input.step = String(step);
-      input.value = String(value);
-      input.addEventListener("input", () => {
-        if (!this.inputEnabled) return;
-        const v = Number(input.value);
-        output.textContent = format(v);
-        onInput(v);
-      });
-      const controls = h("div", "mh-ui-range");
-      controls.append(h("span", "mh-ui-range-mark", "−"), input, h("span", "mh-ui-range-mark", "+"));
-      row.appendChild(controls);
-    };
-    const check = (parent: El, label: string, name: string, value: boolean, onChange: (v: boolean) => void) => {
-      const row = h("label", "mh-ui-field mh-ui-field-check");
-      const input = h("input");
-      input.type = "checkbox";
-      input.name = name;
-      input.checked = value;
-      input.addEventListener("change", () => {
-        if (this.inputEnabled) onChange(input.checked);
-      });
-      row.append(h("span", "mh-ui-field-label", label), input);
-      parent.appendChild(row);
-    };
-    const yesNo = (parent: El, label: string, name: string, value: boolean, onChange: (v: boolean) => void) => {
-      segmented(parent, label, name, [{ value: "yes", label: t("common.yes") }, { value: "no", label: t("common.no") }], value ? "yes" : "no", (v) => onChange(v === "yes"));
-    };
-    const select = <T extends string>(
-      parent: El,
-      label: string,
-      name: string,
-      options: readonly { value: T; label: string }[],
-      value: T,
-      onChange: (v: T) => void,
-    ) => {
-      const row = field(parent, label);
-      const el = h("select");
-      el.name = name;
-      el.setAttribute("aria-label", label);
-      for (const option of options) {
-        const o = h("option", undefined, option.label);
-        o.value = option.value;
-        el.appendChild(o);
-      }
-      el.value = value;
-      el.addEventListener("change", () => {
-        if (this.inputEnabled) onChange(el.value as T);
-      });
-      row.appendChild(el);
-    };
-    const keyRow = (parent: El, action: ShortcutAction, label: string) => {
-      const row = h("div", "mh-ui-shortcut-row");
-      row.appendChild(h("span", "mh-ui-shortcut-label", label));
-      const keys = h("div", "mh-ui-shortcut-keys");
-      for (let index = 0; index < 2; index++) {
-        const b = this.button(formatBinding(shortcuts[action][index] ?? ""), () => {
-          this.capturing = { action, index };
-          this.captureApply = (binding) => {
-            shortcuts[action][index] = binding;
-            pushShortcuts();
-            refresh();
-          };
-          b.textContent = t("config.shortcuts.capturing");
-          b.classList.add("capturing");
-        }, "mh-ui-key");
-        b.dataset.action = action;
-        b.dataset.index = String(index);
-        keys.appendChild(b);
-      }
-      row.appendChild(keys);
-      parent.appendChild(row);
-    };
-
-    const fmtMs = (v: number) => t("config.unit.ms", { value: v });
-    const fmtPercent = (v: number) => t("config.unit.percent", { value: v });
-    const fmtMsPerChar = (v: number) => t("config.unit.msPerChar", { value: v });
-
-    if (this.settingsTab === "system") {
-      const screen = section(t("config.screen.section"));
-      const fullscreenRow = h("div", "mh-ui-field");
-      fullscreenRow.appendChild(this.button(t("config.screen.fullscreenButton"), () => this.commands?.toggleFullscreen(), "mh-ui-fullscreen"));
-      screen.appendChild(fullscreenRow);
-      segmented(screen, t("config.screen.fullscreen"), "fullscreenMode", [
-        { value: "fit", label: t("config.screen.fit") },
-        { value: "fill", label: t("config.screen.fill") },
-        { value: "none", label: t("config.screen.none") },
-      ], display.fullscreenMode, (v) => {
-        display.fullscreenMode = v;
-        pushDisplay();
-      });
-      const windowSizes = WINDOW_SIZE_OPTIONS.map((o) => (o.value === "fit" ? { ...o, label: t("config.screen.windowSizeFit") } : o));
-      select(screen, t("config.screen.windowSize"), "windowSize", windowSizes, display.windowSize, (v) => {
-        display.windowSize = v;
-        pushDisplay();
-      });
-
-      const text = section(t("config.textFx.section"));
-      segmented(text, t("config.textFx.display"), "textAnimation", [
-        { value: "fade", label: t("config.textFx.on") },
-        { value: "none", label: t("config.textFx.off") },
-      ], display.textAnimation, (v) => {
-        display.textAnimation = v;
-        pushDisplay();
-      });
-      segmented(text, t("config.textFx.read"), "readFade", [
-        { value: "fade", label: t("config.textFx.readFade") },
-        { value: "none", label: t("config.textFx.off") },
-      ], display.readFade ? "fade" : "none", (v) => {
-        display.readFade = v === "fade";
-        pushDisplay();
-      });
-      slider(text, t("config.textFx.fadeDuration"), "readFadeDuration", 0, 3000, 100, display.readFadeDuration, (v) => {
-        display.readFadeDuration = v;
-        pushDisplay();
-      }, fmtMs);
-      slider(text, t("config.textFx.readOpacity"), "readFadeOpacity", 0, 100, 5, Math.round(display.readFadeOpacity * 100), (v) => {
-        display.readFadeOpacity = v / 100;
-        pushDisplay();
-      }, fmtPercent);
-
-      const mouse = section(t("config.mouse.section"));
-      segmented(mouse, t("config.mouse.rightClick"), "mouseMode", [
-        { value: "menu", label: t("config.mouse.menu") },
-        { value: "hideThenMenu", label: t("config.mouse.hideThenMenu") },
-      ], display.mouseMode, (v) => {
-        display.mouseMode = v;
-        pushDisplay();
-      });
-      check(mouse, t("config.mouse.autoHideCursor"), "autoHideCursor", display.autoHideCursor, (v) => {
-        display.autoHideCursor = v;
-        pushDisplay();
-      });
-
-      const layout = section(t("config.box.section"));
-      slider(layout, t("config.box.fontScale"), "fontScale", 0.5, 2, 0.1, display.fontScale, (v) => {
-        display.fontScale = v;
-        pushDisplay();
-      }, (v) => t("config.unit.times", { value: v.toFixed(1) }));
-      slider(layout, t("config.box.opacity"), "textboxOpacity", 0, 1, 0.05, display.textboxOpacity, (v) => {
-        display.textboxOpacity = v;
-        pushDisplay();
-      }, (v) => fmtPercent(Math.round(v * 100)));
-    } else if (this.settingsTab === "message") {
-      const unread = section(t("config.unread.section"));
-      slider(unread, t("config.speed"), "textSpeedUnread", 0, 100, 1, display.textSpeedUnread, (v) => {
-        display.textSpeedUnread = v;
-        pushDisplay();
-      }, fmtMsPerChar);
-      check(unread, t("config.wholePage"), "instantUnreadPage", display.instantUnreadPage, (v) => {
-        display.instantUnreadPage = v;
-        pushDisplay();
-      });
-
-      const read = section(t("config.read.section"));
-      slider(read, t("config.speed"), "textSpeedRead", 0, 100, 1, display.textSpeedRead, (v) => {
-        display.textSpeedRead = v;
-        pushDisplay();
-      }, fmtMsPerChar);
-      check(read, t("config.wholePage"), "instantReadPage", display.instantReadPage, (v) => {
-        display.instantReadPage = v;
-        pushDisplay();
-      });
-
-      const auto = section(t("config.auto.section"));
-      slider(auto, t("config.auto.pageDelay"), "autoPageDelay", 0, 6000, 100, display.autoPageDelay, (v) => {
-        display.autoPageDelay = v;
-        pushDisplay();
-      }, fmtMs);
-      slider(auto, t("config.auto.lineDelay"), "autoLineDelay", 0, 6000, 100, display.autoLineDelay, (v) => {
-        display.autoLineDelay = v;
-        pushDisplay();
-      }, fmtMs);
-      segmented(auto, t("config.auto.click"), "autoClick", [
-        { value: "skip", label: t("config.auto.clickSkip") },
-        { value: "cancel", label: t("config.auto.clickCancel") },
-      ], display.autoClick, (v) => {
-        display.autoClick = v;
-        pushDisplay();
-      });
-
-      const skipping = section(t("config.skip.section"));
-      segmented(skipping, t("config.skip.autoSkipRead"), "autoSkipRead", [
-        { value: "off", label: t("config.skip.off") },
-        { value: "on", label: t("config.skip.on") },
-      ], display.autoSkipRead ? "on" : "off", (v) => {
-        display.autoSkipRead = v === "on";
-        pushDisplay();
-      });
-      check(skipping, t("config.skip.confirm"), "autoSkipConfirm", display.autoSkipConfirm, (v) => {
-        display.autoSkipConfirm = v;
-        pushDisplay();
-      });
-      segmented(skipping, t("config.skip.fastKey"), "fastForwardKey", [
-        { value: "enter", label: t("config.skip.keyEnter") },
-        { value: "shift", label: t("config.skip.keyShift") },
-        { value: "ctrl", label: t("config.skip.keyCtrl") },
-      ], display.fastForwardKey, (v) => {
-        display.fastForwardKey = v;
-        pushDisplay();
-      });
-      segmented(skipping, t("config.skip.scope"), "fastForwardScope", [
-        { value: "all", label: t("config.skip.scopeAll") },
-        { value: "read", label: t("config.skip.scopeRead") },
-      ], display.fastForwardScope, (v) => {
-        display.fastForwardScope = v;
-        pushDisplay();
-      });
-      check(skipping, t("config.skip.skipUnread"), "skipUnread", skipUnread, (v) => {
-        skipUnread = v;
-        updateView();
-        this.commands?.updateSettings({ skipUnread: v });
-      });
-
-      const font = section(t("config.font.section"));
-      select(font, t("config.font.family"), "fontFamily", [
-        { value: "", label: t("config.font.default") },
-        { value: '"Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif', label: t("config.font.serifJa") },
-        { value: '"Noto Sans JP", "Hiragino Sans", sans-serif', label: t("config.font.sansSerif") },
-        { value: "monospace", label: t("config.font.monospace") },
-      ], display.fontFamily, (v) => {
-        display.fontFamily = v;
-        pushDisplay();
-      });
-
-      const languageSection = section(t("config.language.section"));
-      select(
-        languageSection,
-        t("config.language.label"),
-        "language",
-        availableLanguages.map((value) => ({ value, label: LANGUAGE_NAMES[value] })),
-        language,
-        (v) => {
-          language = v;
-          updateView();
-          this.commands?.updateSettings({ language: v });
-        },
-      );
-    } else if (this.settingsTab === "sound") {
-      const bgm = section(t("config.sound.bgm"));
-      slider(bgm, t("config.sound.volume"), "bgm", 0, 100, 5, Math.round(audio.bgm * 100), (v) => {
-        audio.bgm = v / 100;
-        pushAudio();
-      }, fmtPercent);
-      check(bgm, t("config.sound.mute"), "bgmMuted", audio.bgmMuted, (v) => {
-        audio.bgmMuted = v;
-        pushAudio();
-      });
-
-      const se = section(t("config.sound.se"));
-      slider(se, t("config.sound.volume"), "se", 0, 100, 5, Math.round(audio.se * 100), (v) => {
-        audio.se = v / 100;
-        pushAudio();
-      }, fmtPercent);
-      check(se, t("config.sound.mute"), "seMuted", audio.seMuted, (v) => {
-        audio.seMuted = v;
-        pushAudio();
-      });
-      const testRow = h("div", "mh-ui-field mh-ui-field-action");
-      testRow.append(
-        h("span", "mh-ui-field-label", ""),
-        this.button(t("config.sound.test"), () => this.commands?.testSe(), "mh-ui-test-se"),
-      );
-      se.appendChild(testRow);
-
-      const system = section(t("config.sound.system"));
-      slider(system, t("config.sound.volume"), "system", 0, 100, 5, Math.round(audio.system * 100), (v) => {
-        audio.system = v / 100;
-        pushAudio();
-      }, fmtPercent);
-      check(system, t("config.sound.mute"), "systemMuted", audio.systemMuted, (v) => {
-        audio.systemMuted = v;
-        pushAudio();
-      });
-
-      const effects = section(t("config.effects.section"));
-      yesNo(effects, t("config.effects.instant"), "instantEffects", display.instantEffects, (v) => {
-        display.instantEffects = v;
-        pushDisplay();
-      });
-      yesNo(effects, t("config.effects.stopAnimations"), "stopAnimations", display.stopAnimations, (v) => {
-        display.stopAnimations = v;
-        pushDisplay();
-      });
-      yesNo(effects, t("config.effects.clearText"), "clearTextOnPageChange", display.clearTextOnPageChange, (v) => {
-        display.clearTextOnPageChange = v;
-        pushDisplay();
-      });
-      yesNo(effects, t("config.effects.special"), "specialEffects", display.specialEffects, (v) => {
-        display.specialEffects = v;
-        pushDisplay();
-      });
-    } else {
-      const keys = section(t("config.shortcuts.section"));
-      keys.classList.add("mh-ui-shortcuts-section");
-      keys.appendChild(
-        h("p", "mh-ui-hint", t("config.shortcuts.hint")),
-      );
-      for (const definition of SHORTCUT_DEFINITIONS) {
-        keyRow(keys, definition.id, t(`shortcut.${definition.id}`));
-      }
-    }
-
-    const footer = h("div", "mh-ui-config-footer");
-    footer.append(
-      this.backButton(),
-      this.button(t("config.reset"), () => this.commands?.resetSettings(), "mh-ui-reset"),
-    );
-    p.append(content, footer);
-    return p;
+  /** Écran refait en HUD-09 (#200) : voir `config-screen.ts`. */
+  private renderSettings(settings: Readonly<GameSettings>, availableLanguages: readonly GameLanguage[]): ConfigScreen {
+    const screen = createConfigScreen(settings, availableLanguages, {
+      commands: this.commands!,
+      isInputEnabled: () => this.inputEnabled,
+      confirm: (message, options) => this.confirm(message, options),
+      setView: (view) => {
+        this.view = view;
+      },
+      initialTab: this.settingsTab,
+      onTabChange: (tab) => {
+        this.settingsTab = tab;
+      },
+      beginCapture: (action, index, apply) => {
+        this.capturing = { action, index };
+        this.captureApply = apply;
+      },
+    });
+    return screen;
   }
 
   /** Écran refait en HUD-12 (#201) : voir `backlog-screen.ts`. */
