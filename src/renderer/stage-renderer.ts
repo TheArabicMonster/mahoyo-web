@@ -195,6 +195,13 @@ export class DomStageRenderer implements StageRenderer {
 
   private staffrollTimer: ReturnType<typeof setTimeout> | null = null;
   private staffrollResolve: (() => void) | null = null;
+  /** Overlay des crédits (un seul à la fois) et son contenu défilant. */
+  private staffrollEl: HTMLElement | null = null;
+  private staffrollInner: HTMLElement | null = null;
+  /** Vrai dès que l'animation de défilement a été lancée pour l'état courant. */
+  private staffrollRunning = false;
+  private staffrollPromise: Promise<void> | null = null;
+  private staffrollAnimation: Animation | null = null;
 
   /** Filtres SVG à la demande (mono<rrggbb>, teintes, luminosité/contraste, flou anisotrope). */
   private svgFilters: SVGSVGElement | null = null;
@@ -486,6 +493,10 @@ export class DomStageRenderer implements StageRenderer {
       case "quake":
         promise = this.quakeResolve && this.quakePromise ? this.quakePromise() : null;
         break;
+      case "staffroll":
+        // Rien en cours (déjà terminé ou jamais lancé) : résout immédiatement.
+        promise = this.staffrollPromise;
+        break;
     }
     if (!promise) return;
     if (signal.aborted) return;
@@ -515,6 +526,9 @@ export class DomStageRenderer implements StageRenderer {
       this.quakeResolve();
       this.quakeResolve = null;
     }
+    // Skip des crédits (jamais déclenché par un clic car @wstaffroll est non-skippable,
+    // mais cohérent avec un arrêt forcé de session).
+    this.completeStaffroll();
   }
 
   setClickIndicator(style: "line" | "page" | null): void {
@@ -596,6 +610,8 @@ export class DomStageRenderer implements StageRenderer {
     this.renderScene(true);
     this.renderText(true);
     this.applyTextbox();
+    // Restaure l'overlay des crédits éventuel (sans relancer le défilement : approximation).
+    this.renderStaffroll({ instant: false, signal });
     if (signal.aborted) return;
   }
 
@@ -1698,36 +1714,150 @@ export class DomStageRenderer implements StageRenderer {
     }
   }
 
+  /**
+   * Crédits de fin (`@staffrollinit`/`@staffrolltext`/`@staffrollstart`, `@staffrolluninit`).
+   *
+   * Fidélité au plugin d'origine (`data/scenario/staffrollplugin.tjs`) :
+   * - chaque `@staffrolltext` est positionné à la somme cumulée de ses `y` dans un grand
+   *   conteneur (`currentPos += y`) ;
+   * - `@staffrollstart` lance un défilement linéaire de `height` pixels pendant `time` ms ;
+   * - `@staffrolluninit` retire l'overlay et libère l'attente de `@wstaffroll` ;
+   * - `@staffrollsetting bgcolor` est mémorisé par le runtime mais **jamais peint** (le plugin
+   *   d'origine ne consomme pas cette valeur : aucun effet, documenté #286).
+   * Le fond reste donc celui de la scène (noir/blanc posé par le script).
+   */
   private renderStaffroll(opts: RunOptions): void {
-    if (!this.container || !this.staffroll) return;
-    if (opts.instant) return;
-
-    const el = document.createElement("div");
-    el.className = "mh-stage-staffroll";
-    el.style.cssText = "position:absolute;left:0;right:0;top:720px;z-index:25;text-align:center;color:#fff;";
-    for (const line of this.staffroll.lines) {
-      const p = document.createElement("p");
-      p.textContent = line.text;
-      p.style.fontSize = `${line.size}px`;
-      el.appendChild(p);
+    if (!this.container) return;
+    const state = this.staffroll;
+    if (!state) {
+      this.finishStaffroll();
+      return;
     }
-    this.container.appendChild(el);
+    // Avant le départ (ou si l'overlay n'existe pas encore), on reconstruit le contenu ; les
+    // @staffrolltext arrivent tous avant @staffrollstart. Un nouvel @staffrollinit pendant un
+    // défilement interrompt l'ancien (le plugin appelle uninit dans son init).
+    if (!state.running || !this.staffrollEl) {
+      if (this.staffrollRunning) this.completeStaffroll();
+      this.clearStaffrollOverlay();
+      if (opts.instant) return;
+      this.buildStaffrollOverlay(state);
+    }
+    if (state.running && !this.staffrollRunning) {
+      this.startStaffrollScroll(state);
+    }
+  }
 
-    const time = this.staffroll.time;
-    this.staffrollPromise = new Promise((resolve) => {
-      this.staffrollResolve = resolve;
-      el.style.transition = `transform ${time}ms linear`;
-      requestAnimationFrame(() => {
-        el.style.transform = `translateY(-${this.staffroll!.height + 720}px)`;
-      });
-      setTimeout(() => {
-        el.remove();
+  /** Construit l'overlay et positionne les lignes aux offsets cumulés du moteur. */
+  private buildStaffrollOverlay(state: StaffrollState): void {
+    if (!this.container) return;
+    const overlay = document.createElement("div");
+    overlay.className = "mh-stage-staffroll";
+    // Au-dessus des calques (z moteur max ~90 000) et de la boîte de texte (1 000 000) :
+    // le plugin d'origine utilise absolute=2000000-5.
+    overlay.style.cssText =
+      "position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:2000000;";
+    const inner = document.createElement("div");
+    inner.className = "mh-stage-staffroll-inner";
+    inner.style.cssText = "position:absolute;left:0;right:0;top:0;will-change:transform;";
+    let offset = 0;
+    for (const line of state.lines) {
+      offset += line.y;
+      const p = document.createElement("p");
+      p.className = "mh-stage-staffroll-line";
+      p.textContent = line.text;
+      p.style.cssText = `position:absolute;left:0;right:0;top:${offset}px;margin:0;text-align:center;font-size:${line.size}px;color:${line.color ?? "#ffffff"};white-space:pre-wrap;`;
+      if (line.face) p.style.fontFamily = line.face;
+      inner.appendChild(p);
+    }
+    overlay.appendChild(inner);
+    this.container.appendChild(overlay);
+    this.staffrollEl = overlay;
+    this.staffrollInner = inner;
+    this.staffrollRunning = false;
+  }
+
+  /**
+   * Lance le défilement et arme la résolution de `@wstaffroll`.
+   * Utilise la Web Animations API (`element.animate`) comme les autres animations du rendu ;
+   * repli transition CSS + minuterie quand `animate` n'existe pas (jsdom).
+   */
+  private startStaffrollScroll(state: StaffrollState): void {
+    if (!this.staffrollInner) return;
+    this.staffrollRunning = true;
+    const inner = this.staffrollInner;
+    const time = Math.max(0, state.time);
+    const height = Math.max(0, state.height);
+    const endTransform = `translateY(-${height}px)`;
+    this.staffrollPromise = new Promise<void>((resolve) => {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        this.staffrollTimer = null;
+        this.staffrollResolve = null;
+        this.staffrollPromise = null;
+        this.staffrollRunning = false;
         resolve();
-      }, time);
+      };
+      this.staffrollResolve = settle;
+      if (time === 0) {
+        inner.style.transform = endTransform;
+        settle();
+        return;
+      }
+      if (typeof inner.animate === "function") {
+        this.staffrollAnimation = inner.animate(
+          [{ transform: "translateY(0px)" }, { transform: endTransform }],
+          { duration: time, easing: "linear", fill: "forwards" },
+        );
+        this.staffrollAnimation.onfinish = () => settle();
+        // Filet de sécurité (animation interrompue/onglet en arrière-plan).
+        this.staffrollTimer = setTimeout(settle, time + 100);
+      } else {
+        inner.style.transition = `transform ${time}ms linear`;
+        inner.style.transform = endTransform;
+        this.staffrollTimer = setTimeout(settle, time);
+      }
     });
   }
 
-  private staffrollPromise: Promise<void> | null = null;
+  /** Termine immédiatement le défilement (skip), sans retirer l'overlay (attendu par uninit). */
+  private completeStaffroll(): void {
+    if (this.staffrollTimer) {
+      clearTimeout(this.staffrollTimer);
+      this.staffrollTimer = null;
+    }
+    this.staffrollAnimation?.cancel();
+    this.staffrollAnimation = null;
+    if (this.staffrollInner) {
+      this.staffrollInner.style.transition = "none";
+      this.staffrollInner.style.transform = `translateY(-${Math.max(0, this.staffroll?.height ?? 0)}px)`;
+    }
+    const resolve = this.staffrollResolve;
+    this.staffrollResolve = null;
+    this.staffrollPromise = null;
+    this.staffrollRunning = false;
+    if (resolve) resolve();
+  }
+
+  /** Retire l'overlay et libère les attentes (fin de générique ou disposition). */
+  private finishStaffroll(): void {
+    this.completeStaffroll();
+    this.clearStaffrollOverlay();
+  }
+
+  private clearStaffrollOverlay(): void {
+    if (this.staffrollTimer) {
+      clearTimeout(this.staffrollTimer);
+      this.staffrollTimer = null;
+    }
+    this.staffrollAnimation?.cancel();
+    this.staffrollAnimation = null;
+    this.staffrollEl?.remove();
+    this.staffrollEl = null;
+    this.staffrollInner = null;
+    this.staffrollRunning = false;
+  }
 
   /**
    * Expose la bulle « ploy » sur la textbox (data-ploy-mode, --ploy-ox, --ploy-oy).
@@ -2055,6 +2185,13 @@ export class DomStageRenderer implements StageRenderer {
     if (this.typewriterTimer) clearTimeout(this.typewriterTimer);
     if (this.quakeTimer) clearTimeout(this.quakeTimer);
     if (this.staffrollTimer) clearTimeout(this.staffrollTimer);
+    this.staffrollTimer = null;
+    const staffrollResolve = this.staffrollResolve;
+    this.staffrollResolve = null;
+    this.staffrollPromise = null;
+    this.staffrollAnimation?.cancel();
+    this.staffrollAnimation = null;
+    if (staffrollResolve) staffrollResolve();
     for (const ctrl of this.animations.values()) ctrl.cancel();
     this.animations.clear();
   }
