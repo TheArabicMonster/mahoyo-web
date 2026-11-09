@@ -68,6 +68,13 @@ export type Layer = {
   zoomx?: number;
   zoomy?: number;
   rotate?: number;
+  /** Mode de fusion et filtre d'image (`type=`, `effect=`, `blur`, `brightness`, `contrast`). */
+  type?: number;
+  effect?: string;
+  brightness?: number;
+  contrast?: number;
+  blurx?: number;
+  blury?: number;
 };
 
 export type PageLayer = "fore" | "back";
@@ -96,10 +103,14 @@ export type AnimKeyframe = {
   srctop?: number;
   srczoomx?: number;
   srczoomy?: number;
+  /** Luminosité (−255..255) et flou de boîte (px), props `-brightness` / `-xblur` / `-yblur`. */
+  brightness?: number;
+  blurx?: number;
+  blury?: number;
   // Props discrètes (appliquées instantanément, pas interpolées) :
   storage?: string;
   visible?: boolean;
-  type?: string;
+  type?: number | string;
   effect?: string;
   contrast?: number;
 };
@@ -121,12 +132,41 @@ export type AnimationDef = {
 /** Zoom (%) et rotation (degrés) lus sur un `@bg`, `@fg` ou `@chgfg` ; absents = non précisés. */
 export type TransformArgs = { zoomx?: number; zoomy?: number; rotate?: number };
 
+/**
+ * Apparence d'un calque (`@bg`, `@fg`, `@chgfg`, `@partbg`) : mode de fusion, filtre d'image,
+ * flou, luminosité et contraste. Sémantique vérifiée dans les sources du moteur (tag étendu
+ * `@image` de `data/override/tagex.tjs` et application dans `AnimationLayer.override.tjs`) :
+ *
+ * - `type` : mode de composition KiriKiri (entier). Valeurs connues (cf.
+ *   `scenario/noiseplugin.tjs`) : 1 opaque, 2 alpha, 3 additif, 4 soustractif, 5 multiplicatif,
+ *   8 densité, 9 sombre, 10 clair, 11 écran, 12 alpha additif, 13 PS normal, 14 PS linéaire
+ *   éclaircir, 15 PS linéaire brûler, 16 PS multiplier, 17 PS écran, 18 PS superposition,
+ *   19 PS lumière crue, 20 PS lumière douce, 21 PS densité couleur, 22 idem (<=5),
+ *   23 PS brûlure couleur, 24 PS éclaircir, 25 PS assombrir, 26 PS différence,
+ *   27 idem (<=5), 28 PS exclusion. Absent = défaut du moteur (alpha).
+ * - `effect` : nom d'effet. Effets intrinsèques : `monocro`/`monochrome`, `sepia`, `nega`,
+ *   `red`, `green`, `blue`, `mono<rrggbb>` (aplat de couleur en conservant l'alpha — le nom
+ *   `mono…` est un remplissage, pas une teinte). Les autres noms (`屋外深夜`, `mh屋内曇り`…)
+ *   sont des **effets d'ambiance** définis dans `data/others/envcolor.ksc` (données du jeu,
+ *   non installées par le pipeline) : non appliqués pour l'instant (avertissement).
+ * - `blurx`/`blury` : flou de boîte (px), `blur=` s'applique aux deux axes.
+ * - `brightness` : −255..255 ; `contrast` : −127..127 (comme le moteur).
+ */
+export type AppearanceArgs = {
+  type?: number;
+  effect?: string;
+  blurx?: number;
+  blury?: number;
+  brightness?: number;
+  contrast?: number;
+};
+
 export type Instruction =
-  | ({ kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean; nowait?: boolean; canskip?: boolean } & TransformArgs)
+  | ({ kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean; nowait?: boolean; canskip?: boolean } & TransformArgs & AppearanceArgs)
   | ({ kind: "bgact"; storage: string; page?: PageLayer; keyframes: AnimKeyframe[] })
-  | ({ kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; partbgId?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs)
-  | ({ kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs)
-  | { kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean; crop: CropSpec }
+  | ({ kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; partbgId?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs & AppearanceArgs)
+  | ({ kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs & AppearanceArgs)
+  | ({ kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean; crop: CropSpec } & AppearanceArgs)
   | { kind: "animate"; def: AnimationDef }
   | { kind: "clall"; page?: PageLayer }
   | { kind: "clfg"; storage?: string; index?: number; id?: string; page?: PageLayer }

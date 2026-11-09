@@ -111,8 +111,19 @@ function coerceProp(
         return { value: raw, field: "storage" };
       case "visible":
         return { value: raw === "1" || raw === "true", field: "visible" };
-      case "type":
-        return { value: raw, field: "type" };
+      case "type": {
+        const n = parseInt(raw, 10);
+        return { value: Number.isNaN(n) ? raw : n, field: "type" };
+      }
+      case "brightness":
+      case "blur":
+      case "xblur":
+      case "yblur": {
+        const n = parseInt(raw, 10);
+        if (Number.isNaN(n)) return null;
+        const field = name === "brightness" ? "brightness" : name === "xblur" ? "blurx" : name === "yblur" ? "blury" : "blurx";
+        return { value: n, field: field as keyof AnimKeyframe };
+      }
       case "effect":
         return { value: raw, field: "effect" };
       case "contrast": {

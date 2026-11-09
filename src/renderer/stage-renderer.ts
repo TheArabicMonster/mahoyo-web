@@ -23,6 +23,15 @@ import {
 } from "./types.js";
 import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
+import {
+  applyAppearance,
+  contrastFactor,
+  boxBlurSigma,
+  effectFilter,
+  isEnvironmentEffect,
+  type Appearance,
+  type SvgFilterRegistry,
+} from "./appearance.js";
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
 import {
@@ -96,6 +105,8 @@ type TextUnit = {
  * Sans `top`, un fond de 1050 px de haut est donc décalé de 189 px par rapport à un centrage
  * vertical (issue #249). Exprimés en CSS, ils ne demandent pas la taille de l'image.
  */
+const SVG_NS = "http://www.w3.org/2000/svg";
+
 const BG_BOTTOM_MARGIN = 48;
 const BG_DEFAULT_POSITION = "50% calc(100% + 48px)";
 
@@ -189,8 +200,118 @@ export class DomStageRenderer implements StageRenderer {
   private staffrollTimer: ReturnType<typeof setTimeout> | null = null;
   private staffrollResolve: (() => void) | null = null;
 
+  /** Filtres SVG à la demande (mono<rrggbb>, teintes, luminosité/contraste, flou anisotrope). */
+  private svgFilters: SVGSVGElement | null = null;
+  private filterIds = new Map<string, string>();
+  private filterCounter = 0;
+  /** Effets non appliqués déjà signalés (un avertissement par nom). */
+  private warnedEffects = new Set<string>();
+  private readonly filterRegistry: SvgFilterRegistry;
+
   constructor(deps: StageRendererDeps) {
     this.resolver = deps.resolver;
+    this.filterRegistry = {
+      monoFilter: (color) => this.svgFilter(`mono:${color}`, (filter) => {
+        const flood = document.createElementNS(SVG_NS, "feFlood");
+        flood.setAttribute("flood-color", color);
+        const composite = document.createElementNS(SVG_NS, "feComposite");
+        composite.setAttribute("in", "flood");
+        composite.setAttribute("in2", "SourceAlpha");
+        composite.setAttribute("operator", "in");
+        // Conserve l'alpha multiplicatif de la source.
+        const merge = document.createElementNS(SVG_NS, "feComposite");
+        merge.setAttribute("operator", "arithmetic");
+        merge.setAttribute("k1", "0");
+        merge.setAttribute("k2", "1");
+        merge.setAttribute("k3", "1");
+        merge.setAttribute("k4", "0");
+        filter.append(flood, composite, merge);
+      }),
+      channelFilter: (channel) => this.svgFilter(`channel:${channel}`, (filter) => {
+        const matrix = document.createElementNS(SVG_NS, "feColorMatrix");
+        matrix.setAttribute("type", "matrix");
+        const luma = "0.2126 0.7152 0.0722 0 0";
+        const blank = "0 0 0 0 0";
+        const rows = channel === "red" ? [luma, blank, blank] : channel === "green" ? [blank, luma, blank] : [blank, blank, luma];
+        matrix.setAttribute("values", [...rows, "0 0 0 1 0"].join(" "));
+        filter.appendChild(matrix);
+      }),
+      brightnessContrastFilter: (brightness, factor) =>
+        this.svgFilter(`bc:${brightness}:${factor}`, (filter) => {
+          const transfer = document.createElementNS(SVG_NS, "feComponentTransfer");
+          const intercept = 0.5 * (1 - factor) + brightness / 255;
+          for (const channel of ["R", "G", "B"]) {
+            const func = document.createElementNS(SVG_NS, `feFunc${channel}`);
+            func.setAttribute("type", "linear");
+            func.setAttribute("slope", String(factor));
+            func.setAttribute("intercept", String(intercept));
+            transfer.appendChild(func);
+          }
+          filter.appendChild(transfer);
+        }),
+      blurFilter: (sx, sy) => this.svgFilter(`blur:${sx}:${sy}`, (filter) => {
+        const blur = document.createElementNS(SVG_NS, "feGaussianBlur");
+        blur.setAttribute("stdDeviation", `${sx} ${sy}`);
+        filter.appendChild(blur);
+      }),
+    };
+  }
+
+  /** Crée (une fois par clé) un filtre SVG et retourne `url(#id)`. */
+  private svgFilter(key: string, build: (filter: SVGFilterElement) => void): string {
+    const existing = this.filterIds.get(key);
+    if (existing) return `url(#${existing})`;
+    if (!this.svgFilters) {
+      const svg = document.createElementNS(SVG_NS, "svg");
+      svg.setAttribute("aria-hidden", "true");
+      svg.style.position = "absolute";
+      svg.style.width = "0";
+      svg.style.height = "0";
+      svg.style.overflow = "hidden";
+      svg.appendChild(document.createElementNS(SVG_NS, "defs"));
+      (this.container ?? this.root)?.appendChild(svg);
+      this.svgFilters = svg;
+    }
+    const defs = this.svgFilters.firstElementChild as SVGDefsElement;
+    const id = `mh-filter-${++this.filterCounter}`;
+    const filter = document.createElementNS(SVG_NS, "filter") as SVGFilterElement;
+    filter.setAttribute("id", id);
+    filter.setAttribute("color-interpolation-filters", "sRGB");
+    filter.setAttribute("x", "0");
+    filter.setAttribute("y", "0");
+    filter.setAttribute("width", "100%");
+    filter.setAttribute("height", "100%");
+    build(filter);
+    defs.appendChild(filter);
+    this.filterIds.set(key, id);
+    return `url(#${id})`;
+  }
+
+  /** Apparence d'un calque (undefined = défauts : aucun filtre, pas de blend). Signale une fois
+   * les effets d'ambiance du jeu (`envcolor.ksc`) qui ne sont pas appliqués. */
+  private appearanceWithWarning(s: {
+    type?: number;
+    effect?: string;
+    brightness?: number;
+    contrast?: number;
+    blurx?: number;
+    blury?: number;
+  }): Appearance | undefined {
+    if (
+      s.type === undefined &&
+      s.effect === undefined &&
+      s.brightness === undefined &&
+      s.contrast === undefined &&
+      s.blurx === undefined &&
+      s.blury === undefined
+    ) {
+      return undefined;
+    }
+    if (isEnvironmentEffect(s.effect) && !this.warnedEffects.has(s.effect!)) {
+      this.warnedEffects.add(s.effect!);
+      console.warn(`[renderer] effet d'ambiance non appliqué (données du jeu non installées) : ${s.effect}`);
+    }
+    return { type: s.type, effect: s.effect, brightness: s.brightness, contrast: s.contrast, blurx: s.blurx, blury: s.blury };
   }
 
   mount(root: HTMLElement): void {
@@ -481,6 +602,9 @@ export class DomStageRenderer implements StageRenderer {
     this.clearBgOverlays();
     this.spriteEls.clear();
     this.clearTimelineLayers();
+    this.svgFilters?.remove();
+    this.svgFilters = null;
+    this.filterIds.clear();
     if (this.container && this.root) {
       this.root.removeChild(this.container);
     }
@@ -559,9 +683,10 @@ export class DomStageRenderer implements StageRenderer {
         to { background-position: -40px 200px, -12px 120px; }
       }
       .mh-stage-sprites {
-        position: absolute;
-        inset: 0;
-        z-index: 10;
+        /* Pas de boîte ni de contexte d'empilement : les calques se composent directement dans
+           le contexte du stage, ce qui permet aux modes de fusion (mix-blend-mode) de se mélanger
+           au fond et aux calques inférieurs, comme dans le moteur. */
+        display: contents;
       }
       .mh-stage-sprite {
         position: absolute;
@@ -570,7 +695,8 @@ export class DomStageRenderer implements StageRenderer {
       .mh-stage-effects {
         position: absolute;
         inset: 0;
-        z-index: 20;
+        /* Au-dessus des calques (z-index moteur jusqu'à ~90000) et sous la boîte de texte. */
+        z-index: 900000;
         pointer-events: none;
       }
       .mh-stage-noise {
@@ -594,7 +720,7 @@ export class DomStageRenderer implements StageRenderer {
       }
       .mh-stage-textbox {
         position: absolute;
-        z-index: 30;
+        z-index: 1000000;
         transition: opacity 0.3s ease;
         pointer-events: auto;
       }
@@ -864,6 +990,21 @@ export class DomStageRenderer implements StageRenderer {
     this.bgImgEl = null;
     this.bgEl.style.backgroundImage = bg && !transformedBg ? cssUrl(this.resolver.background(bg)) : "none";
     this.bgEl.style.backgroundColor = bg ? "" : "#000";
+    // Apparence du fond (`@bg type=/effect=/blur/brightness/contrast`).
+    applyAppearance(
+      this.bgEl,
+      bg
+        ? this.appearanceWithWarning({
+            type: this.currentScene.bgType,
+            effect: this.currentScene.bgEffect,
+            brightness: this.currentScene.bgBrightness,
+            contrast: this.currentScene.bgContrast,
+            blurx: this.currentScene.bgBlurX,
+            blury: this.currentScene.bgBlurY,
+          })
+        : undefined,
+      this.filterRegistry,
+    );
     // Un nouveau fond interrompt le panoramique en cours et perd le zoom/la rotation du précédent.
     this.bgMotion = null;
     this.bgTransformEnd = 0;
@@ -938,6 +1079,7 @@ export class DomStageRenderer implements StageRenderer {
         wrapper.style.opacity = String(s.opacity);
         wrapper.style.zIndex = String(s.z);
         wrapper.style.transform = partbgWrapperTransform();
+        applyAppearance(wrapper, this.appearanceWithWarning(s), this.filterRegistry);
         // Fond derrière le crop (bgstorage).
         if (crop.bgStorage) {
           wrapper.style.backgroundImage = cssUrl(this.resolver.background(crop.bgStorage));
@@ -982,6 +1124,7 @@ export class DomStageRenderer implements StageRenderer {
         img.style.top = `${s.y}px`;
         img.style.opacity = String(s.opacity);
         img.style.zIndex = String(s.z);
+        applyAppearance(img, this.appearanceWithWarning(s), this.filterRegistry);
         // Zoom et rotation autour du centre (`@fg zoom=… rotate=…`) ; neutre : le CSS de la classe suffit.
         if (s.zoomx !== undefined || s.zoomy !== undefined || s.rotate !== undefined) {
           img.style.transform = spriteTransform({
@@ -1328,6 +1471,24 @@ export class DomStageRenderer implements StageRenderer {
     }
   }
 
+  /**
+   * Apparence de départ d'un calque animé : celle de la scène courante (les props discrètes des
+   * keyframes s'y appliquent ensuite dans l'ordre du script).
+   */
+  private currentAnimationAppearance(target: string): Appearance {
+    const sprite = this.currentScene?.sprites.find((s) => s.id === target);
+    return sprite
+      ? {
+          type: sprite.type,
+          effect: sprite.effect,
+          brightness: sprite.brightness,
+          contrast: sprite.contrast,
+          blurx: sprite.blurx,
+          blury: sprite.blury,
+        }
+      : {};
+  }
+
   private startAnimation(target: string, def: AnimationDef, opts: RunOptions): void {
     this.stopAnimation(target);
     if (opts.instant) {
@@ -1344,7 +1505,16 @@ export class DomStageRenderer implements StageRenderer {
       return;
     }
     const innerEl = def.isPartbg ? el.querySelector<HTMLElement>(".mh-stage-partbg-img") : null;
-    const ctrl = new AnimationController(def, target, el, this.resolver, () => this.stopAnimation(target), innerEl);
+    const ctrl = new AnimationController(
+      def,
+      target,
+      el,
+      this.resolver,
+      () => this.stopAnimation(target),
+      innerEl,
+      this.currentAnimationAppearance(target),
+      (element, appearance) => applyAppearance(element, appearance, this.filterRegistry),
+    );
     this.animations.set(target, ctrl);
   }
 
@@ -1355,6 +1525,15 @@ export class DomStageRenderer implements StageRenderer {
     const last = resolved[resolved.length - 1];
     const el = this.spriteEls.get(def.id ?? def.storage) ?? this.findPartbgEl(def);
     if (!el) return;
+    const appearance: Appearance = {
+      type: last.type !== undefined ? Number(last.type) : def.keyframes[0]?.type !== undefined ? Number(def.keyframes[0]!.type) : undefined,
+      effect: last.effect ?? def.keyframes[0]?.effect,
+      contrast: last.contrast ?? def.keyframes[0]?.contrast,
+      brightness: last.brightness ?? def.keyframes[0]?.brightness,
+      blurx: last.blurx ?? def.keyframes[0]?.blurx,
+      blury: last.blury ?? def.keyframes[0]?.blury,
+    };
+    applyAppearance(el, appearance, this.filterRegistry);
     const isPartbg = !!def.isPartbg;
     if (isPartbg) {
       // Le wrapper partbg peut aussi animer center/vcenter/opacity/zoom/rotate.
@@ -1843,6 +2022,9 @@ class AnimationController {
     private resolver: AssetResolver,
     private onDone: () => void,
     private innerEl?: HTMLElement | null,
+    /** Apparence courante du calque, mise à jour par les props discrètes (`-effect`, `-type`…). */
+    private appearance: Appearance = {},
+    private applyAppearanceSink?: (el: HTMLElement, appearance: Appearance) => void,
   ) {
     this.isLoop = !!def.loop;
     this.promise = new Promise((resolve) => {
@@ -1940,9 +2122,30 @@ class AnimationController {
         this.el.style.visibility = change.value ? "visible" : "hidden";
         break;
       case "effect":
+        this.appearance.effect = String(change.value) === "" ? undefined : String(change.value);
+        this.applyAppearanceSink?.(this.el, this.appearance);
+        break;
+      case "type": {
+        const type = Number(change.value);
+        this.appearance.type = Number.isFinite(type) ? type : undefined;
+        this.applyAppearanceSink?.(this.el, this.appearance);
+        break;
+      }
       case "contrast":
-      case "type":
-        // Effets de filtre non gérés ici (PR futur). No-op silencieux.
+        this.appearance.contrast = Number(change.value);
+        this.applyAppearanceSink?.(this.el, this.appearance);
+        break;
+      case "brightness":
+        this.appearance.brightness = Number(change.value);
+        this.applyAppearanceSink?.(this.el, this.appearance);
+        break;
+      case "blurx":
+        this.appearance.blurx = Number(change.value);
+        this.applyAppearanceSink?.(this.el, this.appearance);
+        break;
+      case "blury":
+        this.appearance.blury = Number(change.value);
+        this.applyAppearanceSink?.(this.el, this.appearance);
         break;
     }
   }

@@ -63,6 +63,13 @@ export type PageState = {
   bgZoomX?: number;
   bgZoomY?: number;
   bgRotate?: number;
+  /** Apparence du fond (`@bg type=/effect=/blur/brightness/contrast`) ; absente = défauts. */
+  bgType?: number;
+  bgEffect?: string;
+  bgBrightness?: number;
+  bgContrast?: number;
+  bgBlurX?: number;
+  bgBlurY?: number;
   layers: Layer[];
 };
 
@@ -95,12 +102,41 @@ function patchTransform(
   }
 }
 
+/** Copie les champs d'apparence d'une commande (`type`, `effect`, blur, brightness, contrast). */
+function patchAppearance(
+  target: { type?: number; effect?: string; brightness?: number; contrast?: number; blurx?: number; blury?: number },
+  source: { type?: number; effect?: string; brightness?: number; contrast?: number; blurx?: number; blury?: number },
+): void {
+  if (source.type !== undefined) target.type = source.type;
+  if (source.effect !== undefined) target.effect = source.effect;
+  if (source.brightness !== undefined) target.brightness = source.brightness;
+  if (source.contrast !== undefined) target.contrast = source.contrast;
+  if (source.blurx !== undefined) target.blurx = source.blurx;
+  if (source.blury !== undefined) target.blury = source.blury;
+}
+
+/** Remet l'apparence d'un calque à ses défauts (le moteur réinitialise effect/contrast/… sur `@image`). */
+function clearAppearance(target: { type?: number; effect?: string; brightness?: number; contrast?: number; blurx?: number; blury?: number }): void {
+  delete target.type;
+  delete target.effect;
+  delete target.brightness;
+  delete target.contrast;
+  delete target.blurx;
+  delete target.blury;
+}
+
 /** Champs « fond » d'une page (image, position, zoom, rotation), pour copier back ↔ fore. */
 function bgFieldsOf(page: PageState): Omit<PageState, "layers"> {
   const fields: Omit<PageState, "layers"> = { background: page.background, bgLeft: page.bgLeft, bgTop: page.bgTop };
   if (page.bgZoomX !== undefined) fields.bgZoomX = page.bgZoomX;
   if (page.bgZoomY !== undefined) fields.bgZoomY = page.bgZoomY;
   if (page.bgRotate !== undefined) fields.bgRotate = page.bgRotate;
+  if (page.bgType !== undefined) fields.bgType = page.bgType;
+  if (page.bgEffect !== undefined) fields.bgEffect = page.bgEffect;
+  if (page.bgBrightness !== undefined) fields.bgBrightness = page.bgBrightness;
+  if (page.bgContrast !== undefined) fields.bgContrast = page.bgContrast;
+  if (page.bgBlurX !== undefined) fields.bgBlurX = page.bgBlurX;
+  if (page.bgBlurY !== undefined) fields.bgBlurY = page.bgBlurY;
   return fields;
 }
 
@@ -834,6 +870,12 @@ export class Runtime {
     if (layer.zoomx !== undefined) sprite.zoomx = layer.zoomx;
     if (layer.zoomy !== undefined) sprite.zoomy = layer.zoomy;
     if (layer.rotate !== undefined) sprite.rotate = layer.rotate;
+    if (layer.type !== undefined) sprite.type = layer.type;
+    if (layer.effect !== undefined) sprite.effect = layer.effect;
+    if (layer.brightness !== undefined) sprite.brightness = layer.brightness;
+    if (layer.contrast !== undefined) sprite.contrast = layer.contrast;
+    if (layer.blurx !== undefined) sprite.blurx = layer.blurx;
+    if (layer.blury !== undefined) sprite.blury = layer.blury;
     return sprite;
   }
 
@@ -849,6 +891,12 @@ export class Runtime {
     if (target.bgZoomX !== undefined) scene.bgZoomX = target.bgZoomX;
     if (target.bgZoomY !== undefined) scene.bgZoomY = target.bgZoomY;
     if (target.bgRotate !== undefined) scene.bgRotate = target.bgRotate;
+    if (target.bgType !== undefined) scene.bgType = target.bgType;
+    if (target.bgEffect !== undefined) scene.bgEffect = target.bgEffect;
+    if (target.bgBrightness !== undefined) scene.bgBrightness = target.bgBrightness;
+    if (target.bgContrast !== undefined) scene.bgContrast = target.bgContrast;
+    if (target.bgBlurX !== undefined) scene.bgBlurX = target.bgBlurX;
+    if (target.bgBlurY !== undefined) scene.bgBlurY = target.bgBlurY;
     return scene;
   }
 
@@ -900,6 +948,21 @@ export class Runtime {
     delete target.bgZoomY;
     delete target.bgRotate;
     this.patchBgTransform(target, instruction);
+    // Le moteur réinitialise effect/brightness/contrast/blur à chaque chargement d'image
+    // (`@image` : « .effect = "" if .effect === void »…) : un @bg sans attribut d'apparence
+    // efface donc ceux du fond précédent.
+    delete target.bgType;
+    delete target.bgEffect;
+    delete target.bgBrightness;
+    delete target.bgContrast;
+    delete target.bgBlurX;
+    delete target.bgBlurY;
+    if (instruction.type !== undefined) target.bgType = instruction.type;
+    if (instruction.effect !== undefined) target.bgEffect = instruction.effect;
+    if (instruction.brightness !== undefined) target.bgBrightness = instruction.brightness;
+    if (instruction.contrast !== undefined) target.bgContrast = instruction.contrast;
+    if (instruction.blurx !== undefined) target.bgBlurX = instruction.blurx;
+    if (instruction.blury !== undefined) target.bgBlurY = instruction.blury;
 
     // Trans implicite : @bg sans page explicite + time>0 → trans back→fore.
     // Pas de backlay : on a écrit directement sur back.
@@ -954,6 +1017,8 @@ export class Runtime {
       partbgId: instruction.partbgId,
     };
     patchTransform(layer, instruction);
+    clearAppearance(layer);
+    patchAppearance(layer, instruction);
     target.layers = target.layers.filter((l) => l.id !== id);
     target.layers.push(layer);
     return this.revealLayerChange(page, instruction);
@@ -1021,6 +1086,8 @@ export class Runtime {
       opacity: instruction.opacity ?? 1,
       crop,
     };
+    clearAppearance(layer);
+    patchAppearance(layer, instruction);
     target.layers = target.layers.filter((l) => l.id !== id);
     target.layers.push(layer);
     // bgstorage : remplace le fond de la page cible (doc §4).
@@ -1048,6 +1115,9 @@ export class Runtime {
       found = true;
       const changed: Layer = { ...l, storage: instruction.storage, id: instruction.id ?? l.id };
       patchTransform(changed, instruction);
+      // `@chgfg` change l'image mais conserve position/z/opacité : les attributs d'apparence
+      // ne sont remplacés que s'ils sont précisés (contrairement à `@fg`, nouvelle image).
+      patchAppearance(changed, instruction);
       return changed;
     });
     if (!found) {
@@ -1062,6 +1132,8 @@ export class Runtime {
         opacity: 1,
       };
       patchTransform(created, instruction);
+      clearAppearance(created);
+      patchAppearance(created, instruction);
       target.layers.push(created);
     }
     return this.revealLayerChange(page, instruction);
@@ -1131,6 +1203,18 @@ export class Runtime {
       crop: existing?.crop,
       partbgId: existing?.partbgId,
     };
+    // Apparence : `-type`/`-effect`/`-contrast`/`-brightness`/`-xblur`/`-yblur` sont discrets,
+    // leur dernière valeur connue devient l'apparence finale du calque.
+    clearAppearance(merged);
+    patchAppearance(merged, {
+      type: lastFrame?.type !== undefined ? Number(lastFrame.type) : firstFrame?.type !== undefined ? Number(firstFrame.type) : existing?.type,
+      effect: lastFrame?.effect ?? firstFrame?.effect ?? existing?.effect,
+      contrast: lastFrame?.contrast ?? firstFrame?.contrast ?? existing?.contrast,
+      brightness: lastFrame?.brightness ?? firstFrame?.brightness ?? existing?.brightness,
+      blurx: lastFrame?.blurx ?? firstFrame?.blurx ?? existing?.blurx,
+      blury: lastFrame?.blury ?? firstFrame?.blury ?? existing?.blury,
+    });
+
     // Zoom et rotation : ceux de la dernière keyframe, sinon ceux du calque existant.
     const endTransform: TransformValues = {
       zoomx: existing?.zoomx,

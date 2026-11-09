@@ -5,7 +5,7 @@
  * Page boundaries are: @pg/[p] (page break), end of input.
  */
 
-import type { AnimationDef, CropSpec, Instruction, ParsedScript, TextSegment, TextStyle, Token, TransformArgs } from "./types.js";
+import type { AnimationDef, AppearanceArgs, CropSpec, Instruction, ParsedScript, TextSegment, TextStyle, Token, TransformArgs } from "./types.js";
 import { storageKey } from "@/core/storage-key.js";
 import { parseActionKeys } from "./action.js";
 
@@ -88,6 +88,34 @@ function parseTransformArgs(args: Record<string, string>): TransformArgs {
   return out;
 }
 
+/**
+ * Apparence d'un calque : `type=` (mode de fusion), `effect=` (filtre), `blur=`/`xblur=`/`yblur=`
+ * (flou de boîte), `brightness=`, `contrast=`. `effect=none`/vide = aucun filtre. Un axe de flou
+ * omis vaut l'autre (le moteur pose `xblur`/`yblur` depuis `blur` dans `@image`).
+ */
+function parseAppearanceArgs(args: Record<string, string>): AppearanceArgs {
+  const int = (value: string | undefined): number | undefined => {
+    if (value === undefined) return undefined;
+    const n = parseInt(value, 10);
+    return Number.isNaN(n) ? undefined : n;
+  };
+  const out: AppearanceArgs = {};
+  const type = int(args.type);
+  if (type !== undefined) out.type = type;
+  const effect = args.effect?.trim();
+  if (effect !== undefined && effect !== "" && effect !== "none") out.effect = effect;
+  const blur = int(args.blur);
+  const blurx = int(args.xblur) ?? blur;
+  const blury = int(args.yblur) ?? blur;
+  if (blurx !== undefined) out.blurx = blurx;
+  if (blury !== undefined) out.blury = blury;
+  const brightness = int(args.brightness);
+  if (brightness !== undefined) out.brightness = brightness;
+  const contrast = int(args.contrast);
+  if (contrast !== undefined) out.contrast = contrast;
+  return out;
+}
+
 function parsePageLayer(value: string | undefined): "fore" | "back" | undefined {
   if (value === "fore" || value === "back") return value;
   return undefined;
@@ -111,6 +139,7 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         nowait: args.nowait === "1",
         canskip: args.canskip !== "0",
         ...parseTransformArgs(args),
+        ...parseAppearanceArgs(args),
       };
     case "fg":
       return {
@@ -128,6 +157,7 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         nowait: args.nowait === "1",
         canskip: args.canskip !== "0",
         ...parseTransformArgs(args),
+        ...parseAppearanceArgs(args),
       };
     case "chgfg":
       // @chgfg : change l'image d'un calque existant (garde position/z/opacity).
@@ -142,6 +172,7 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         nowait: args.nowait === "1",
         canskip: args.canskip !== "0",
         ...parseTransformArgs(args),
+        ...parseAppearanceArgs(args),
       };
     case "clall":
       return { kind: "clall", page: parsePageLayer(args.page) };
@@ -266,6 +297,7 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         nowait: args.nowait === "1",
         canskip: args.canskip !== "0",
         crop,
+        ...parseAppearanceArgs(args),
       };
     }
     case "bgact": {
