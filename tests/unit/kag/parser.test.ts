@@ -593,3 +593,36 @@ describe("parse — commandes KAG standard (#277)", () => {
     expect(segments).toEqual([{ text: "触", ruby: "ふ" }, { text: "れた" }]);
   });
 });
+
+describe("parse — crédits de fin (#286)", () => {
+  const first = (source: string) => parse(lex(source)).pages[0]!.instructions[0]!;
+
+  it("@wstaffroll = attente de fin de défilement, non skippable (plugin d'origine)", () => {
+    expect(first("@wstaffroll")).toEqual({ kind: "waitfor", what: "staffroll", skippable: false });
+  });
+
+  it("@staffrolluninit", () => {
+    expect(first("@staffrolluninit")).toEqual({ kind: "staffrolluninit" });
+  });
+
+  it("@staffrollsetting bgcolor (ARGB 0xFF000000 → #000000)", () => {
+    expect(first("@staffrollsetting bgcolor=0xFF000000")).toEqual({
+      kind: "staffrollsetting",
+      bgcolor: "#000000",
+    });
+  });
+
+  it("@staffrollsetting bgcolor avec alpha non opaque (0x80FF0000 → #ff000080)", () => {
+    expect(first("@staffrollsetting bgcolor=0x80FF0000")).toEqual({
+      kind: "staffrollsetting",
+      bgcolor: "#ff000080",
+    });
+  });
+
+  it("@staffrollinit/text/start restent lus (non-régression)", () => {
+    const ins = parse(lex('@staffrollinit face="ＭＳ Ｐ明朝"\n@staffrolltext size=19 y=612 text="x"\n@staffrollstart height=11252 time=160000')).pages[0]!.instructions;
+    expect(ins[0]).toMatchObject({ kind: "staffrollinit", face: "ＭＳ Ｐ明朝" });
+    expect(ins[1]).toMatchObject({ kind: "staffrolltext", text: "x", y: 612, size: 19 });
+    expect(ins[2]).toMatchObject({ kind: "staffrollstart", height: 11252, time: 160000 });
+  });
+});
