@@ -128,7 +128,7 @@ inconnue hors baseline.
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
 | **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 25 commande(s) distincte(s), 46 occurrence(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 23 commande(s) distincte(s), 31 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
@@ -148,8 +148,6 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@ageage` | 1 |
 | `@ansz` | 1 |
 | `@beginfallnote` | 1 |
-| `@cm` | 8 |
-| `@cm4pg` | 7 |
 | `@cockrobin` | 1 |
 | `@current` | 1 |
 | `@endcockrobin` | 1 |

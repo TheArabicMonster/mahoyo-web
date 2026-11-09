@@ -1010,8 +1010,9 @@ export class DomStageRenderer implements StageRenderer {
         break;
       }
       case "clearText": {
-        // Réglage d'origine « Effacement du texte au changement de page » (#177).
-        if (!this.settings.clearTextOnPageChange) break;
+        // Réglage d'origine « Effacement du texte au changement de page » (#177) : il ne
+        // s'applique qu'aux clearText implicites de changement de page, pas à @cm/@cm4pg (force).
+        if (!event.force && !this.settings.clearTextOnPageChange) break;
         this.text = [];
         this.typedUnits = 0;
         this.readUnits = 0;

@@ -2499,6 +2499,12 @@ export class Runtime {
         events.push({ kind: "autoMode", paused });
         break;
       }
+      case "cm":
+      case "cm4pg":
+        // Vidage explicite de la fenêtre de texte (le réglage de fin de page ne s'applique pas :
+        // `force`). @cm4pg n'ajoute que la copie des drapeaux de cache du moteur, invisible ici.
+        events.push({ kind: "clearText", force: true });
+        break;
       case "textoff":
       case "texton":
       case "position":

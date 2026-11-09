@@ -239,6 +239,10 @@ export type Instruction =
       visible?: boolean;
     }
   | { kind: "bindbg"; enabled: boolean; page?: PageLayer }
+  /** @cm : vide la fenêtre de texte (clearText explicite). */
+  | { kind: "cm" }
+  /** @cm4pg (tagex.tjs) : `cm` + copie des drapeaux de cache moteur (sans effet visible ici). */
+  | { kind: "cm4pg" }
   | { kind: "clall"; page?: PageLayer }
   | { kind: "clfg"; storage?: string; index?: number; id?: string; page?: PageLayer }
   | { kind: "backlay"; storage?: string }

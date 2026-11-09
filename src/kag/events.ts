@@ -316,7 +316,12 @@ export type RenderEvent =
   /** Affiche ou masque la textbox et sa bordure. */
   | { kind: "textbox"; state: TextboxState; time: Ms }
   /** Vide la textbox. */
-  | { kind: "clearText" }
+  /**
+   * Vide la fenêtre de texte. `force` = effacement demandé explicitement (@cm/@cm4pg), qui ne
+   * dépend pas du réglage « effacement au changement de page » (sinon il est ignoré quand ce
+   * réglage est désactivé, #177).
+   */
+  | { kind: "clearText"; force?: boolean }
   /** Ajoute du texte (le typewriter est géré côté renderer). */
   | { kind: "text"; segments: readonly TextSegment[] }
   /** Saut de ligne explicite. */
