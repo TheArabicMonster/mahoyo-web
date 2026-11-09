@@ -257,7 +257,18 @@ export type Instruction =
   | { kind: "clall"; page?: PageLayer }
   | { kind: "clfg"; storage?: string; index?: number; id?: string; page?: PageLayer }
   | { kind: "backlay"; storage?: string }
-  | { kind: "trans"; rule?: string; time: number; nowait?: boolean; canskip?: boolean; cond?: string }
+  | {
+      kind: "trans";
+      rule?: string;
+      time: number;
+      nowait?: boolean;
+      canskip?: boolean;
+      cond?: string;
+      /** Échange fore/back à la fin du fondu (moteur : `exchange=true` par défaut, #253). */
+      exchange?: boolean;
+      /** Ne pas exécuter le backlay après une transition bloquante (`@trans noback=1`, #253). */
+      noback?: boolean;
+    }
   | { kind: "play"; storage: string; volume?: number }
   | { kind: "playstop"; time?: number }
   | { kind: "playpause"; time: number; storage?: string }
@@ -381,7 +392,13 @@ export type Instruction =
   | { kind: "iscript" }
   | { kind: "endscript" }
   | { kind: "wait"; time: number; skippable?: boolean }
-  | { kind: "waitfor"; what: "transition" | "animation" | "quake" | "bgmFade" | "staffroll"; skippable?: boolean }
+  | {
+      kind: "waitfor";
+      what: "transition" | "animation" | "quake" | "bgmFade" | "staffroll";
+      skippable?: boolean;
+      /** `@wt noback=1` : ne pas copier fore→back après l'attente de transition (#253). */
+      noback?: boolean;
+    }
   | { kind: "text"; segments: TextSegment[] }
   | { kind: "break" }
   | { kind: "jump"; target?: string; storage?: string; cond?: string }
