@@ -1068,6 +1068,10 @@ export function parse(tokens: Token[]): ParsedScript {
   // Pending ruby annotation that applies to the next text characters
   let pendingRuby: string | null = null;
   let pendingRubyCharCount = 1; // how many chars the ruby covers
+  // Groupe partagé par les cellules d'une même annotation ruby : permet au rendu de réunir
+  // graph + caractères couverts dans un seul <ruby> (#300).
+  let pendingRubyGroup: number | null = null;
+  let rubyGroupSeq = 0;
 
   function flushText() {
     if (pendingSegments.length > 0) {
@@ -1075,6 +1079,7 @@ export function parse(tokens: Token[]): ParsedScript {
       pendingSegments = [];
     }
     pendingRuby = null;
+    pendingRubyGroup = null;
   }
 
   function pushPage() {
@@ -1094,20 +1099,57 @@ export function parse(tokens: Token[]): ParsedScript {
     if (content.length === 0) return;
 
     if (pendingRuby !== null) {
-      // Apply ruby to the first N characters
-      const rubyText = content.slice(0, pendingRubyCharCount);
-      const rest = content.slice(pendingRubyCharCount);
-
-      pendingSegments.push({ text: rubyText, ruby: pendingRuby });
-      pendingRuby = null;
-      pendingRubyCharCount = 1;
-
+      // Ruby sur les N prochains caractères (N peut avoir déjà été entamé par un graph, #300).
+      const take = Math.min(pendingRubyCharCount, content.length);
+      const rubyText = content.slice(0, take);
+      const rest = content.slice(take);
+      const continues = take < pendingRubyCharCount;
+      if (continues && pendingRubyGroup === null) pendingRubyGroup = ++rubyGroupSeq;
+      const group = pendingRubyGroup;
+      pendingSegments.push({
+        text: rubyText,
+        ruby: pendingRuby,
+        ...(group === null ? {} : { rubyGroup: group }),
+      });
+      pendingRubyCharCount -= take;
+      if (pendingRubyCharCount <= 0) {
+        pendingRuby = null;
+        pendingRubyCharCount = 1;
+        pendingRubyGroup = null;
+      }
       if (rest.length > 0) {
         pendingSegments.push({ text: rest });
       }
     } else {
       pendingSegments.push({ text: content });
     }
+  }
+
+  /**
+   * Pose une annotation ruby (posée par `[ruby …]`) sur un segment graph/emoji : le moteur compte
+   * l'image comme un caractère de base (`putGraph` incrémente `rubyCharCount`, puis `drawRuby`),
+   * donc le ruby couvre l'image — pas le texte suivant (#300). Si l'annotation couvre plusieurs
+   * cellules, le reliquat reste en attente pour les caractères suivants (même groupe ruby).
+   */
+  function annotateGraphRuby(segment: TextSegment): TextSegment {
+    if (pendingRuby === null || (!("graph" in segment) && !("emoji" in segment))) return segment;
+    const ruby = pendingRuby;
+    // Groupe utile seulement si l'annotation couvre encore d'autres cellules après l'image.
+    if (pendingRubyGroup === null && pendingRubyCharCount > 1) pendingRubyGroup = ++rubyGroupSeq;
+    const rubyGroup = pendingRubyGroup === null ? undefined : pendingRubyGroup;
+    const annotated: TextSegment =
+      "graph" in segment
+        ? { graph: { ...segment.graph, ruby, ...(rubyGroup === undefined ? {} : { rubyGroup }) } }
+        : "emoji" in segment
+          ? { emoji: { ...segment.emoji, ruby, ...(rubyGroup === undefined ? {} : { rubyGroup }) } }
+          : segment;
+    pendingRubyCharCount -= 1;
+    if (pendingRubyCharCount <= 0) {
+      pendingRuby = null;
+      pendingRubyCharCount = 1;
+      pendingRubyGroup = null;
+    }
+    return annotated;
   }
 
   /**
@@ -1124,6 +1166,7 @@ export function parse(tokens: Token[]): ParsedScript {
     let blockPending: TextSegment[] = [];
     let blockRuby: string | null = null;
     let blockRubyCharCount = 1;
+    let blockRubyGroup: number | null = null;
 
     function flushBlockText() {
       if (blockPending.length > 0) {
@@ -1131,22 +1174,56 @@ export function parse(tokens: Token[]): ParsedScript {
         blockPending = [];
       }
       blockRuby = null;
+      blockRubyGroup = null;
     }
 
     function addBlockText(content: string) {
       if (content.length === 0) return;
       if (blockRuby !== null) {
-        const rubyText = content.slice(0, blockRubyCharCount);
-        const rest = content.slice(blockRubyCharCount);
-        blockPending.push({ text: rubyText, ruby: blockRuby });
-        blockRuby = null;
-        blockRubyCharCount = 1;
+        const take = Math.min(blockRubyCharCount, content.length);
+        const rubyText = content.slice(0, take);
+        const rest = content.slice(take);
+        const continues = take < blockRubyCharCount;
+        if (continues && blockRubyGroup === null) blockRubyGroup = ++rubyGroupSeq;
+        const group = blockRubyGroup;
+        blockPending.push({
+          text: rubyText,
+          ruby: blockRuby,
+          ...(group === null ? {} : { rubyGroup: group }),
+        });
+        blockRubyCharCount -= take;
+        if (blockRubyCharCount <= 0) {
+          blockRuby = null;
+          blockRubyCharCount = 1;
+          blockRubyGroup = null;
+        }
         if (rest.length > 0) {
           blockPending.push({ text: rest });
         }
       } else {
         blockPending.push({ text: content });
       }
+    }
+
+    /** Même règle que `annotateGraphRuby` pour les graph/emoji d'un bloc conditionnel (#300). */
+    function annotateBlockGraphRuby(segment: TextSegment): TextSegment {
+      if (blockRuby === null || (!("graph" in segment) && !("emoji" in segment))) return segment;
+      const ruby = blockRuby;
+      if (blockRubyGroup === null && blockRubyCharCount > 1) blockRubyGroup = ++rubyGroupSeq;
+      const rubyGroup = blockRubyGroup === null ? undefined : blockRubyGroup;
+      const annotated: TextSegment =
+        "graph" in segment
+          ? { graph: { ...segment.graph, ruby, ...(rubyGroup === undefined ? {} : { rubyGroup }) } }
+          : "emoji" in segment
+            ? { emoji: { ...segment.emoji, ruby, ...(rubyGroup === undefined ? {} : { rubyGroup }) } }
+            : segment;
+      blockRubyCharCount -= 1;
+      if (blockRubyCharCount <= 0) {
+        blockRuby = null;
+        blockRubyCharCount = 1;
+        blockRubyGroup = null;
+      }
+      return annotated;
     }
 
     let i = start;
@@ -1175,6 +1252,7 @@ export function parse(tokens: Token[]): ParsedScript {
             } else {
               blockRuby = rubyArgs.ruby;
               blockRubyCharCount = rubyArgs.charCount;
+              blockRubyGroup = null;
             }
             i++;
           } else {
@@ -1194,17 +1272,19 @@ export function parse(tokens: Token[]): ParsedScript {
             if (rubyArgs.baseText !== undefined) {
               blockPending.push(...rubyBaseSegments(rubyArgs.baseText, rubyArgs.ruby));
               blockRuby = null;
+              blockRubyGroup = null;
             } else {
               blockRuby = rubyArgs.ruby;
               blockRubyCharCount = rubyArgs.charCount;
+              blockRubyGroup = ++rubyGroupSeq;
             }
           } else if (token.name === "graph") {
             const segment = graphSegment(token.args);
-            if (segment) blockPending.push(segment);
+            if (segment) blockPending.push(annotateBlockGraphRuby(segment));
             i++;
           } else if (EMOJI_TAGS.has(token.name.toLowerCase())) {
             const segment = emojiSegment(token.name);
-            if (segment) blockPending.push(segment);
+            if (segment) blockPending.push(annotateBlockGraphRuby(segment));
             i++;
           } else if (token.name === "cockrobin") {
             // Bloc conditionnel robin masqué par défaut (flags cf.* = false dans le TJS).
@@ -1344,9 +1424,11 @@ export function parse(tokens: Token[]): ParsedScript {
           if (rubyArgs.baseText !== undefined) {
             pendingSegments.push(...rubyBaseSegments(rubyArgs.baseText, rubyArgs.ruby));
             pendingRuby = null;
+            pendingRubyGroup = null;
           } else {
             pendingRuby = rubyArgs.ruby;
             pendingRubyCharCount = rubyArgs.charCount;
+            pendingRubyGroup = null;
           }
         } else {
           flushText();
@@ -1371,17 +1453,19 @@ export function parse(tokens: Token[]): ParsedScript {
           if (rubyArgs.baseText !== undefined) {
             pendingSegments.push(...rubyBaseSegments(rubyArgs.baseText, rubyArgs.ruby));
             pendingRuby = null;
+            pendingRubyGroup = null;
           } else {
             pendingRuby = rubyArgs.ruby;
             pendingRubyCharCount = rubyArgs.charCount;
+            pendingRubyGroup = null;
           }
         } else if (token.name === "graph") {
           // [graph] : image inline dans le flux de texte (ne vide pas le tampon).
           const segment = graphSegment(token.args);
-          if (segment) pendingSegments.push(segment);
+          if (segment) pendingSegments.push(annotateGraphRuby(segment));
         } else if (EMOJI_TAGS.has(token.name.toLowerCase())) {
           const segment = emojiSegment(token.name);
-          if (segment) pendingSegments.push(segment);
+          if (segment) pendingSegments.push(annotateGraphRuby(segment));
         } else if (token.name === "cockrobin") {
           // Bloc conditionnel robin masqué par défaut (flags cf.* = false dans le TJS).
           flushText();

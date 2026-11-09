@@ -819,7 +819,14 @@ export class Runtime {
     const size = this.state.textStyle?.size ?? DEFAULT_EMOJI_FONT_SIZE;
     return segments.map((segment) =>
       "emoji" in segment
-        ? { graph: { storage: `${segment.emoji.base}${size}`, alt: segment.emoji.alt } }
+        ? {
+            graph: {
+              storage: `${segment.emoji.base}${size}`,
+              alt: segment.emoji.alt,
+              ...(segment.emoji.ruby === undefined ? {} : { ruby: segment.emoji.ruby }),
+              ...(segment.emoji.rubyGroup === undefined ? {} : { rubyGroup: segment.emoji.rubyGroup }),
+            },
+          }
         : segment,
     );
   }
