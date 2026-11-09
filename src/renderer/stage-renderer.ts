@@ -89,6 +89,16 @@ type TextUnit = {
  *   tournent en CSS et peuvent être attendues via `waitFor("animation")`.
  * - Les effets `noise`/`haze` sont rendus par des calques CSS approximatifs.
  */
+/**
+ * Défauts de placement d'un fond sans `left`/`top`, repris du moteur : le tag étendu `@bg`
+ * (`data/override/tagex.tjs`) pose `left = (scWidth - imageWidth) / 2` et
+ * `top = scHeight - imageHeight + 48` — X centré, bas de l'image 48 px sous le bas de l'écran.
+ * Sans `top`, un fond de 1050 px de haut est donc décalé de 189 px par rapport à un centrage
+ * vertical (issue #249). Exprimés en CSS, ils ne demandent pas la taille de l'image.
+ */
+const BG_BOTTOM_MARGIN = 48;
+const BG_DEFAULT_POSITION = "50% calc(100% + 48px)";
+
 export class DomStageRenderer implements StageRenderer {
   private resolver: AssetResolver;
   private root: HTMLElement | null = null;
@@ -864,8 +874,11 @@ export class DomStageRenderer implements StageRenderer {
     if (bg) {
       const left = this.currentScene.bgLeft;
       const top = this.currentScene.bgTop;
+      // Défauts du moteur : X centré, Y = bas de l'image à 48 px sous le bas de l'écran
+      // (`@bg` de `data/override/tagex.tjs`, issue #249). Chaque axe est indépendant : `left=`
+      // seul n'impose pas le centrage vertical.
       this.bgEl.style.backgroundPosition =
-        left !== undefined && top !== undefined ? `${left}px ${top}px` : "50% 50%";
+        `${left !== undefined ? `${left}px` : "50%"} ${top !== undefined ? `${top}px` : "calc(100% + 48px)"}`;
       if (transformedBg) this.renderTransformedBg(bg, left, top, bgZoomX, bgZoomY, bgRotate);
     }
 
@@ -1139,15 +1152,15 @@ export class DomStageRenderer implements StageRenderer {
     img.style.position = "absolute";
     img.style.maxWidth = "none";
     const scale = `rotate(${rotate}deg) scale(${zoomx / 100}, ${zoomy / 100})`;
-    if (left !== undefined && top !== undefined) {
-      img.style.left = `${left}px`;
-      img.style.top = `${top}px`;
-      img.style.transform = scale;
-    } else {
-      img.style.left = "50%";
-      img.style.top = "50%";
-      img.style.transform = `translate(-50%, -50%) ${scale}`;
-    }
+    // Mêmes défauts que le fond non transformé (voir `BG_DEFAULT_POSITION`) : X centré si `left`
+    // est omis, bas de l'image à 48 px sous le bas de l'écran si `top` est omis. Chaque axe est
+    // indépendant (issue #249).
+    const centeredX = left === undefined;
+    if (left !== undefined) img.style.left = `${left}px`;
+    else img.style.left = "50%";
+    if (top !== undefined) img.style.top = `${top}px`;
+    else img.style.bottom = `-${BG_BOTTOM_MARGIN}px`;
+    img.style.transform = centeredX ? `translateX(-50%) ${scale}` : scale;
     img.style.transformOrigin = "50% 50%";
     this.bgEl.appendChild(img);
     this.bgImgEl = img;
