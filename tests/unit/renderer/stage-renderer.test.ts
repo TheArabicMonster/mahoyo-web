@@ -185,6 +185,32 @@ describe("DomStageRenderer", () => {
     expect(text.textContent).toBe("Long text here");
   });
 
+  it("l'abort interrompt la frappe et résout apply() sans attendre la fin de la page (#231)", async () => {
+    // Cause du blocage de « retour au titre » avec les placeholders : `Player.endSession()` attend
+    // la promesse d'`apply()` ; le typewriter ne l'écoutait pas et une page très longue (index.html
+    // servi à la place du scénario absent) retardait le retour au titre de toute sa durée de frappe.
+    const controller = new AbortController();
+    renderer.setSettings(display({ textSpeedUnread: 1000, textSpeedRead: 1000 }));
+    const events: RenderEvent[] = [
+      { kind: "text", segments: [{ text: "Une page beaucoup trop longue pour être tapée avant un retour au titre." }] },
+    ];
+    const promise = renderer.apply(events, { instant: false, signal: controller.signal });
+    const text = root.querySelector(".mh-stage-text") as HTMLElement;
+    // Attend que la frappe ait réellement démarré (premier caractère révélé, minuteur d'1 s armé).
+    for (let i = 0; i < 50 && (text.textContent ?? "") === ""; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const revealed = text.textContent;
+    expect(revealed?.length ?? 0).toBeGreaterThan(0);
+
+    controller.abort();
+    // Sans l'écoute de l'abort, la promesse ne se résoudrait qu'après ~65 s de frappe.
+    await expect(promise).resolves.toBeUndefined();
+    // La frappe est bien arrêtée : plus aucune unité n'est révélée après l'annulation.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(text.textContent).toBe(revealed);
+  });
+
   describe("boîte de texte fixe et police réduite (#163)", () => {
     // L'ancienne boîte n'est plus que le repli quand l'image de cadre manque (#173) : on simule un
     // échec de chargement pour l'obtenir.

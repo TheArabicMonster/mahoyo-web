@@ -1699,7 +1699,6 @@ export class DomStageRenderer implements StageRenderer {
 
   private runTypewriter(opts: RunOptions): Promise<void> {
     return new Promise((resolve) => {
-      this.typewriterResolve = resolve;
       const units = this.buildTextUnits();
       // Anti re-type : on continue depuis typedUnits (déjà révélées).
       const startUnit = Math.min(this.typedUnits, units.length);
@@ -1707,12 +1706,40 @@ export class DomStageRenderer implements StageRenderer {
       this.fitText(units, startUnit);
       const speed = opts.textSpeed ?? this.settings.textSpeedUnread;
 
+      /** Résout la frappe en cours : fin normale, hurry, ou annulation. */
+      const settle = (): void => {
+        opts.signal.removeEventListener("abort", onAbort);
+        this.typewriterResolve = null;
+        resolve();
+      };
+      /**
+       * Annulation (retour au titre, chargement) : on arrête la frappe sans attendre la fin de la
+       * page. `RunOptions.signal` garantit que les promesses se résolvent à l'abort ; sans cela
+       * `Player.endSession()` restait suspendu à la frappe en cours, donc le retour au titre ne
+       * rendait pas la main tant que toute la page n'était pas tapée (#231).
+       */
+      const onAbort = (): void => {
+        if (this.typewriterTimer) {
+          clearTimeout(this.typewriterTimer);
+          this.typewriterTimer = null;
+        }
+        this.typewriterHurry = false;
+        settle();
+      };
+
+      // `hurry()` résout via ce champ : il passe par `settle`, qui retire l'écouteur d'abort.
+      this.typewriterResolve = settle;
+      if (opts.signal.aborted) {
+        settle();
+        return;
+      }
+      opts.signal.addEventListener("abort", onAbort, { once: true });
+
       if (opts.instant || speed <= 0 || this.typewriterHurry) {
         this.renderTextUpTo(units, units.length);
         this.typedUnits = units.length;
-        this.typewriterResolve = null;
         this.typewriterHurry = false;
-        resolve();
+        settle();
         return;
       }
       this.typewriterHurry = false;
@@ -1723,16 +1750,14 @@ export class DomStageRenderer implements StageRenderer {
         if (this.typewriterHurry) {
           this.renderTextUpTo(units, units.length);
           this.typedUnits = units.length;
-          this.typewriterResolve = null;
-          resolve();
+          settle();
           return;
         }
         i++;
         this.renderTextUpTo(units, i);
         if (i >= units.length) {
           this.typedUnits = units.length;
-          this.typewriterResolve = null;
-          resolve();
+          settle();
           return;
         }
         this.typewriterTimer = setTimeout(step, speed);
