@@ -37,14 +37,11 @@
     "resumeploy": 1,
     "setdefaultmessageaction": 11,
     "settracerreturn": 2,
-    "staffrollsetting": 1,
-    "staffrolluninit": 3,
     "startchart": 1,
     "store": 1,
     "swel": 3,
     "tickclock": 11,
     "wb": 1,
-    "wstaffroll": 2,
     "xchgbgm": 7
   }
 }

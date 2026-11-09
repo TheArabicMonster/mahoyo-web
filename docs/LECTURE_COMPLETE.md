@@ -128,7 +128,7 @@ inconnue hors baseline.
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
 | **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 42 commande(s) distincte(s), 152 occurrence(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 39 commande(s) distincte(s), 146 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
@@ -177,14 +177,11 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@resumeploy` | 1 |
 | `@setdefaultmessageaction` | 11 |
 | `@settracerreturn` | 2 |
-| `@staffrollsetting` | 1 |
-| `@staffrolluninit` | 3 |
 | `@startchart` | 1 |
 | `@store` | 1 |
 | `@swel` | 3 |
 | `@tickclock` | 11 |
 | `@wb` | 1 |
-| `@wstaffroll` | 2 |
 | `@xchgbgm` | 7 |
 <!-- END AUTO: commandes-kag -->
 
