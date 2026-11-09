@@ -67,6 +67,11 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
 
   // ── 履歴とフローチャート ──
   "history.title": "履歴",
+  "history.title.deco": "バックログ",
+  "history.listLabel": "履歴",
+  "history.scrollDown": "下へスクロール",
+  "history.scrollUp": "上へスクロール",
+  "history.close": "履歴を閉じる",
   "flowchart.title": "フローチャート",
   "flowchart.title.deco": "フローチャート",
   "flowchart.region": "シナリオマップ",
@@ -207,6 +212,7 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   "shortcut.quit": "ゲームを終了",
 
   // ── 通知 ──
+  "toast.historyEmpty": "履歴はまだありません。",
   "toast.quickMenuLocked": "この場面ではセーブとロードは使用できません。",
   "toast.scriptNotFound": "スクリプトが見つかりません：{file}",
   "toast.saveUnavailable": "今はセーブできません。",

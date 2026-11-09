@@ -1,0 +1,186 @@
+/* ── Écran d'historique (HUD-12, #201) ───────────────────────────────────────────────────────────────
+   Plein cadre sur la « nuit bleue » (`mh-ui-night`, night.css), CSS pur, aucun asset (docs/DESIGN.md §9, §9.7).
+
+   Mesures de l'original (docs/ANALYSE_HUD_ORIGINAL.md §2.6), repère 1920×1080 puis ×2/3 dans le repère
+   logique 1280×720 du #viewport (le HUD n'est PAS dans le repère 1024×576 de la scène) :
+     titre      x 31–257, y 40–95            -> x 21–171, y 27–63        (1,6 % ; 3,7 %)
+     texte      x 265–1595                   -> x 177–1063               (13,8 % ; largeur 885 px)
+     ascenseur  x 1699–1758, y 127–977       -> x 1133–1172 (39 px), y 85–651   (11,8 % ; 78,7 %)
+     pastille   41×100                       -> 27×67 px (hauteur minimale de la pastille)
+     boutons    ≈ 50 px, y 1000–1048         -> 33 px, y 667–699         (92,6 %)
+   La zone défilante va de x 177 à x 1172 : le texte occupe le début, la barre native le bord droit
+   (marge intérieure de 69 px entre les deux). Positions en pourcentages du conteneur, tailles en rem. */
+
+.mh-bl {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  color: var(--mh-text, #fff);
+  font-family: var(--mh-font-text, Georgia, serif);
+  --mh-bl-scrollbar: 2.45rem; /* 39 px @720 */
+  --mh-bl-thumb-min: 4.2rem; /* 67 px @720 */
+  --mh-bl-button: 2.06rem; /* 33 px @720 */
+}
+
+/* ── En-tête ── */
+.mh-bl-header {
+  position: absolute;
+  left: 1.6%;
+  top: 3.4%;
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+}
+.mh-bl-title {
+  margin: 0;
+  font-family: var(--mh-font-title, Georgia, serif);
+  font-weight: 400;
+  font-size: var(--mh-screen-title-size, 2.4rem);
+  line-height: 1.1;
+  color: var(--mh-text-title, #f2fbff);
+  text-shadow: 0 0 12px rgba(0, 192, 192, 0.45);
+}
+.mh-bl-deco {
+  font-family: var(--mh-font-ja, sans-serif);
+  font-size: var(--mh-screen-subtitle-size, 0.8rem);
+  color: var(--mh-text-menu, #a9c8cc);
+}
+
+/* ── Zone défilante : police et marges du texte de jeu, barre native à droite ── */
+.mh-bl-scroll {
+  position: absolute;
+  left: 13.8%;
+  top: 11.77%;
+  width: 77.76%;
+  height: 78.7%;
+  box-sizing: border-box;
+  padding: 0.25rem 5.42% 0 0; /* 69 px entre le texte et la barre */
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  user-select: text;
+  outline: none;
+}
+.mh-bl-scroll:focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mh-bl-scroll { scroll-behavior: smooth; }
+}
+
+.mh-bl-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* Entrée : même corps et même interligne que le texte de jeu (DESIGN §3), retrait d'un em, une ligne vide entre pages. */
+.mh-bl-entry {
+  margin: 0 0 1.5em;
+  font-size: var(--mh-text-size, 2.1rem);
+  line-height: var(--mh-text-leading, 1.5);
+  text-indent: 1em;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+/* ── Ascenseur : barre native stylée (capsule à contour cyan, pastille mobile) ──
+   Chrome, Edge, Safari : pseudo-éléments -webkit-scrollbar. Firefox : scrollbar-color (la largeur y est
+   imposée par le navigateur). Chrome 121+ ignore les pseudo-éléments dès que `scrollbar-color` est posé :
+   on ne le pose donc que là où le sélecteur n'existe pas. */
+.mh-bl-scroll::-webkit-scrollbar {
+  width: var(--mh-bl-scrollbar);
+}
+.mh-bl-scroll::-webkit-scrollbar-track {
+  margin: 0;
+  border: 2px solid var(--mh-cyan-rail, #3f889c);
+  border-radius: 999px;
+  background: var(--mh-field-fill, #04080e);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.6);
+}
+.mh-bl-scroll::-webkit-scrollbar-thumb {
+  min-height: var(--mh-bl-thumb-min);
+  border: 5px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, var(--mh-cyan-glint, #5fcfc5), var(--mh-cyan-control, #08a8b8)) padding-box;
+}
+.mh-bl-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--mh-cyan-glint, #5fcfc5) padding-box;
+}
+@supports not selector(::-webkit-scrollbar) {
+  .mh-bl-scroll {
+    scrollbar-color: var(--mh-cyan-control, #08a8b8) var(--mh-field-fill, #04080e);
+    scrollbar-width: auto;
+  }
+}
+
+/* ── Boutons ronds : bas, haut, fermer (sous l'ascenseur) ── */
+.mh-bl-controls {
+  position: absolute;
+  left: 85.3125%; /* x = 1092 @720, comme la colonne du menu système */
+  top: 92.6%; /* y = 667 @720 */
+  display: flex;
+  gap: 0.5rem;
+}
+.mh-bl-btn {
+  appearance: none;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: var(--mh-bl-button);
+  height: var(--mh-bl-button);
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--mh-cyan-rail, #3f889c);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, var(--mh-teal-on-top, #3d746f), var(--mh-teal-on-bottom, #133c39));
+  color: var(--mh-text-menu, #a9c8cc);
+  cursor: pointer;
+  transition:
+    color var(--mh-dur-fast, 150ms) var(--mh-ease, linear),
+    border-color var(--mh-dur-fast, 150ms) var(--mh-ease, linear),
+    box-shadow var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+.mh-bl-btn:hover {
+  color: var(--mh-text-title, #f2fbff);
+  border-color: var(--mh-cyan-glint, #5fcfc5);
+  box-shadow: 0 0 10px rgba(95, 207, 197, 0.55);
+}
+.mh-bl-btn:focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+@media (pointer: coarse) {
+  .mh-bl-btn { --mh-bl-button: 2.75rem; } /* cible tactile de 44 px (DESIGN §10) */
+}
+
+/* Pictogrammes en CSS pur : chevron (bas, haut) et croix (fermer). */
+.mh-bl-icon {
+  position: relative;
+  display: block;
+  width: 0.6rem;
+  height: 0.6rem;
+}
+.mh-bl-down .mh-bl-icon,
+.mh-bl-up .mh-bl-icon {
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+}
+.mh-bl-down .mh-bl-icon { transform: translateY(-2px) rotate(45deg); }
+.mh-bl-up .mh-bl-icon { transform: translateY(2px) rotate(-135deg); }
+.mh-bl-close .mh-bl-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+.mh-bl-close .mh-bl-icon::before,
+.mh-bl-close .mh-bl-icon::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(50% - 1px);
+  width: 100%;
+  height: 2px;
+  background: currentColor;
+  transform: rotate(45deg);
+}
+.mh-bl-close .mh-bl-icon::after { transform: rotate(-45deg); }

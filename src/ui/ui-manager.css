@@ -13,7 +13,6 @@
 .mh-ui-scripts .mh-ui-button { width: 100%; padding: 0.4rem 0.5rem; font-size: 0.9rem; }
 .mh-ui-field { display: flex; gap: 0.75rem; align-items: center; margin: 0.4rem 0; }
 .mh-ui-field-label { min-width: 16rem; }
-.mh-ui-backlog { max-height: 30rem; overflow: auto; padding-left: 1.5rem; user-select: text; }
 .mh-ui-choices { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; }
 .mh-ui-choices[hidden], .mh-ui-status[hidden], .mh-ui-loading[hidden] { display: none; }
 .mh-ui-status { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.25rem; pointer-events: none; }

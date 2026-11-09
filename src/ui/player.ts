@@ -595,6 +595,15 @@ export class Player implements PlayerCommands {
     const inGame = this.state !== "title";
     if (!inGame && (screen === "pause" || screen === "save" || screen === "backlog")) return;
     if ((screen === "save" || screen === "load") && this.quickMenuRefused()) return;
+    if (screen === "backlog") {
+      // Déjà ouvert (raccourci pressé deux fois) : rien à empiler.
+      if (this.overlays[this.overlays.length - 1] === "backlog") return;
+      // Historique vide : pas d'écran, un toast (comme l'original, HUD-12 / #201).
+      if (this.backlog().length === 0) {
+        this.ui.toast(t("toast.historyEmpty"));
+        return;
+      }
+    }
     if (inGame && this.overlays.length === 0) {
       this.stateBeforePause = this.state;
       this.setState("paused");

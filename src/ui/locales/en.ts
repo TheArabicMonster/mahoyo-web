@@ -66,7 +66,12 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "slot.confirmLoad": "Load “{name}”?",
 
   // ── History and flowchart ──
-  "history.title": "History",
+  "history.title": "Back Log",
+  "history.title.deco": "履歴",
+  "history.listLabel": "History",
+  "history.scrollDown": "Scroll down",
+  "history.scrollUp": "Scroll up",
+  "history.close": "Close the history",
   "flowchart.title": "Flowchart",
   "flowchart.title.deco": "フローチャート",
   "flowchart.region": "Story map",
@@ -207,6 +212,7 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "shortcut.quit": "Quit the game",
 
   // ── Toasts ──
+  "toast.historyEmpty": "The history does not exist yet.",
   "toast.quickMenuLocked": "Saving and loading are unavailable during this sequence.",
   "toast.scriptNotFound": "Script not found: {file}",
   "toast.saveUnavailable": "Cannot save right now.",
