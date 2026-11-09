@@ -25,13 +25,14 @@ import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-c
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import {
   applyAppearance,
-  contrastFactor,
+  feBlendModeForLayerType,
   boxBlurSigma,
   effectFilter,
   isEnvironmentEffect,
   type Appearance,
   type SvgFilterRegistry,
 } from "./appearance.js";
+import type { EnvColorEffect, EnvColorTable } from "@/kag/envcolor.js";
 import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
 import {
@@ -207,9 +208,12 @@ export class DomStageRenderer implements StageRenderer {
   /** Effets non appliqués déjà signalés (un avertissement par nom). */
   private warnedEffects = new Set<string>();
   private readonly filterRegistry: SvgFilterRegistry;
+  /** Effets d'ambiance du jeu (`envcolor.ksc`, données installées par le pipeline). */
+  private readonly envEffects?: EnvColorTable;
 
   constructor(deps: StageRendererDeps) {
     this.resolver = deps.resolver;
+    this.envEffects = deps.envEffects;
     this.filterRegistry = {
       monoFilter: (color) => this.svgFilter(`mono:${color}`, (filter) => {
         const flood = document.createElementNS(SVG_NS, "feFlood");
@@ -254,7 +258,80 @@ export class DomStageRenderer implements StageRenderer {
         blur.setAttribute("stdDeviation", `${sx} ${sy}`);
         filter.appendChild(blur);
       }),
+      envFilter: (name, effect) => this.svgFilter(`env:${name}`, (filter) => {
+        this.buildEnvColorFilter(filter, effect);
+      }),
     };
+  }
+
+  /**
+   * Construit le filtre SVG d'un effet d'ambiance, dans l'ordre du moteur
+   * (`AnimationLayer.override.tjs`, `applyColorCorrection_in_onPaint`) :
+   * niveaux de gris → correction gamma par canal → calques de couleur translucides
+   * (chacun mélangé sur le résultat précédent avec son mode de fusion).
+   */
+  private buildEnvColorFilter(filter: SVGFilterElement, effect: EnvColorEffect): void {
+    let previous: string | null = null;
+    const append = (element: SVGElement, result: string): void => {
+      if (previous !== null) element.setAttribute("in", previous);
+      element.setAttribute("result", result);
+      filter.appendChild(element);
+      previous = result;
+    };
+
+    if (effect.grayscale) {
+      const matrix = document.createElementNS(SVG_NS, "feColorMatrix");
+      matrix.setAttribute("type", "saturate");
+      matrix.setAttribute("values", "0");
+      append(matrix, "env-grayscale");
+    }
+
+    const neutralGamma =
+      [effect.rGamma, effect.gGamma, effect.bGamma].every((gamma) => gamma === 1) &&
+      [effect.rFloor, effect.gFloor, effect.bFloor].every((floor) => floor === 0) &&
+      [effect.rCeil, effect.gCeil, effect.bCeil].every((ceil) => ceil === 255);
+    if (!neutralGamma) {
+      const transfer = document.createElementNS(SVG_NS, "feComponentTransfer");
+      const channels = [
+        ["R", effect.rGamma, effect.rFloor, effect.rCeil],
+        ["G", effect.gGamma, effect.gFloor, effect.gCeil],
+        ["B", effect.bGamma, effect.bFloor, effect.bCeil],
+      ] as const;
+      for (const [channel, gamma, floor, ceil] of channels) {
+        const func = document.createElementNS(SVG_NS, `feFunc${channel}`);
+        func.setAttribute("type", "gamma");
+        // Le moteur applique pow(x, 1/gamma) puis remet à l'échelle [floor, ceil].
+        func.setAttribute("amplitude", String((ceil - floor) / 255));
+        func.setAttribute("exponent", String(1 / gamma));
+        func.setAttribute("offset", String(floor / 255));
+        transfer.appendChild(func);
+      }
+      append(transfer, "env-gamma");
+    }
+
+    effect.blends.forEach((blend, index) => {
+      const flood = document.createElementNS(SVG_NS, "feFlood");
+      flood.setAttribute("flood-color", `rgb(${blend.r}, ${blend.g}, ${blend.b})`);
+      flood.setAttribute("flood-opacity", String(blend.alpha / 255));
+      const floodResult = `env-color-${index}`;
+      flood.setAttribute("result", floodResult);
+      filter.appendChild(flood);
+
+      const blended = document.createElementNS(SVG_NS, "feBlend");
+      // Source = couleur du calque, backdrop = image déjà corrigée (sémantique vérifiée de feBlend).
+      blended.setAttribute("in", floodResult);
+      blended.setAttribute("in2", previous ?? "SourceGraphic");
+      blended.setAttribute("mode", feBlendModeForLayerType(blend.layerType));
+      append(blended, `env-blend-${index}`);
+    });
+
+    // Aucune correction : filtre identité (une primitive est requise par <filter>).
+    if (previous === null) {
+      const matrix = document.createElementNS(SVG_NS, "feColorMatrix");
+      matrix.setAttribute("type", "matrix");
+      matrix.setAttribute("values", "1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0");
+      filter.appendChild(matrix);
+    }
   }
 
   /** Crée (une fois par clé) un filtre SVG et retourne `url(#id)`. */
@@ -307,7 +384,8 @@ export class DomStageRenderer implements StageRenderer {
     ) {
       return undefined;
     }
-    if (isEnvironmentEffect(s.effect) && !this.warnedEffects.has(s.effect!)) {
+    const envApplied = s.effect !== undefined && this.envEffects?.has(s.effect) === true;
+    if (!envApplied && isEnvironmentEffect(s.effect) && !this.warnedEffects.has(s.effect!)) {
       this.warnedEffects.add(s.effect!);
       console.warn(`[renderer] effet d'ambiance non appliqué (données du jeu non installées) : ${s.effect}`);
     }
@@ -1079,7 +1157,7 @@ export class DomStageRenderer implements StageRenderer {
         wrapper.style.opacity = String(s.opacity);
         wrapper.style.zIndex = String(s.z);
         wrapper.style.transform = partbgWrapperTransform();
-        applyAppearance(wrapper, this.appearanceWithWarning(s), this.filterRegistry);
+        applyAppearance(wrapper, this.appearanceWithWarning(s), this.filterRegistry, this.envEffects);
         // Fond derrière le crop (bgstorage).
         if (crop.bgStorage) {
           wrapper.style.backgroundImage = cssUrl(this.resolver.background(crop.bgStorage));
@@ -1124,7 +1202,7 @@ export class DomStageRenderer implements StageRenderer {
         img.style.top = `${s.y}px`;
         img.style.opacity = String(s.opacity);
         img.style.zIndex = String(s.z);
-        applyAppearance(img, this.appearanceWithWarning(s), this.filterRegistry);
+        applyAppearance(img, this.appearanceWithWarning(s), this.filterRegistry, this.envEffects);
         // Zoom et rotation autour du centre (`@fg zoom=… rotate=…`) ; neutre : le CSS de la classe suffit.
         if (s.zoomx !== undefined || s.zoomy !== undefined || s.rotate !== undefined) {
           img.style.transform = spriteTransform({
@@ -1513,7 +1591,7 @@ export class DomStageRenderer implements StageRenderer {
       () => this.stopAnimation(target),
       innerEl,
       this.currentAnimationAppearance(target),
-      (element, appearance) => applyAppearance(element, appearance, this.filterRegistry),
+      (element, appearance) => applyAppearance(element, appearance, this.filterRegistry, this.envEffects),
     );
     this.animations.set(target, ctrl);
   }
@@ -1533,7 +1611,7 @@ export class DomStageRenderer implements StageRenderer {
       blurx: last.blurx ?? def.keyframes[0]?.blurx,
       blury: last.blury ?? def.keyframes[0]?.blury,
     };
-    applyAppearance(el, appearance, this.filterRegistry);
+    applyAppearance(el, appearance, this.filterRegistry, this.envEffects);
     const isPartbg = !!def.isPartbg;
     if (isPartbg) {
       // Le wrapper partbg peut aussi animer center/vcenter/opacity/zoom/rotate.

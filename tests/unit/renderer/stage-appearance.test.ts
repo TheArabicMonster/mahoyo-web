@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDomStageRenderer } from "@/renderer/stage-renderer.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { RenderEvent, SceneState } from "@/kag/events.js";
+import type { EnvColorTable } from "@/kag/envcolor.js";
 
 describe("DomStageRenderer — apparence des calques (#252)", () => {
   let root: HTMLElement;
@@ -151,6 +152,65 @@ describe("DomStageRenderer — apparence des calques (#252)", () => {
     const warned = warn.mock.calls.map((c) => String(c[0])).join(" ");
     expect(warned).toContain("屋外深夜");
     expect(warned).toContain("mh屋内曇り");
+  });
+
+  it("applique un effet d'ambiance installé (envcolor.ksc) : gamma, calques de couleur, sans avertissement", async () => {
+    const envEffects: EnvColorTable = new Map([
+      [
+        "屋外深夜",
+        {
+          rGamma: 0.74,
+          rFloor: 0,
+          rCeil: 255,
+          gGamma: 0.8,
+          gFloor: 0,
+          gCeil: 255,
+          bGamma: 1,
+          bFloor: 0,
+          bCeil: 255,
+          grayscale: false,
+          blends: [{ r: 22, g: 75, b: 90, alpha: 31, layerType: 2 }],
+        },
+      ],
+    ]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const envRoot = document.createElement("div");
+    document.body.appendChild(envRoot);
+    const envRenderer = createDomStageRenderer({ resolver: createAssetResolver(), envEffects });
+    envRenderer.mount(envRoot);
+    try {
+      await envRenderer.apply(
+        [
+          {
+            kind: "scene",
+            scene: {
+              bg: null,
+              effect: null,
+              sprites: [{ id: "l1", storage: "a", x: 1, y: 2, z: 10, opacity: 1, effect: "屋外深夜" }],
+            },
+            transition: { method: "none" },
+          } as RenderEvent,
+        ],
+        { instant: true, signal: sig() },
+      );
+      const img = envRoot.querySelector(".mh-stage-sprite") as HTMLImageElement;
+      expect(img.style.filter).toContain("#mh-filter-");
+      // Gamma par canal : feFuncR amplitude (255-0)/255 = 1, exposant 1/0.74.
+      const funcR = envRoot.querySelector("feFuncR") as SVGFEFuncRElement;
+      expect(funcR.getAttribute("type")).toBe("gamma");
+      expect(funcR.getAttribute("amplitude")).toBe("1");
+      expect(Number(funcR.getAttribute("exponent"))).toBeCloseTo(1 / 0.74, 6);
+      // Calque de couleur : flood rgb(22,75,90) à 31/255, mélangé en normal.
+      const flood = envRoot.querySelector("feFlood") as SVGFEFloodElement;
+      expect(flood.getAttribute("flood-color")).toBe("rgb(22, 75, 90)");
+      expect(Number(flood.getAttribute("flood-opacity"))).toBeCloseTo(31 / 255, 6);
+      const blend = envRoot.querySelector("feBlend") as SVGFEBlendElement;
+      expect(blend.getAttribute("mode")).toBe("normal");
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      envRenderer.dispose();
+      envRoot.remove();
+    }
   });
 
   it("les changements discrets d'une animation (@fgact) mettent à jour le filtre", async () => {

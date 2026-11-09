@@ -7,9 +7,11 @@
  * - constantes de `type` : `data/scenario/noiseplugin.tjs` (commentaires numériques) ;
  * - application des effets : `data/override/animationlayer.override.tjs`
  *   (`applyColorCorrection_in_onPaint`, `getLayerEffect`) ;
- * - effets nommés : `data/others/envcolor.ksc` (données du jeu, non installées par le pipeline) ;
+ * - effets nommés : `data/others/envcolor.ksc` (données du jeu, installées par le pipeline) —
+ *   voir `src/kag/envcolor.ts` et `envFilter` ci-dessous ;
  * - `type` : `Layer.type` (docs KiriKiri), masque ignoré pour les modes non alpha.
  */
+import type { EnvColorEffect, EnvColorTable } from "@/kag/envcolor.js";
 
 /** Apparence d'un calque, telle que lue par le parser / le runtime. */
 export type Appearance = {
@@ -84,18 +86,49 @@ export interface SvgFilterRegistry {
   brightnessContrastFilter(brightness: number, contrastFactor: number): string;
   /** Flou gaussien anisotrope (`stdDeviation` X Y), approximation du double box blur du moteur. */
   blurFilter(sigmaX: number, sigmaY: number): string;
+  /** Effet d'ambiance `envcolor.ksc` (gamma/grayscale + calques de couleur avec mode de fusion). */
+  envFilter(name: string, effect: EnvColorEffect): string;
+}
+
+/**
+ * Modes de fusion acceptés par `feBlend` (SVG) pour les calques de couleur des effets
+ * d'ambiance ; les modes du moteur sans équivalent SVG retombent sur `normal` (approx. documentée).
+ */
+export function feBlendModeForLayerType(layerType: number): string {
+  const css = LAYER_TYPE_BLEND_MODES[layerType];
+  const supported = new Set([
+    "normal",
+    "multiply",
+    "screen",
+    "overlay",
+    "darken",
+    "lighten",
+    "color-dodge",
+    "color-burn",
+    "hard-light",
+    "soft-light",
+    "difference",
+    "exclusion",
+  ]);
+  return css && supported.has(css) ? css : "normal";
 }
 
 /** Retourne le filtre CSS d'un effet intrinsèque, ou `null` si l'effet n'est pas appliqué. */
-export function effectFilter(effect: string | undefined, svg: SvgFilterRegistry): string | null {
+export function effectFilter(
+  effect: string | undefined,
+  svg: SvgFilterRegistry,
+  env?: EnvColorTable,
+): string | null {
   if (!effect) return null;
   const css = CSS_EFFECTS[effect];
   if (css) return css;
   const mono = /^mono([0-9a-f]{6})$/i.exec(effect);
   if (mono) return svg.monoFilter(`#${mono[1]!}`);
   if (effect === "red" || effect === "green" || effect === "blue") return svg.channelFilter(effect);
+  const envEffect = env?.get(effect);
+  if (envEffect) return svg.envFilter(effect, envEffect);
   if (effect.startsWith("0x")) return null; // gamma direct : pas d'équivalent CSS (documenté)
-  if (ENV_EFFECT_RE.test(effect)) return null; // effet d'ambiance envcolor.ksc (non installé)
+  if (ENV_EFFECT_RE.test(effect)) return null; // effet d'ambiance absent de la table installée
   return null;
 }
 
@@ -125,9 +158,9 @@ export function boxBlurSigma(radius: number): number {
  * Construit la valeur CSS `filter` complète dans l'ordre du moteur : effet → luminosité/contraste
  * → flou. Retourne `""` si aucun filtre ne s'applique.
  */
-export function appearanceFilter(appearance: Appearance, svg: SvgFilterRegistry): string {
+export function appearanceFilter(appearance: Appearance, svg: SvgFilterRegistry, env?: EnvColorTable): string {
   const parts: string[] = [];
-  const effect = effectFilter(appearance.effect, svg);
+  const effect = effectFilter(appearance.effect, svg, env);
   if (effect) parts.push(effect);
 
   const brightness = appearance.brightness ?? 0;
@@ -166,8 +199,9 @@ export function applyAppearance(
   el: HTMLElement,
   appearance: Appearance | undefined,
   svg: SvgFilterRegistry,
+  env?: EnvColorTable,
 ): void {
-  const filter = appearance ? appearanceFilter(appearance, svg) : "";
+  const filter = appearance ? appearanceFilter(appearance, svg, env) : "";
   if (filter) el.style.filter = filter;
   else el.style.removeProperty("filter");
   const blend = appearance ? appearanceBlendMode(appearance.type) : "";

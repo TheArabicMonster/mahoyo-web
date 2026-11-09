@@ -10,6 +10,7 @@ import type { SaveTransferActions } from "./ui/save-load-screen.js";
 import { Player } from "./ui/player.js";
 import { HistoryRouter } from "./ui/router.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
+import { parseEnvColor, type EnvColorTable } from "@/kag/envcolor.js";
 import { parseStoryChain, type StoryChain } from "@/core/story-chain.js";
 import { chaptersToScripts } from "./ui/chapter-list.js";
 import { createSaveStore, type ResilientSaveStore } from "./player/save-store-idb.js";
@@ -20,6 +21,8 @@ import { downloadSaveExport, importSaveFile, pickSaveFile } from "./ui/save-tran
 
 const ASSET_BASE = "/assets";
 const MANIFEST_URL = `${ASSET_BASE}/asset-manifest.json`;
+/** Données du moteur installées par le pipeline (effets d'ambiance `effect=屋外深夜`…). */
+const ENV_COLOR_URL = `${ASSET_BASE}/data/others/envcolor.ksc`;
 
 /** Charge le manifest d'assets généré par le pipeline. */
 async function loadManifest(): Promise<AssetManifest | undefined> {
@@ -32,6 +35,24 @@ async function loadManifest(): Promise<AssetManifest | undefined> {
     return (await res.json()) as AssetManifest;
   } catch (err) {
     console.warn("[main] Impossible de charger le manifest:", err);
+    return undefined;
+  }
+}
+
+/**
+ * Charge la table des effets d'ambiance (`envcolor.ksc`) installée par le pipeline.
+ * Absente (installation sans données `data/`) : les effets d'ambiance restent non appliqués.
+ */
+async function loadEnvColors(): Promise<EnvColorTable | undefined> {
+  try {
+    const res = await fetch(ENV_COLOR_URL);
+    if (!res.ok) {
+      console.warn(`[main] Effets d'ambiance non installés (${res.status}) : ${ENV_COLOR_URL}`);
+      return undefined;
+    }
+    return parseEnvColor(new Uint8Array(await res.arrayBuffer()));
+  } catch (err) {
+    console.warn("[main] Impossible de charger envcolor.ksc:", err);
     return undefined;
   }
 }
@@ -77,6 +98,7 @@ async function main() {
   );
 
   const chain = await loadChain(resolver);
+  const envEffects = await loadEnvColors();
 
   // Instancie le player avec les vraies factories. L'écran titre propose Start, Load,
   // « Continuer » (autosave), Flowchart, Config et Extra (liste des chapitres).
@@ -87,7 +109,8 @@ async function main() {
   new Player({
     root: viewport,
     resolver,
-    createStageRenderer: createDomStageRenderer,
+    // Effets d'ambiance `envcolor.ksc` (données installées par le pipeline).
+    createStageRenderer: (deps) => createDomStageRenderer({ ...deps, envEffects }),
     createUIManager: () =>
       new DomUIManager({
         resolver,

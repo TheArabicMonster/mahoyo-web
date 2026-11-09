@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   LAYER_TYPE_BLEND_MODES,
   UNMAPPED_LAYER_TYPES,
+  feBlendModeForLayerType,
   appearanceBlendMode,
   appearanceFilter,
   boxBlurSigma,
@@ -19,6 +20,22 @@ import {
   type SvgFilterRegistry,
 } from "@/renderer/appearance.js";
 import { applyAppearance } from "@/renderer/appearance.js";
+import type { EnvColorEffect, EnvColorTable } from "@/kag/envcolor.js";
+
+const ENV_EFFECT: EnvColorEffect = {
+  rGamma: 0.74,
+  rFloor: 0,
+  rCeil: 255,
+  gGamma: 0.8,
+  gFloor: 0,
+  gCeil: 255,
+  bGamma: 1,
+  bFloor: 0,
+  bCeil: 255,
+  grayscale: false,
+  blends: [{ r: 22, g: 75, b: 90, alpha: 31, layerType: 2 }],
+};
+const ENV_TABLE: EnvColorTable = new Map([["屋外深夜", ENV_EFFECT]]);
 
 /** Registre factice : rend lisible le filtre attendu sans DOM. */
 const fakeRegistry: SvgFilterRegistry = {
@@ -26,6 +43,7 @@ const fakeRegistry: SvgFilterRegistry = {
   channelFilter: (channel) => `url(#channel-${channel})`,
   brightnessContrastFilter: (brightness, factor) => `url(#bc-${brightness}-${factor})`,
   blurFilter: (sx, sy) => `url(#blur-${sx}-${sy})`,
+  envFilter: (name) => `url(#env-${name})`,
 };
 
 describe("mapping des modes de fusion (type=)", () => {
@@ -88,6 +106,34 @@ describe("filtres d'effet (effect=)", () => {
     expect(effectFilter(undefined, fakeRegistry)).toBeNull();
     expect(effectFilter("none", fakeRegistry)).toBeNull();
     expect(effectFilter("inconnu", fakeRegistry)).toBeNull();
+  });
+});
+
+describe("effets d'ambiance (envcolor.ksc)", () => {
+  it("applique un effet présent dans la table installée", () => {
+    expect(effectFilter("屋外深夜", fakeRegistry, ENV_TABLE)).toBe("url(#env-屋外深夜)");
+    expect(appearanceFilter({ effect: "屋外深夜", brightness: -20 }, fakeRegistry, ENV_TABLE)).toBe(
+      `url(#env-屋外深夜) url(#bc--20-1)`,
+    );
+  });
+
+  it("ne l'applique pas si la table n'est pas installée (fallback + avertissement côté renderer)", () => {
+    expect(effectFilter("屋外深夜", fakeRegistry)).toBeNull();
+    expect(isEnvironmentEffect("屋外深夜")).toBe(true);
+  });
+
+  it("un effet intrinsèque reste prioritaire sur un homonyme de la table", () => {
+    const table: EnvColorTable = new Map([["nega", ENV_EFFECT]]);
+    expect(effectFilter("nega", fakeRegistry, table)).toBe("invert(1)");
+  });
+
+  it("mappe les modes de fusion des calques d'ambiance vers feBlend", () => {
+    expect(feBlendModeForLayerType(2)).toBe("normal");
+    expect(feBlendModeForLayerType(5)).toBe("multiply");
+    expect(feBlendModeForLayerType(8)).toBe("color-dodge");
+    expect(feBlendModeForLayerType(11)).toBe("screen");
+    expect(feBlendModeForLayerType(17)).toBe("screen");
+    expect(feBlendModeForLayerType(3)).toBe("normal"); // additif : pas d'équivalent feBlend
   });
 });
 
