@@ -25,7 +25,9 @@ describe.skipIf(!hasFr)("Traduction française installée", () => {
   const manifest: AssetManifest | null = existsSync(manifestPath)
     ? JSON.parse(readFileSync(manifestPath, "utf-8"))
     : null;
-  const originalListing = listCorpus(scenarioDir);
+  // Calculé seulement si le corpus existe : sans assets, le describe est skippé mais son corps est
+  // tout de même évalué à la collecte ; `listCorpus("")` lèverait ENOENT (checkout nu, #269).
+  const originalListing = hasAssets && existsSync(scenarioDir) ? listCorpus(scenarioDir) : null;
 
   it("l'index français est valide et liste les scripts attendus", () => {
     const raw = JSON.parse(readFileSync(LANG_FR_PATH, "utf-8"));
@@ -57,7 +59,7 @@ describe.skipIf(!hasFr)("Traduction française installée", () => {
     const frDir = join(assetsDir!, "lang/fr/scenario");
 
     // Charge les scripts originaux comme fallback, puis surcharge les scripts traduits.
-    const scriptTexts = new Map(originalListing.scriptTexts);
+    const scriptTexts = new Map(originalListing?.scriptTexts ?? []);
     for (const file of index.scripts) {
       const path = join(frDir, file);
       const text = readFileSync(path, "utf-8");
