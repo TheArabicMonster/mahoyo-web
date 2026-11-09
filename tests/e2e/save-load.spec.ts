@@ -59,6 +59,9 @@ test.describe("Écrans de sauvegarde et de chargement (#196)", () => {
     await yes.click();
     await expect(page.locator("#ui-overlay")).toHaveAttribute("data-screen", "game", { timeout: 15000 });
     await expect(text).toContainText(/\S{5}/);
+    // Les calques de la scène sont restaurés avec le texte : l'ouverture du prologue (fixture
+    // placeholders) pose un `@partbg`, il doit être de nouveau affiché après le chargement (#91).
+    await expect(page.locator(".mh-stage-partbg")).toBeVisible();
   });
 
   test("navigation entre pages, clavier, et géométrie à 1280×720 sans débordement", async ({ page }) => {

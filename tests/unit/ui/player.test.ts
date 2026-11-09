@@ -9,7 +9,7 @@ import { RecordingStageRenderer } from "../renderer/recording-stage-renderer.js"
 import { DEFAULT_AUDIO_SETTINGS, DEFAULT_DISPLAY_SETTINGS } from "@/renderer/types.js";
 import type { RunOptions } from "@/renderer/types.js";
 import { defaultShortcuts } from "@/core/shortcuts.js";
-import type { RenderEvent, Step } from "@/kag/events.js";
+import type { RenderEvent, StageSnapshot, Step } from "@/kag/events.js";
 import type { RuntimeSaveData } from "@/kag/runtime.js";
 import type { ParsedScript } from "@/kag/types.js";
 import type { StoryChain } from "@/core/story-chain.js";
@@ -98,8 +98,11 @@ class TestStage extends RecordingStageRenderer {
   setClickIndicator(style?: "line" | "page" | null): void {
     this.indicators.push(style ?? null);
   }
+  /** Instantanés restaurés (load / rollback), pour vérifier ce qui est réappliqué. */
+  restoreSnapshots: StageSnapshot[] = [];
   async restore(...args: Parameters<RecordingStageRenderer["restore"]>): Promise<void> {
     this.restores++;
+    this.restoreSnapshots.push(args[0]);
     return super.restore(...args);
   }
 }
@@ -1723,5 +1726,262 @@ describe("Player — transitions plein écran (HUD-14, #205)", () => {
     expect(ctx.transitions.cancels).toBe(0);
     expect(viewsAtReveal).toEqual(["title"]);
     expect(ctx.player.currentState).toBe("title");
+  });
+});
+
+describe("Player — persistance complète (#91)", () => {
+  /** Runtime porteur de variables KAG et d'un fond : mémorise ce que `loadSaveData` restaure. */
+  class PersistRuntime implements RuntimeLike {
+    scriptLoader: RuntimeLike["scriptLoader"] = null;
+    restored: RuntimeSaveData | null = null;
+    variables: { karma: number; choix: string };
+    private index = 0;
+    private readonly name = "p.ks";
+    constructor(private readonly steps: Step[]) {
+      this.variables = { karma: 42, choix: "A" };
+    }
+    step(): Step {
+      return (
+        this.steps[this.index++] ?? {
+          position: { scriptName: this.name, page: 99, instruction: 0 },
+          events: [],
+          stop: { kind: "end" },
+        }
+      );
+    }
+    async loadScript(): Promise<boolean> {
+      return true;
+    }
+    jump(): boolean {
+      return true;
+    }
+    getSaveData(): RuntimeSaveData {
+      return {
+        scriptName: this.name,
+        pc: this.index,
+        instructionIndex: 0,
+        segmentIndex: 0,
+        state: {
+          fore: { background: "foret", layers: [] },
+          back: { background: "", layers: [] },
+          bgm: "theme",
+          se: null,
+          variables: { f: { karma: this.variables.karma }, sf: { choix: this.variables.choix }, tf: {} },
+          evalGlobal: {},
+        },
+        callStack: [],
+        macros: {},
+      };
+    }
+    async loadSaveData(data: RuntimeSaveData): Promise<boolean> {
+      this.restored = data;
+      this.index = data.pc;
+      this.variables = {
+        karma: Number(data.state.variables.f.karma ?? 0),
+        choix: String(data.state.variables.sf.choix ?? ""),
+      };
+      return true;
+    }
+  }
+
+  it("sauvegarde puis chargement restaurent texte, calques, audio et variables", async () => {
+    const layer = { id: "aoko", storage: "aoko", x: 512, y: 288, z: 100, opacity: 1 };
+    const step: Step = {
+      position: { scriptName: "p.ks", page: 0, instruction: 0 },
+      events: [
+        { kind: "scene", scene: { bg: "foret", sprites: [layer], effect: null }, transition: { method: "none" } },
+        { kind: "text", segments: [{ text: "Bonjour" }] },
+        { kind: "audio", event: { kind: "play", channel: "bgm", storage: "theme", loop: true, volume: 0.6 } },
+      ],
+      stop: { kind: "click", style: "page" },
+    };
+    const runtimes: PersistRuntime[] = [];
+    const ctx = setup([step], {
+      createRuntime: () => {
+        const rt = new PersistRuntime([step]);
+        runtimes.push(rt);
+        return rt;
+      },
+    });
+    await start(ctx);
+
+    // Le runtime porte les variables posées par le script (`@set`) au moment du point de clic.
+    await ctx.player.save(1);
+
+    const record = await ctx.saveStore.get(1);
+    expect(record?.stage.text.map((s) => ("text" in s ? s.text : "")).join("")).toContain("Bonjour");
+    expect(record?.stage.scene.sprites.map((s) => s.storage)).toEqual(["aoko"]);
+    expect(record?.audio.loops).toEqual([{ channel: "bgm", storage: "theme", volume: 0.6 }]);
+    expect(record?.runtime.state.variables.f.karma).toBe(42);
+    expect(record?.runtime.state.variables.sf.choix).toBe("A");
+
+    // On simule une session neuve : rien n'est en mémoire, seul l'enregistrement doit restaurer.
+    runtimes[0]!.variables = { karma: 0, choix: "" };
+    await ctx.player.load(1);
+    await until(() => ctx.player.currentState === "waiting-click", "chargement");
+
+    const restored = runtimes.at(-1)!;
+    expect(restored.restored?.state.variables.f.karma).toBe(42);
+    expect(restored.restored?.state.variables.sf.choix).toBe("A");
+    expect(restored.variables).toEqual({ karma: 42, choix: "A" });
+    const snapshot = ctx.stage.restoreSnapshots.at(-1)!;
+    expect(snapshot.text.map((s) => ("text" in s ? s.text : "")).join("")).toContain("Bonjour");
+    expect(snapshot.scene.sprites.map((s) => s.storage)).toEqual(["aoko"]);
+    expect(ctx.audio.events.at(-1)).toEqual({ kind: "play", channel: "bgm", storage: "theme", loop: true, volume: 0.6 });
+  });
+
+  /** Runtime multi-pages par script : 3 arrêts de clic par fichier, enchaînement a.ks → b.ks. */
+  class MultiStopRuntime implements RuntimeLike {
+    scriptLoader: RuntimeLike["scriptLoader"] = null;
+    loaded: string[] = [];
+    private current: string;
+    private index = 0;
+    constructor(
+      first: string,
+      private readonly scripts: Record<string, Step[]>,
+    ) {
+      this.current = first;
+    }
+    step(): Step {
+      const steps = this.scripts[this.current] ?? [];
+      return (
+        steps[this.index++] ?? {
+          position: { scriptName: this.current, page: 99, instruction: 0 },
+          events: [],
+          stop: { kind: "end" },
+        }
+      );
+    }
+    async loadScript(storage: string): Promise<boolean> {
+      this.current = storage;
+      this.loaded.push(storage);
+      this.index = 0;
+      return true;
+    }
+    jump(): boolean {
+      return true;
+    }
+    getSaveData(): RuntimeSaveData {
+      return {
+        scriptName: this.current,
+        pc: this.index,
+        instructionIndex: 0,
+        segmentIndex: 0,
+        state: {
+          fore: { background: "", layers: [] },
+          back: { background: "", layers: [] },
+          bgm: null,
+          se: null,
+          variables: { f: {}, sf: {}, tf: {} },
+          evalGlobal: {},
+        },
+        callStack: [],
+        macros: {},
+      };
+    }
+    async loadSaveData(data: RuntimeSaveData): Promise<boolean> {
+      this.current = data.scriptName;
+      this.index = data.pc;
+      return true;
+    }
+  }
+
+  const clickPages = (name: string, count: number): Step[] =>
+    Array.from({ length: count }, (_, i) => ({
+      position: { scriptName: name, page: i, instruction: 0 },
+      events: [{ kind: "text", segments: [{ text: `${name} page ${i}` }] }] as RenderEvent[],
+      stop: { kind: "click", style: "page" as const },
+    }));
+
+  it("retour arrière sur plusieurs pas, y compris après un changement de script", async () => {
+    const chain: StoryChain = { version: 1, first: "a.ks", next: { "a.ks": [{ to: "b.ks" }], "b.ks": [] } };
+    const scripts = { "a.ks": clickPages("a.ks", 3), "b.ks": clickPages("b.ks", 3) };
+    const runtimes: MultiStopRuntime[] = [];
+    const ctx = setup([], {
+      loadChain: async () => chain,
+      createRuntime: () => {
+        const rt = new MultiStopRuntime("a.ks", scripts);
+        runtimes.push(rt);
+        return rt;
+      },
+    });
+    current = ctx.player;
+    await ctx.player.ready;
+    const lastText = () =>
+      ctx.stage.events
+        .filter((e) => e.kind === "text")
+        .map((e) => (e.kind === "text" ? e.segments.map((s) => ("text" in s ? s.text : "")).join("") : ""))
+        .at(-1);
+    const advanceToText = async (expected: string) => {
+      const before = ctx.stage.events.length;
+      ctx.player.advance();
+      await until(() => ctx.stage.events.length > before && lastText() === expected, expected);
+    };
+
+    ctx.player.startScript("a.ks");
+    await until(() => ctx.player.currentState === "waiting-click", "a.ks page 0");
+    await advanceToText("a.ks page 1");
+    await advanceToText("a.ks page 2");
+    ctx.player.advance(); // fin de a.ks → b.ks
+    await until(() => ctx.player.currentScript === "b" && lastText() === "b.ks page 0", "b.ks page 0");
+    await advanceToText("b.ks page 1");
+
+    const restores = ctx.stage.restores;
+    await ctx.player.rollback(); // b.ks page 0
+    await until(() => ctx.stage.restores === restores + 1, "rollback 1");
+    expect(ctx.player.currentScript).toBe("b");
+    await ctx.player.rollback(); // dernier clic de a.ks (changement de script en arrière)
+    await until(() => ctx.stage.restores === restores + 2, "rollback 2");
+    expect(ctx.player.currentScript).toBe("a");
+    await ctx.player.rollback(); // page 1 de a.ks
+    await until(() => ctx.stage.restores === restores + 3, "rollback 3");
+    expect(ctx.player.currentScript).toBe("a");
+    expect(ctx.player.currentState).toBe("waiting-click");
+
+    // La lecture reprend normalement depuis le point restauré.
+    const before = ctx.stage.events.length;
+    ctx.player.advance();
+    await until(() => ctx.stage.events.length > before && ctx.player.currentState === "waiting-click", "reprise");
+    expect(lastText()).toBe("a.ks page 2");
+  });
+
+  it("le statut « lu » persiste entre deux sessions et le skip s'arrête sur le texte non lu", async () => {
+    const settingsStore = createMemorySettingsStore();
+    const steps = clickPages("t.ks", 4);
+    const ctx1 = setup(steps, { settingsStore });
+    current = ctx1.player;
+    await ctx1.player.ready;
+    const lastText = (ctx: ReturnType<typeof setup>) =>
+      ctx.stage.events
+        .filter((e) => e.kind === "text")
+        .map((e) => (e.kind === "text" ? e.segments.map((s) => ("text" in s ? s.text : "")).join("") : ""))
+        .at(-1);
+    const advanceToText = async (ctx: ReturnType<typeof setup>, expected: string) => {
+      const before = ctx.stage.events.length;
+      ctx.player.advance();
+      await until(() => ctx.stage.events.length > before && lastText(ctx) === expected, expected);
+    };
+    ctx1.player.startScript("t.ks");
+    await until(() => ctx1.player.currentState === "waiting-click", "page 0");
+    await advanceToText(ctx1, "t.ks page 1");
+    await advanceToText(ctx1, "t.ks page 2");
+    // Retour au titre : le statut lu est persisté dans le magasin de réglages.
+    await ctx1.player.returnToTitle();
+    const persisted = await settingsStore.loadRead();
+    expect(persisted.size).toBe(3); // pages 0, 1 et 2 affichées
+    await ctx1.player.dispose();
+    current = null;
+
+    // Nouvelle session (aucune mémoire du player, même magasin de réglages).
+    const ctx2 = setup(steps, { settingsStore });
+    current = ctx2.player;
+    await ctx2.player.ready;
+    ctx2.player.startScript("t.ks");
+    await until(() => ctx2.player.currentState === "waiting-click", "page 0 session 2");
+    ctx2.player.setMode("skip");
+    // Les trois pages déjà lues défilent ; le skip s'arrête sur la page 3, non lue.
+    await until(() => ctx2.player.currentMode === "normal" && lastText(ctx2) === "t.ks page 3", "skip sur texte non lu");
+    expect(ctx2.ui.toasts.some((t) => t.message.includes("non lu"))).toBe(true);
+    expect(ctx2.player.currentState).toBe("waiting-click");
   });
 });
