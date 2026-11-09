@@ -245,9 +245,13 @@ Aucun asset du jeu ne doit être commité. Les dossiers recommandés sont déjà
 
 Le pipeline **refuse de démarrer** si le dossier de sortie ou de travail est dans
 le dépôt sans être ignoré par git : l'extraction écrirait des fichiers du jeu
-committables. Utilisez `public/assets`, `.pipeline-work/` (ou un autre dossier
-ignoré), ou travaillez hors du dépôt (`/tmp/…`). `--dry-run` ne fait
-qu'avertir, puisqu'il n'écrit rien.
+committables. Le contrôle fonctionne aussi quand le dossier n'existe pas encore :
+le premier lancement avec les valeurs par défaut (`./public/assets`,
+`.pipeline-work/`) est donc accepté, le pipeline créant les dossiers au besoin.
+
+Utilisez `public/assets`, `.pipeline-work/` (ou un autre dossier ignoré), ou
+travaillez hors du dépôt (`/tmp/…`). `--dry-run` ne fait qu'avertir, puisqu'il
+n'écrit rien.
 
 ## Structure des dossiers
 
