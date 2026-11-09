@@ -28,6 +28,22 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "title.entry.soundmode": "Soundmode",
   "title.entry.back": "Back",
 
+  // ── CG mode (HUD-15, #208) ──
+  "cg.title": "CG mode",
+  "cg.tab.event": "Event",
+  "cg.tab.background": "Background",
+  "cg.locked": "image not displayed",
+  "cg.lockedHint": "Image {n} not displayed: not seen in the game yet.",
+  "cg.open": "Show image {n}",
+  "cg.empty": "No images available.",
+  "cg.viewer.label": "Image viewer",
+  "cg.viewer.prev": "Previous image",
+  "cg.viewer.next": "Next image",
+  "cg.viewer.close": "Close viewer",
+  "cg.viewer.zoomIn": "Zoom in",
+  "cg.viewer.zoomOut": "Zoom out",
+  "cg.viewer.zoomReset": "Actual size",
+
   // ── System menu (right click) ──
   "systemMenu.title": "System",
   "systemMenu.title.deco": "システム",

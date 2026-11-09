@@ -198,3 +198,27 @@ describe("AssetResolver.uiImage (#189)", () => {
     expect(createAssetResolver().uiImage("cadre test")).toBeNull();
   });
 });
+
+describe("AssetResolver — énumération des images (galerie CG, HUD-15)", () => {
+  it("liste les images du manifeste avec l'URL absolue", () => {
+    const manifest: AssetManifest = {
+      version: 1,
+      generatedAt: "2026-01-01T00:00:00Z",
+      images: {
+        cg01: { url: "image/cg01.webp", source: "image/cg01.tlg", kind: "image" },
+        bg01: { url: "bg/bg01.webp", source: "bg/bg01.tlg", kind: "bg" },
+      },
+      audio: {},
+      scenarios: {},
+    };
+    const entries = createAssetResolver({ manifest }).imageEntries();
+    expect(entries).toEqual([
+      { key: "bg01", url: "/assets/bg/bg01.webp", kind: "bg", source: "bg/bg01.tlg" },
+      { key: "cg01", url: "/assets/image/cg01.webp", kind: "image", source: "image/cg01.tlg" },
+    ]);
+  });
+
+  it("sans manifeste : aucune entrée (le repli par convention ne permet pas de lister)", () => {
+    expect(createAssetResolver().imageEntries()).toEqual([]);
+  });
+});

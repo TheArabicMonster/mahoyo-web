@@ -26,6 +26,21 @@ export type ScenarioEntry = {
   encoding: string;
 };
 
+/**
+ * Entrée d'image aplatie (clé du manifeste + kind + source), pour les écrans qui listent les
+ * images de l'utilisateur (galerie CG, HUD-15 / #208).
+ */
+export type ImageEntry = {
+  /** Clé normalisée du manifeste (sans extension, en minuscules). */
+  key: string;
+  /** URL relative au baseUrl du résolveur (ex. `image/cg01.webp`). */
+  url: string;
+  /** Kind du manifeste (`bg`, `image`, `rule`). */
+  kind: AssetKind;
+  /** Fichier source d'origine (ex. `image/cg01.tlg`) : sert aux conventions de dossier. */
+  source: string;
+};
+
 /** Manifest complet, sérialisable en JSON. */
 export type AssetManifest = {
   version: 1;
@@ -104,4 +119,17 @@ export function lookupScenario(
   if (!manifest) return null;
   const entry = manifest.scenarios[key];
   return entry?.url ?? null;
+}
+
+/**
+ * Liste les images du manifeste, aplaties en entrées triées par clé.
+ *
+ * Utilisé par la galerie CG (#208) : les clés et les chemins sources sont des données du
+ * manifeste de l'utilisateur, jamais des assets versionnés.
+ */
+export function listImages(manifest: AssetManifest | undefined): ImageEntry[] {
+  if (!manifest) return [];
+  return Object.entries(manifest.images)
+    .map(([key, entry]) => ({ key, url: entry.url, kind: entry.kind, source: entry.source }))
+    .sort((a, b) => a.key.localeCompare(b.key, "ja", { numeric: true }));
 }

@@ -28,6 +28,22 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   "title.entry.soundmode": "サウンドモード",
   "title.entry.back": "戻る",
 
+  // ── CG mode (HUD-15, #208) ──
+  "cg.title": "CGモード",
+  "cg.tab.event": "イベント",
+  "cg.tab.background": "背景",
+  "cg.locked": "未表示の画像",
+  "cg.lockedHint": "画像{n}は未表示です（本編でまだ見ていません）。",
+  "cg.open": "画像{n}を表示",
+  "cg.empty": "表示できる画像がありません。",
+  "cg.viewer.label": "画像ビューア",
+  "cg.viewer.prev": "前の画像",
+  "cg.viewer.next": "次の画像",
+  "cg.viewer.close": "ビューアを閉じる",
+  "cg.viewer.zoomIn": "拡大",
+  "cg.viewer.zoomOut": "縮小",
+  "cg.viewer.zoomReset": "等倍",
+
   // ── システムメニュー（右クリック） ──
   "systemMenu.title": "システム",
   "systemMenu.title.deco": "システム",

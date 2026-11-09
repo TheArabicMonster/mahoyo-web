@@ -34,6 +34,23 @@ export const fr = {
   "title.entry.soundmode": "Soundmode",
   "title.entry.back": "Back",
 
+  // ── CG mode (HUD-15, #208) ──
+  // Libellé « image non affichée » imposé par l'issue #205/#208 (docs/ANALYSE_HUD_ORIGINAL.md §2.11).
+  "cg.title": "CG mode",
+  "cg.tab.event": "Évènement",
+  "cg.tab.background": "Arrière-plan",
+  "cg.locked": "image non affichée",
+  "cg.lockedHint": "Image {n} non affichée : pas encore vue dans le jeu.",
+  "cg.open": "Afficher l'image {n}",
+  "cg.empty": "Aucune image disponible.",
+  "cg.viewer.label": "Visionneuse d'image",
+  "cg.viewer.prev": "Image précédente",
+  "cg.viewer.next": "Image suivante",
+  "cg.viewer.close": "Fermer la visionneuse",
+  "cg.viewer.zoomIn": "Agrandir",
+  "cg.viewer.zoomOut": "Réduire",
+  "cg.viewer.zoomReset": "Taille réelle",
+
   // ── Menu système (clic droit) ──
   "systemMenu.title": "Système",
   "systemMenu.title.deco": "システム",

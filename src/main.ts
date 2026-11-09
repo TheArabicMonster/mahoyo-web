@@ -12,6 +12,7 @@ import type { AssetManifest } from "@/core/asset-manifest.js";
 import { parseStoryChain, type StoryChain } from "@/core/story-chain.js";
 import { chaptersToScripts } from "./ui/chapter-list.js";
 import { createSaveStore, type ResilientSaveStore } from "./player/save-store-idb.js";
+import { createCgProgress, trackCgImages } from "./player/cg-seen.js";
 import { createLocalSettingsStore } from "./player/settings-store.js";
 import type { ProgressAccess } from "./player/save-transfer.js";
 import { downloadSaveExport, importSaveFile, pickSaveFile } from "./ui/save-transfer.js";
@@ -47,7 +48,14 @@ async function loadChain(resolver: AssetResolver): Promise<StoryChain | null> {
 
 async function main() {
   const manifest = await loadManifest();
-  const resolver: AssetResolver = createAssetResolver({ baseUrl: ASSET_BASE, manifest });
+  const settingsStore = createLocalSettingsStore();
+  // Suivi des CG vues (HUD-15, #208) : progression persistée, enveloppe le résolveur pour marquer
+  // chaque image réellement demandée par le rendu.
+  const cgProgress = createCgProgress(settingsStore);
+  await cgProgress.load();
+  window.addEventListener("pagehide", () => void cgProgress.flush());
+  const baseResolver: AssetResolver = createAssetResolver({ baseUrl: ASSET_BASE, manifest });
+  const resolver: AssetResolver = trackCgImages(baseResolver, cgProgress);
 
   // Crée le viewport logique 1280×720
   const app = document.getElementById("app") ?? document.body;
@@ -71,14 +79,23 @@ async function main() {
   // « Continuer » (autosave), Flowchart, Config et Extra (liste des chapitres).
   // Sauvegardes : IndexedDB (migration auto des anciennes clés localStorage), repli localStorage puis mémoire.
   const saveStore = createSaveStore();
-  const settingsStore = createLocalSettingsStore();
   exposeSaveTransfer(saveStore, settingsStore);
 
   new Player({
     root: viewport,
     resolver,
     createStageRenderer: createDomStageRenderer,
-    createUIManager: () => new DomUIManager({ resolver, saveTransfer: saveTransferActions(saveStore, settingsStore) }),
+    createUIManager: () =>
+      new DomUIManager({
+        resolver,
+        saveTransfer: saveTransferActions(saveStore, settingsStore),
+        // Galerie CG (HUD-15, #208) : catalogue calculé à l'exécution depuis le manifeste de
+        // l'utilisateur, progression des CG déjà vues.
+        cgGallery: {
+          images: () => resolver.imageEntries().map(({ key, url, kind, source }) => ({ key, url, kind, source })),
+          seen: () => cgProgress.seen(),
+        },
+      }),
     scripts: chaptersToScripts(chain),
     loadChain: async () => chain,
     saveStore,

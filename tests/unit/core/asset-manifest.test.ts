@@ -3,7 +3,7 @@
  * Les noms ci-dessous sont inventés.
  */
 import { describe, it, expect } from "vitest";
-import { foldKey, lookupAudio, lookupImage, type AssetManifest } from "@/core/asset-manifest.js";
+import { foldKey, listImages, lookupAudio, lookupImage, type AssetManifest } from "@/core/asset-manifest.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import { storageKey } from "@/core/storage-key.js";
 
@@ -77,5 +77,27 @@ describe("AssetResolver — noms qui diffèrent du fichier", () => {
     const resolver = createAssetResolver({ manifest, onMissing: (_k, n) => missing.push(n) });
     resolver.image("im99-inconnue");
     expect(missing).toEqual(["im99-inconnue"]);
+  });
+});
+
+describe("listImages — galerie CG (HUD-15, #208)", () => {
+  it("aplatit les images du manifeste avec clé, URL, kind et source, triées par clé", () => {
+    const listed = listImages(manifest);
+    expect(listed.map((image) => image.key)).toEqual([
+      "bg99décor test-(nuit) ",
+      "im98lettre ascii",
+      "im99ｌ série test",
+      "normale",
+    ]);
+    expect(listed.find((image) => image.key === "normale")).toEqual({
+      key: "normale",
+      url: "image/d.png",
+      kind: "image",
+      source: "image/d.png",
+    });
+  });
+
+  it("sans manifeste : liste vide", () => {
+    expect(listImages(undefined)).toEqual([]);
   });
 });
