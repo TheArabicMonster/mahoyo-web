@@ -31,7 +31,7 @@ type StageState = {
   back: SceneState;
   textbox: TextboxState;
   text: TextSegment[];
-  staffroll: StaffrollState;
+  staffroll: StaffrollState | null;
   /** Animations en cours, indexées par target. */
   animations: Map<string, AnimationDef>;
 };

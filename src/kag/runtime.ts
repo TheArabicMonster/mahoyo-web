@@ -157,12 +157,14 @@ export type RuntimeState = {
     tf: Record<string, unknown>;
   };
   staffroll?: {
-    lines: { text: string; y: number; size: number; face?: string; cmx?: number }[];
+    lines: { text: string; y: number; size: number; face?: string; cmx?: number; color?: string }[];
     face?: string;
     running: boolean;
     height: number;
     time: number;
     elapsed: number;
+    /** Couleur demandée par `@staffrollsetting` (stockée, jamais peinte par le plugin d'origine). */
+    bgcolor?: string;
   };
   /**
    * Sandbox partagée pour les expressions @eval et blocs @iscript.
@@ -905,7 +907,7 @@ export class Runtime {
     return this.state.textbox ?? { visible: true, frame: true };
   }
 
-  private buildStaffrollState(): StaffrollState {
+  private buildStaffrollState(): StaffrollState | null {
     if (!this.state.staffroll) return null;
     return {
       lines: this.state.staffroll.lines,
@@ -914,6 +916,7 @@ export class Runtime {
       height: this.state.staffroll.height,
       time: this.state.staffroll.time,
       elapsed: this.state.staffroll.elapsed,
+      bgcolor: this.state.staffroll.bgcolor,
     };
   }
 
@@ -1661,6 +1664,7 @@ export class Runtime {
         size: instruction.size,
         face: instruction.face ?? this.state.staffroll.face,
         cmx: instruction.cmx,
+        color: this.state.textStyle?.color,
       });
     } else if (instruction.kind === "staffrollstart") {
       if (this.state.staffroll) {
@@ -1669,6 +1673,22 @@ export class Runtime {
         this.state.staffroll.time = instruction.time;
         this.state.staffroll.elapsed = 0;
       }
+    } else if (instruction.kind === "staffrollsetting") {
+      // Le plugin d'origine stocke la couleur mais ne la peint jamais : on conserve la
+      // valeur dans l'état (fidélité de sauvegarde) sans effet visuel (#286).
+      if (!this.state.staffroll) {
+        this.state.staffroll = {
+          lines: [],
+          running: false,
+          height: 10000,
+          time: 60000,
+          elapsed: 0,
+        };
+      }
+      if (instruction.bgcolor !== undefined) this.state.staffroll.bgcolor = instruction.bgcolor;
+    } else if (instruction.kind === "staffrolluninit") {
+      // Termine/libère l'affichage des crédits.
+      this.state.staffroll = undefined;
     }
     return { kind: "staffroll", state: this.buildStaffrollState() };
   }
@@ -1947,7 +1967,9 @@ export class Runtime {
         break;
       case "staffrollinit":
       case "staffrolltext":
-      case "staffrollstart": {
+      case "staffrollstart":
+      case "staffrollsetting":
+      case "staffrolluninit": {
         const ev = this.applyStaffroll(instruction);
         if (ev) events.push(ev);
         break;

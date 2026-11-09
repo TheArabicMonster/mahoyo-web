@@ -182,13 +182,27 @@ export type PloyState = { mode: string; ox: number; oy: number };
  * `elapsed` est le temps déjà écoulé en millisecondes.
  */
 export type StaffrollState = {
-  lines: readonly { text: string; y: number; size: number; face?: string; cmx?: number }[];
+  lines: readonly {
+    text: string;
+    y: number;
+    size: number;
+    face?: string;
+    cmx?: number;
+    /** Couleur du texte au moment du @staffrolltext (style courant `@font`), sinon blanc. */
+    color?: string;
+  }[];
   face?: string;
   running: boolean;
   height: number;
   time: number;
+  /**
+   * Couleur de fond demandée par `@staffrollsetting bgcolor=…`. Le plugin d'origine stocke
+   * cette valeur mais ne l'utilise jamais (aucun `fillRect` avec `bgcolor`) : c'est un paramètre
+   * mort, conservé dans l'état mais **non peint** (aucun effet dans le jeu d'origine, #286).
+   */
+  bgcolor?: string;
   elapsed: number;
-} | null;
+};
 
 // ── Audio ──
 
@@ -247,8 +261,8 @@ export type RenderEvent =
   | { kind: "text"; segments: readonly TextSegment[] }
   /** Saut de ligne explicite. */
   | { kind: "lineBreak" }
-  /** Met à jour le staffroll. */
-  | { kind: "staffroll"; state: StaffrollState }
+  /** Met à jour le staffroll (`null` = terminé/libéré par `@staffrolluninit`). */
+  | { kind: "staffroll"; state: StaffrollState | null }
   /** Effet visuel (noise / haze). `null` dans SceneState = aucun effet. */
   | { kind: "effect"; effect: EffectState | null }
   /** Active (ou, avec `null`, retire) la bulle « ploy ». */
@@ -268,7 +282,7 @@ export type RenderEvent =
 
 // ── Points d'arrêt ──
 
-export type Awaitable = "transition" | "animation" | "quake" | "audio";
+export type Awaitable = "transition" | "animation" | "quake" | "audio" | "staffroll";
 
 /** Événements à appliquer à un instant donné d'une séquence minutée. */
 export type TimelineEntry = { at: Ms; events: readonly RenderEvent[] };
@@ -305,5 +319,5 @@ export type StageSnapshot = {
   scene: SceneState;
   textbox: TextboxState;
   text: readonly TextSegment[];
-  staffroll: StaffrollState;
+  staffroll: StaffrollState | null;
 };

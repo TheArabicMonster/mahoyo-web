@@ -207,10 +207,12 @@ export type Instruction =
   | { kind: "staffrollinit"; face?: string }
   | { kind: "staffrolltext"; text: string; y: number; size: number; face?: string; cmx?: number }
   | { kind: "staffrollstart"; height: number; time: number }
+  | { kind: "staffrolluninit" }
+  | { kind: "staffrollsetting"; bgcolor?: string }
   | { kind: "iscript" }
   | { kind: "endscript" }
   | { kind: "wait"; time: number; skippable?: boolean }
-  | { kind: "waitfor"; what: "transition" | "animation" | "quake"; skippable?: boolean }
+  | { kind: "waitfor"; what: "transition" | "animation" | "quake" | "staffroll"; skippable?: boolean }
   | { kind: "text"; segments: TextSegment[] }
   | { kind: "break" }
   | { kind: "jump"; target?: string; storage?: string; cond?: string }
