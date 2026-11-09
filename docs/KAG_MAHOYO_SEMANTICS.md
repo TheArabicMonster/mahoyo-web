@@ -589,7 +589,9 @@ visible/audible/de déroulement n'est classée no-op.
 (commandes visuelles secondaires, §9 septies) sont traités : la baseline est passée à
 **25 commandes inconnues / 46 occurrences** (`npm run audit:baseline` ; `npm run audit:guard
 -- --strict` OK). #86 (commandes de texte restantes) est traité — voir §9 octies ; la baseline
-passe à **23 commandes / 31 occurrences**. Les autres lots (#282, #284, #287) restent ouverts.
+passe à **23 commandes / 31 occurrences**. #295 (garde-fous de clôture DoD, §9 nonies) est traité
+**sans changement de baseline** (delta 0 commande / 0 occurrence : aucune commande implémentée par ce
+lot). Les autres lots (#282, #284, #287) restent ouverts — #284 prendra §9 decies.
 
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
@@ -843,6 +845,84 @@ complète rejouée localement (75/75).
   forcé malgré le réglage désactivé, respect du réglage pour les clearText implicites).
 - **`.s`/`@emb`/`@waittrig`/`@history`** : voir le tableau ; aucun de ces cas n'ajoute d'inconnue
   à la baseline (absents du corpus narratif ou déjà implémentés).
+
+## 9 nonies. Garde-fous de clôture DoD (#295)
+
+La clôture « 0 commande inconnue à effet visible » (#274) doit être **vérifiable et non
+maquillable**. Ce lot ajoute quatre garde-fous, branchés sur la CI, et tranche la décision
+`f.lastHour`/`f.lastMinute`.
+
+### 1. Invariant d'état persisté
+
+`tests/unit/kag/state-invariant.test.ts` :
+
+- **type-level** : tout champ de `RuntimeState` doit être **soit sérialisé** par
+  `Runtime.getSaveData()`, **soit** déclaré dans une allowlist `transient` avec justification. Si
+  un futur lot ajoute un champ sans déclaration, `Exclude<keyof RuntimeState, Serialized |
+  Transient>` n'est plus `never` → `tsc` échoue.
+- **runtime** : `getSaveData().state` produit exactement la liste sérialisée (ni omission, ni
+  ajout silencieux). Les champs `transient` justifiés : `clickSkipEnabled`/`effectSkipEnabled`
+  (état de fenêtre réinitialisé par `endSession`, comme le moteur qui ne les met pas en
+  sauvegarde).
+- **snapshot d'affichage** : `StageSnapshot` ne contient que `scene`, `textbox`, `text`,
+  `staffroll` ; secousses/effets d'écran et animations restent transitoires (comme `@quake`).
+
+### 2. Aller-retour sauvegarde/restauration
+
+Même fichier : une scène riche (fond/calques/partbg, horloge, action de message, `@bindbg`,
+crédits, audio + pause, effet, ploy, variables, macros) est exécutée, sauvegardée puis rechargée
+dans un `Runtime` neuf ; `getSaveData()` rechargé est **identique** (comparaison d'état, pas de
+capture d'écran), et un deuxième aller-retour est stable (idempotence). Cas non persistés
+documentés : `@bindbg` (liaison visuelle transitoire), secousses/effets d'écran, animations.
+
+### 3. Équivalence normal / skip / auto
+
+`tests/unit/ui/player-mode-equivalence.test.ts` : une même séquence (texte, attentes
+cliquables/minutées, `@wb` non skippable, fin) jouée en **normal**, **skip** et **auto** produit
+la **même séquence d'événements appliqués** et le même état final (titre), sans blocage. Test
+dédié : en mode skip, une attente `waitFor: "bgmFade"` **non skippable** bloque toujours le
+joueur jusqu'à la fin du fondu (le skip ne contourne pas les attentes verrouillées).
+
+### 4. Registre des approximations
+
+`tools/approximations.ts` (+ `tools/approximations-baseline.json`, garde-fou
+`tools/approximations-guard.ts`) : chaque approximation porte **4 éléments obligatoires** —
+écart précis, issue de suivi v1.1 ([#296]), **test qui fige le comportement** (marqueur
+`approx:<id>`), compteur versionné **non croissant**. `npm run approximations:check` échoue si un
+élément manque ou si un compteur dépasse la baseline. Liste initiale (11 entrées), table :
+
+| Id | Écart | Issue | Test figé |
+|---|---|---|---|
+| `message-actions-non-swing` | actions continues autres que `swing` non rendues | #296 | `tests/unit/renderer/secondary-commands.test.ts` |
+| `xchgbgm-volume` | `volume=` traité comme volume de piste | #296 | `tests/unit/kag/runtime.test.ts` |
+| `playtimeline-test-variant` | variante `frame=0` tolérée sans effet | #296 | `tests/unit/kag/playtimeline-variant.test.ts` |
+| `staffrollsetting-bgcolor` | couleur stockée jamais peinte (paramètre mort moteur) | #296 | `tests/unit/kag/runtime.test.ts` |
+| `focusline-canvas` | lignes radiales canvas approximées | #296 | `tests/unit/kag/plugin-effects.test.ts` |
+| `shake-fullscreen` | secousse approximée à l'écran entier | #296 | `tests/unit/kag/plugin-effects.test.ts` |
+| `bindbg-not-persisted` | liaison visuelle non persistée | #296 | `tests/unit/kag/layers-image.test.ts` |
+| `infg-outfg-fore-page` | page fore directe sans transition | #296 | `tests/unit/kag/layers-image.test.ts` |
+| `ruby-proportional` | répartition du ruby proportionnelle | #296 | `tests/unit/kag/parser.test.ts` |
+| `s-click-wait` | `@s` attend un clic simple | #296 | `tests/unit/kag/parser.test.ts` |
+| `clock-runtime-vars` | heure en état runtime, pas en `f.lastHour/f.lastMinute` | #296 | `tests/unit/kag/clock-state.test.ts` |
+
+### 5. CI de régénération / artefacts
+
+Nouvelle étape CI `npm run check:generated` : `npm run audit:doc` (génère sans assets) puis
+`git diff --exit-code -- docs/LECTURE_COMPLETE.md` (échec si la doc committée est périmée) puis
+`npm run approximations:check`. `npm run audit:guard` reste la vérification statique
+baseline↔registre. **Limite documentée** : la baseline réelle (221 scripts) ne peut pas être
+régénérée en CI sans les assets utilisateur ; elle se régénère localement avec
+`npm run audit:baseline` / `audit:doc` (vrais assets), le delta exact (commandes + occurrences)
+est déclaré dans chaque PR et la CI vérifie statiquement qu'elle ne peut pas augmenter.
+
+### 6. Décision `f.lastHour`/`f.lastMinute`
+
+Vérifié : **aucun script narratif ne lit** `f.lastHour`/`f.lastMinute` (0 occurrence). Décision :
+conserver l'heure dans l'état runtime (`clockHour`/`clockMinute`, sérialisés) et **documenter
+l'écart en v1.1** (registre `clock-runtime-vars`, test figé `tests/unit/kag/clock-state.test.ts`,
+issue [#296]) plutôt que dupliquer l'état dans les variables de jeu, ce qui imposerait une
+migration de sauvegarde sans bénéfice joueur. Le bug `@dispclock time=0` (aiguilles sur back) est
+suivi séparément en v1.1 (#297, 0 occurrence dans le corpus).
 
 ## 10. Commandes non implémentées à figer plus tard
 
