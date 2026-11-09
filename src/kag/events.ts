@@ -46,6 +46,8 @@ export type SpriteState = {
   z: number;
   /** Opacité entre 0 et 1. */
   opacity: number;
+  /** `@layopt visible=0` : sprite masqué sans être retiré de la scène. Absent = visible. */
+  visible?: boolean;
   /**
    * Zoom en % (100 = taille d'origine, négatif = miroir) et rotation en degrés (sens horaire),
    * autour du centre du sprite. Absents = neutres.
@@ -141,6 +143,12 @@ export type SceneState = {
   bgEffect?: string;
   bgBrightness?: number;
   bgContrast?: number;
+  /**
+   * `@bindbg enabled=1` : les calques de la page suivent les panoramiques du fond (`bgMove`).
+   * Approximation : le décalage est visuel (transient), les positions logiques sauvegardées ne
+   * sont pas déplacées.
+   */
+  bindChildren?: boolean;
   bgBlurX?: number;
   bgBlurY?: number;
   /** null = aucun effet actif. */

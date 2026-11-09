@@ -128,7 +128,7 @@ inconnue hors baseline.
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
 | **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 34 commande(s) distincte(s), 133 occurrence(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 35 commande(s) distincte(s), 134 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
@@ -148,23 +148,22 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@ageage` | 1 |
 | `@ansz` | 1 |
 | `@beginfallnote` | 1 |
-| `@bindbg` | 3 |
+| `@cancelskip` | 1 |
 | `@chgpartbg` | 22 |
+| `@clickskip` | 2 |
 | `@cm` | 8 |
 | `@cm4pg` | 7 |
 | `@cockrobin` | 1 |
 | `@current` | 1 |
 | `@dispclock` | 20 |
+| `@effectskip` | 2 |
 | `@endcockrobin` | 1 |
 | `@endfallnote` | 1 |
 | `@eywz` | 1 |
 | `@fallnoteopt` | 2 |
 | `@heart` | 3 |
-| `@infg` | 5 |
 | `@ingz` | 1 |
-| `@layopt` | 1 |
 | `@loadtimeline` | 1 |
-| `@outfg` | 3 |
 | `@pauseaction` | 1 |
 | `@pauseploy` | 1 |
 | `@playtimeline` | 1 |
@@ -178,6 +177,8 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@store` | 1 |
 | `@swel` | 3 |
 | `@tickclock` | 11 |
+| `@wb` | 1 |
+| `@xchgbgm` | 7 |
 <!-- END AUTO: commandes-kag -->
 
 ## Critère de réussite

@@ -192,6 +192,8 @@ export class DomStageRenderer implements StageRenderer {
   private timelineEl: HTMLElement | null = null;
   /** Calques de timeline par id : `<div>` positionné qui contient l'`<img>`. */
   private timelineLayerEls = new Map<string, HTMLElement>();
+  /** Décalage courant des calques liés au fond (`@bindbg`), par id de sprite. */
+  private bindOffsets = new Map<string, { x: number; y: number }>();
   private quakeTimer: ReturnType<typeof setTimeout> | null = null;
   private quakeResolve: (() => void) | null = null;
   private shakeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -671,6 +673,7 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   clear(): void {
+    this.resetBindOffsets();
     this.finishTransition();
     this.clearBgOverlays();
     this.clearTimers();
@@ -970,6 +973,14 @@ export class DomStageRenderer implements StageRenderer {
     switch (event.kind) {
       case "scene": {
         const oldScene = this.currentScene;
+        // Un `@bg` rebase les coordonnées : les calques liés au fond repartent de leur position.
+        if (
+          oldScene.bg !== event.scene.bg ||
+          oldScene.bgLeft !== event.scene.bgLeft ||
+          oldScene.bgTop !== event.scene.bgTop
+        ) {
+          this.resetBindOffsets();
+        }
         this.currentScene = event.scene;
         const transitionTime = event.transition.method === "none" ? 0 : event.transition.time;
         // Non-bloquant : on démarre la transition et on rend la main.
@@ -1182,6 +1193,7 @@ export class DomStageRenderer implements StageRenderer {
         wrapper.style.overflow = "hidden";
         wrapper.style.opacity = String(s.opacity);
         wrapper.style.zIndex = String(s.z);
+        wrapper.style.visibility = s.visible === false ? "hidden" : "";
         wrapper.style.transform = partbgWrapperTransform();
         applyAppearance(wrapper, this.appearanceWithWarning(s), this.filterRegistry, this.envEffects);
         // Fond derrière le crop (bgstorage).
@@ -1228,6 +1240,7 @@ export class DomStageRenderer implements StageRenderer {
         img.style.top = `${s.y}px`;
         img.style.opacity = String(s.opacity);
         img.style.zIndex = String(s.z);
+        img.style.visibility = s.visible === false ? "hidden" : "";
         applyAppearance(img, this.appearanceWithWarning(s), this.filterRegistry, this.envEffects);
         // Zoom et rotation autour du centre (`@fg zoom=… rotate=…`) ; neutre : le CSS de la classe suffit.
         if (s.zoomx !== undefined || s.zoomy !== undefined || s.rotate !== undefined) {
@@ -1445,6 +1458,40 @@ export class DomStageRenderer implements StageRenderer {
    * ou avec l'accélération `accel` ; avec `zoomx`/`zoomy`/`rotate`, il est aussi zoomé et tourné
    * dans le même temps.
    */
+  /**
+   * `@bindbg` (approximation) : pendant un panoramique du fond (`bgMove`), les sprites de la page
+   * sont translatés du même delta. Le décalage est visuel (propriété CSS `translate`, animée en
+   * WAAPI quand c'est possible) ; les positions logiques sauvegardées ne sont pas modifiées.
+   * Le décalage courant est conservé quand `@bindbg enabled=0` (le calque cesse simplement de suivre).
+   */
+  private followBackground(dx: number, dy: number, time: Ms, accel: number): void {
+    if ((dx === 0 && dy === 0) || !this.spritesEl) return;
+    const easing = cssEasing(accel);
+    for (const [id, el] of this.spriteEls) {
+      const from = this.bindOffsets.get(id) ?? { x: 0, y: 0 };
+      const to = { x: from.x + dx, y: from.y + dy };
+      this.bindOffsets.set(id, to);
+      const fromCss = `${from.x}px ${from.y}px`;
+      const toCss = `${to.x}px ${to.y}px`;
+      const animatable = el as HTMLElement & { animate?: (kf: Keyframe[], opts: KeyframeAnimationOptions) => Animation };
+      if (time > 0 && typeof animatable.animate === "function") {
+        try {
+          animatable.animate([{ translate: fromCss }, { translate: toCss }], { duration: time, easing, fill: "forwards" });
+          continue;
+        } catch {
+          // Pas de WAAPI exploitable : repli sur la transformation finale.
+        }
+      }
+      el.style.setProperty("translate", toCss);
+    }
+  }
+
+  /** Réinitialise les décalages `@bindbg` (nouvelle scène rebasée, clear, dispose). */
+  private resetBindOffsets(): void {
+    this.bindOffsets.clear();
+    for (const el of this.spriteEls.values()) el.style.removeProperty("translate");
+  }
+
   private moveBackground(
     left: number,
     top: number,
@@ -1455,6 +1502,10 @@ export class DomStageRenderer implements StageRenderer {
     const accel = opts.accel ?? 0;
     const transformed = opts.zoomx !== undefined || opts.zoomy !== undefined || opts.rotate !== undefined;
     this.currentScene = { ...this.currentScene, bgLeft: left, bgTop: top };
+    // @bindbg : les calques de la page suivent le panoramique du fond (approximation visuelle).
+    if (this.currentScene.bindChildren && from) {
+      this.followBackground(left - from.left, top - from.top, time, accel);
+    }
     this.bgMotion = null;
     const el = this.bgEl;
     if (!el || !this.currentScene.bg) return;

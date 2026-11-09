@@ -12,6 +12,7 @@
  */
 
 import type {
+  AnimKeyframe,
   Instruction,
   Layer,
   Page,
@@ -64,6 +65,8 @@ export type PageState = {
   bgRotate?: number;
   /** Apparence du fond (`@bg type=/effect=/blur/brightness/contrast`) ; absente = défauts. */
   bgType?: number;
+  /** `@bindbg enabled=1` : les calques suivent les panoramiques du fond (approximation visuelle). */
+  bindChildren?: boolean;
   bgEffect?: string;
   bgBrightness?: number;
   bgContrast?: number;
@@ -136,6 +139,7 @@ function bgFieldsOf(page: PageState): Omit<PageState, "layers"> {
   if (page.bgContrast !== undefined) fields.bgContrast = page.bgContrast;
   if (page.bgBlurX !== undefined) fields.bgBlurX = page.bgBlurX;
   if (page.bgBlurY !== undefined) fields.bgBlurY = page.bgBlurY;
+  if (page.bindChildren !== undefined) fields.bindChildren = page.bindChildren;
   return fields;
 }
 
@@ -873,6 +877,7 @@ export class Runtime {
         bgStorage: layer.crop.bgStorage,
       };
     }
+    if (layer.visible !== undefined) sprite.visible = layer.visible;
     if (layer.partbgId) sprite.partbgId = layer.partbgId;
     if (layer.zoomx !== undefined) sprite.zoomx = layer.zoomx;
     if (layer.zoomy !== undefined) sprite.zoomy = layer.zoomy;
@@ -904,6 +909,7 @@ export class Runtime {
     if (target.bgContrast !== undefined) scene.bgContrast = target.bgContrast;
     if (target.bgBlurX !== undefined) scene.bgBlurX = target.bgBlurX;
     if (target.bgBlurY !== undefined) scene.bgBlurY = target.bgBlurY;
+    if (target.bindChildren !== undefined) scene.bindChildren = target.bindChildren;
     return scene;
   }
 
@@ -1194,6 +1200,125 @@ export class Runtime {
       target.layers.push(created);
     }
     return this.revealLayerChange(page, instruction);
+  }
+
+  /**
+   * `@infg` (fgplugin.tjs) : apparition animée — le calque est posé à (final − mx, final − my) avec
+   * opacité 0, puis rejoint sa position finale avec l'opacité demandée. Approximation : le calque
+   * est posé directement sur la page affichée (fore), sans @trans implicite, et l'animation n'est
+   * pas bloquante (comme les autres animations du port).
+   */
+  private applyInfg(instruction: Extract<Instruction, { kind: "infg" }>): RenderEvent[] {
+    const transform: Partial<AnimKeyframe> = {};
+    if (instruction.zoomx !== undefined) transform.zoomx = instruction.zoomx / 100;
+    if (instruction.zoomy !== undefined) transform.zoomy = instruction.zoomy / 100;
+    if (instruction.rotate !== undefined) transform.rotate = instruction.rotate;
+    const appearance: Partial<AnimKeyframe> = {};
+    if (instruction.type !== undefined) appearance.type = instruction.type;
+    if (instruction.effect !== undefined) appearance.effect = instruction.effect;
+    if (instruction.brightness !== undefined) appearance.brightness = instruction.brightness;
+    if (instruction.contrast !== undefined) appearance.contrast = instruction.contrast;
+    if (instruction.blurx !== undefined) appearance.blurx = instruction.blurx;
+    if (instruction.blury !== undefined) appearance.blury = instruction.blury;
+    const first: AnimKeyframe = {
+      time: 0,
+      duration: 0,
+      interp: "l",
+      easing: "linear",
+      accel: 0,
+      center: instruction.center - instruction.mx,
+      vcenter: instruction.vcenter - instruction.my,
+      opacity: 0,
+      ...transform,
+      ...appearance,
+    };
+    const last: AnimKeyframe = {
+      time: instruction.time,
+      duration: instruction.time,
+      interp: "l",
+      easing: "linear",
+      accel: instruction.accel,
+      center: instruction.center,
+      vcenter: instruction.vcenter,
+      opacity: instruction.opacity,
+      ...(instruction.index === undefined ? {} : { absolute: instruction.index }),
+      ...transform,
+      ...appearance,
+    };
+    return this.applyAnimate({
+      kind: "animate",
+      def: { storage: instruction.storage, id: instruction.id ?? instruction.storage, isMove: true, page: "fore", keyframes: [first, last] },
+    });
+  }
+
+  /**
+   * `@outfg` (fgplugin.tjs) : le calque courant glisse de (mx, my) et son opacité tombe à 0.
+   * Le calque n'est pas retiré (un @clfg/@clall s'en charge), comme dans le moteur.
+   */
+  private applyOutfg(instruction: Extract<Instruction, { kind: "outfg" }>): RenderEvent[] {
+    const key = instruction.id ?? instruction.storage ?? "";
+    const existing =
+      this.state.fore.layers.find((layer) => layer.id === key) ??
+      (instruction.storage ? this.state.fore.layers.find((layer) => layer.storage === instruction.storage) : undefined);
+    if (!existing) {
+      this.onWarning(`outfg : calque introuvable (${key})`);
+      return [];
+    }
+    const transform: Partial<AnimKeyframe> = {};
+    if (existing.zoomx !== undefined) transform.zoomx = existing.zoomx / 100;
+    if (existing.zoomy !== undefined) transform.zoomy = existing.zoomy / 100;
+    if (existing.rotate !== undefined) transform.rotate = existing.rotate;
+    const first: AnimKeyframe = {
+      time: 0,
+      duration: 0,
+      interp: "l",
+      easing: "linear",
+      accel: 0,
+      center: existing.center,
+      vcenter: existing.vcenter,
+      opacity: existing.opacity,
+      ...transform,
+    };
+    const last: AnimKeyframe = {
+      time: instruction.time,
+      duration: instruction.time,
+      interp: "l",
+      easing: "linear",
+      accel: instruction.accel,
+      center: existing.center + instruction.mx,
+      vcenter: existing.vcenter + instruction.my,
+      opacity: 0,
+      ...transform,
+    };
+    return this.applyAnimate({
+      kind: "animate",
+      def: { storage: existing.storage, id: existing.id, isMove: true, page: "fore", keyframes: [first, last] },
+    });
+  }
+
+  /**
+   * `@layopt` (KAG3) : options d'un calque existant (`center`/`vcenter`, `opacity`, `visible`).
+   * Approximation : `left`/`top` sont lus comme `center`/`vcenter` (le port ne modélise pas le coin
+   * haut-gauche) ; les calques de message (`layer=message0`…) ne sont pas modélisés (no-op, la
+   * textbox reste pilotée par `@texton`/`@textoff`).
+   */
+  private applyLayopt(instruction: Extract<Instruction, { kind: "layopt" }>): RenderEvent | null {
+    const page = instruction.page ?? "fore";
+    const target = this.getPageState(page);
+    const key = instruction.id ?? instruction.storage ?? instruction.layer ?? "";
+    if (key === "") return null;
+    const index = target.layers.findIndex(
+      (layer) => layer.id === key || (instruction.storage !== undefined && layer.storage === instruction.storage),
+    );
+    if (index < 0) return null;
+    const layer: Layer = { ...target.layers[index]! };
+    if (instruction.center !== undefined) layer.center = instruction.center;
+    if (instruction.vcenter !== undefined) layer.vcenter = instruction.vcenter;
+    if (instruction.opacity !== undefined) layer.opacity = Math.min(1, Math.max(0, instruction.opacity));
+    if (instruction.visible !== undefined) layer.visible = instruction.visible;
+    target.layers[index] = layer;
+    if (page === "back") return null;
+    return this.emitScene({ method: "none" });
   }
 
   private applyAnimate(instruction: Extract<Instruction, { kind: "animate" }>): RenderEvent[] {
@@ -1997,6 +2122,26 @@ export class Runtime {
         const res = this.applyChgfg(instruction);
         events.push(...res.events);
         if (res.stop) return { events, stop: res.stop };
+        break;
+      }
+      case "infg":
+        events.push(...this.applyInfg(instruction));
+        break;
+      case "outfg":
+        events.push(...this.applyOutfg(instruction));
+        break;
+      case "layopt": {
+        const ev = this.applyLayopt(instruction);
+        if (ev) events.push(ev);
+        break;
+      }
+      case "bindbg": {
+        // Les deux pages partagent le drapeau : le port n'affiche qu'une page à la fois et le
+        // paramètre `page` de @bindbg ne doit pas laisser un drapeau contraire sur l'autre.
+        const changed = this.state.fore.bindChildren !== instruction.enabled;
+        this.state.fore.bindChildren = instruction.enabled;
+        this.state.back.bindChildren = instruction.enabled;
+        if (changed) events.push(this.emitScene({ method: "none" }));
         break;
       }
       case "partbg": {
