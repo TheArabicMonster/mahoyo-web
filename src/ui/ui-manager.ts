@@ -212,7 +212,7 @@ export class DomUIManager implements UIManager {
       case "game":
         break;
       case "title":
-        this.renderTitle(view.scripts, view.hasContinue);
+        this.renderTitle(view.scripts, view.hasContinue, view.unlockedChapters);
         break;
       case "pause":
         if (this.commands) this.pause.appendChild(this.renderSystemMenu(this.commands));
@@ -397,7 +397,7 @@ export class DomUIManager implements UIManager {
 
   // ── Écrans ──
 
-  private renderTitle(scripts: readonly ScriptSummary[], hasContinue: boolean): void {
+  private renderTitle(scripts: readonly ScriptSummary[], hasContinue: boolean, unlockedChapters?: readonly string[]): void {
     // Les actions passent par la garde `inputEnabled` (entrées bloquées pendant un chargement).
     const run = (fn: (c: PlayerCommands) => void): void => {
       if (this.inputEnabled && this.commands) fn(this.commands);
@@ -405,6 +405,7 @@ export class DomUIManager implements UIManager {
     const screen = createTitleScreen({
       scripts,
       hasContinue,
+      unlockedChapters,
       uiAssets: this.uiAssets,
       actions: {
         start: (file) => run((c) => c.startScript(file)),

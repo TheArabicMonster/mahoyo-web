@@ -158,7 +158,16 @@ export type OverlayScreen = "pause" | "save" | "load" | "settings" | "backlog" |
 
 /** Vue déclarative : l'UI affiche exactement ce qu'on lui donne. */
 export type UIView =
-  | { screen: "title"; scripts: readonly ScriptSummary[]; hasContinue: boolean }
+  | {
+      screen: "title";
+      scripts: readonly ScriptSummary[];
+      hasContinue: boolean;
+      /**
+       * `ScriptSummary.id` des chapitres déverrouillés pour Extra > Archive (règle : `unlockedChapterIds`).
+       * Absent : tous les chapitres sont proposés.
+       */
+      unlockedChapters?: readonly string[];
+    }
   | { screen: "game" }
   | { screen: "pause" }
   | { screen: "save" | "load"; slots: readonly SaveSlot[] }

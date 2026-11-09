@@ -12,6 +12,7 @@ import type { StoryGraph } from "@/core/story-graph.js";
 import { parseStoryChain, resolveNext, type StoryChain } from "@/core/story-chain.js";
 import { parseTimelineData, type TimelineData } from "@/core/timeline.js";
 import { setUiLanguage, t } from "@/ui/i18n.js";
+import { unlockedChapterIds } from "@/ui/chapter-list.js";
 import { SAVE_COMMENT_MAX_LENGTH, saveSlotIds } from "@/ui/save-pages.js";
 import {
   createLocalSaveStore,
@@ -1441,7 +1442,14 @@ export class Player implements PlayerCommands {
     this.setState("title");
     this.syncRoute();
     const auto = await this.deps.saveStore.get("auto");
-    this.ui.show({ screen: "title", scripts: this.deps.scripts, hasContinue: auto !== null });
+    const { visited, finished } = this.progress.snapshot;
+    const unlockedChapters = unlockedChapterIds(this.deps.scripts, {
+      visited,
+      finished,
+      completed: this.completed,
+      hasContinue: auto !== null,
+    });
+    this.ui.show({ screen: "title", scripts: this.deps.scripts, hasContinue: auto !== null, unlockedChapters });
   }
 
   private async slots(): Promise<SaveSlot[]> {

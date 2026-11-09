@@ -135,3 +135,53 @@ describe("title-screen.css : repli sans asset", () => {
     expect(block(".mh-ui-title-entry")).toContain("var(--mh-dur-fast)");
   });
 });
+
+describe("title-screen.css : sous-menu Extra (HUD-08, #199)", () => {
+  it("le sous-menu occupe exactement la place du menu (mêmes positions, mêmes entrées)", () => {
+    const menu = block(".mh-ui-title-menu");
+    const sub = block(".mh-ui-title-extra-menu");
+    for (const decl of [
+      /position:\s*absolute/,
+      /left:\s*0/,
+      /right:\s*0/,
+      /top:\s*calc\(57\.639%\s*-\s*var\(--mh-title-menu-pitch\)\s*\/\s*2\)/,
+      /flex-direction:\s*column/,
+      /align-items:\s*center/,
+    ]) {
+      expect(menu).toMatch(decl);
+      expect(sub).toMatch(decl);
+    }
+  });
+
+  it("fondu croisé d'environ 1 s, ramené à 0 sous prefers-reduced-motion", () => {
+    expect(block(".mh-ui-title-screen")).toMatch(/--mh-title-extra-fade:\s*1000ms/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.mh-ui-title-screen\s*\{\s*--mh-title-extra-fade:\s*0ms/);
+    expect(block(".mh-ui-title-menu.is-away,\n.mh-ui-title-extra-menu.is-away")).toMatch(/opacity:\s*0/);
+    // Masqué (donc hors focus) seulement une fois le fondu terminé.
+    expect(block(".mh-ui-title-menu.is-away,\n.mh-ui-title-extra-menu.is-away")).toMatch(
+      /visibility 0s linear var\(--mh-title-extra-fade\)/,
+    );
+  });
+
+  it("entrée grisée à ≈ 30 % (texte seul : le contour de focus reste net), sans changement au survol", () => {
+    expect(block(".mh-ui-title-screen")).toMatch(/--mh-title-locked-mix:\s*30%/);
+    const locked = block(
+      ".mh-ui-title-extra-entry.is-locked,\n.mh-ui-title-extra-entry.is-locked:hover,\n.mh-ui-title-extra-entry.is-locked:focus-visible",
+    );
+    expect(locked).toContain("color-mix(in srgb, var(--mh-ink) var(--mh-title-locked-mix), transparent)");
+    expect(locked).not.toMatch(/opacity/);
+  });
+
+  it("le texte d'aide des entrées grisées n'est pas dessiné mais reste lisible par les lecteurs d'écran", () => {
+    const hint = block(".mh-ui-title-hint");
+    expect(hint).toMatch(/clip-path/);
+    expect(hint).not.toMatch(/display:\s*none/);
+  });
+
+  it("l'Archive vit dans archive-view.css : fond nuit, 4 colonnes, aucune URL", () => {
+    const archive = readFileSync(resolve(root, "src/ui/archive-view.css"), "utf8");
+    expect(archive).toMatch(/repeat\(4, minmax\(0, 1fr\)\)/);
+    expect(archive).not.toMatch(/url\(/);
+    expect(code).not.toMatch(/mh-ui-title-chapters/);
+  });
+});

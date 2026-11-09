@@ -17,13 +17,22 @@ export const fr = {
   "title.flowchart": "Flowchart",
   "title.menu": "Menu principal",
   "title.legal": "Projet de fan non officiel. Mahoutsukai no Yoru appartient à TYPE-MOON ; aucune ressource du jeu n'est distribuée ici.",
-  // Sous-menu Extra provisoire (liste des chapitres, remplacé par HUD-08 / #199).
+  // Sous-menu Extra (HUD-08, #199) : Archive (liste des chapitres), Cgmode, Soundmode, Back.
+  "title.extra.menu": "Menu Extra",
   "title.extra.chapters": "Chapitres",
+  "title.extra.archiveLocked": "Archive se déverrouille après un premier lancement du jeu.",
+  "title.extra.comingSoon": "Bientôt disponible.",
+  "archive.locked": "???",
+  "archive.chapterLocked": "Chapitre {n} verrouillé",
   // Entrées d'origine : en anglais même en français (docs/ANALYSE_HUD_ORIGINAL.md §2.1).
   "title.entry.start": "Start",
   "title.entry.load": "Load",
   "title.entry.config": "Config",
   "title.entry.extra": "Extra",
+  "title.entry.archive": "Archive",
+  "title.entry.cgmode": "Cgmode",
+  "title.entry.soundmode": "Soundmode",
+  "title.entry.back": "Back",
 
   // ── Menu système (clic droit) ──
   "systemMenu.title": "Système",

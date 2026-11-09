@@ -2,8 +2,9 @@ import { test, expect } from "@playwright/test";
 
 /**
  * HUD-07 (#195) : écran titre à 1280×720 (positions de docs/ANALYSE_HUD_ORIGINAL.md §2.1, ±2 %),
- * clavier, absence d'Exit, accès au choix de chapitre par Extra. Les placeholders n'ont pas les
- * images d'interface : c'est donc le repli CSS qui est mesuré.
+ * clavier, absence d'Exit. HUD-08 (#199) : sous-menu Extra en place, Archive (grisée sans progression,
+ * liste de chapitres sinon), absence de Flowchart. Les placeholders n'ont pas les images d'interface :
+ * c'est donc le repli CSS qui est mesuré.
  */
 test.describe("Écran titre", () => {
   test.beforeEach(async ({ page }) => {
@@ -28,7 +29,7 @@ test.describe("Écran titre", () => {
       };
       return {
         logo: rel(document.querySelector(".mh-ui-title-logo")!),
-        entries: [...document.querySelectorAll(".mh-ui-title-entry")].map((e) => rel(e)),
+        entries: [...document.querySelectorAll(".mh-ui-title-menu .mh-ui-title-entry")].map((e) => rel(e)),
         legal: rel(document.querySelector(".mh-ui-title-legal")!),
       };
     });
@@ -64,18 +65,99 @@ test.describe("Écran titre", () => {
     await page.mouse.move(2, 2);
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");
-    const focused = page.locator(".mh-ui-title-entry:focus-visible");
+    const focused = page.locator(".mh-ui-title-menu .mh-ui-title-entry:focus-visible");
     await expect(focused).toHaveText("Load");
     expect(await focused.evaluate((n) => getComputedStyle(n).outlineStyle)).toBe("solid");
   });
 
-  test("Extra donne accès au choix de chapitre, Échap revient", async ({ page }) => {
-    await page.keyboard.press("ArrowUp"); // dernière entrée : Extra
-    await page.keyboard.press("Enter");
-    await expect(page.locator(".mh-ui-title-extra")).toBeVisible();
-    expect(await page.locator(".mh-ui-script").count()).toBeGreaterThan(0);
-    await page.keyboard.press("Escape");
+  test("Extra remplace les entrées sur place : Archive, Cgmode, Soundmode, Back, aux mêmes positions, sans Flowchart", async ({ page }) => {
+    await page.locator('[data-entry="extra"]').click();
+    const sub = page.locator(".mh-ui-title-extra-menu");
+    await expect(sub).toBeVisible();
+    await expect(sub.locator("button")).toHaveText(["Archive", "Cgmode", "Soundmode", "Back"]);
+    await expect(page.locator(".mh-ui-title-menu")).toBeHidden(); // une fois le fondu terminé
+    await expect(page.locator(".mh-ui-title-logo")).toBeVisible();
+    expect(await sub.textContent()).not.toMatch(/flowchart|exit|quit/i);
+    const cy = await sub.locator("button").evaluateAll((els) => {
+      const vp = document.querySelector("#viewport")!.getBoundingClientRect();
+      return els.map((e) => {
+        const r = e.getBoundingClientRect();
+        return { cx: (r.left - vp.left + r.width / 2) / vp.width, cy: (r.top - vp.top + r.height / 2 - 0) / vp.height };
+      });
+    });
+    cy.forEach((e, i) => {
+      expect(Math.abs(e.cx - 0.5)).toBeLessThan(0.02);
+      expect(Math.abs(e.cy - (415 + 49 * i) / 720)).toBeLessThan(0.02);
+    });
+  });
+
+  test("fondu croisé d'environ 1 s, sans animation avec prefers-reduced-motion", async ({ page }) => {
+    const duration = (sel: string) =>
+      page.locator(sel).evaluate((n) => getComputedStyle(n).transitionDuration.split(",")[0]!.trim());
+    expect(await duration(".mh-ui-title-extra-menu")).toBe("1s");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    expect(await duration(".mh-ui-title-extra-menu")).toBe("0s");
+    expect(await duration(".mh-ui-title-menu")).toBe("0s");
+  });
+
+  test("sans progression : Archive grisée (≈ 30 %), sans effet, Cgmode et Soundmode grisés, aucun écran fantôme", async ({ page }) => {
+    await page.locator('[data-entry="extra"]').click();
+    // Chromium sérialise le mélange en `color(srgb r g b / a)` : on lit la transparence.
+    const alpha = (sel: string) =>
+      page.locator(sel).evaluate((n) => Number(getComputedStyle(n).color.match(/\/\s*([\d.]+)\)$/)?.[1] ?? 1));
+    for (const id of ["archive", "cgmode", "soundmode"]) {
+      const entry = page.locator(`[data-entry="${id}"]`);
+      await expect(entry).toHaveAttribute("aria-disabled", "true");
+      expect(await alpha(`[data-entry="${id}"]`)).toBeCloseTo(0.3, 2);
+      await entry.hover();
+      expect(await alpha(`[data-entry="${id}"]`)).toBeCloseTo(0.3, 2);
+      await entry.click({ force: true });
+    }
     await expect(page.locator(".mh-ui-title-extra")).toHaveCount(0);
+    await expect(page.locator(".mh-ui-title-extra-menu")).toBeVisible();
+    // Back reste actif (couleur pleine) et ramène au menu principal.
+    expect(await alpha('[data-entry="back"]')).toBe(1);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".mh-ui-title-menu")).toBeVisible();
     await expect(page.locator('[data-entry="extra"]')).toBeFocused();
+  });
+
+  test.describe("avec une progression", () => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          "mahoyo.story-progress",
+          JSON.stringify({ visited: ["1-0"], finished: [], choices: [], endings: [] }),
+        );
+      });
+      await page.goto("/");
+      await page.locator(".mh-ui-title-screen").waitFor({ timeout: 15000 });
+    });
+
+    test("Extra > Archive > chapitre démarre le chapitre, au clavier seul", async ({ page }) => {
+      await page.keyboard.press("ArrowUp"); // dernière entrée : Extra
+      await page.keyboard.press("Enter");
+      const archive = page.locator('[data-entry="archive"]');
+      await expect(archive).toBeFocused();
+      await expect(archive).not.toHaveAttribute("aria-disabled", "true");
+      await expect(archive).toHaveCSS("color", "rgb(40, 67, 172)"); // focus : bleu roi, texte plein
+      await page.keyboard.press("Enter");
+      await expect(page.locator(".mh-ui-title-extra")).toBeVisible();
+      await expect(page.locator(".mh-ui-script").first()).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(page.locator("#text")).toContainText(/\S{5}/, { timeout: 15000 });
+    });
+
+    test("Échap : Archive > Extra > menu principal", async ({ page }) => {
+      await page.locator('[data-entry="extra"]').click();
+      await page.locator('[data-entry="archive"]').click();
+      await expect(page.locator(".mh-ui-script[data-file]")).toHaveCount(1);
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".mh-ui-title-extra")).toHaveCount(0);
+      await expect(page.locator('[data-entry="archive"]')).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".mh-ui-title-menu")).toBeVisible();
+      await expect(page.locator('[data-entry="extra"]')).toBeFocused();
+    });
   });
 });
