@@ -264,6 +264,19 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
   navigateur + Node. Aucune règle désactivée globalement : les rares ajustements et l'unique exception
   locale justifiée sont documentés dans [`LINT.md`](LINT.md).
 
+### Performance (#100)
+
+- `tools/perf-measure.ts` (`npm run perf`) : mesure reproductible — génère les placeholders e2e,
+  build de production chronométré, tailles JS/CSS gzip, manifest optionnel, puis mesure dans
+  Chromium headless (premier rendu, requêtes, mémoire, fluidité de la transition titre → jeu).
+  Modes `--static-only` (sans navigateur), `--no-build`, `--warn-only`, `--manifest`.
+- Budgets chiffrés dans `tools/perf-budgets.ts`, comparés automatiquement (`checkBudgets`) ; rapport
+  JSON dans `reports/perf.json` (ignoré par git). Helpers purs testés dans
+  `tests/unit/tools/perf-lib.test.ts`.
+- Références, marges, procédure en cas de dépassement et limites : [`PERFORMANCE.md`](PERFORMANCE.md).
+- CI : mesure statique **non bloquante** des budgets de bundle après le build
+  (`--no-build --static-only --warn-only`) ; la mesure navigateur complète reste locale.
+
 ## Principes
 
 - Le moteur KAG est indépendant du DOM (testable en headless).
