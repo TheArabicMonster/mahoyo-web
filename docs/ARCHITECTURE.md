@@ -219,6 +219,14 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
   une matrice `e2e (chromium)` / `e2e (firefox)` (`fail-fast: false`), et téléverse `test-results/`
   par navigateur en cas d'échec.
 
+### Lint (ESLint 9, #220)
+
+- `eslint.config.js` (flat config) couvre `src/`, `tools/`, `tests/` et les fichiers de configuration ;
+  `npm run lint` s'exécute en CI dans le job `build-and-test`, juste après `npm ci` (0 erreur exigée).
+- Socle : `@eslint/js` recommended + `typescript-eslint` recommended (sans règles *type-aware*), globals
+  navigateur + Node. Aucune règle désactivée globalement : les rares ajustements et l'unique exception
+  locale justifiée sont documentés dans [`LINT.md`](LINT.md).
+
 ## Principes
 
 - Le moteur KAG est indépendant du DOM (testable en headless).

@@ -14,8 +14,8 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
   mergée le 2026-11-09 : HUD-08 Extra/Archive (#199), HUD-09 configuration (#200), HUD-12 historique (#201),
   FLOW-06 interactions du flowchart (#202), WEB-01 gestes tactiles (#203) et WEB-04 routes d'URL (#204).
   Restent HUD-14/15/16/17/18, FLOW-07/08/09, WEB-02/06, PWA, accessibilité et thème complet.
-- **E6** : en cours — 1662 tests unitaires et 27 tests d'intégration, build et `check:assets` verts ; e2e
-  Chrome/Firefox, mobile et migration ESLint 9 (#220) encore ouverts.
+- **E6** : en cours — 1939 tests unitaires et 27 tests d'intégration, `lint` (ESLint 9, #220), build et
+  `check:assets` verts ; e2e Chrome/Firefox tourne en CI, mobile encore ouvert.
 - Dernières briques : sauvegardes en IndexedDB (#198), progression par scène (#193), graphe de scénario (#192),
   historique plein cadre (#201), gestes tactiles (#203), Extra/Archive (#199), configuration (#200),
   interactions du flowchart (#202) et routes d'URL (#204).
