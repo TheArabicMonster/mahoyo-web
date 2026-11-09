@@ -129,7 +129,22 @@ output/           ← Généré par le pipeline
 └── ...
 ```
 
-> ⚠️ Le dossier `public/assets/` est dans `.gitignore` pour éviter de commiter des assets sous copyright.
+> ⚠️ `public/assets` (dossier **ou** lien symbolique) est ignoré par git grâce à la règle `.gitignore` `public/assets`, **sans barre finale** : une règle avec barre finale (`public/assets/`) ne s'applique pas à un lien symbolique.
+>
+> - Un lien symbolique local vers les assets du jeu est autorisé pour le développement : il reste non suivi (donc ignoré).
+> - **Ne pas lancer `npm run build` tant qu'un tel lien existe** : Vite copie le contenu du dossier lié (plusieurs Go) dans `dist/`.
+> - `npm run check:assets` échoue si un lien symbolique `public/assets` a été **suivi** (commité) par git, avec un message actionnable. La correction est `git rm --cached public/assets` (le lien local reste en place).
+
+### Contrôle anti-assets (`npm run check:assets`)
+
+`npm run check:assets` liste les entrées suivies par git (`git ls-files -s`) et applique quatre contrôles :
+
+- **extension d'asset hors allowlist** (`.tlg`, `.xp3`, `.ks`, `.png`, `.ogg`, polices…) ;
+- **empreinte SHA-256** des placeholders : un fichier autorisé dont le contenu ne correspond plus à son empreinte est signalé, car un vrai asset peut remplacer un placeholder au même chemin ;
+- **gros binaires** (plus de 256 Kio, détectés par la présence d'un octet NUL) hors allowlist, quelle que soit leur extension ;
+- **lien symbolique `public/assets` suivi** par git (voir la note ⚠️ ci-dessus).
+
+Les placeholders autorisés et leurs empreintes sont dans `tools/allowed-assets.txt` ; après ajout ou modification d'un placeholder, mettre à jour les empreintes avec `npm run check:assets -- --update`, puis relire le diff.
 
 ## Architecture technique
 
@@ -155,6 +170,7 @@ type PipelineContext = {
 Les fonctions pures de normalisation sont testées dans `tests/unit/tools/normalize-ks.test.ts` (17 tests).
 Le décodeur TLG est testé dans `tests/unit/tools/tlg-decode.test.ts` sur des `TLG5` **inventés** par un encodeur écrit dans le test (LZSS, RGB/RGBA, bandes partielles, composantes brutes, conteneur `TLG0.0`, TLG6/fichiers tronqués, PNG) : aucun asset du jeu n'est versionné.
 L'outil d'audit headless est testé dans `tests/unit/tools/audit-scenario.test.ts` (21 tests, dont 11 pour la détection de scripts chiffrés).
+Le contrôle anti-assets est testé dans `tests/unit/tools/check-no-assets.test.ts` et `tests/unit/tools/check-assets-symlink.test.ts` (lien symbolique `public/assets` ignoré par git ; lien suivi par git détecté).
 Le parser KAG est testé dans `tests/unit/kag/parser.test.ts` (27 tests, dont 5 pour les inline tags).
 
 ```bash

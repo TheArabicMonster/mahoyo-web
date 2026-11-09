@@ -5,7 +5,10 @@
  *   npm run check:assets                 contrôle (code de sortie 1 en cas d'écart)
  *   npm run check:assets -- --update     recalcule les empreintes de l'allowlist
  *
- * Le script liste les fichiers trackés (`git ls-files`) et applique trois règles :
+ * Le script liste les entrées de l'index (`git ls-files -s -z`) et applique
+ * quatre règles :
+ * 0. lien symbolique `public/assets` (ou imbriqué) suivi par git : interdit ; un
+ *    lien local non suivi reste autorisé pour le développement (ignoré par .gitignore) ;
  * 1. extension d'asset (.tlg, .xp3, .ks, .png, .ogg, polices…) hors allowlist ;
  * 2. fichier de l'allowlist dont le contenu ne correspond plus à son empreinte SHA-256 ;
  * 3. gros fichier binaire hors allowlist, quelle que soit son extension.
@@ -20,22 +23,25 @@ import {
   findAssetViolations,
   findHashMismatches,
   findLargeBinaries,
+  findTrackedAssetSymlinks,
   formatViolations,
   looksBinary,
   parseAllowlist,
-  parseNulSeparated,
+  parseLsFilesStage,
   renderAllowlist,
 } from "./check-no-assets-lib.js";
+import type { TrackedEntry } from "./check-no-assets-lib.js";
 
 const ALLOWLIST_PATH = join(import.meta.dirname, "allowed-assets.txt");
 const REPO_ROOT = join(import.meta.dirname, "..");
 const SAMPLE_BYTES = 8000;
 
-function listTrackedFiles(): string[] {
+function listTrackedEntries(): TrackedEntry[] {
+  // -s : mode et stage de chaque entrée (120000 = lien symbolique) ;
   // -z : sans cela git met entre guillemets et échappe en octal les noms non ASCII
   // (ex. "\303\251.tlg"), ce qui masquerait l'extension.
-  const raw = execFileSync("git", ["ls-files", "-z"], { encoding: "utf-8", cwd: REPO_ROOT });
-  return parseNulSeparated(raw);
+  const raw = execFileSync("git", ["ls-files", "-s", "-z"], { encoding: "utf-8", cwd: REPO_ROOT });
+  return parseLsFilesStage(raw);
 }
 
 function sha256(path: string): string | null {
@@ -90,9 +96,11 @@ function main(): void {
     process.exit(1);
   }
 
-  const files = listTrackedFiles();
+  const entriesOnDisk = listTrackedEntries();
+  const files = entriesOnDisk.map((entry) => entry.path);
   const allowedPaths = new Set(entries.keys());
   const violations = [
+    ...findTrackedAssetSymlinks(entriesOnDisk),
     ...findAssetViolations(files, allowedPaths),
     ...findHashMismatches(files, entries, sha256),
     ...findLargeBinaries(files, entries, inspect),
