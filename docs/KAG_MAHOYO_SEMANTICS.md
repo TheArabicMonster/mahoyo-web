@@ -58,12 +58,31 @@ Règles vérifiées dans les sources locales du moteur (`data/override/tagex.tjs
   `@partbgact`.
 - `index=` et `absolute=` (dans les keyframes) sont le **z-index**. Ex. un
   sprite normal à `index=2000`, un flash rouge à `index=6000`.
-- `type=` est un **mode de fusion** KiriKiri (entier). À mapper vers
-  `mix-blend-mode` (ex. 13/14/19 → valeurs à valider ; laisser no-op + warning
-  tant que non figé).
-- `effect=` est un filtre : `nega`, `mono8e0707` (teinte), `monocro` (niveaux
-  de gris). À mapper vers `filter` CSS.
-- `contrast=`, `rotate=`, `zoomx=`/`zoomy=` : transformations du calque.
+- `type=` est un **mode de fusion** KiriKiri (entier). Les codes numériques ont été relevés dans
+  les sources du moteur installé (`data/scenario/noiseplugin.tjs`, commentaires « = N ») et sont
+  mappés vers `mix-blend-mode` (#252). Table `type → mix-blend-mode` :
+  1 `ltOpaque` → aucun (traité normal), 2 `ltAlpha` → `normal`, 3 `ltAdditive` → `plus-lighter`,
+  4 `ltSubtractive` → **aucun équivalent CSS**, 5 `ltMultiplicative` → `multiply`,
+  8 `ltDodge` → `color-dodge`, 9 `ltDarken` → `darken`, 10 `ltLighten` → `lighten`,
+  11 `ltScreen` → `screen`, 12 `ltAddAlpha` → `plus-lighter` (approx.),
+  13 `ltPsNormal` → `normal`, 14 `ltPsAdditive` → `plus-lighter`, 15 `ltPsSubtractive` →
+  `color-burn` (approx.), 16 `ltPsMultiplicative` → `multiply`, 17 `ltPsScreen` → `screen`,
+  18 `ltPsOverlay` → `overlay`, 19 `ltPsHardLight` → `hard-light`, 20 `ltPsSoftLight` → `soft-light`,
+  21 `ltPsColorDodge` → `color-dodge`, 22 `ltPsColorDodge5` → `color-dodge` (approx.),
+  23 `ltPsColorBurn` → `color-burn`, 24 `ltPsLighten` → `lighten`, 25 `ltPsDarken` → `darken`,
+  26 `ltPsDifference` → `difference`, 27 `ltPsDifference5` → `difference` (approx.),
+  28 `ltPsExclusion` → `exclusion`. Codes utilisés par le corpus : 1-5, 8-28 (6/7 absents).
+- `effect=` est un filtre d'image. Effets intrinsèques appliqués (#252) : `monocro`/`monochrome`
+  → `grayscale(1)`, `sepia` → `sepia(1)` (approx.), `nega` → `invert(1)`, `red`/`green`/`blue`
+  → filtre SVG `feColorMatrix` (approx.), `mono<rrggbb>` → **aplat de couleur conservant l'alpha**
+  (`feFlood` + `feComposite in SourceAlpha`, exact). Les **effets d'ambiance** (`屋外深夜`,
+  `mh屋内曇り`, ~240 noms) sont définis dans `data/others/envcolor.ksc` (données du jeu, non
+  installées par le pipeline) : reconnus, non appliqués, un avertissement par nom.
+- `blur=`/`xblur=`/`yblur=` (double flou de boîte du moteur → gaussien CSS, sigma
+  `sqrt(2r(r+1)/3)`), `brightness=` (décalage, filtre SVG linéaire) et `contrast=`
+  (`(c+255)/255` en facteur CSS) sont appliqués comme filtres (#252). Un `@bg`/`@fg` sans ces
+  attributs les réinitialise (le moteur les remet à zéro à chaque chargement d'image).
+- `rotate=`, `zoomx=`/`zoomy=` : transformations du calque.
 
 ### Zoom et rotation de `@bg`, `@fg`, `@chgfg` (#164)
 
@@ -424,8 +443,11 @@ sur la **page entière** avant la frappe, donc sans changement de taille en cour
 
 ## 10. Commandes non implémentées à figer plus tard
 
-- `type=` (modes de fusion) : mapping complet vers `mix-blend-mode`.
-- `effect=` (nega/mono/monocro) : mapping vers `filter`.
+- ~~`type=` (modes de fusion)~~ : mappé vers `mix-blend-mode` (#252) ; restent 4 `ltSubtractive`
+  et 1 `ltOpaque` sans équivalent CSS exact (documentés ci-dessus).
+- ~~`effect=` (nega/mono/monocro)~~ : mappé vers `filter` (#252) ; restent les **effets
+  d'ambiance** `envcolor.ksc` (données du jeu non installées — issue de suivi nécessaire : les
+  extraire via le pipeline, ou les mesurer sur captures).
 - `partbgid=` : clip de sprite dans un partbg.
 - Transition `universal` + image de règle : WebGL dédié (P2/P3).
 - `staffroll` : défilement crédits (B14).
