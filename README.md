@@ -45,9 +45,9 @@ cd mahoyo-web
 npm install
 
 # Tests
-npm test
 npm run test:unit
 npm run test:integration
+npm run test:e2e          # Playwright ; placeholders générés automatiquement
 
 # Player en développement
 npm run dev
@@ -56,6 +56,55 @@ npm run dev
 npm run build
 npm run preview
 ```
+
+## Tests
+
+| Commande | Portée |
+|---|---|
+| `npm run test:unit` | Vitest, code et composants |
+| `npm run test:integration` | fixtures de scénario (lecture complète, traduction) |
+| `npm run test:e2e` | Playwright, player dans un vrai navigateur (voir ci-dessous) |
+
+### Tests end-to-end (Playwright)
+
+La suite e2e tourne **sans aucun asset du jeu** : avant le démarrage de Vite,
+`tests/e2e/prepare-assets.ts` génère un jeu de placeholders déterministe sous `$MAHOYO_E2E_ASSETS/assets/`
+(manifeste minimal, PNG générés, scénario original de 40 pages). Rien n'est lu dans `public/assets/`
+ni commité ; la CI peut donc lancer la suite sur un checkout nu.
+
+| Commande | Usage |
+|---|---|
+| `npx playwright install chromium firefox` | installe les navigateurs (une fois) |
+| `npm run test:e2e` | toute la suite, tous les projets (`chromium` et `firefox`) |
+| `npm run test:e2e -- --project=chromium` | projet Chromium — ce que lance la CI |
+| `npm run test:e2e -- --project=firefox` | projet Firefox (prépare le critère `#94`) |
+
+| Variable | Effet |
+|---|---|
+| `MAHOYO_E2E_ASSETS` | dossier `publicDir` servi par Vite (défaut : `<tmp>/mahoyo-e2e-assets`). Les placeholders sont écrits sous `assets/`, comme un `public/assets/` local. |
+| `MAHOYO_E2E_REAL_ASSETS=1` | n'écrit aucun placeholder et sert de vrais assets : `MAHOYO_E2E_ASSETS` doit alors pointer vers un dossier contenant `assets/` (ex. `$PWD/public`). Exemple : `MAHOYO_E2E_REAL_ASSETS=1 MAHOYO_E2E_ASSETS=$PWD/public npm run test:e2e`. |
+
+Skips explicites (aucun skip silencieux). En mode placeholders, **Chromium passe toute la suite
+sans aucun skip** ; les seules exclusions concernent Firefox :
+
+- `tests/e2e/touch-controls.spec.ts` : l'émulation tactile repose sur CDP et `isMobile`, disponibles
+  dans Chromium uniquement ; les deux séquences tactiles brutes (appui long, balayage) sont skippées
+  hors Chromium, le reste du spec (dont « desktop souris ») tourne sur les deux navigateurs.
+- `tests/e2e/backlog.spec.ts` (géométrie) : mesure l'ascenseur natif de 39 px imposé par
+  `::-webkit-scrollbar`, Chromium uniquement (Firefox impose sa propre largeur).
+- Projet `firefox` : uniquement le test « 9 entrées dans l'ordre d'origine » du menu système est exclu
+  (`grepInvert` dans `playwright.config.ts`). Mesuré : Firefox ne marque pas `:focus-visible` sur le
+  focus programmatique consécutif à une touche (`outlineStyle: none` contre `solid` dans Chromium),
+  l'anneau de focus clavier du menu n'apparaît donc pas — écart d'accessibilité réel suivi hors de ce
+  lot (fichier propriété de #231).
+
+Le détail des causes et des correctifs est consigné avec les specs ; la CI exécute le projet Chromium
+dans un job dédié (`.github/workflows/ci.yml`).
+
+> Environnements restreints (sandbox macOS d'un agent, conteneurs) : Firefox imbrique son propre
+> sandbox, que certains sandboxes d'exécution refusent (`sandbox_init() failed`). Pour la
+> vérification locale uniquement, lancer avec `MOZ_DISABLE_CONTENT_SANDBOX=1` (et
+> `PLAYWRIGHT_BROWSERS_PATH` si les navigateurs sont installés hors du cache utilisateur).
 
 ## Jouer
 
@@ -122,7 +171,7 @@ Détail complet : [`docs/CONFIG_PLAN.md`](docs/CONFIG_PLAN.md).
 - L'écran de sauvegarde/chargement utilise encore l'ancienne interface ; le modèle enrichi (titre, commentaire, verrou) n'est pas encore exposé (#196).
 - La refonte des écrans HUD (titre, menu système, chargement, historique, flowchart) est suivie dans le backlog `HUD-xx`, `WEB-xx` et `FLOW-xx` ; la configuration est déjà refaite (#177), les autres écrans restent à aligner (#200).
 - Les sauvegardes et vignettes vivent dans IndexedDB (repli `localStorage`, puis mémoire) avec export/import JSON ; les boutons correspondants de l'écran de sauvegarde restent à faire (#196). En attendant : `mahoyoSaves.export()` / `mahoyoSaves.import()` dans la console du navigateur. Voir [`docs/SAUVEGARDES.md`](docs/SAUVEGARDES.md).
-- Le jeu est testé dans Chromium ; Firefox et le mobile restent à valider (v1.1).
+- Le jeu est testé en CI dans Chromium et validé en local dans Firefox (projets Playwright) ; le mobile reste à valider (v1.1). Un écart Firefox connu est listé dans la section Tests.
 - `npm run lint` est indisponible tant que la configuration ESLint 9 n'est pas rétablie (#220).
 
 ## Documentation
