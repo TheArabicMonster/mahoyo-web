@@ -5,17 +5,9 @@
   "triageIssue": "#276",
   "commands": {
     "action": 1,
-    "ageage": 1,
-    "ansz": 1,
     "beginfallnote": 1,
-    "cockrobin": 1,
-    "current": 1,
-    "endcockrobin": 1,
     "endfallnote": 1,
-    "eywz": 1,
     "fallnoteopt": 2,
-    "heart": 3,
-    "ingz": 1,
     "loadtimeline": 1,
     "pauseaction": 1,
     "pauseploy": 1,
@@ -24,8 +16,6 @@
     "resumeaction": 1,
     "resumeploy": 1,
     "settracerreturn": 2,
-    "startchart": 1,
-    "store": 1,
-    "swel": 3
+    "startchart": 1
   }
 }
