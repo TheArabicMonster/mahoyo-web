@@ -245,6 +245,46 @@ Les noms de fichiers peuvent contenir des parenthèses :
 - `@visibleframe` / `@invisibleframe` : affiche/masque le cadre de la textbox.
 - `@cm4pg` : reset de mise en page pour le changement de page (à valider).
 
+### Ruby (`[ruby]`, `@ruby`) — #277
+
+- Balise KAG3 : `text` est le **ruby** (lecture), `char` numérique est le **nombre de caractères du
+  texte suivant** couverts (défaut 1). Ex. `[ruby text=こえ char=1]言なき鳥` → « 言 » avec « こえ ».
+- **Extension TYPE-MOON** (`data/override/tagex.tjs`, handler `ruby`) : si `char` est une **chaîne**
+  (non numérique), elle est le **texte de base affiché** et le ruby est réparti sur ses caractères
+  (utilisé pour les incantations latines avec lecture japonaise). Vaut pour la balise `[ruby]`
+  (`5a-11.ks:858`) et pour la **commande** `@ruby` (`5a-11.ks:860`), qui sont désormais
+  équivalentes dans le parser.
+- La répartition du ruby sur le texte de base suit les largeurs de caractères dans le moteur ; le
+  port la fait proportionnellement au nombre de caractères (approximation sans écart visible sur
+  une chaîne latine mono-espacée).
+- Une commande `@ruby` **s'applique au texte qui suit** : le parser ne vide pas le tampon de texte
+  avant de la traiter.
+
+### Commandes KAG standard `@s`, `@image`, fermetures conditionnelles orphelines — #277
+
+| Commande | Occurrences du corpus | Décision |
+|---|---|---|
+| `@image` | `first.ks:2`, `macro.ks:40` (macro), `staffroll.ks:8`, `wik_fin.ks:278` — toutes `layer=base` | **implémentée** : charge l'image dans la couche `base` d'une page **sans transition** (fond de page, calques conservés, apparence réinitialisée comme le moteur). `layer=<n>` pose un sprite centré (approximation, aucune occurrence). |
+| `@s` | `system_window.ks:8`, `testcodes.ks:11` | **implémentée** comme arrêt du déroulement avec attente de clic. Sémantique KAG3 exacte : « arrêt, attente d'une sélection (bouton/lien) » — le port n'implémente pas encore les boutons de click-map, d'où l'approximation par attente de clic (aucun impact : ces deux scripts ne sont jamais chargés par le player). |
+| `@endif` | `4-3.ks:364` (commande) et `testcodes.ks:8` (balise `[endif]` en ligne) | **no-op justifié** : fermetures **orphelines** (aucun `@if` dans le script). Dans le moteur, `endif`/`endignore` terminent un bloc ; hors bloc ils sont sans effet. Le parser émet un `noop` explicite (n'apparaît plus comme commande inconnue). |
+| `@else`, `@elsif`, `@endignore` | — | même traitement préventif (no-op explicite si orphelins). |
+
+### Macros système (`first.ks`, `macro.ks`) — réponse #277
+
+- Le runtime **sait** exécuter les macros (`@macro` → `macrodef`, expansion des `%param` à l'appel),
+  mais **ne charge pas** `first.ks`/`macro.ks` : le player démarre sur le premier script narratif et
+  l'audit headless n'exécute que les 221 scripts narratifs.
+- Vérifié : **aucune dépendance manquante** des scripts narratifs à ces macros. Les noms définis
+  dans `macro.ks` (`pg`, `lr`, `clall`, `italic`, `rf`, `誤?`, `?誤`, `startdoublemessage`,
+  `enddoublemessage`) correspondent soit à des tags **implémentés nativement** avec la même
+  sémantique (`@pg` = saut de page, `@clall` = `clfg`+`clpartbg`+`trans`, `@rf`/`@resetfont`,
+  `@italic`), soit ne sont **pas employés** dans le corpus (`lr`, `startdoublemessage`,
+  `enddoublemessage`, `誤?`, `?誤` : 0 occurrence). Aucun de ces noms ne figure dans les commandes
+  inconnues de l'audit.
+- Conclusion : charger les scripts système n'est **pas nécessaire** à la justesse du déroulement
+  narratif ; cela ajouterait des dépendances `@eval`/plugins TJS et risquerait de redéfinir des
+  tags déjà natifs. Décision documentée ici (pas de chargement des macros système).
+
 ### Style du texte (`@font`, `@italic`, `@rf`, `@resetfont`)
 
 - `@font` est la balise `[font]` de KAG3. Attributs retenus : `face`, `size`,
@@ -446,6 +486,9 @@ sur la **page entière** avant la frappe, donc sans changement de taille en cour
   bloquantes.
 
 ## 10. Commandes non implémentées à figer plus tard
+
+- ~~`@s`, `@image`, `@ruby`, `@endif` (commandes KAG standard)~~ : implémentées (#277) ; voir
+  §4 « Ruby » et « Commandes KAG standard ».
 
 - ~~`type=` (modes de fusion)~~ : mappé vers `mix-blend-mode` (#252) ; restent 4 `ltSubtractive`
   et 1 `ltOpaque` sans équivalent CSS exact (documentés ci-dessus).
