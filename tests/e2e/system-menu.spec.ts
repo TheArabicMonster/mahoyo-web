@@ -67,11 +67,7 @@ test.describe("Menu système (HUD-06)", () => {
     await expect(menu(page)).toBeVisible();
   });
 
-  // Avec les placeholders de la CI, `Player.returnToTitle` ne rend pas la main (la boucle de lecture ne
-  // termine pas, y compris via le raccourci « p » qui ne passe pas par ce menu) : ce parcours se vérifie
-  // avec les vrais assets locaux, `MAHOYO_E2E_REAL_ASSETS=1`.
-  test("retour au titre : Oui ramène à l'écran titre (assets réels)", async ({ page }) => {
-    test.skip(!process.env.MAHOYO_E2E_REAL_ASSETS, "nécessite les vrais assets locaux (voir le commentaire)");
+  test("retour au titre : Oui ramène à l'écran titre", async ({ page }) => {
     await startGame(page);
     await page.mouse.click(400, 300, { button: "right" });
     await page.locator('[data-entry="title"]').click();
