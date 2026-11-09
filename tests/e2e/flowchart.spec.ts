@@ -125,7 +125,10 @@ test.describe("Flowchart : interactions (FLOW-06)", () => {
     await setup(page);
     const silhouette = page.locator('.mh-flow-stage .mh-flow-node[data-state="hidden"]').first();
     await silhouette.scrollIntoViewIfNeeded();
-    await silhouette.click();
+    // Depuis FLOW-07 (#206), la silhouette est un bouton `aria-disabled` (annoncée « scène non découverte »,
+    // focusable au clavier) : Playwright considère un tel bouton comme désactivé et refuse `.click()`.
+    // On vérifie tout de même qu'un clic utilisateur ne déclenche rien, via l'événement natif.
+    await silhouette.dispatchEvent("click");
     await expect(page.locator(".mh-flow-detail")).toHaveCount(0);
     expect(await silhouette.evaluate((el) => el.hasAttribute("data-id"))).toBe(false);
 

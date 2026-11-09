@@ -198,7 +198,8 @@ L'écran (`src/ui/flowchart-view.ts` + `flowchart-view.css`, FLOW-05 / #197) des
 `layoutFlowchart` sans rien recalculer : groupes (DOM), arêtes (SVG), nœuds (DOM), libellés de choix (SVG au-dessus des
 nœuds). Fond `mh-ui-night`, tokens de `tokens.css`, aucune image du jeu. L'écran défile nativement (la colonne mesure
 environ 790 × 15 900 unités) et se positionne d'abord sur le nœud courant ; les interactions (pan, zoom, clic sur un nœud,
-« Relire depuis ici ») sont décrites plus bas (FLOW-06, #202) ; le clavier par nœud et le lecteur d'écran avancé restent à faire en #206.
+« Relire depuis ici ») sont décrites plus bas (FLOW-06, #202), l'accessibilité clavier/lecteur d'écran/portrait en
+FLOW-07 (#206).
 
 **Données** : `Player` charge `story-graph.json` (`AssetResolver.graph()`, `<assets>/story-graph.json`) à la première
 ouverture, la vue `flowchart` porte `graph`, `revealAll` (`flowchartRevealAll`), `thumbnail` (clé -> URL via
@@ -210,7 +211,7 @@ bouton « Retour ».
 
 | État | Forme | Pastille | Texte accessible |
 |---|---|---|---|
-| `hidden` (silhouette) | pointillé, vide | aucune | aucun (`aria-hidden`) |
+| `hidden` (silhouette) | pointillé, vide | aucune | « Scène non découverte » (sans identifiant ni compteur d'options) |
 | `unvisited` (mode « tout révéler ») | pointillé, id, vignette atténuée | ○ | « Scène x, non visitée » |
 | `visited` | plein, id, vignette | ● | « Scène x, visitée » |
 | `finished` | plein | ✓ | « Scène x, terminée » |
@@ -260,6 +261,33 @@ identifiant ni attribut ajouté.
 **Non** par défaut), puis `PlayerCommands.startScript(file)` du nœud. Comme tout démarrage de script, cela remet le chemin de partie à zéro
 (`operate` non repris, voir « Limites connues »), marque le script comme visité et **n'efface rien** de la progression globale. Sur Non, Échap
 ou entrées bloquées, rien ne démarre.
+
+### Accessibilité (FLOW-07 / #206)
+
+- **Navigation clavier par arêtes** : le nœud focalisé de la carte est un `role="button"` avec roving tabindex (un seul
+  arrêt de tabulation, la position courante en priorité). Les flèches amènent au voisin situé du côté demandé en suivant
+  une arête (dans un sens ou dans l'autre), `Home`/`End` au premier/dernier nœud de l'ordre de lecture, `Entrée`/`Espace`
+  ouvrent le volet de détails d'un nœud ouvert, `Échap` ferme le volet puis l'écran (le focus revient au nœud d'origine).
+  La région `.mh-flow-scroll` garde ses flèches de défilement quand c'est elle qui a le focus.
+- **Équivalent liste** : `.mh-flow-a11y` (visuellement masqué mais présent dans l'arbre d'accessibilité) contient une
+  `<ul>` par chapitre puis un groupe « Interludes partagés » ; chaque nœud y est un bouton avec `aria-label` (et
+  `aria-disabled` quand il n'ouvre rien). `.mh-flow-live` (`role="status"`, `aria-live="polite"`) annonce le libellé du
+  nœud focalisé ; la carte est décrite par `flowchart.region.help`.
+- **Anti-spoiler (décision 5)** : un nœud masqué est annoncé « Scène non découverte » (`flowchart.node.hidden`), sans
+  identifiant, titre ni nombre d'options, dans la carte comme dans la liste ; le titre d'un chapitre entièrement masqué
+  reste « ??? ». Les identifiants des scripts cachés n'apparaissent dans aucun attribut.
+- **Contraste et état** : libellés ≥ 4,5:1 (pire cas `--mh-text-ui` sur `--mh-teal-on-top` = 4,81:1 ; le libellé du
+  nœud est aligné en bas du dégradé, à 10,9:1) ; les états gardent forme + pastille + texte accessible, jamais la seule
+  couleur ; le focus clavier est un anneau de 3 px `--mh-focus` doublé d'un pointillé clair (marque non colorée).
+- **Portrait** (`@media (orientation: portrait)`) : une seule colonne, colonne latérale (compteurs, légende) masquée, zoom
+  initial ajusté à la largeur, `scroll-snap-type: y proximity` sur les groupes de chapitre
+  (`.mh-flow-group { scroll-snap-align: start }`) pour défiler un chapitre à la fois. La mini-carte reste facultative et
+  n'est pas implémentée.
+- **Preuves** : `tests/unit/ui/flowchart-accessibility.test.ts` (navigation par arêtes, liste, anti-spoiler, roving
+  tabindex, `aria-live`) et `flowchart-a11y-css.test.ts` (focus, portrait, contrastes) ; e2e
+  `tests/e2e/flowchart-a11y.spec.ts` (audit axe-core via `@axe-core/playwright` — nouvelle devDependency de #206 —,
+  parcours clavier, anti-spoiler de l'arbre, portrait). La CI n'exécute pas encore les tests e2e : l'audit axe-core est
+  donc lancé à la main / en local, écart connu.
 
 ## Résultat sur le corpus de référence
 

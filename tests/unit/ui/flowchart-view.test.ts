@@ -135,24 +135,29 @@ describe("états des nœuds", () => {
     expect(current).toHaveLength(1);
     expect(current[0]).toBe(nodeEl(root, "left"));
     expect(current[0]!.getAttribute("aria-current")).toBe("location");
-    expect(current[0]!.querySelector(".mh-flow-marker-text")?.textContent).toBe("Ici");
+    expect(current[0]!.querySelector<HTMLElement>(".mh-flow-marker-text")?.dataset.text).toBe("Ici");
   });
 });
 
 describe("anti-spoiler (mode par défaut)", () => {
   const root = () => render({ story: played, currentScript: "left" });
 
-  it("un nœud non visité est une silhouette sans identifiant ni texte, cachée des lecteurs d'écran", () => {
+  it("un nœud non visité est une silhouette annoncée « scène non découverte », sans identifiant ni texte", () => {
     const r = root();
     const silhouettes = allNodes(r).filter((n) => n.dataset.state === "hidden");
     expect(silhouettes.length).toBe(4); // right, mid, finale, iso
     for (const n of silhouettes) {
-      expect(n.getAttribute("aria-hidden")).toBe("true");
+      // Décision 5 : le nœud masqué reste dans l'arbre d'accessibilité, sans rien révéler du jeu.
+      expect(n.getAttribute("aria-hidden")).toBeNull();
+      expect(n.getAttribute("role")).toBe("button");
+      expect(n.getAttribute("aria-label")).toBe("Scène non découverte");
+      expect(n.getAttribute("aria-disabled")).toBe("true");
       expect(n.textContent).toBe("");
       expect(n.querySelector("img")).toBeNull();
-      expect(n.hasAttribute("aria-label")).toBe(false);
       expect(n.hasAttribute("data-id")).toBe(false);
       expect(n.hasAttribute("data-kind")).toBe(false);
+      // Un seul arrêt de tabulation au maximum sur la carte (roving tabindex) : aucune silhouette.
+      expect(n.tabIndex).toBe(-1);
     }
   });
 
