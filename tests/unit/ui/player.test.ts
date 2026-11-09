@@ -2068,3 +2068,41 @@ describe("Player — skips scriptés (#285)", () => {
     expect(ctx.audio.fadeWaits).toContain("bgm");
   });
 });
+
+describe("Player — @store désactive sauvegarde et chargement (#284)", () => {
+  const pos = (n: number) => ({ scriptName: "t.ks", page: 0, instruction: n });
+  const click = (n: number, events: RenderEvent[] = []): Step => ({
+    position: pos(n),
+    events,
+    stop: { kind: "click", style: "page" },
+  });
+
+  it("coupe save/load quand enabled=false, les rétablit quand enabled=true", async () => {
+    const ctx = setup([
+      click(0, [{ kind: "store", enabled: false }]),
+      click(1, [{ kind: "store", enabled: true }]),
+    ]);
+    await start(ctx);
+    expect(ctx.ui.statuses.at(-1)?.saveLoadEnabled).toBe(false);
+
+    await ctx.player.save(1);
+    expect(ctx.saveStore.records.has("1")).toBe(false);
+    expect(ctx.ui.toasts.at(-1)?.message).toContain("désactivés");
+
+    const viewsBefore = ctx.ui.views.length;
+    ctx.player.openScreen("save");
+    ctx.player.openScreen("load");
+    expect(ctx.ui.views.length).toBe(viewsBefore);
+
+    // La pause reste accessible.
+    ctx.player.openScreen("pause");
+    await until(() => ctx.ui.views.at(-1)?.screen === "pause", "pause");
+    ctx.player.closeScreen();
+    await until(() => ctx.player.currentState === "waiting-click", "reprise");
+
+    ctx.player.advance();
+    await until(() => ctx.ui.statuses.at(-1)?.saveLoadEnabled === true, "réactivé");
+    await ctx.player.save(1);
+    expect(ctx.saveStore.records.has("1")).toBe(true);
+  });
+});

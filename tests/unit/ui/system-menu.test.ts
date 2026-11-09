@@ -25,7 +25,7 @@ function makeCommands() {
 }
 
 const status = (p: Partial<PlayerStatus> = {}): PlayerStatus => ({
-  mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, autoPaused: false,
+  mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, saveLoadEnabled: true, autoPaused: false,
   mouseMode: "menu", autoHideCursor: false, fastForwardKey: "shift", shortcuts: defaultShortcuts(), ...p,
 });
 
@@ -106,6 +106,23 @@ describe("renderSystemMenu", () => {
     entry("save").click();
     expect(cmd.openScreen).not.toHaveBeenCalled();
     current = status({ quickMenuLocked: false });
+    syncSystemMenu(menu, current);
+    expect(entry("save").disabled).toBe(false);
+    expect(entry("save").title).toBe("");
+  });
+
+  it("@store enabled=false désactive save/load avec un libellé dédié, sans toucher au reste", () => {
+    current = status({ saveLoadEnabled: false });
+    syncSystemMenu(menu, current);
+    expect(entry("save").disabled).toBe(true);
+    expect(entry("load").disabled).toBe(true);
+    expect(entry("save").title).toBe("Sauvegarde et chargement désactivés par le script");
+    for (const id of ["config", "auto", "skip", "backlog", "flowchart", "graphic", "title", "back"]) {
+      expect(entry(id).disabled).toBe(false);
+    }
+    entry("save").click();
+    expect(cmd.openScreen).not.toHaveBeenCalled();
+    current = status({ saveLoadEnabled: true });
     syncSystemMenu(menu, current);
     expect(entry("save").disabled).toBe(false);
     expect(entry("save").title).toBe("");

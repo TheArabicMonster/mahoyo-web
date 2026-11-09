@@ -27,7 +27,7 @@ const settings: GameSettings = {
   flowchartRevealAll: false,
 };
 const status = (p: Partial<PlayerStatus> = {}): PlayerStatus => ({
-  mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, autoPaused: false,
+  mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, saveLoadEnabled: true, autoPaused: false,
   mouseMode: "menu", autoHideCursor: false, fastForwardKey: "shift", shortcuts: defaultShortcuts(), ...p,
 });
 const scripts = [
@@ -473,7 +473,7 @@ describe("DomUIManager", () => {
     it("le déverrouillage réactive les boutons sans rouvrir l'écran", () => {
       ui.setStatus(status({ quickMenuLocked: true }));
       ui.show({ screen: "pause" });
-      ui.setStatus(status({ quickMenuLocked: false }));
+      ui.setStatus(status({ quickMenuLocked: false, saveLoadEnabled: true }));
       expect((qa("[data-quick-menu]") as HTMLButtonElement[]).every((b) => !b.disabled)).toBe(true);
     });
   });
