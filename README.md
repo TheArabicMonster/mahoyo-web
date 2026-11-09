@@ -69,15 +69,21 @@ npm run preview
 
 La suite e2e tourne **sans aucun asset du jeu** : avant le démarrage de Vite,
 `tests/e2e/prepare-assets.ts` génère un jeu de placeholders déterministe sous `$MAHOYO_E2E_ASSETS/assets/`
-(manifeste minimal, PNG générés, scénario original de 40 pages). Rien n'est lu dans `public/assets/`
+(manifeste minimal, PNG générés, quatre scripts KAG originaux et une table d'enchaînement qui fait se
+terminer le prologue sur un **choix** puis enchaîne les chapitres). Rien n'est lu dans `public/assets/`
 ni commité ; la CI peut donc lancer la suite sur un checkout nu.
+
+`tests/e2e/full-playthrough.spec.ts` couvre le **parcours complet** (#94) sur les deux navigateurs :
+titre → Start, lecture de plusieurs pages, choix validé, sauvegarde puis chargement après rechargement,
+changement de chapitre par enchaînement, jusqu'au retour au titre.
 
 | Commande | Usage |
 |---|---|
 | `npx playwright install chromium firefox` | installe les navigateurs (une fois) |
 | `npm run test:e2e` | toute la suite, tous les projets (`chromium` et `firefox`) |
-| `npm run test:e2e -- --project=chromium` | projet Chromium — ce que lance la CI |
-| `npm run test:e2e -- --project=firefox` | projet Firefox (prépare le critère `#94`) |
+| `npm run test:e2e -- --project=chromium --project=firefox` | les deux navigateurs, comme la CI |
+| `npm run test:e2e -- --project=chromium` | projet Chromium seul |
+| `npm run test:e2e -- --project=firefox` | projet Firefox seul |
 
 | Variable | Effet |
 |---|---|
@@ -98,8 +104,9 @@ sans aucun skip** ; les seules exclusions concernent Firefox :
   l'anneau de focus clavier du menu n'apparaît donc pas — écart d'accessibilité réel suivi hors de ce
   lot (fichier propriété de #231).
 
-Le détail des causes et des correctifs est consigné avec les specs ; la CI exécute le projet Chromium
-dans un job dédié (`.github/workflows/ci.yml`).
+La CI exécute la suite sur **Chromium et Firefox** (matrice `e2e (chromium)` / `e2e (firefox)`,
+`fail-fast: false`) : deux jobs en parallèle pour garder un temps de mur d'un seul navigateur, au prix
+de deux runners — choix documenté dans `.github/workflows/ci.yml`.
 
 > Environnements restreints (sandbox macOS d'un agent, conteneurs) : Firefox imbrique son propre
 > sandbox, que certains sandboxes d'exécution refusent (`sandbox_init() failed`). Pour la
@@ -171,7 +178,7 @@ Détail complet : [`docs/CONFIG_PLAN.md`](docs/CONFIG_PLAN.md).
 - L'écran de sauvegarde/chargement utilise encore l'ancienne interface ; le modèle enrichi (titre, commentaire, verrou) n'est pas encore exposé (#196).
 - La refonte des écrans HUD (titre, menu système, chargement, historique, flowchart) est suivie dans le backlog `HUD-xx`, `WEB-xx` et `FLOW-xx` ; la configuration est déjà refaite (#177), les autres écrans restent à aligner (#200).
 - Les sauvegardes et vignettes vivent dans IndexedDB (repli `localStorage`, puis mémoire) avec export/import JSON ; les boutons correspondants de l'écran de sauvegarde restent à faire (#196). En attendant : `mahoyoSaves.export()` / `mahoyoSaves.import()` dans la console du navigateur. Voir [`docs/SAUVEGARDES.md`](docs/SAUVEGARDES.md).
-- Le jeu est testé en CI dans Chromium et validé en local dans Firefox (projets Playwright) ; le mobile reste à valider (v1.1). Un écart Firefox connu est listé dans la section Tests.
+- Le jeu est testé en CI sur Chrome (Chromium) **et** Firefox desktop (matrix Playwright) ; le mobile reste à valider (v1.1). Un écart Firefox connu est listé dans la section Tests.
 - `npm run lint` est indisponible tant que la configuration ESLint 9 n'est pas rétablie (#220).
 
 ## Documentation

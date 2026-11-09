@@ -192,24 +192,29 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
 - `tests/unit/mocks/` : mocks partagés (`FakeAudioPlayer`, `FakeUIManager`, `FakeRuntime`).
 - `tests/fixtures/*.json` : séquences de `Step` générées par le runtime à partir de samples.
 
-### Tests end-to-end (Playwright, #243)
+### Tests end-to-end (Playwright, #243 / #94)
 
 - `tests/e2e/*.spec.ts` : parcours navigateur (écran titre, player, menus, routes, sauvegarde, tactile,
-  flowchart, transitions) vérifiés dans Chromium et Firefox sur le viewport logique 1280×720.
+  flowchart, transitions, son/CG) vérifiés dans Chromium et Firefox sur le viewport logique 1280×720.
+- `tests/e2e/full-playthrough.spec.ts` : **parcours complet** (#94) en placeholders — titre → Start,
+  lecture de plusieurs pages, **choix** validé, **sauvegarde puis chargement** (aller-retour après
+  rechargement) et **changement de chapitre** par enchaînement, jusqu'au retour au titre.
 - `tests/e2e/prepare-assets.ts` : prépare le `publicDir` de Vite **avant** son démarrage. En mode
   placeholders (défaut, CI incluse), `tests/e2e/placeholders.ts` génère un jeu d'assets synthétique
-  déterministe sous `$MAHOYO_E2E_ASSETS/assets/` : manifeste minimal, PNG générés et scénario KAG
-  original de 40 pages. Aucun asset du jeu n'est lu ni commité.
+  déterministe sous `$MAHOYO_E2E_ASSETS/assets/` : manifeste minimal, PNG générés, quatre scripts KAG
+  originaux (prologue, deux voies, chapitre 2) et une `story-chain.json` qui fait se terminer le
+  prologue sur un **choix** puis enchaîne les chapitres. Aucun asset du jeu n'est lu ni commité.
 - `MAHOYO_E2E_REAL_ASSETS=1` sert de vrais assets (`MAHOYO_E2E_ASSETS` pointe vers un dossier
   contenant `assets/`) ; utile pour vérifier le rendu avec les vrais assets, sans être nécessaire à
   la suite (le retour au titre est corrigé depuis #231).
 - L'ordre importe : la génération a lieu dans la commande `webServer`, car Playwright démarre le
   serveur avant les `globalSetup` et Vite fige la liste des fichiers publics à la création.
-- `playwright.config.ts` définit deux projets, `chromium` (CI) et `firefox` (local, prépare #94).
-  Les skips par navigateur (émulation tactile CDP/`isMobile`, ascenseur `::-webkit-scrollbar`) sont
-  déclarés dans les specs avec leur justification.
-- `.github/workflows/ci.yml` exécute la suite en mode placeholders (`--project=chromium`) et
-  téléverse `test-results/` en cas d'échec.
+- `playwright.config.ts` définit deux projets, `chromium` et `firefox`. Les skips par navigateur
+  (émulation tactile CDP/`isMobile`, ascenseur `::-webkit-scrollbar`) sont déclarés dans les specs
+  avec leur justification.
+- `.github/workflows/ci.yml` exécute la suite en mode placeholders sur **les deux navigateurs** via
+  une matrice `e2e (chromium)` / `e2e (firefox)` (`fail-fast: false`), et téléverse `test-results/`
+  par navigateur en cas d'échec.
 
 ## Principes
 
