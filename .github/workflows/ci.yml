@@ -32,6 +32,14 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Budgets de performance (#100) : mesure statique (tailles de bundle gzip) sur le dist déjà
+      # construit, volontairement non bloquante (--warn-only + continue-on-error) le temps de
+      # calibrer les runners. La mesure complète (premier rendu, fps, mémoire) reste locale :
+      # `npm run perf` — elle dépend de la machine et de la charge du runner.
+      - name: Performance budgets (non-blocking, static)
+        continue-on-error: true
+        run: npm run perf -- --no-build --static-only --warn-only
+
       - name: Run unit tests
         run: npm run test:unit
 
