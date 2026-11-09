@@ -102,6 +102,8 @@ async function main(): Promise<void> {
     missingAssetsGlobal,
     resolvedVariantRefsGlobal,
     emptyAssetRefsGlobal,
+    unresolvedVariantRefsGlobal,
+    unresolvedVariantsGlobal,
   } = aggregateGlobal(results);
 
   const totalDurationMs = results.reduce((acc, r) => acc + r.durationMs, 0);
@@ -123,6 +125,8 @@ async function main(): Promise<void> {
     missingAssetsGlobal,
     resolvedVariantRefsGlobal,
     emptyAssetRefsGlobal,
+    unresolvedVariantRefsGlobal,
+    unresolvedVariantsGlobal,
   };
 
   // Écrire les rapports

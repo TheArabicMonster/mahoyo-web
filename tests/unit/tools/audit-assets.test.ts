@@ -63,6 +63,30 @@ describe("collectAssets", () => {
     expect(assets.variantRefs).toBe(0);
   });
 
+  it("sépare les variantes non résolues de l'image de base absente", () => {
+    const assets = run([scene(undefined, ["absent(全)|b", "absent(全)|e", "absent(全)"])]);
+    // La base absente reste la cause racine, listée une seule fois.
+    expect([...assets.missing]).toEqual(["image:absent(全)"]);
+    // Les références `nom|x` non résolues sont comptées et listées à part.
+    expect(assets.unresolvedVariantRefs).toBe(2);
+    expect([...assets.unresolvedVariants]).toEqual(["image:absent(全)|b", "image:absent(全)|e"]);
+  });
+
+  it("ne compte pas une variante résolue comme non résolue", () => {
+    const assets = run([scene(undefined, ["perso01(全)|b", "perso01(全)|e"])]);
+    expect([...assets.missing]).toEqual([]);
+    expect([...assets.unresolvedVariants]).toEqual([]);
+    expect(assets.unresolvedVariantRefs).toBe(0);
+    expect(assets.variantRefs).toBe(2);
+  });
+
+  it("compte à part une variante audio non résolue", () => {
+    const assets = run([play("m01|se"), play("absent(全)|se")]);
+    expect([...assets.missing]).toEqual(["audio:absent(全)"]);
+    expect(assets.unresolvedVariantRefs).toBe(1);
+    expect([...assets.unresolvedVariants]).toEqual(["audio:absent(全)|se"]);
+  });
+
   it("ignore la casse, le dossier et l'extension comme le resolver", () => {
     const assets = run([scene("BG/Bg01.TLG", [])]);
     expect([...assets.missing]).toEqual([]);
