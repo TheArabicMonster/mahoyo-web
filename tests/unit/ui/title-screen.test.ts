@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setUiLanguage } from "@/ui/i18n.js";
+import { createArchiveView } from "@/ui/archive-view.js";
 import { createTitleScreen, TITLE_ASSET_KEYS, type TitleActions } from "@/ui/title-screen.js";
 import type { PlayerCommands } from "@/ui/types.js";
 import { DomUIManager } from "@/ui/ui-manager.js";
 
 /**
- * HUD-07 (#195) : menu de l'écran titre (ordre, libellés, clavier, Extra provisoire, repli sans asset).
+ * HUD-07 (#195) : menu de l'écran titre (ordre, libellés, clavier, repli sans asset).
+ * HUD-08 (#199) : sous-menu Extra en place, Archive (grisée, anti-spoiler), Cgmode et Soundmode à venir.
  * Les positions réelles se vérifient au navigateur (tests/e2e/title-screen.spec.ts).
  */
 const chapters = Array.from({ length: 10 }, (_, i) => ({
@@ -40,11 +42,20 @@ describe("createTitleScreen", () => {
   });
   afterEach(() => setUiLanguage("fr"));
 
-  function mount(opts: { hasContinue?: boolean; scripts?: typeof chapters; uiAssets?: { uiAsset(k: string): string | null } } = {}) {
-    const actions = makeActions();
+  function mount(
+    opts: {
+      hasContinue?: boolean;
+      scripts?: typeof chapters;
+      unlocked?: readonly string[];
+      actions?: Partial<TitleActions>;
+      uiAssets?: { uiAsset(k: string): string | null };
+    } = {},
+  ) {
+    const actions = { ...makeActions(), ...opts.actions };
     const screen = createTitleScreen({
       scripts: opts.scripts ?? chapters,
       hasContinue: opts.hasContinue ?? false,
+      unlockedChapters: opts.unlocked,
       actions,
       uiAssets: opts.uiAssets,
     });
@@ -158,47 +169,130 @@ describe("createTitleScreen", () => {
     });
   });
 
-  describe("Extra (liste des chapitres, provisoire)", () => {
+  describe("Extra (sous-menu en place) et Archive", () => {
     const open = () => host.querySelector<HTMLElement>('[data-entry="extra"]')!.click();
+    const sub = () => [...host.querySelectorAll<HTMLButtonElement>(".mh-ui-title-extra-menu > button")];
+    const subLabels = () => sub().map((b) => b.textContent);
+    const openArchive = () => host.querySelector<HTMLElement>('[data-entry="archive"]')!.click();
 
-    it("la grille de chapitres n'est pas au titre ; Extra l'ouvre sur le fond nuit", () => {
-      mount();
+    it("Extra n'ouvre pas la liste : il remplace les entrées par Archive, Cgmode, Soundmode, Back", () => {
+      const { screen } = mount();
       expect(host.querySelector(".mh-ui-script")).toBeNull();
+      expect(host.querySelector(".mh-ui-title-menu")!.classList.contains("is-away")).toBe(false);
+      expect(host.querySelector(".mh-ui-title-extra-menu")!.classList.contains("is-away")).toBe(true);
       open();
-      expect(host.querySelectorAll(".mh-ui-script")).toHaveLength(chapters.length);
-      expect(host.querySelector(".mh-ui-title-extra")!.classList.contains("mh-ui-night")).toBe(true);
+      expect(screen.view).toBe("extra");
+      expect(subLabels()).toEqual(["Archive", "Cgmode", "Soundmode", "Back"]);
+      expect(host.querySelector(".mh-ui-title-menu")!.classList.contains("is-away")).toBe(true);
+      expect(host.querySelector(".mh-ui-title-menu")!.hasAttribute("inert")).toBe(true);
+      expect(host.querySelector(".mh-ui-title-extra-menu")!.hasAttribute("inert")).toBe(false);
+      expect(host.querySelector('[data-entry="extra"]')!.getAttribute("aria-expanded")).toBe("true");
+      expect(host.querySelector(".mh-ui-script")).toBeNull();
     });
 
-    it("cliquer un chapitre le lance", () => {
-      const { actions } = mount();
+    it("aucune entrée Flowchart (ni Exit) dans le sous-menu, quelle que soit la langue", () => {
+      for (const lang of ["fr", "en", "ja"] as const) {
+        setUiLanguage(lang);
+        host.replaceChildren();
+        mount({ hasContinue: true });
+        const text = host.querySelector(".mh-ui-title-extra-menu")!.textContent ?? "";
+        expect(text, lang).not.toMatch(/flowchart|フローチャート|exit|quit|quitter|終了/i);
+        expect(host.querySelector(".mh-ui-title-extra-menu [data-entry='flowchart']")).toBeNull();
+        expect(host.querySelectorAll(".mh-ui-title-extra-menu button")).toHaveLength(4);
+      }
+    });
+
+    it("libellés d'origine (anglais) en français, traduits en japonais", () => {
+      setUiLanguage("ja");
+      mount();
+      expect(subLabels()).toEqual(["アーカイブ", "CGモード", "サウンドモード", "戻る"]);
+    });
+
+    it("le focus passe à la première entrée (Archive)", () => {
+      mount();
       open();
+      expect(document.activeElement).toBe(sub()[0]);
+    });
+
+    it("Back et Échap ramènent au menu principal et rendent le focus à Extra", () => {
+      const { screen } = mount();
+      open();
+      host.querySelector<HTMLElement>('[data-entry="back"]')!.click();
+      expect(screen.view).toBe("main");
+      expect(document.activeElement).toBe(host.querySelector('[data-entry="extra"]'));
+      expect(host.querySelector(".mh-ui-title-menu")!.hasAttribute("inert")).toBe(false);
+      expect(host.querySelector(".mh-ui-title-extra-menu")!.classList.contains("is-away")).toBe(true);
+
+      open();
+      press(document.activeElement!, "Escape");
+      expect(screen.view).toBe("main");
+      expect(document.activeElement).toBe(host.querySelector('[data-entry="extra"]'));
+    });
+
+    it("Échap au menu principal ne fait rien (et n'est pas avalé)", () => {
+      mount();
+      const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+      host.querySelector(".mh-ui-title-entry")!.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it("flèches, Début, Fin parcourent le sous-menu en boucle", () => {
+      mount();
+      open();
+      const list = sub();
+      press(document.activeElement!, "ArrowDown");
+      expect(document.activeElement).toBe(list[1]);
+      press(document.activeElement!, "End");
+      expect(document.activeElement).toBe(list[3]);
+      press(document.activeElement!, "ArrowDown");
+      expect(document.activeElement).toBe(list[0]);
+      press(document.activeElement!, "ArrowUp");
+      expect(document.activeElement).toBe(list[3]);
+    });
+
+    it("Archive ouvre la liste des chapitres sur le fond nuit ; cliquer un chapitre le lance", () => {
+      const { screen, actions } = mount();
+      open();
+      openArchive();
+      expect(screen.view).toBe("archive");
+      expect(host.querySelectorAll(".mh-ui-script")).toHaveLength(chapters.length);
+      expect(host.querySelector(".mh-ui-title-extra")!.classList.contains("mh-ui-night")).toBe(true);
+      expect(host.querySelector(".mh-ui-title-extra-heading")!.textContent).toBe("Archive");
       host.querySelector<HTMLElement>('[data-file="c3.ks"]')!.click();
       expect(actions.startChapter).toHaveBeenCalledWith("c3.ks");
     });
 
-    it("le focus passe au premier chapitre, le titre est inerte derrière", () => {
+    it("dans l'Archive : focus sur le premier chapitre, titre inerte derrière", () => {
       mount();
       open();
+      openArchive();
       expect(document.activeElement).toBe(host.querySelector(".mh-ui-script"));
       expect(host.querySelector(".mh-ui-title-main")!.hasAttribute("inert")).toBe(true);
     });
 
-    it("Échap et Retour ferment Extra et rendent le focus à son entrée", () => {
-      mount();
+    it("Échap et Retour ferment l'Archive et reviennent au sous-menu (Archive refocalisée), un second Échap au principal", () => {
+      const { screen } = mount();
       open();
+      openArchive();
       press(document.activeElement!, "Escape");
       expect(host.querySelector(".mh-ui-title-extra")).toBeNull();
-      expect(document.activeElement).toBe(host.querySelector('[data-entry="extra"]'));
+      expect(screen.view).toBe("extra");
+      expect(document.activeElement).toBe(sub()[0]);
       expect(host.querySelector(".mh-ui-title-main")!.hasAttribute("inert")).toBe(false);
+      press(document.activeElement!, "Escape");
+      expect(screen.view).toBe("main");
 
       open();
+      openArchive();
       host.querySelector<HTMLElement>(".mh-ui-title-back")!.click();
       expect(host.querySelector(".mh-ui-title-extra")).toBeNull();
+      expect(screen.view).toBe("extra");
     });
 
     it("navigation de la grille : droite/gauche, bas/haut par rangée de 4, puis Retour", () => {
       mount();
       open();
+      openArchive();
       const items = [...host.querySelectorAll<HTMLElement>(".mh-ui-script")];
       const back = host.querySelector<HTMLElement>(".mh-ui-title-back")!;
       press(document.activeElement!, "ArrowRight");
@@ -218,10 +312,108 @@ describe("createTitleScreen", () => {
       expect(document.activeElement).toBe(back);
     });
 
-    it("les chapitres restent atteignables sans le moindre Exit", () => {
-      mount();
-      open();
-      expect(host.textContent).not.toMatch(/exit|quit|quitter/i);
+    describe("Archive grisée tant qu'aucun chapitre n'est déverrouillé", () => {
+      it("aucun chapitre déverrouillé : aria-disabled, texte d'aide, clic sans effet, reste atteignable au clavier", () => {
+        const { screen } = mount({ unlocked: [] });
+        open();
+        const archive = sub()[0]!;
+        expect(archive.classList.contains("is-locked")).toBe(true);
+        expect(archive.getAttribute("aria-disabled")).toBe("true");
+        const hint = host.querySelector(`#${archive.getAttribute("aria-describedby")}`)!;
+        expect(hint.textContent).toMatch(/déverrouille/);
+        archive.click();
+        expect(screen.view).toBe("extra");
+        expect(host.querySelector(".mh-ui-script")).toBeNull();
+        expect(document.activeElement).toBe(archive);
+      });
+
+      it("un chapitre déverrouillé suffit à dégriser Archive", () => {
+        mount({ unlocked: ["c0"] });
+        open();
+        expect(sub()[0]!.hasAttribute("aria-disabled")).toBe(false);
+        expect(sub()[0]!.classList.contains("is-locked")).toBe(false);
+      });
+
+      it("sans information de progression, tous les chapitres sont proposés", () => {
+        mount();
+        open();
+        expect(sub()[0]!.hasAttribute("aria-disabled")).toBe(false);
+      });
+
+      it("sans aucun script, Archive est grisée", () => {
+        mount({ scripts: [] });
+        open();
+        expect(sub()[0]!.getAttribute("aria-disabled")).toBe("true");
+      });
+
+      it("anti-spoiler : un chapitre verrouillé n'expose ni titre, ni fichier, ni action", () => {
+        const { actions } = mount({ unlocked: ["c0", "c2"] });
+        open();
+        openArchive();
+        const cells = [...host.querySelectorAll<HTMLButtonElement>(".mh-ui-script")];
+        expect(cells).toHaveLength(chapters.length);
+        expect(cells.filter((b) => b.dataset.file).map((b) => b.dataset.file)).toEqual(["c0.ks", "c2.ks"]);
+        const locked = cells[1]!;
+        expect(locked.textContent).toBe("???");
+        expect(locked.getAttribute("aria-disabled")).toBe("true");
+        expect(locked.getAttribute("aria-label")).toBe("Chapitre 2 verrouillé");
+        expect(locked.hasAttribute("data-file")).toBe(false);
+        expect(locked.tabIndex).toBe(-1);
+        locked.click();
+        expect(actions.startChapter).not.toHaveBeenCalled();
+        expect(cells.map((b) => b.textContent)).toEqual([
+          "Chapitre 0",
+          "???",
+          "Chapitre 2",
+          ...Array<string>(chapters.length - 3).fill("???"),
+        ]);
+        const html = host.querySelector(".mh-ui-title-extra")!.outerHTML;
+        for (const secret of ["c1.ks", "c3.ks", "c9.ks"]) expect(html, secret).not.toContain(secret);
+      });
+
+      it("le premier chapitre déverrouillé reçoit le focus ; les verrouillés restent atteignables aux flèches", () => {
+        mount({ unlocked: ["c1"] });
+        open();
+        openArchive();
+        const cells = [...host.querySelectorAll<HTMLElement>(".mh-ui-script")];
+        expect(document.activeElement).toBe(cells[1]);
+        press(document.activeElement!, "ArrowLeft");
+        expect(document.activeElement).toBe(cells[0]);
+      });
+
+      it("liste ouverte sans chapitre déverrouillé (cas limite) : le focus tombe sur Retour", () => {
+        const view = createArchiveView({ scripts: chapters, unlocked: [], onStart: vi.fn(), onClose: vi.fn() });
+        host.appendChild(view.el);
+        view.focusFirst();
+        expect(document.activeElement).toBe(host.querySelector(".mh-ui-title-back"));
+      });
+    });
+
+    describe("Cgmode et Soundmode (écrans à venir : #208, #209)", () => {
+      it("grisés, sans écran fantôme, tant que l'action n'existe pas", () => {
+        const { screen } = mount();
+        open();
+        for (const id of ["cgmode", "soundmode"]) {
+          const b = host.querySelector<HTMLButtonElement>(`[data-entry="${id}"]`)!;
+          expect(b.getAttribute("aria-disabled"), id).toBe("true");
+          expect(host.querySelector(`#${b.getAttribute("aria-describedby")}`)!.textContent).toBe("Bientôt disponible.");
+          b.click();
+          expect(screen.view, id).toBe("extra");
+        }
+        expect(host.querySelector(".mh-ui-title-extra")).toBeNull();
+      });
+
+      it("s'activent quand le player fournit l'action", () => {
+        const cgMode = vi.fn();
+        const soundMode = vi.fn();
+        mount({ actions: { cgMode, soundMode } });
+        open();
+        host.querySelector<HTMLElement>('[data-entry="cgmode"]')!.click();
+        host.querySelector<HTMLElement>('[data-entry="soundmode"]')!.click();
+        expect(cgMode).toHaveBeenCalledOnce();
+        expect(soundMode).toHaveBeenCalledOnce();
+        expect(host.querySelector('[data-entry="cgmode"]')!.hasAttribute("aria-disabled")).toBe(false);
+      });
     });
   });
 

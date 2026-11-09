@@ -21,6 +21,8 @@
   --mh-title-legal: #514b46; /* mention de droits (DESIGN §2.1) */
   --mh-title-menu-pitch: 6.806cqh; /* 49 px @720 */
   --mh-title-legal-size: 0.7rem; /* ~11 px : jamais sous 10 px réels (DESIGN §10) */
+  --mh-title-extra-fade: 1000ms; /* fondu croisé Extra, ≈ 1 s mesuré (DESIGN §7) */
+  --mh-title-locked-mix: 30%; /* entrée grisée : ≈ 30 % d'opacité du texte (DESIGN §6) */
 
   position: absolute;
   inset: 0;
@@ -98,6 +100,53 @@
   outline: none;
 }
 
+/* ── Sous-menu Extra (HUD-08, #199) : mêmes positions que le menu, qu'il remplace par fondu croisé ── */
+.mh-ui-title-menu,
+.mh-ui-title-extra-menu {
+  transition:
+    opacity var(--mh-title-extra-fade) linear,
+    visibility 0s linear 0s;
+}
+
+.mh-ui-title-extra-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(57.639% - var(--mh-title-menu-pitch) / 2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Menu qui s'efface : transparent, puis masqué (donc hors focus) une fois le fondu terminé. */
+.mh-ui-title-menu.is-away,
+.mh-ui-title-extra-menu.is-away {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--mh-title-extra-fade) linear,
+    visibility 0s linear var(--mh-title-extra-fade);
+}
+
+/* Entrée grisée (Archive verrouillée, Cgmode et Soundmode à venir) : texte à ≈ 30 %, focus bien visible. */
+.mh-ui-title-extra-entry.is-locked,
+.mh-ui-title-extra-entry.is-locked:hover,
+.mh-ui-title-extra-entry.is-locked:focus-visible {
+  color: color-mix(in srgb, var(--mh-ink) var(--mh-title-locked-mix), transparent);
+  cursor: default;
+}
+
+/* Textes d'aide des entrées grisées : lus par les lecteurs d'écran, jamais dessinés. */
+.mh-ui-title-hint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .mh-ui-title-entry {
   appearance: none;
   box-sizing: border-box;
@@ -145,49 +194,8 @@
   color: var(--mh-title-legal);
 }
 
-/* ── Extra (provisoire) : liste des chapitres sur le fond « nuit bleue » ── */
-.mh-ui-title-screen .mh-ui-title-extra {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  padding: 13cqh 8cqw; /* sous les bandeaux de feuillage de la nuit bleue (13 % et 14 %) */
-  color: var(--mh-text-ui);
-}
-
-.mh-ui-title-extra-heading {
-  margin: 0;
-  font-family: var(--mh-font-title);
-  font-weight: 400;
-  font-size: var(--mh-screen-title-size);
-  letter-spacing: 0.1em;
-  color: var(--mh-text-title);
-}
-
-.mh-ui-title-extra .mh-ui-title-chapters {
-  width: min(100%, 60rem);
-  max-height: 56cqh; /* 8 rangées de 44 px : les 31 chapitres tiennent sans défiler */
-  margin: 0;
-  padding: 4px; /* laisse la place au contour de focus, que le défilement rognerait */
-  overflow-y: auto;
-  grid-template-columns: repeat(4, minmax(0, 1fr)); /* CHAPTER_COLUMNS dans title-screen.ts */
-}
-
-.mh-ui-title-extra .mh-ui-script,
-.mh-ui-title-extra .mh-ui-title-back {
-  min-height: 44px;
-  color: var(--mh-text-menu);
-}
-
-.mh-ui-title-extra .mh-ui-button:hover:not(:disabled) {
-  color: var(--mh-text-menu-hover);
-}
-
-.mh-ui-title-extra .mh-ui-button:focus-visible {
-  outline: 2px solid var(--mh-focus);
-  outline-offset: 2px;
+@media (prefers-reduced-motion: reduce) {
+  .mh-ui-title-screen {
+    --mh-title-extra-fade: 0ms; /* le sous-menu apparaît sans fondu */
+  }
 }

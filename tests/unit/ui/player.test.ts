@@ -162,6 +162,25 @@ describe("Player", () => {
     expect(ctx.audio.settings).not.toBeNull();
   });
 
+  it("titre : aucun chapitre déverrouillé au premier lancement, celui lancé l'est ensuite (Extra > Archive, #199)", async () => {
+    const scripts = [
+      { id: "t", label: "Un", file: "t.ks", arc: "A", x: 0, y: 0 },
+      { id: "u", label: "Deux", file: "u.ks", arc: "A", x: 0, y: 0 },
+    ];
+    const ctx = setup(prologue as Step[], { scripts });
+    current = ctx.player;
+    await ctx.player.ready;
+    expect(ctx.ui.views.at(-1)).toMatchObject({ screen: "title", unlockedChapters: [] });
+
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-click", "waiting-click");
+    ctx.player.advance();
+    await until(() => ctx.stage.indicators.includes("page"));
+    ctx.player.advance();
+    await until(() => ctx.player.currentState === "title");
+    expect(ctx.ui.views.at(-1)).toMatchObject({ screen: "title", unlockedChapters: ["t"] });
+  });
+
   it("rejoue la fixture prologue de bout en bout puis revient au titre", async () => {
     const ctx = setup();
     await start(ctx);

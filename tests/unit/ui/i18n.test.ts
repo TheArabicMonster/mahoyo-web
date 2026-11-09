@@ -82,6 +82,15 @@ describe("dictionnaire : complétude", () => {
     ]).toEqual(["Start", "Load", "Config", "Extra"]);
   });
 
+  it("les entrées du sous-menu Extra restent aussi en anglais en français (Archive, Cgmode, Soundmode, Back)", () => {
+    expect([
+      DICTIONARIES.fr["title.entry.archive"],
+      DICTIONARIES.fr["title.entry.cgmode"],
+      DICTIONARIES.fr["title.entry.soundmode"],
+      DICTIONARIES.fr["title.entry.back"],
+    ]).toEqual(["Archive", "Cgmode", "Soundmode", "Back"]);
+  });
+
   it("chaque langue a une locale et un nom propre", () => {
     for (const lang of LANGUAGES) {
       expect(UI_LOCALES[lang]).toMatch(/^[a-z]{2}-[A-Z]{2}$/);

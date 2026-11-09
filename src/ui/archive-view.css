@@ -1,0 +1,57 @@
+/*
+ * Archive (HUD-08, #199 ; docs/DESIGN.md §9.9) : grille de chapitres ouverte depuis le sous-menu Extra.
+ * Fond nuit bleue (`.mh-ui-night`), CSS pur, aucun asset.
+ */
+/* ── Archive : liste des chapitres sur le fond « nuit bleue » (HUD-08, #199) ── */
+.mh-ui-title-screen .mh-ui-title-extra {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 13cqh 8cqw; /* sous les bandeaux de feuillage de la nuit bleue (13 % et 14 %) */
+  color: var(--mh-text-ui);
+}
+
+.mh-ui-title-extra-heading {
+  margin: 0;
+  font-family: var(--mh-font-title);
+  font-weight: 400;
+  font-size: var(--mh-screen-title-size);
+  letter-spacing: 0.1em;
+  color: var(--mh-text-title);
+}
+
+.mh-ui-title-extra .mh-ui-title-chapters {
+  width: min(100%, 60rem);
+  max-height: 56cqh; /* 8 rangées de 44 px : les 31 chapitres tiennent sans défiler */
+  margin: 0;
+  padding: 4px; /* laisse la place au contour de focus, que le défilement rognerait */
+  overflow-y: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* ARCHIVE_COLUMNS dans archive-view.ts */
+}
+
+.mh-ui-title-extra .mh-ui-script,
+.mh-ui-title-extra .mh-ui-title-back {
+  min-height: 44px;
+  color: var(--mh-text-menu);
+}
+
+.mh-ui-title-extra .mh-ui-button:hover:not(:disabled) {
+  color: var(--mh-text-menu-hover);
+}
+
+.mh-ui-title-extra .mh-ui-button:focus-visible {
+  outline: 2px solid var(--mh-focus);
+  outline-offset: 2px;
+}
+
+/* Chapitre non déverrouillé : emplacement inerte, sans titre (anti-spoiler). Le focus reste visible. */
+.mh-ui-title-extra .mh-ui-script-locked,
+.mh-ui-title-extra .mh-ui-button.mh-ui-script-locked:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--mh-text-menu) 40%, transparent);
+  cursor: default;
+}

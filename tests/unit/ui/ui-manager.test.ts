@@ -207,19 +207,29 @@ describe("DomUIManager", () => {
       expect(q(".mh-bl")).toBeNull();
     });
 
-    it("title : la grille de chapitres n'est plus au titre, Extra l'ouvre (provisoire)", () => {
+    it("title : la grille de chapitres n'est plus au titre, Extra > Archive l'ouvre", () => {
       ui.show(views[0]!);
       expect(q(".mh-ui-script")).toBeNull();
       q('[data-entry="extra"]')!.click();
+      expect(q(".mh-ui-script")).toBeNull(); // le sous-menu seul : la liste est derrière Archive
+      q('[data-entry="archive"]')!.click();
       expect(qa(".mh-ui-script").map((b) => b.textContent)).toEqual(["A", "B"]);
     });
-    it("title : chapitre (via Extra) et continuer", () => {
+    it("title : chapitre (via Extra > Archive) et continuer", () => {
       ui.show(views[0]!);
       q('[data-entry="extra"]')!.click();
+      q('[data-entry="archive"]')!.click();
       q('[data-file="b.ks"]')!.click();
       expect(cmd.startScript).toHaveBeenCalledWith("b.ks");
       q(".mh-ui-continue")!.click();
       expect(cmd.load).toHaveBeenCalledWith("auto");
+    });
+    it("title : unlockedChapters est transmis (Archive grisée sans chapitre déverrouillé)", () => {
+      ui.show({ screen: "title", scripts, hasContinue: false, unlockedChapters: [] });
+      q('[data-entry="extra"]')!.click();
+      expect(q('[data-entry="archive"]')!.getAttribute("aria-disabled")).toBe("true");
+      q('[data-entry="archive"]')!.click();
+      expect(q(".mh-ui-script")).toBeNull();
     });
     it("title : « Start » lance le premier script de la liste", () => {
       ui.show(views[0]!);
