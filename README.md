@@ -42,7 +42,7 @@ Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 ```bash
 git clone git@github.com:TheArabicMonster/mahoyo-web.git
 cd mahoyo-web
-npm install
+npm ci
 
 # Tests
 npm run test:unit
@@ -115,37 +115,158 @@ de deux runners — choix documenté dans `.github/workflows/ci.yml`.
 
 ## Jouer
 
-Le dépôt ne contient aucun asset du jeu : il faut posséder une copie du jeu et générer les fichiers web.
+Le dépôt ne contient aucun asset du jeu : il faut posséder une copie du jeu PC 2012 et générer les
+fichiers web soi-même. Cette section donne le parcours complet, de vos fichiers à une partie jouable ;
+le détail technique du pipeline (gabarits, décodeur TLG, cache, dossiers) est dans
+[`docs/PIPELINE.md`](docs/PIPELINE.md#parcours-complet-e1-de-larchive-au-jouable).
 
-1. **Extraire et convertir les assets** (`.xp3` → fichiers bruts → images WebP, sons OGG, scripts UTF-8 + manifest) vers `public/assets/`, en une commande. Les outils externes (extracteur `.xp3`, convertisseur TLG) sont requis :
+> ⚠️ **Légal** : vous devez posséder une copie du jeu. Les fichiers extraits et convertis restent sur
+> votre machine, dans des dossiers ignorés par git (`public/assets/`, `.pipeline-work/`) ; rien n'est
+> redistribué. `npm run check:assets` protège le dépôt : il échoue si un asset sous copyright y est ajouté.
 
-   ```bash
-   npm run pipeline -- --input ./jeu --output ./public/assets \
-     --xp3-cmd "<extracteur> {in} {out}" \
-     --tlg-cmd "<convertisseur TLG→WebP> {in} {out}" \
-     --audio-cmd "ffmpeg -y -i {in} -c:a libvorbis -q:a 4 {out}"
-   ```
+### Prérequis
 
-   Sans `--tlg-cmd`, le décodeur intégré produit des `.png` (TLG0.0/TLG5) ; `npm run pipeline -- --help` liste toutes les options. Ce dossier est ignoré par git. Parcours complet (prérequis, rapport des fichiers non convertis, code de sortie, dossiers ignorés) : [`docs/PIPELINE.md`](docs/PIPELINE.md#parcours-complet-e1-de-larchive-au-jouable).
-2. **Générer les tables** à partir des fichiers du jeu. Elles ne sont pas produites par `npm run pipeline` :
+| Prérequis | Rôle | Obligatoire ? |
+|---|---|---|
+| **Node.js 22** | version utilisée par la CI (`.github/workflows/ci.yml`) ; ≥ 18 requis par les outils `tsx` | ✅ |
+| **npm** | installation et scripts | ✅ (fourni avec Node) |
+| **Copie du jeu PC 2012** | archives `.xp3` (`data.xp3`, `bg.xp3`, …) **ou** fichiers déjà extraits | ✅ |
+| **Extracteur `.xp3`** | décompresse les archives (`xp3extract`, `krkrExtract`, GARbro CLI, script Python…) | ✅ si `--input` contient des `.xp3` (outil externe, non fourni) |
+| **Convertisseur `.tlg`** | `.tlg` → `.webp` (ex. `tlg2png` + `cwebp`) | ⬚ Optionnel : sans lui, le décodeur intégré produit des `.png` (TLG0.0/TLG5 ; TLG6 non décodé) |
+| **Encodeur audio** | `.wav` → `.ogg` (ex. `ffmpeg`) | ⬚ Optionnel : sans lui, les `.wav` sont copiés tels quels |
+| **Navigateur récent** | Chrome/Chromium ou Firefox, cibles de la CI | ✅ |
 
-   ```bash
-   # main.gc se trouve dans data.xp3 (dossier others/) une fois l'archive extraite
-   npm run chain -- <chemin/main.gc> public/assets
-   # → story-chain.json (enchaînement, chapitres, choix) + story-graph.json (graphe de scénario)
+Les outils externes sont appelés par des **gabarits de commande** (`{in}` et `{out}` remplacés argument
+par argument, sans shell) : adaptez-les à votre extracteur/convertisseur. Un extracteur en GUI
+(krkrExtract) se lance à la main ; passez ensuite le dossier extrait à `--input` sans `--xp3-cmd`.
+Voir [`docs/PIPELINE.md`](docs/PIPELINE.md#prérequis) pour les variantes et les outils testés.
 
-   npm run timelines -- public/assets
-   # → timelines.json (musique et images de l'ouverture)
-   ```
+### 1. Récupérer le dépôt et installer
 
-   Sans `story-chain.json`, le jeu ne propose que le prologue et s'arrête à la fin du script ; sans
-   `timelines.json`, l'ouverture est sautée ; sans `story-graph.json`, le flowchart n'a pas de données de graphe.
-   Voir [`docs/ENCHAINEMENT_SCRIPTS.md`](docs/ENCHAINEMENT_SCRIPTS.md) et [`docs/TIMELINES.md`](docs/TIMELINES.md).
-3. **Lancer** : `npm run dev`, puis ouvrir l'adresse affichée. L'écran titre propose *Start*, *Load*,
-   *Continuer* (autosave), *Flowchart*, *Config* et *Extra* ; *Extra* ouvre la liste des chapitres.
+```bash
+git clone git@github.com:TheArabicMonster/mahoyo-web.git
+cd mahoyo-web
+npm ci          # versions exactes du package-lock.json, comme la CI
+```
+
+### 2. Extraire les assets, convertir et générer le manifeste
+
+Le pipeline fait tout en une commande : extraction `.xp3`, conversion des images et de l'audio,
+normalisation des scripts UTF-8 et **écriture du manifeste** `public/assets/asset-manifest.json`
+(il n'y a pas d'étape manifeste séparée).
+
+Parcours minimal (sans outil de conversion supplémentaire) :
+
+```bash
+npm run pipeline -- \
+  --input ./jeu \
+  --output ./public/assets \
+  --xp3-cmd "<extracteur> {in} {out}"
+```
+
+Parcours recommandé, avec WebP et audio OGG :
+
+```bash
+npm run pipeline -- \
+  --input ./jeu \
+  --output ./public/assets \
+  --xp3-cmd "<extracteur> {in} {out}" \
+  --tlg-cmd "<convertisseur TLG→WebP> {in} {out}" \
+  --audio-cmd "ffmpeg -y -i {in} -c:a libopus -b:a 96k -f ogg {out}"
+```
+
+- `./jeu` contient les archives (`.xp3`) **ou** les fichiers déjà extraits ; dans ce second cas,
+  omettez `--xp3-cmd`.
+- Les sorties vont dans `public/assets/` (ignoré par git), le travail et les rapports dans
+  `.pipeline-work/` (ignoré par git également). Le pipeline **refuse de démarrer** si `--output` ou
+  `--work` est un dossier du dépôt non ignoré.
+- **Manifeste** : `public/assets/asset-manifest.json` mappe les clés normalisées des scripts vers les
+  URLs web. C'est lui que le player charge au démarrage.
+- **Rapports** : le résumé console liste les fichiers non convertis ; le détail est dans
+  `.pipeline-work/pipeline-report.json` et les références manquantes dans `.pipeline-work/report.json`.
+  Code de sortie `0` si tout est produit, `1` sinon.
+- **`-f ogg` est nécessaire** dans `--audio-cmd` : le pipeline écrit d'abord la sortie dans un fichier
+  temporaire `<sortie>.tmp` (écriture atomique), et `ffmpeg` ne peut pas deviner le format depuis cette
+  extension. Si votre `ffmpeg` dispose de `libvorbis`, remplacez le codec par
+  `-c:a libvorbis -q:a 4` (en gardant `-f ogg`).
+- Par défaut, le pipeline tente aussi d'installer la traduction française depuis le dépôt Moon-Trad
+  (rien n'est versionné) ; un échec réseau n'est qu'un avertissement. Ajoutez `--no-translation` pour
+  l'ignorer.
+- Vérifiez d'abord le plan sans rien écrire : `npm run pipeline -- --help`, puis la même commande avec
+  `--dry-run`.
+
+> Sans `--tlg-cmd`, le décodeur intégré convertit les `.tlg` en `.png` ; un `.tlg` TLG6 ou chiffré
+> apparaît comme « fichier non converti » (code de sortie 1) : fournissez alors `--tlg-cmd`. Détail
+> complet des options : `npm run pipeline -- --help` et [`docs/PIPELINE.md`](docs/PIPELINE.md).
+
+### 3. Générer les tables d'enchaînement et de timelines
+
+Ces tables ne sont **pas** produites par `npm run pipeline` ; elles dérivent des fichiers du jeu et
+sont ignorées par git.
+
+```bash
+# main.gc est extrait de data.xp3 (dossier others/) ; le localiser si besoin :
+find .pipeline-work/extracted -name main.gc
+
+npm run chain -- <chemin/main.gc> public/assets
+# → story-chain.json (enchaînement, chapitres, choix) + story-graph.json (graphe de scénario)
+
+npm run timelines -- public/assets
+# → timelines.json (musique et images de l'ouverture)
+```
+
+Sans `story-chain.json`, le jeu ne propose que le prologue et s'arrête à la fin du script ; sans
+`timelines.json`, l'ouverture est sautée ; sans `story-graph.json`, le flowchart n'a pas de données de graphe.
+Voir [`docs/ENCHAINEMENT_SCRIPTS.md`](docs/ENCHAINEMENT_SCRIPTS.md) et [`docs/TIMELINES.md`](docs/TIMELINES.md).
+
+### 4. Lancer le player
+
+```bash
+npm run dev     # ouvrir l'adresse affichée (http://localhost:5173 par défaut)
+```
+
+L'écran titre propose *Start*, *Load*, *Continuer* (autosave), *Flowchart*, *Config* et *Extra* ;
+*Extra* ouvre la liste des chapitres. Pour une version optimisée :
+
+```bash
+npm run build
+npm run preview
+```
 
 > `npm run build` copie `public/assets/` dans `dist/` (environ **7 Go** avec le jeu complet). Pour jouer
 > en local, `npm run dev` suffit.
+
+### Vérifier l'installation
+
+```bash
+ls -l public/assets/asset-manifest.json   # présent après l'étape 2
+npm run check:assets                      # aucun asset sous copyright dans le dépôt
+npm run audit                             # audit du corpus KAG (via public/assets, ou MAHOYO_ASSETS_DIR)
+```
+
+### Dépannage
+
+| Symptôme | Cause probable | Diagnostic / correctif |
+|---|---|---|
+| Le player n'affiche que le titre, des fonds unis ou des images cassées ; console : `Impossible de charger le manifest` | manifeste absent ou écrit ailleurs | DevTools → Network : `asset-manifest.json` renvoie la page `index.html` (repli du serveur) au lieu du JSON. Vérifier `--output ./public/assets` et relancer l'étape 2. Sans manifeste, le player retombe sur les conventions `/assets/bg/<clé>.webp`, d'où les images cassées. |
+| `npm run audit` : `Répertoire scenario introuvable : …/public/assets/scenario` | pipeline pas lancé ou sortie dans un autre dossier | `ls public/assets/scenario` ; relancer l'étape 2 avec `--output ./public/assets`. |
+| Console : `Asset introuvable (image)` / `Asset introuvable (audio)` | clé absente du manifeste (conversion en échec, nom non normalisé) | `cat .pipeline-work/pipeline-report.json` (fichiers non convertis) puis `cat .pipeline-work/report.json` (`missingStorages`). `npm run audit` liste aussi les assets référencés. |
+| Pipeline : `Fichiers non convertis` et code de sortie `1` | `.tlg` TLG6/chiffré, outil externe introuvable ou en échec | lire `.pipeline-work/pipeline-report.json` ; fournir `--tlg-cmd` (TLG6) ; tester la commande du gabarit à la main. |
+| Pipeline : `Aucune archive .xp3 trouvée` ou `Aucun fichier asset trouvé` | `--input` ne pointe pas sur la racine des archives/fichiers extraits | passer le bon dossier à `--input`, ou extraire d'abord et retirer `--xp3-cmd`. |
+| Pipeline : `Le dossier de sortie … n'est pas ignoré par git` | sortie dans le dépôt en dehors des dossiers ignorés | utiliser `./public/assets`, `--work .pipeline-work`, ou un dossier hors dépôt (`/tmp/…`). |
+| Le player affiche l'interface mais pas les images du jeu | assets incomplets ou manifeste absent | vérifier le manifeste et les fichiers sous `public/assets/` ; les placeholders synthétiques de `npm run test:e2e` ne sont pas les assets du jeu. |
+| Avertissement « traduction non installée (réseau ?) » | dépôt Moon-Trad inaccessible | relancer `npm run translation -- fr <dossier> public/assets --fetch`, ou ignorer avec `--no-translation`. |
+| Un fichier du jeu apparaît dans `git status` | sortie écrite hors des dossiers ignorés | ne jamais commiter ; `git status` doit rester propre, `npm run check:assets` doit passer. |
+
+Diagnostic rapide de bout en bout :
+
+```bash
+npm run pipeline -- --help
+ls -l public/assets/asset-manifest.json public/assets/scenario
+cat .pipeline-work/pipeline-report.json
+cat .pipeline-work/report.json
+npm run check:assets
+```
 
 ## Commandes et configuration
 
