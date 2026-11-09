@@ -7,7 +7,7 @@
 
 import type { AppearanceArgs, CropSpec, Instruction, ParsedScript, TextSegment, TextStyle, Token, TransformArgs } from "./types.js";
 import { storageKey } from "@/core/storage-key.js";
-import { parseActionKeys } from "./action.js";
+import { parseActionKeys, parseNoiseActKeys } from "./action.js";
 
 /** Centre de l'écran dans le repère logique 1024×576 : position d'un calque sans `center`/`vcenter`. */
 const SCREEN_CENTER_X = 512;
@@ -17,6 +17,26 @@ function parseIntArg(value: string | undefined, fallback = 0): number {
   if (value === undefined) return fallback;
   const parsed = parseInt(value, 10);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+/**
+ * Lecture insensible à la casse d'un attribut : KAG n'impose pas la casse des noms d'attributs
+ * (`minCycle` dans les scripts, `mincycle` dans `swingPropInfo` de tagex.tjs).
+ */
+function argCaseInsensitive(args: Record<string, string>, ...names: string[]): string | undefined {
+  for (const name of names) {
+    if (args[name] !== undefined) return args[name];
+  }
+  const lowered = new Map<string, string>();
+  for (const [key, value] of Object.entries(args)) {
+    const lower = key.toLowerCase();
+    if (!lowered.has(lower)) lowered.set(lower, value);
+  }
+  for (const name of names) {
+    const value = lowered.get(name.toLowerCase());
+    if (value !== undefined) return value;
+  }
+  return undefined;
 }
 
 /** Normalise un argument storage via storageKey. "" si absent. */
@@ -42,6 +62,20 @@ function parseColorArg(value: string | undefined): string | undefined {
     return alpha === 0xff ? color : `${color}${argb[1].toLowerCase()}`;
   }
   return undefined;
+}
+
+/**
+ * Couleur d'un effet plugin : `0xRRGGBB`, `#rrggbb` ou entier décimal (le corpus utilise
+ * `color=16777215`). Toute valeur illisible → undefined (défaut de l'appelant).
+ */
+function parseRgbColorArg(value: string | undefined): string | undefined {
+  const hex = parseColorArg(value);
+  if (hex) return hex;
+  const trimmed = value?.trim() ?? "";
+  if (!/^\d+$/.test(trimmed)) return undefined;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0 || n > 0xffffff) return undefined;
+  return `#${n.toString(16).padStart(6, "0")}`;
 }
 
 /** Construit le style d'un @font : seuls les attributs valides sont retenus. */
@@ -547,6 +581,63 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       };
     case "stophaze":
       return { kind: "stophaze", page: parsePageLayer(args.page) };
+    case "shake": {
+      // @shake (override TYPE-MOON, tagex.tjs `.shake`) : secousse sinusoïdale. `storage`/`page`
+      // visent un calque dans le moteur ; le port applique la secousse à l'écran (approximation).
+      const time = argCaseInsensitive(args, "time");
+      return {
+        kind: "shake",
+        vmax: parseIntArg(args.vmax, 10),
+        hmax: parseIntArg(args.hmax, 0),
+        cycle: Math.max(1, parseIntArg(argCaseInsensitive(args, "cycle"), 300)),
+        ...(time === undefined ? {} : { time: parseIntArg(time) }),
+      };
+    }
+    case "swing": {
+      // @swing (tagex.tjs `.swing`) : secousse aléatoire continue ; l'arrêt se fait par @stopswing.
+      const time = argCaseInsensitive(args, "time");
+      const rate = Number.parseFloat(argCaseInsensitive(args, "rate") ?? "");
+      return {
+        kind: "swing",
+        minCycle: Math.max(1, parseIntArg(argCaseInsensitive(args, "mincycle"), 1000)),
+        maxCycle: Math.max(1, parseIntArg(argCaseInsensitive(args, "maxcycle"), 2000)),
+        minVibration: Math.max(0, parseIntArg(argCaseInsensitive(args, "minvibration"), 5)),
+        maxVibration: Math.max(0, parseIntArg(argCaseInsensitive(args, "maxvibration"), 10)),
+        rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+        ...(time === undefined ? {} : { time: parseIntArg(time) }),
+      };
+    }
+    case "stopswing":
+      return { kind: "stopswing" };
+    case "noiseact":
+      // @noiseact (noiseplugin.tjs `kt.noiseact`) : action sur les propriétés du bruit.
+      return { kind: "noiseact", keyframes: parseNoiseActKeys(args.keys, args.props) };
+    case "focusline": {
+      // @focusline (focuslineplugin.tjs) : lignes de concentration, approximées en canvas.
+      const cmin = parseIntArg(args.cmin, 50);
+      const cmax = parseIntArg(args.cmax, 100);
+      const lmin = parseIntArg(args.lmin, 25);
+      const lmax = parseIntArg(args.lmax, 50);
+      const emin = parseIntArg(args.emin, 2000);
+      const emax = parseIntArg(args.emax, 2000);
+      return {
+        kind: "focusline",
+        cx: parseIntArg(args.cx, SCREEN_CENTER_X),
+        cy: parseIntArg(args.cy, SCREEN_CENTER_Y),
+        minLength: Math.max(0, Math.min(cmin, cmax)),
+        maxLength: Math.max(0, Math.max(cmin, cmax)),
+        minLines: Math.max(0, Math.min(lmin, lmax)),
+        maxLines: Math.max(0, Math.max(lmin, lmax)),
+        appear: Math.max(0, Math.max(emin, emax)),
+        color: parseRgbColorArg(args.color) ?? "#ffffff",
+        opacity: Math.min(1, Math.max(0, parseIntArg(args.opacity, 255) / 255)),
+        status: args.status ?? "play",
+      };
+    }
+    case "stopfocusline":
+      return { kind: "stopfocusline" };
+    case "clearfocusline":
+      return { kind: "clearfocusline" };
     case "stopnoise":
       return { kind: "stopnoise" };
     case "stopaction":

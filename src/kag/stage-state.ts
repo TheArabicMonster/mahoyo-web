@@ -80,7 +80,8 @@ function applyEvent(state: StageState, event: RenderEvent): void {
       break;
     }
     case "quake":
-      // L'état de quake n'est pas persisté dans le snapshot pour l'instant.
+    case "screenShake":
+      // Les secousses d'écran ne sont pas persistées dans le snapshot (comme quake).
       break;
     case "textbox": {
       state.textbox = { ...event.state };
@@ -104,6 +105,11 @@ function applyEvent(state: StageState, event: RenderEvent): void {
     }
     case "effect": {
       state.fore = { ...state.fore, effect: event.effect };
+      break;
+    }
+    case "noiseAct": {
+      // Le bruit animé devient l'effet courant persistant (opacité brute 0..255 comme @noise).
+      state.fore = { ...state.fore, effect: { kind: "noise", opacity: event.opacity, monocro: event.monocro } };
       break;
     }
     case "audio":

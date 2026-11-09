@@ -128,7 +128,7 @@ inconnue hors baseline.
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
 | **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 46 commande(s) distincte(s), 168 occurrence(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 42 commande(s) distincte(s), 152 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
@@ -151,7 +151,6 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@bindbg` | 3 |
 | `@cancelskip` | 1 |
 | `@chgpartbg` | 22 |
-| `@clearfocusline` | 1 |
 | `@clickskip` | 2 |
 | `@cm` | 8 |
 | `@cm4pg` | 7 |
@@ -163,13 +162,11 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@endfallnote` | 1 |
 | `@eywz` | 1 |
 | `@fallnoteopt` | 2 |
-| `@focusline` | 1 |
 | `@heart` | 3 |
 | `@infg` | 5 |
 | `@ingz` | 1 |
 | `@layopt` | 1 |
 | `@loadtimeline` | 1 |
-| `@noiseact` | 7 |
 | `@outfg` | 3 |
 | `@pauseaction` | 1 |
 | `@pauseploy` | 1 |
@@ -180,15 +177,14 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@resumeploy` | 1 |
 | `@setdefaultmessageaction` | 11 |
 | `@settracerreturn` | 2 |
-| `@shake` | 4 |
+| `@staffrollsetting` | 1 |
+| `@staffrolluninit` | 3 |
 | `@startchart` | 1 |
-| `@stopfocusline` | 2 |
-| `@stopswing` | 6 |
 | `@store` | 1 |
 | `@swel` | 3 |
-| `@swing` | 1 |
 | `@tickclock` | 11 |
 | `@wb` | 1 |
+| `@wstaffroll` | 2 |
 | `@xchgbgm` | 7 |
 <!-- END AUTO: commandes-kag -->
 

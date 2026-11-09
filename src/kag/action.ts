@@ -23,7 +23,7 @@
  * donc on ne peut pas splitter bêtement sur `(` ou `,` : il faut un scanner
  * à parenthèses équilibrées.
  */
-import type { AnimKeyframe } from "./types";
+import type { AnimKeyframe, PluginKeyframe } from "./types";
 
 /** En-tête de propriété : nom + nature (discrète ou continue). */
 type PropHeader = { name: string; discrete: boolean };
@@ -253,6 +253,87 @@ export function parseActionKeys(keysStr: string | undefined, propsStr: string | 
     prevTime = time;
   }
 
+  return keyframes;
+}
+
+/**
+ * Parse `keys=`/`props=` de `@noiseact` (noiseplugin.tjs `kt.noiseact`) : mêmes colonnes que
+ * `@fgact` (temps, accel, interp, puis valeurs des `props`), mais propriétés du bruit.
+ *
+ * Propriétés reconnues : `opacity` (0..255, continue), `absolute` (continue, ignorée au rendu),
+ * `monocro`, `visible`, `status` (discrètes, appliquées instantanément). Les autres noms sont
+ * ignorés (carry de la colonne précédente), comme le parseur maison de `parseActionKeys`.
+ *
+ * Cellule vide = reprise de la valeur précédente ; temps absolu en ms.
+ */
+export function parseNoiseActKeys(keysStr: string | undefined, propsStr: string | undefined): PluginKeyframe[] {
+  if (!keysStr) return [];
+  const rawFrames = splitKeyframes(keysStr);
+  if (rawFrames.length === 0) return [];
+
+  const headers = parsePropHeaders(propsStr);
+  const keyframes: PluginKeyframe[] = [];
+  const carry: Array<string | number | boolean | undefined> = headers.map(() => undefined);
+  let lastInterp: PluginKeyframe["interp"] = "l";
+  let prevTime = 0;
+
+  for (const cells of rawFrames) {
+    const rawTime = (cells[0] ?? "").trim();
+    const time = rawTime === "" ? prevTime : Number(rawTime);
+    if (!Number.isFinite(time)) continue;
+    const rawInterp = (cells[2] ?? "").trim();
+    const interp: PluginKeyframe["interp"] = rawInterp === "n" ? "n" : rawInterp === "~" ? "~" : rawInterp === "" ? lastInterp : "l";
+    lastInterp = interp;
+
+    for (let ci = 0; ci < headers.length; ci++) {
+      const header = headers[ci]!;
+      const raw = (cells[ci + 3] ?? "").trim();
+      if (raw === "" || raw === "~") continue;
+      switch (header.name) {
+        case "opacity": {
+          const n = Number(raw);
+          if (Number.isFinite(n)) carry[ci] = n;
+          break;
+        }
+        case "absolute": {
+          const n = Number(raw);
+          if (Number.isFinite(n)) carry[ci] = n;
+          break;
+        }
+        case "monocro":
+          carry[ci] = raw === "1" || raw === "true";
+          break;
+        case "visible":
+          carry[ci] = raw === "1" || raw === "true";
+          break;
+        case "status":
+          carry[ci] = raw;
+          break;
+        default:
+          // Propriété non gérée : conservée en brut pour le carry, sans effet au rendu.
+          carry[ci] = raw;
+          break;
+      }
+    }
+
+    const frame: PluginKeyframe = {
+      time,
+      duration: Math.max(0, time - prevTime),
+      interp,
+    };
+    for (let ci = 0; ci < headers.length; ci++) {
+      const name = headers[ci]!.name;
+      const value = carry[ci];
+      if (value === undefined) continue;
+      if (name === "opacity" && typeof value === "number") frame.opacity = value;
+      else if (name === "absolute" && typeof value === "number") frame.absolute = value;
+      else if (name === "monocro" && typeof value === "boolean") frame.monocro = value;
+      else if (name === "visible" && typeof value === "boolean") frame.visible = value;
+      else if (name === "status" && typeof value === "string") frame.status = value;
+    }
+    keyframes.push(frame);
+    prevTime = time;
+  }
   return keyframes;
 }
 

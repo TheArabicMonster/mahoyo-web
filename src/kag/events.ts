@@ -84,7 +84,40 @@ export type SpriteState = {
  */
 export type EffectState =
   | { kind: "noise"; opacity: number; monocro?: boolean }
-  | { kind: "haze"; power: number; delta: number; omega: number };
+  | { kind: "haze"; power: number; delta: number; omega: number }
+  /**
+   * Lignes de concentration (`@focusline`, focuslineplugin.tjs) — approximation : lignes radiales
+   * dessinées en canvas autour de (`cx`, `cy`), longueurs et nombre tirés dans les bornes.
+   * `opacity` 0..1 ; `appear` = durée d'apparition (ms) avant figement.
+   */
+  | {
+      kind: "focusline";
+      cx: number;
+      cy: number;
+      minLength: number;
+      maxLength: number;
+      minLines: number;
+      maxLines: number;
+      appear: Ms;
+      color: string;
+      opacity: number;
+    };
+
+/**
+ * Secousse d'écran (`@shake` / `@swing`, override `tagex.tjs`) : oscillation appliquée à la scène
+ * entière. `time: null` = continue jusqu'à l'arrêt (`@stopswing`).
+ */
+export type ScreenShakeSpec =
+  | { mode: "shake"; vmax: number; hmax: number; cycle: Ms; time: Ms | null }
+  | {
+      mode: "swing";
+      minCycle: Ms;
+      maxCycle: Ms;
+      minVibration: number;
+      maxVibration: number;
+      rate: number;
+      time: Ms | null;
+    };
 
 /** État complet de la scène à afficher. */
 export type SceneState = {
@@ -253,6 +286,13 @@ export type RenderEvent =
   | { kind: "stopTransition" }
   /** Démarre ou arrête un tremblement d'écran. */
   | { kind: "quake"; quake: QuakeSpec | null }
+  /** Démarre ou arrête une secousse d'écran (`@shake`/`@swing`/`@stopswing`). */
+  | { kind: "screenShake"; shake: ScreenShakeSpec | null }
+  /**
+   * Animation des propriétés du bruit (`@noiseact`) : fondu d'opacité `from` → `opacity` en `time`
+   * ms, monocro appliqué à l'arrivée. Le runtime a déjà normalisé la cible.
+   */
+  | { kind: "noiseAct"; opacity: number; monocro: boolean; from: number; time: Ms }
   /** Affiche ou masque la textbox et sa bordure. */
   | { kind: "textbox"; state: TextboxState; time: Ms }
   /** Vide la textbox. */

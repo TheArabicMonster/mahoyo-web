@@ -2,10 +2,12 @@ import type { AssetResolver } from "@/core/asset-resolver.js";
 import type {
   AssetRef,
   Awaitable,
+  EffectState,
   Ms,
   PloyState,
   RenderEvent,
   SceneState,
+  ScreenShakeSpec,
   StaffrollState,
   StageSnapshot,
   TextboxState,
@@ -192,6 +194,8 @@ export class DomStageRenderer implements StageRenderer {
   private timelineLayerEls = new Map<string, HTMLElement>();
   private quakeTimer: ReturnType<typeof setTimeout> | null = null;
   private quakeResolve: (() => void) | null = null;
+  private shakeTimer: ReturnType<typeof setTimeout> | null = null;
+  private shakeResolve: (() => void) | null = null;
 
   private staffrollTimer: ReturnType<typeof setTimeout> | null = null;
   private staffrollResolve: (() => void) | null = null;
@@ -1037,6 +1041,17 @@ export class DomStageRenderer implements StageRenderer {
         else if (!event.quake) this.stopQuake();
         break;
       }
+      case "screenShake": {
+        // @shake / @swing / @stopswing (HUD-16 lot plugin #281) : oscillation de la scène, sans
+        // attente. Désactivée par le réglage « effets spéciaux » et par prefers-reduced-motion.
+        if (event.shake && this.settings.specialEffects) this.startScreenShake(event.shake, opts);
+        else this.stopScreenShake();
+        break;
+      }
+      case "noiseAct": {
+        this.animateNoise(event, opts);
+        break;
+      }
       case "staffroll": {
         this.staffroll = event.state;
         this.renderStaffroll(opts);
@@ -1558,7 +1573,64 @@ export class DomStageRenderer implements StageRenderer {
       el.className = "mh-stage-haze";
       el.style.opacity = String(Math.min(1, effect.power / 20));
       this.effectsEl.appendChild(el);
+    } else if (effect.kind === "focusline") {
+      this.renderFocusLines(effect);
     }
+  }
+
+  /**
+   * `@focusline` (focuslineplugin.tjs) : approximation en canvas de lignes radiales convergeant
+   * vers (`cx`, `cy`). Le nombre de lignes et leur longueur sont tirés dans les bornes du tag, et
+   * l'apparition est un fondu CSS de `appear` ms (instantané sous `prefers-reduced-motion`).
+   */
+  private renderFocusLines(effect: Extract<EffectState, { kind: "focusline" }>): void {
+    if (!this.effectsEl) return;
+    const canvas = document.createElement("canvas");
+    canvas.className = "mh-stage-focusline";
+    canvas.width = 1024;
+    canvas.height = 576;
+    canvas.dataset.effect = "focusline";
+    const reduced = this.prefersReducedMotion();
+    const appear = reduced ? 0 : Math.max(0, effect.appear);
+    canvas.style.cssText =
+      "position:absolute;left:0;top:0;width:1024px;height:576px;pointer-events:none;" +
+      `opacity:${reduced ? effect.opacity : 0};` +
+      `transition:${appear > 0 ? `opacity ${appear}ms linear` : "none"};`;
+    this.effectsEl.appendChild(canvas);
+    this.drawFocusLines(canvas, effect);
+    if (!reduced) {
+      // Laisse la feuille de style appliquer l'opacité 0 avant de lancer le fondu.
+      setTimeout(() => {
+        canvas.style.opacity = String(effect.opacity);
+      }, 0);
+    }
+  }
+
+  /** Dessine les lignes radiales de `@focusline` sur le canvas (1024×576, repère de la scène). */
+  private drawFocusLines(canvas: HTMLCanvasElement, effect: Extract<EffectState, { kind: "focusline" }>): void {
+    // jsdom ne fournit pas de contexte 2D : l'élément reste présent (état observable) sans tracé.
+    const ctx = typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
+    if (!ctx) return;
+    const minLines = Math.max(0, Math.min(effect.minLines, effect.maxLines));
+    const maxLines = Math.max(effect.minLines, effect.maxLines);
+    const count = Math.round(minLines + Math.random() * Math.max(0, maxLines - minLines));
+    const minLength = Math.max(0, Math.min(effect.minLength, effect.maxLength));
+    const maxLength = Math.max(effect.minLength, effect.maxLength);
+    ctx.clearRect(0, 0, 1024, 576);
+    ctx.strokeStyle = effect.color;
+    ctx.lineCap = "round";
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const inner = 24 + Math.random() * 80;
+      const length = minLength + Math.random() * Math.max(0, maxLength - minLength);
+      ctx.globalAlpha = Math.min(1, Math.max(0, effect.opacity * (0.35 + Math.random() * 0.65)));
+      ctx.lineWidth = 1 + Math.random() * 2;
+      ctx.beginPath();
+      ctx.moveTo(effect.cx + Math.cos(angle) * inner, effect.cy + Math.sin(angle) * inner);
+      ctx.lineTo(effect.cx + Math.cos(angle) * (inner + length), effect.cy + Math.sin(angle) * (inner + length));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   /**
@@ -1674,6 +1746,7 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   private startQuake(spec: { hmax: number; vmax: number; time?: Ms | null }, opts: RunOptions): void {
+    this.stopScreenShake();
     this.stopQuake();
     if (opts.instant) return;
     if (!this.container) return;
@@ -1712,6 +1785,109 @@ export class DomStageRenderer implements StageRenderer {
       this.quakeResolve();
       this.quakeResolve = null;
     }
+  }
+
+  /**
+   * Secousse d'écran `@shake` (sinusoïdale) ou `@swing` (aléatoire continue), approximée par une
+   * oscillation de la scène entière (même transformation que `@quake`). `time: null` = continue
+   * jusqu'à `@stopswing`/`@stopquake`/fin de session. Sans effet sous `prefers-reduced-motion`.
+   */
+  private startScreenShake(spec: ScreenShakeSpec, opts: RunOptions): void {
+    this.stopScreenShake();
+    this.stopQuake();
+    if (opts.instant || !this.container || !this.settings.specialEffects) return;
+    if (this.prefersReducedMotion()) return;
+
+    const start = performance.now();
+    const duration = spec.time;
+    const rate = spec.mode === "swing" ? Math.max(0.1, spec.rate) : 1;
+    let cycleStart = 0;
+    let cycleLength = 0;
+    let ampX = 0;
+    let ampY = 0;
+
+    const nextSwingCycle = (now: number): void => {
+      if (spec.mode !== "swing") return;
+      cycleStart = now;
+      cycleLength = spec.minCycle + Math.random() * Math.max(0, spec.maxCycle - spec.minCycle);
+      const vibration = spec.minVibration + Math.random() * Math.max(0, spec.maxVibration - spec.minVibration);
+      const angle = Math.random() * Math.PI * 2;
+      ampX = Math.cos(angle) * vibration;
+      ampY = Math.sin(angle) * vibration;
+    };
+
+    this.shakeResolve = () => {};
+    const tick = (): void => {
+      if (!this.container) return;
+      const now = performance.now();
+      const elapsed = now - start;
+      let dx = 0;
+      let dy = 0;
+      if (spec.mode === "shake") {
+        const phase = (elapsed / Math.max(1, spec.cycle)) * Math.PI * 2;
+        dx = Math.sin(phase) * spec.hmax;
+        dy = Math.sin(phase) * spec.vmax;
+      } else {
+        if (elapsed >= cycleStart + cycleLength) nextSwingCycle(elapsed);
+        const local = cycleLength > 0 ? (elapsed - cycleStart) / cycleLength : 0;
+        const phase = local * Math.PI * 2 * rate;
+        dx = Math.sin(phase) * ampX;
+        dy = Math.sin(phase) * ampY;
+      }
+      this.container.style.transform = `translate(${dx}px, ${dy}px) scale(${STAGE_SCALE})`;
+      if (duration !== null && elapsed >= duration) {
+        this.stopScreenShake();
+        return;
+      }
+      this.shakeTimer = setTimeout(tick, 16);
+    };
+    nextSwingCycle(0);
+    tick();
+  }
+
+  private stopScreenShake(): void {
+    if (this.shakeTimer) clearTimeout(this.shakeTimer);
+    this.shakeTimer = null;
+    if (this.shakeResolve) {
+      this.shakeResolve();
+      this.shakeResolve = null;
+    }
+    // Ne pas écraser la transformation si un `@quake` a repris la main entre-temps.
+    if (this.container && !this.quakeTimer) this.container.style.transform = "";
+  }
+
+  /** `prefers-reduced-motion` : pas d'effet agressif (secousses, apparition animée). */
+  private prefersReducedMotion(): boolean {
+    try {
+      return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * `@noiseact` : animation des propriétés du bruit (approximation — seules opacité et monocro
+   * sont rendues ; la durée vient des keyframes, voir runtime `applyNoiseAct`).
+   */
+  private animateNoise(event: Extract<RenderEvent, { kind: "noiseAct" }>, opts: RunOptions): void {
+    const effect = { kind: "noise" as const, opacity: event.opacity, monocro: event.monocro };
+    this.currentScene = { ...this.currentScene, effect };
+    if (!this.settings.specialEffects || !this.effectsEl) return;
+    let el = this.effectsEl.querySelector<HTMLElement>(".mh-stage-noise");
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "mh-stage-noise";
+      this.effectsEl.appendChild(el);
+    }
+    const from = event.from > 1 ? event.from / 255 : event.from;
+    const target = event.opacity > 1 ? event.opacity / 255 : event.opacity;
+    const time = opts.instant || this.prefersReducedMotion() ? 0 : event.time;
+    el.style.transition = time > 0 ? `opacity ${time}ms linear` : "none";
+    el.style.opacity = String(Math.min(1, Math.max(0, from)));
+    el.style.filter = event.monocro ? "grayscale(100%)" : "";
+    // Reflow pour partir de la valeur de départ, puis cible (transition CSS si time > 0).
+    void el.offsetWidth;
+    el.style.opacity = String(Math.min(1, Math.max(0, target)));
   }
 
   /**
@@ -2184,6 +2360,15 @@ export class DomStageRenderer implements StageRenderer {
   private clearTimers(): void {
     if (this.typewriterTimer) clearTimeout(this.typewriterTimer);
     if (this.quakeTimer) clearTimeout(this.quakeTimer);
+    if (this.shakeTimer) {
+      clearTimeout(this.shakeTimer);
+      this.shakeTimer = null;
+    }
+    if (this.shakeResolve) {
+      this.shakeResolve();
+      this.shakeResolve = null;
+    }
+    if (this.container && !this.quakeTimer) this.container.style.transform = "";
     if (this.staffrollTimer) clearTimeout(this.staffrollTimer);
     this.staffrollTimer = null;
     const staffrollResolve = this.staffrollResolve;
