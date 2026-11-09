@@ -6,12 +6,14 @@ Ce dépôt contient le **projet réel** : un player web moderne et maintenable p
 
 ## Statut (9 novembre 2026)
 
-- **v1.0** : 75 issues fermées sur 82 (**91 %**), 7 restantes.
-- **v1.1** : 32 issues fermées sur 54 (**59 %**).
-- Phases actives : **E7 — Projet réel**, **E5 — UI/UX** (refonte HUD) et **E6 — QA**.
-- Le player lit le corpus narratif, gère les choix, l'historique, les sauvegardes et un écran de configuration complet.
-- Dernières livraisons (vague 4, 9 novembre) : routes d'URL des écrans (#204), historique plein cadre avec toast « historique vide » (#201), gestes tactiles et barre d'actions rapides (#203), sous-menu Extra et Archive (#199), configuration au design d'origine (#200), interactions du flowchart — pan, zoom, volet de détails (#202).
-- Vérification locale : `npm run test:unit` (**1939 tests**), `npm run test:integration` (**27 tests**), `npm run lint` et `npm run build` passent.
+## Statut (9 novembre 2026)
+
+- **v1.0 : 86 issues fermées sur 86 (100 %, 🟢 Terminé)** — jeu complet jouable sur desktop : lint ESLint 9 vert (#220), lecture complète des 221 scripts exécutée en CI sur un corpus de placeholders (#269, #273), documentation de clôture (#270). La DoD de release est satisfaite.
+- **v1.1** : 43 issues fermées sur 61 (**70 %**) — confort, accessibilité et finitions ; c'est l'épic suivant, **en cours**.
+- Phases actives : **E5 — UI/UX** (finitions v1.1) et **E6 — QA & optimisation**.
+- Le player lit le corpus narratif complet, gère les choix, l'historique, les sauvegardes IndexedDB et les écrans du HUD d'origine.
+- Dernières livraisons (9 novembre) : transitions plein écran (#205), CG mode (#208), Sound mode (#209), accessibilité du flowchart (#206), intégration du flowchart au titre, au menu système et aux routes (#207), e2e Chromium + Firefox (#94, #243), corrections de fidélité des fonds, calques et effets (#249, #252, #260), lint ESLint 9 avec CI (#220), lecture complète en placeholders (#269, #273), parcours utilisateur et clôture du README (#93, #270).
+- Vérification locale : `npm run test:unit` (**1939 tests**), `npm run lint`, `npm run build` et `npm run check:assets` passent ; `npm run test:e2e` tourne en placeholders sur Chromium et Firefox (**147 tests**, 15 fichiers) ; la lecture complète se lance sur les assets locaux ou sur le corpus de placeholders (voir [Tests](#tests)).
 
 Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 
@@ -21,11 +23,16 @@ Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 - **Lecture** : enchaînement des chapitres, autosave, skip du texte lu, avance rapide, mode automatique avec délais page/ligne réglables.
 - **Fenêtre de message** : texte posé sur le cadre du jeu (sans boîte), texte déjà lu atténué, indicateurs de ligne/page animés.
 - **Configuration** : quatre onglets (Système, Message, Son/Effet, Raccourcis), 14 raccourcis clavier modifiables, plein écran fit/fill/1:1, volumes et mutes BGM/SE/système.
-- **Sauvegardes** : 15 pages de 8 emplacements, rapide et auto dans IndexedDB, migration depuis `localStorage`, export/import JSON, titre de scène, commentaire et verrou par emplacement.
-- **Interface** : écran titre avec sous-menu Extra et Archive, menu système, historique, chargement/sauvegarde, configuration au design d'origine, flowchart interactif (pan, zoom, volet de détails), routes d'URL, toasts et confirmations.
+- **Sauvegardes** : 15 pages de 8 emplacements, rapide et auto dans IndexedDB, migration depuis `localStorage`, export/import JSON depuis l'écran de chargement, titre de scène, commentaire et verrou par emplacement.
+- **Interface** : écran titre avec sous-menu Extra (Archive, CG mode, Sound mode), menu système, historique, chargement/sauvegarde, configuration au design d'origine, flowchart interactif (pan, zoom, volet de détails), routes d'URL, toasts et confirmations.
+- **CG mode** : galerie des illustrations vues, visionneuse plein écran et navigation clavier ; vignettes calculées à l'exécution depuis les assets de l'utilisateur (aucune miniature commitée).
+- **Sound mode** : galerie BGM avec lecture/pause, répétition, aléatoire, volume et progression ; titres et compositeurs fournis par l'utilisateur dans le manifeste.
+- **Transitions** : rideaux plein écran entre titre, chargement et jeu (HUD-14), sans animation sous `prefers-reduced-motion`.
+- **Accessibilité** : flowchart utilisable au clavier et au lecteur d'écran (navigation par arêtes, équivalent liste, portrait) et audité par axe-core (WCAG A/AA) ; `prefers-reduced-motion` respecté sur les transitions et les écrans. Conformité WCAG AA globale suivie en v1.1 (#97).
 - **Tactile** : appui long = menu système, balayage vers le haut = historique, barre d'actions rapides (Q.Save, Q.Load, Auto, Skip, Historique, Plein écran) sur appareil tactile uniquement, cibles de 48 px réels ; la souris et le clavier ne changent pas.
 - **Traductions** : japonais d'origine et patch fan français Moon-Trad installable par script ; sélecteur de langue dans la configuration.
-- **Pipeline** : extraction `.xp3`, conversion `.tlg` → WebP, audio OGG, normalisation des `.ks`, audit du corpus, table d'enchaînement et graphe de scénario.
+- **Pipeline** : extraction `.xp3` automatisée par gabarit d'outil externe, manifeste d'assets, rapport d'exécution et codes de sortie, conversion `.tlg` → PNG/WebP, audio OGG, normalisation des `.ks`, audit du corpus, table d'enchaînement et graphe de scénario.
+- **Qualité** : 1939 tests unitaires, `npm run lint` (ESLint 9, 0 erreur), suite e2e Playwright sur Chromium et Firefox en placeholders (147 tests, 15 fichiers, parcours complet inclus), lecture complète des 221 scripts en CI sur corpus de placeholders, CI à 3 jobs et contrôle anti-assets.
 - **Design system** : palette, typographie, espacements et états mesurés sur le jeu d'origine, tokens CSS dans `src/ui/tokens.css`.
 
 ## Langues
@@ -128,9 +135,11 @@ sans aucun skip** ; les seules exclusions concernent Firefox :
   l'anneau de focus clavier du menu n'apparaît donc pas — écart d'accessibilité réel suivi hors de ce
   lot (fichier propriété de #231).
 
-La CI exécute la suite sur **Chromium et Firefox** (matrice `e2e (chromium)` / `e2e (firefox)`,
-`fail-fast: false`) : deux jobs en parallèle pour garder un temps de mur d'un seul navigateur, au prix
-de deux runners — choix documenté dans `.github/workflows/ci.yml`.
+La CI comporte **3 jobs** : `build-and-test` (`npm ci`, lint, contrôle anti-assets, `npm run build`,
+tests unitaires, tests d'intégration en skip propre sur checkout nu, puis corpus de placeholders et
+lecture complète des 221 scripts, Prettier non bloquant) et la matrice `e2e (chromium)` / `e2e (firefox)`
+(`fail-fast: false`) avec placeholders. Les deux jobs e2e tournent en parallèle pour garder un temps de
+mur d'un seul navigateur, au prix de deux runners — choix documenté dans `.github/workflows/ci.yml`.
 
 > Environnements restreints (sandbox macOS d'un agent, conteneurs) : Firefox imbrique son propre
 > sandbox, que certains sandboxes d'exécution refusent (`sandbox_init() failed`). Pour la
@@ -324,15 +333,26 @@ Détail complet : [`docs/CONFIG_PLAN.md`](docs/CONFIG_PLAN.md).
 
 ## Limites connues
 
-- L'ouverture est un diaporama (images, musique, pluie) **toujours sautable** : ses panoramiques, calques et effets ne sont pas encore rendus (#125).
-- Les bulles des scripts « omake » (`@ploysay`) sont positionnées mais pas dessinées.
-- Un chapitre choisi dans *Extra* démarre avec un **état vide** : les variables posées par le jeu en entrant dans un chapitre ne sont pas reprises.
-- Une quinzaine d'images de personnages sont introuvables dans les assets convertis (#110).
-- Quelques gros plans de sprites restent mal ancrés (#171).
-- L'écran de sauvegarde/chargement utilise encore l'ancienne interface ; le modèle enrichi (titre, commentaire, verrou) n'est pas encore exposé (#196).
-- La refonte des écrans HUD (titre, menu système, chargement, historique, flowchart) est suivie dans le backlog `HUD-xx`, `WEB-xx` et `FLOW-xx` ; la configuration est déjà refaite (#177), les autres écrans restent à aligner (#200).
-- Les sauvegardes et vignettes vivent dans IndexedDB (repli `localStorage`, puis mémoire) avec export/import JSON ; les boutons correspondants de l'écran de sauvegarde restent à faire (#196). En attendant : `mahoyoSaves.export()` / `mahoyoSaves.import()` dans la console du navigateur. Voir [`docs/SAUVEGARDES.md`](docs/SAUVEGARDES.md).
-- Le jeu est testé en CI sur Chrome (Chromium) **et** Firefox desktop (matrix Playwright) ; le mobile reste à valider (v1.1). Un écart Firefox connu est listé dans la section Tests.
+## Limites connues
+
+État au 9 novembre 2026, après la clôture v1.0. Les écarts restants sont suivis en v1.1 ; aucun n'est un
+bloquant de la release v1.0 (voir la [DoD](docs/DEFINITION_OF_DONE.md) et [`docs/PROGRESS.md`](docs/PROGRESS.md)).
+
+- **Ouverture** : rejouée par le lecteur de timeline (panoramiques, calques et audio, #125) et toujours
+  sautable. Restent la fidélité de la pluie et des accélérations (#158) et le flash blanc/panoramique
+  final (#254), suivis en v1.1.
+- **Bulles `@ploysay`** (scripts « omake ») : positionnées (décalages exposés) mais pas dessinées.
+- **Chapitre choisi dans *Extra > Archive*** ou « Relire depuis ici » dans le flowchart : démarre avec un
+  **état initial vide** ; les variables posées par le jeu en entrant dans le chapitre ne sont pas reprises.
+- **Assets absents** : seul le son `bgm101` (générique de fin) manque au corpus japonais — le générique se
+  joue sans musique ; la traduction française référence en plus 43 images propres à la version Steam,
+  absentes de l'archive 2012 et tolérées par un avertissement unique (#110, #155). Aucun asset n'est substitué.
+- **`@trans`** : `exchange=true` et `backlay` après `@wt` ne sont pas implémentés (#253, v1.1).
+- **Accessibilité** : le flowchart est couvert par axe-core (WCAG A/AA) et le clavier ; il reste l'anneau de
+  focus du menu système sous Firefox (#257, v1.1) et la conformité WCAG AA globale (#97, v1.1).
+- **Mobile/tablette** : non validé ; responsive portrait (#210) et accessibilité des écrans système (#211)
+  sont suivis en v1.1.
+- **Écran de choix** : fidélité à l'original suivie en v1.1 (#213).
 
 ## Documentation
 
@@ -379,6 +399,9 @@ src/ui/               Interface utilisateur
   ui-manager.css      Styles de l'interface
   tokens.css          Tokens du design system
   toast.ts / .css     Toasts au design d'origine (pile de 3, bas droite)
+  transitions.ts/.css Rideaux plein écran entre écrans (HUD-14)
+  cg-mode.ts / .css   Galerie CG (HUD-15)
+  sound-mode.ts/.css  Galerie sonore (HUD-16)
   chapter-list.ts     Chapitres et scripts
   types.ts            Contrats UIManager, PlayerCommands, UIView
 
@@ -401,7 +424,8 @@ src/core/             Utilitaires partagés
   easing.ts           Courbes d'animation
 
 tools/                Pipeline d'assets et génération hors dépôt
-  pipeline.ts         Orchestrateur d'extraction/conversion
+  pipeline.ts         Orchestrateur (extraction, conversion, manifeste, rapport)
+  tlg-decode.ts       Décodeur TLG0.0/TLG5.0 intégré (PNG via zlib)
   story-chain.ts      story-chain.json + story-graph.json
   timelines.ts        timelines.json
   audit-scenario.ts   Audit du corpus KAG

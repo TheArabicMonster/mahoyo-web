@@ -77,6 +77,9 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`night.ts`** / **`night.css`** : fond « nuit bleue » en CSS pur (HUD-02, #188) ; `NIGHT_FIXED_SCREENS` (sauvegarde, chargement, historique, configuration) et démonstration `?night` via `syncNightDemo`. Voir [`DESIGN.md`](DESIGN.md) §9.1.
 - **`title-screen.ts`** / **`title-screen.css`** (HUD-07 #195) : écran titre au design d'origine et sous-menu Extra ; **`archive-view.ts`** / **`archive-view.css`** (HUD-08, #199) : liste de chapitres anti-spoiler ouverte depuis Extra. Voir [`DESIGN.md`](DESIGN.md) §9.9.
 - **`config-screen.ts`** / **`config-screen.css`** (HUD-09, #200) : configuration au design d'origine (onglets Système, Message, Son/Effet, Raccourcis ; contrôles, aperçu du fondu) et option « tout révéler » du flowchart ; le modèle de réglages et `updateSettings` ne changent pas. Voir [`DESIGN.md`](DESIGN.md) §9.10.
+- **`transitions.ts`** / **`transitions.css`** (HUD-14, #205) : rideaux plein écran entre les vues (titre → jeu, chargement → scène, ouverture/fermeture d'écran), timings lus dans les tokens CSS ; transition **inerte** sous `prefers-reduced-motion`. Voir [`DESIGN.md`](DESIGN.md) §7.
+- **`cg-mode.ts`** / **`cg-mode.css`** (HUD-15, #208) : galerie CG construite depuis le manifeste (`buildCgCatalog`), suivi des CG vues (`src/player/cg-seen.ts`), visionneuse plein écran avec navigation clavier ; aucune miniature n'est commitée. Voir [`DESIGN.md`](DESIGN.md) §9.13.
+- **`sound-mode.ts`** / **`sound-mode.css`** (HUD-16, #209) : galerie sonore depuis `AssetResolver.audioEntries()`, lecteur indépendant (`SoundEngine` de `audio-manager.ts`), titres et compositeurs fournis par l'utilisateur. Voir [`DESIGN.md`](DESIGN.md) §9.16.
 - **`backlog-screen.ts`** / **`backlog-screen.css`** (HUD-12, #201) : historique plein cadre, ascenseur natif stylé, navigation clavier, ouverture à vide remplacée par le toast `toast.historyEmpty`. Voir [`DESIGN.md`](DESIGN.md) §9.7.
 - **`gestures.ts`** : reconnaissance de gestes **pure** (appui, appui long, balayages, abandon sur pincement), horloge injectée ; **`touch-controls.ts`** / **`touch-controls.css`** (WEB-01, #203) : bouton de menu persistant et barre d'actions rapides, créés **seulement** sur appareil tactile (`pointer: coarse` ou toucher observé), cibles de 48 px réels via `--mh-ui-scale`. Voir [`DESIGN.md`](DESIGN.md) §9.8.
 - **`chapter-list.ts`** : construction de la liste des chapitres/scripts et règle de déverrouillage de l'Archive.
@@ -151,10 +154,18 @@ src/renderer/ + src/ui/  ── rendu navigateur
 
 ### `tools/` — pipeline d'assets (hors dépôt pour les assets)
 
-- Extraction `.xp3`, conversion `.tlg` → WebP, audio OGG, normalisation des `.ks`.
+- **`pipeline.ts`** (E1, #95) : orchestrateur `npm run pipeline -- --input … --output …` — résolution de la
+  source (extraction `.xp3` par gabarit `{in}`/`{out}`), inventaire, plan, conversion, écriture du manifeste
+  `asset-manifest.json`, vérification des références et rapports (`<work>/pipeline-report.json`,
+  `<work>/report.json`). Options `--dry-run`, `--strict`, `--force`, `--no-translation` ; garde-fous : refus
+  d'un dossier de sortie/travail du dépôt non ignoré par git, code de sortie 1 si un fichier n'est pas produit.
+  Voir [`PIPELINE.md`](PIPELINE.md).
+- **`tlg-decode.ts`** : décodeur intégré TLG0.0/TLG5.0 (PNG via zlib), utilisé sans `--tlg-cmd` ; TLG6 signalé en échec.
 - **`story-chain.ts`** : génère `story-chain.json` (enchaînement, chapitres, choix) et `story-graph.json` (graphe de scénario).
 - **`timelines.ts`** : génère `timelines.json` pour l'ouverture.
-- **`audit-scenario.ts`** : audit des commandes KAG et des assets référencés.
+- **`audit-scenario.ts`** : audit des commandes KAG et des assets référencés (`MAHOYO_ASSETS_DIR` ou `public/assets`).
+- Conversions `convert-tlg.ts` / `convert-audio.ts`, normalisation `normalize-ks.ts`, traduction `translation.ts`,
+  contrôle anti-assets `check-no-assets.ts` et progression `progress.ts` ; tests unitaires dans `tests/unit/tools/`.
 
 ### Configuration et design system
 
@@ -189,8 +200,11 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
 
 ## Tests et fixtures
 
-- `tests/unit/mocks/` : mocks partagés (`FakeAudioPlayer`, `FakeUIManager`, `FakeRuntime`).
-- `tests/fixtures/*.json` : séquences de `Step` générées par le runtime à partir de samples.
+- `tests/unit/` : **1939 tests unitaires** (112 fichiers) sur le moteur KAG, le rendu, les écrans, la
+  persistance et les outils ; `tests/unit/mocks/` fournit les mocks partagés (`FakeAudioPlayer`,
+  `FakeUIManager`, `FakeRuntime`) et `tests/fixtures/*.json` les séquences de `Step` générées à partir de samples.
+- `tests/integration/` : lecture complète du corpus (`full-read.test.ts`, 221 scripts, 0 erreur, 0 boucle),
+  traduction, enchaînement, flowchart et timelines ; voir « Tests d'intégration et lecture complète » ci-dessous.
 
 ### Tests end-to-end (Playwright, #243 / #94)
 
@@ -215,9 +229,11 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
 - `playwright.config.ts` définit deux projets, `chromium` et `firefox`. Les skips par navigateur
   (émulation tactile CDP/`isMobile`, ascenseur `::-webkit-scrollbar`) sont déclarés dans les specs
   avec leur justification.
-- `.github/workflows/ci.yml` exécute la suite en mode placeholders sur **les deux navigateurs** via
-  une matrice `e2e (chromium)` / `e2e (firefox)` (`fail-fast: false`), et téléverse `test-results/`
-  par navigateur en cas d'échec.
+- `.github/workflows/ci.yml` comporte **3 jobs** : `build-and-test` (`npm ci`, `npm run lint`, contrôle
+  anti-assets, `npm run build`, tests unitaires, tests d'intégration en skip propre sur checkout nu, puis
+  corpus de placeholders et lecture complète des 221 scripts, Prettier non bloquant) et la matrice
+  `e2e (chromium)` / `e2e (firefox)` (`fail-fast: false`) qui exécute la suite en mode placeholders et
+  téléverse `test-results/` par navigateur en cas d'échec.
 
 ### Tests d'intégration et lecture complète (#269)
 
