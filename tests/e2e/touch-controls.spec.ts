@@ -140,7 +140,9 @@ test.describe("Tactile (émulation téléphone en paysage)", () => {
     await expect(touchRoot(page)).toBeVisible();
   });
 
-  test("appui long sur la scène = menu système (et le relâchement n'avance pas)", async ({ page }) => {
+  test("appui long sur la scène = menu système (et le relâchement n'avance pas)", async ({ page, browserName }) => {
+    // `touchSequence` passe par CDP (`Input.dispatchTouchEvent`), disponible dans Chromium seulement.
+    test.skip(browserName !== "chromium", "séquence tactile brute via CDP : Chromium uniquement");
     await startGame(page, true);
     await touchSequence(page, [
       { type: "start", x: 420, y: 200, wait: 800 },
@@ -151,7 +153,9 @@ test.describe("Tactile (émulation téléphone en paysage)", () => {
     await expect(menu(page)).toBeVisible(); // pas refermé par un contextmenu ou un click résiduel
   });
 
-  test("balayage vers le haut = historique ; à vide, un toast et aucun écran (#201)", async ({ page }) => {
+  test("balayage vers le haut = historique ; à vide, un toast et aucun écran (#201)", async ({ page, browserName }) => {
+    // `touchSequence` passe par CDP (`Input.dispatchTouchEvent`), disponible dans Chromium seulement.
+    test.skip(browserName !== "chromium", "séquence tactile brute via CDP : Chromium uniquement");
     await startGame(page, true);
     await touchSequence(page, [...SWIPE_UP]);
     // Selon l'avancement du premier point de clic l'historique peut déjà contenir une page : on ne vérifie le

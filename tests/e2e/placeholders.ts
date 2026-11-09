@@ -26,6 +26,11 @@ import { dirname, join } from "path";
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+/** PNG uni 1×1 exporté pour les specs qui interceptent les images (`cg-mode.spec.ts`). */
+export function png1x1(r: number, g: number, b: number): Buffer {
+  return pngSolid(1, 1, r, g, b);
+}
+
 function makeCrc32() {
   const table = new Uint32Array(256);
   for (let i = 0; i < 256; i++) {

@@ -40,7 +40,11 @@ test.describe("Historique (HUD-12)", () => {
     }
   });
 
-  test("mise en page, clavier, fermeture", async ({ page }) => {
+  test("mise en page, clavier, fermeture", async ({ page, browserName }) => {
+    // La géométrie de cet écran inclut un ascenseur natif de 39 px imposé par
+    // `::-webkit-scrollbar` (Chromium). Firefox applique sa propre largeur (0 px en overlay) :
+    // la mesure n'a de sens que dans Chromium, comme documenté dans le README.
+    test.skip(browserName !== "chromium", "ascenseur natif 39 px (::-webkit-scrollbar) : Chromium uniquement");
     await startGame(page);
     await readPages(page, 20);
     await openFromMenu(page);
