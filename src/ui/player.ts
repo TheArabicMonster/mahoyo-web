@@ -320,6 +320,10 @@ export class Player implements PlayerCommands {
   private languageIndexes: Map<string, LanguageIndex> = new Map();
   /** Scripts à jouer à la suite avant de consulter à nouveau la table (interludes). */
   private chainQueue: string[] = [];
+  /** Saut au clic autorisé (@clickskip ; défaut moteur = true). */
+  private clickSkipEnabled = true;
+  /** Saut des effets autorisé (@effectskip ; défaut moteur = true). */
+  private effectSkipEnabled = true;
   /** Le point d'arrêt courant n'avait pas encore été lu (pour le skip). */
   private stopWasRead = true;
   /** La page courante a déjà été lue (vitesse, avance rapide, auto-skip). */
@@ -479,7 +483,8 @@ export class Player implements PlayerCommands {
       return;
     }
     if (this.applying) {
-      this.stage.hurry();
+      // @clickskip enabled=0 : le clic ne termine plus la frappe en cours.
+      if (this.clickSkipEnabled) this.stage.hurry();
       return;
     }
     if (this.onAdvance) {
@@ -526,6 +531,25 @@ export class Player implements PlayerCommands {
    * @pauseautomode / @resumeautomode : suspend le déclenchement automatique sans toucher à
    * `mode` (le joueur garde « auto » et le retrouve à la reprise).
    */
+  /**
+   * `@clickskip` / `@effectskip` : règlages du moteur qui autorisent ou interdisent le saut
+   * au clic (fin de frappe, interruption d'effets) et le saut des effets par réglage.
+   */
+  private applySkipSetting(event: Extract<RenderEvent, { kind: "skipSetting" }>): void {
+    if (event.clickSkip !== undefined) this.clickSkipEnabled = event.clickSkip;
+    if (event.effectSkip !== undefined) this.effectSkipEnabled = event.effectSkip;
+  }
+
+  /** `@cancelskip` : sort du mode skip (le script reprend la main en lecture normale). */
+  private cancelSkip(): void {
+    if (this.mode === "skip") this.setMode("normal");
+  }
+
+  /** Un clic peut-il interrompre les effets en cours ? (clickskip + effectskip + réglage joueur). */
+  private canClickCutEffects(): boolean {
+    return this.clickSkipEnabled && this.effectSkipEnabled && this.settings.display.stopAnimations;
+  }
+
   private setAutoPaused(paused: boolean): void {
     if (this.autoPaused === paused) return;
     this.autoPaused = paused;
@@ -865,6 +889,10 @@ export class Player implements PlayerCommands {
     this.rearm = null;
     this.applying = false;
     this.pendingAdvance = false;
+    // Les réglages de skip (@clickskip/@effectskip) sont propres au script : retour aux
+    // valeurs par défaut du moteur à chaque nouvelle session.
+    this.clickSkipEnabled = true;
+    this.effectSkipEnabled = true;
   }
 
   private startLoop(pending?: { step: Step; record: boolean }): void {
@@ -912,6 +940,8 @@ export class Player implements PlayerCommands {
       if (event.kind === "audio") this.audio.apply(event.event, { instant });
       else if (event.kind === "quickMenu") this.setQuickMenuLocked(event.locked);
       else if (event.kind === "autoMode") this.setAutoPaused(event.paused);
+      else if (event.kind === "skipSetting") this.applySkipSetting(event);
+      else if (event.kind === "cancelSkip") this.cancelSkip();
       else visual.push(event);
     }
     this.stageSnap = applyStageSnapshot(this.stageSnap, step.events);
@@ -938,7 +968,8 @@ export class Player implements PlayerCommands {
         this.readSet.add(positionKey(position));
         if (entry && this.mode !== "skip") void this.autosave(entry);
         // « Affichage final des pages » : amène les effets en cours à leur état final (#177).
-        if (this.settings.display.instantEffects) this.stage.hurry();
+        // @effectskip enabled=0 (scènes de démonstration) neutralise ce réglage.
+        if (this.settings.display.instantEffects && this.effectSkipEnabled) this.stage.hurry();
         this.stage.setClickIndicator(stop.style);
         this.setState("waiting-click");
         await this.waitUser(signal, {
@@ -1050,9 +1081,10 @@ export class Player implements PlayerCommands {
         })();
       };
 
-      // « Arrêt des animations en cours » : le clic ne saute la timeline que si activé (#177).
+      // « Arrêt des animations en cours » : le clic ne saute la timeline que si activé (#177),
+      // et si les skips ne sont pas désactivés par @clickskip/@effectskip.
       this.onAdvance = () => {
-        if (this.settings.display.stopAnimations) skip();
+        if (this.canClickCutEffects()) skip();
       };
       this.rearm = () => {
         if (this.mode === "skip") skip();
@@ -1141,7 +1173,9 @@ export class Player implements PlayerCommands {
   }
 
   private async waitForEffect(stop: Extract<StopReason, { kind: "waitFor" }>, signal: AbortSignal): Promise<void> {
-    const isAudio = stop.what === "audio";
+    // Les attentes audio (fin de lecture [ws] et fin de fondu [wb]) ont leur propre logique :
+    // un clic ne termine pas le son, il abandonne seulement l'attente (documenté).
+    const isAudio = stop.what === "audio" || stop.what === "bgmFade";
     if (stop.skippable && this.mode === "skip" && this.stopWasRead) {
       if (!isAudio) this.stage.hurry();
       return;
@@ -1150,7 +1184,8 @@ export class Player implements PlayerCommands {
     const { controller, dispose } = childController(signal);
     const interrupt = (force = false) => {
       // « Arrêt des animations en cours » : un clic ne coupe les effets que si activé (#177).
-      if (!isAudio && !force && !this.settings.display.stopAnimations) return;
+      // @clickskip/@effectskip enabled=0 neutralisent aussi cette coupure.
+      if (!isAudio && !force && !this.canClickCutEffects()) return;
       controller.abort();
       if (!isAudio) this.stage.hurry();
     };
@@ -1164,6 +1199,7 @@ export class Player implements PlayerCommands {
     }
     try {
       if (stop.what === "audio") await this.audio.waitFor(toAudioChannel(stop.target), controller.signal);
+      else if (stop.what === "bgmFade") await this.audio.waitForFade("bgm", controller.signal);
       else await this.stage.waitFor(stop.what, stop.target, controller.signal);
     } finally {
       dispose();

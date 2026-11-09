@@ -23,6 +23,13 @@ export class FakeAudioPlayer implements AudioPlayer, SoundEngine {
 
   async waitFor(_channel: AudioChannel, _signal: AbortSignal): Promise<void> {}
 
+  /** Canaux dont la fin de fondu a été attendue (`@wb`). */
+  fadeWaits: AudioChannel[] = [];
+
+  async waitForFade(channel: AudioChannel, _signal: AbortSignal): Promise<void> {
+    this.fadeWaits.push(channel);
+  }
+
   restore(snapshot: AudioSnapshot): void {
     this.events = snapshot.loops.map((loop) => ({
       kind: "play",
