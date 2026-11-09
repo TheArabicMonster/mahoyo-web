@@ -85,6 +85,7 @@ export const fr = {
   "systemMenu.entry.graphic": "Masquer",
   "systemMenu.entry.title": "Titre",
   "systemMenu.quickMenuLocked": "Indisponible pendant cette séquence",
+  "systemMenu.saveLoadDisabled": "Sauvegarde et chargement désactivés par le script",
 
   // ── Commandes tactiles (WEB-01, #203) ──
   "touch.menuButton": "Menu",
@@ -307,6 +308,7 @@ export const fr = {
   // ── Messages éphémères (toasts) ──
   "toast.historyEmpty": "L'historique n'existe pas encore.",
   "toast.quickMenuLocked": "Sauvegarde et chargement indisponibles pendant cette séquence.",
+  "toast.saveLoadDisabled": "Sauvegarde et chargement désactivés par le script pendant cette séquence.",
   "toast.scriptNotFound": "Script introuvable : {file}",
   "toast.saveUnavailable": "Impossible de sauvegarder à cet instant.",
   "toast.saveFailed": "Échec de la sauvegarde.",

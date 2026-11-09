@@ -128,7 +128,7 @@ inconnue hors baseline.
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
 | **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 23 commande(s) distincte(s), 31 occurrence(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 13 commande(s) distincte(s), 17 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
@@ -145,17 +145,9 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | Commande | Occurrences |
 |---|---|
 | `@action` | 1 |
-| `@ageage` | 1 |
-| `@ansz` | 1 |
 | `@beginfallnote` | 1 |
-| `@cockrobin` | 1 |
-| `@current` | 1 |
-| `@endcockrobin` | 1 |
 | `@endfallnote` | 1 |
-| `@eywz` | 1 |
 | `@fallnoteopt` | 2 |
-| `@heart` | 3 |
-| `@ingz` | 1 |
 | `@loadtimeline` | 1 |
 | `@pauseaction` | 1 |
 | `@pauseploy` | 1 |
@@ -165,8 +157,6 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@resumeploy` | 1 |
 | `@settracerreturn` | 2 |
 | `@startchart` | 1 |
-| `@store` | 1 |
-| `@swel` | 3 |
 <!-- END AUTO: commandes-kag -->
 
 ## Critère de réussite

@@ -45,7 +45,7 @@ describe("DomUIManager : flowchart interactif", () => {
     ui.init(root, { startScript, closeScreen: vi.fn(), openScreen: vi.fn() } as unknown as PlayerCommands);
     ui.show({ screen: "game" });
     ui.setStatus({
-      mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, autoPaused: false,
+      mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, saveLoadEnabled: true, autoPaused: false,
       mouseMode: "menu", autoHideCursor: false, fastForwardKey: "shift", shortcuts: defaultShortcuts(),
     });
   });

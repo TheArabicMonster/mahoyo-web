@@ -108,6 +108,9 @@ export const PLACEHOLDER_CHAPTER_PAGES = 6;
 /** Marqueur de la page de test `@cm` (#86) : première page du prologue, vidée par `@cm`. */
 export const PLACEHOLDER_CM_MARKER = "Page CM — texte à vider par @cm";
 
+/** Marqueur de la page de test emoji `[graph]` (#284) : image inline dans le texte. */
+export const PLACEHOLDER_EMOJI_MARKER = "Page emoji — texte original avec un cœur";
+
 /** Textes distinctifs des scripts, pour vérifier dans le DOM quel chapitre est joué. */
 export const PLACEHOLDER_SCRIPT_MARKERS = {
   prologue: "Page de test e2e",
@@ -205,12 +208,21 @@ function cmPage(): string {
 @s`;
 }
 
+/**
+ * Page de test `[graph]`/macro emoji (#284) : le tag `[heart]` est expansé par le runtime en
+ * `[graph storage=heart26 alt="(ハート)"]` (taille de message par défaut 26) et rendu en `<img>`
+ * inline dans le flux de texte. Le e2e dédié vérifie l'image, sa source et son `alt`.
+ */
+function emojiPage(): string {
+  return `${PLACEHOLDER_EMOJI_MARKER} [heart] — texte original généré pour le player.[p]`;
+}
+
 /** Les quatre scripts du parcours complet (textes originaux, aucun asset du jeu). */
 function placeholderScripts(): Record<string, string> {
   return {
     // Page de test @cm (#86) insérée après les deux premières pages « normales » : la numérotation
     // et les assertions existantes sur « page 01 »/« page 02 » restent valides.
-    "1-0.ks": `${prologueOpening()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, 2)}\n${cmPage()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES - 2, 2)}\n@return\n`,
+    "1-0.ks": `${prologueOpening()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, 2)}\n${cmPage()}\n${emojiPage()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES - 2, 2)}\n@return\n`,
     "1-1a.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieA, PLACEHOLDER_CHAPTER_PAGES),
     "1-1b.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieB, PLACEHOLDER_CHAPTER_PAGES),
     "2-0.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.chapitre2, PLACEHOLDER_CHAPTER_PAGES),
@@ -233,6 +245,8 @@ function placeholderManifest(): string {
         // que le crop `@partbg srcleft=542 width=522` montre bien une zone de l'image.
         partbg: image("image/partbg.png"),
         txtwindow02: image("image/txtwindow02.png"),
+        // Emoji inline `[graph]`/`[heart]` (#284) : storage = base + fontSize du message.
+        heart26: image("image/heart26.png"),
         linebreak_a: image("image/linebreak_a.png"),
         pagebreak_a: image("image/pagebreak_a.png"),
       },
@@ -271,6 +285,8 @@ export function generatePlaceholderAssets(publicDir: string): number {
   // Cadre de la fenêtre de message par défaut (#182) : sans lui, le player retombe sur l'ancienne
   // boîte. Vrai PNG, résolu par le manifeste (`txtwindow02` → `image/txtwindow02.png`).
   writePng(join(assets, "image", "txtwindow02.png"), 1, 1, 0, 0, 0);
+  // Emoji `[heart]` (#284) : PNG 26×26 comme les assets réels `heart26`.
+  writePng(join(assets, "image", "heart26.png"), 26, 26, 255, 90, 140);
   // Bandes d'animation des indicateurs d'attente (`linebreak_a`, `pagebreak_a`) : 40 vignettes.
   writePng(join(assets, "image", "linebreak_a.png"), LINE_GLYPH.width * LINE_GLYPH.frames, LINE_GLYPH.height, 255, 255, 255);
   writePng(join(assets, "image", "pagebreak_a.png"), PAGE_GLYPH.width * PAGE_GLYPH.frames, PAGE_GLYPH.height, 255, 255, 255);
@@ -285,8 +301,8 @@ export function generatePlaceholderAssets(publicDir: string): number {
   writeFileSync(join(assets, "story-chain.json"), JSON.stringify(PLACEHOLDER_CHAIN, null, 2));
   writeFileSync(join(assets, "asset-manifest.json"), placeholderManifest());
 
-  // 7 PNG + partbg + 5 scripts/manifest = 13 fichiers (utile aux diagnostics).
-  return 11 + Object.keys(scripts).length + 1;
+  // 9 PNG + 4 scripts + manifeste + table d'enchaînement = 15 fichiers (diagnostics).
+  return 9 + Object.keys(scripts).length + 2;
 }
 
 // ── Corpus de placeholders pour la lecture complète (#269) ─────────────────────────────────────

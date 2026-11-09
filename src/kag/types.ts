@@ -28,7 +28,18 @@ export type TextStyle = {
 export type TextSegment =
   | { text: string; ruby?: undefined; style?: TextStyle }
   | { text: string; ruby: string; style?: TextStyle }
-  | { pause: true };
+  | { pause: true }
+  /**
+   * Image inline dans le flux de texte (`[graph storage=… alt=…]`, KAG3). `storage` est la clé
+   * d'asset résolue par l'`AssetResolver` ; `alt` sert de repli accessible et si l'image manque.
+   */
+  | { graph: { storage: string; alt?: string } }
+  /**
+   * Marqueur interne des macros emoji de `macro.tjs` (`[heart]`, `[ageage]`…) : le runtime le
+   * convertit en segment `graph` avec `storage = base + fontSize courant` au moment de l'affichage.
+   * Il ne doit jamais atteindre le rendu ni l'état persisté.
+   */
+  | { emoji: { base: string; alt: string } };
 
 /** Métadonnées de crop pour un calque partbg (@partbg). */
 export type CropSpec = {
@@ -263,6 +274,17 @@ export type Instruction =
   | { kind: "unlockquickmenu" }
   | { kind: "pauseautomode" }
   | { kind: "resumeautomode" }
+  | {
+      /**
+       * `@current` (KAG3) : couche de message courante (`message0`/`message1`), approximée en état
+       * seul (le port n'a qu'une textbox). `withback` est mémorisé, sans effet visuel.
+       */
+      kind: "current";
+      layer?: "message0" | "message1";
+      withBack?: boolean;
+    }
+  /** `@store` (KAG3) : active/désactive la sauvegarde et le chargement (défaut : activé). */
+  | { kind: "store"; enabled: boolean }
   | { kind: "textoff"; time: number }
   | { kind: "texton" }
   | { kind: "position"; visible?: boolean; frame?: string }

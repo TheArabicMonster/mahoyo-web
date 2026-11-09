@@ -337,6 +337,8 @@ export type RenderEvent =
    * leurs boutons. Sans effet sur l'écran : c'est le player qui l'applique.
    */
   | { kind: "quickMenu"; locked: boolean }
+  /** `@store enabled=…` : autorise (true) ou interdit (false) la sauvegarde/le chargement. */
+  | { kind: "store"; enabled: boolean }
   /**
    * Suspend (@pauseautomode) ou reprend (@resumeautomode) l'avance automatique. Le mode choisi
    * par le joueur ne change pas : seul le déclenchement automatique est suspendu.

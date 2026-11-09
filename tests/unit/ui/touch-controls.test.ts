@@ -29,7 +29,7 @@ function makeCommands() {
 }
 
 const status = (p: Partial<PlayerStatus> = {}): PlayerStatus => ({
-  mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, autoPaused: false,
+  mode: "normal", inGame: true, userHidden: false, canRollback: false, quickMenuLocked: false, saveLoadEnabled: true, autoPaused: false,
   mouseMode: "menu", autoHideCursor: false, fastForwardKey: "shift", shortcuts: defaultShortcuts(), ...p,
 });
 

@@ -34,6 +34,8 @@ export type PlayerStatus = {
   canRollback: boolean;
   /** Menu rapide verrouillé par le script (@lockquickmenu) : pas de sauvegarde ni de chargement. */
   quickMenuLocked: boolean;
+  /** `@store enabled=false` : sauvegarde et chargement désactivés par le script (défaut true). */
+  saveLoadEnabled: boolean;
   /** Avance automatique suspendue par le script (@pauseautomode) ; `mode` reste le choix du joueur. */
   autoPaused: boolean;
   /** Comportement du clic droit (menu direct ou masquer puis menu). */

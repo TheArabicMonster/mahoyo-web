@@ -84,6 +84,8 @@ type TextUnit = {
   char: string;
   ruby?: string;
   css?: Record<string, string>;
+  /** Image inline `[graph]` (emoji) : une seule unité de frappe, rendue en `<img>`. */
+  graph?: { storage: string; alt?: string };
   /** Indice du segment d'origine : les caractères d'un même ruby partagent un groupe. */
   group: number;
 };
@@ -867,6 +869,15 @@ export class DomStageRenderer implements StageRenderer {
         line-height: ${FRAME_TEXT_LINE_HEIGHT};
         letter-spacing: ${FRAME_TEXT_LETTER_SPACING};
         text-shadow: 0 0 3px rgba(0,0,0,0.85), 1px 1px 2px rgba(0,0,0,0.7);
+      }
+      /* [graph] (#284) : image inline dans le flux de texte (emoji), hauteur alignée sur la ligne. */
+      .mh-stage-graph {
+        display: inline-block;
+        vertical-align: -0.15em;
+        height: 1.05em;
+        width: auto;
+        object-fit: contain;
+        margin: 0 0.04em;
       }
       .mh-stage-text-swing {
         display: inline-block;
@@ -2191,6 +2202,16 @@ export class DomStageRenderer implements StageRenderer {
   private buildTextUnits(): TextUnit[] {
     const units: TextUnit[] = [];
     this.text.forEach((seg, group) => {
+      if ("graph" in seg) {
+        // Image inline : une seule unité (la frappe ne la coupe jamais au milieu).
+        units.push({ char: "", graph: seg.graph, group });
+        return;
+      }
+      if ("emoji" in seg) {
+        // Marqueur interne : le runtime doit l'avoir converti en graph ; repli textuel sinon.
+        units.push({ char: seg.emoji.alt, group });
+        return;
+      }
       if (!("text" in seg)) return; // pause
       const ruby = "ruby" in seg ? seg.ruby : undefined;
       const css = seg.style ? textStyleToCss(seg.style) : undefined;
@@ -2221,7 +2242,13 @@ export class DomStageRenderer implements StageRenderer {
       const u = units[i];
       const hasCss = u.css !== undefined && Object.keys(u.css).length > 0;
       let node: Node;
-      if (u.ruby) {
+      if (u.graph) {
+        const img = document.createElement("img");
+        img.className = "mh-stage-graph";
+        img.alt = u.graph.alt ?? "";
+        img.src = this.resolver.image(u.graph.storage);
+        node = img;
+      } else if (u.ruby) {
         // Un ruby couvre plusieurs caractères : une seule balise <ruby>, la lecture
         // posée une fois sur le groupe (le typewriter n'en révèle qu'une partie au début).
         let base = u.char;
