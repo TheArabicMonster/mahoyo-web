@@ -1,0 +1,474 @@
+/* ── Écran de configuration au design d'origine (HUD-09, #200) ───────────────────────────────────────
+   docs/ANALYSE_HUD_ORIGINAL.md §2.9 et docs/DESIGN.md §2.2, §2.3, §2.4, §8, §9.10. CSS pur sur les tokens
+   `--mh-*`, aucune image du jeu ; le fond est la « nuit bleue » (`mh-ui-night`, posée sur #ui-menu).
+
+   Repères : les mesures de l'analyse sont en 1920×1080 ; le HUD vit dans #viewport, en 1280×720 logique
+   (facteur ×2/3, PAS le repère 1024×576 de la scène). Positions en pourcentages du conteneur (1280×720) :
+     en-tête  x 31–212 × y 41–95 @1080            -> x 21–141 × y 27–63
+     onglets  x 830–1810, y 57–107 @1080          -> x 553–1207, y 38–71
+     panneaux gauche x 75–762, droite 810–1845, y 215–950 @1080 -> 50–508 et 540–1230, y 143–633
+     « Retour » x 897–1032, y 1016–1048 @1080     -> x 598–688, y 677–699 (centré)
+     « Réglages par défaut » 1545–1845 × 995–1050 -> 1030–1230 × 663–700 */
+
+.mh-cfg {
+  --mh-cfg-glow: 0 0 12px rgba(0, 192, 192, 0.45);
+  --mh-cfg-row: 2.1rem;
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  color: var(--mh-text-ui, #eef4f5);
+  font-family: var(--mh-font-ui, system-ui, sans-serif);
+  font-size: 1rem;
+  user-select: none;
+}
+
+@keyframes mh-cfg-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.mh-cfg { animation: mh-cfg-in var(--mh-dur-menu, 270ms) var(--mh-ease, linear) both; }
+@media (prefers-reduced-motion: reduce) {
+  .mh-cfg { animation: none; }
+}
+
+/* ── En-tête ── */
+.mh-cfg-header {
+  position: absolute;
+  left: 1.64%;
+  top: 2.9%;
+  display: flex;
+  flex-direction: column;
+}
+.mh-cfg-title {
+  margin: 0;
+  font-family: var(--mh-font-title, Georgia, serif);
+  font-weight: 400;
+  font-size: var(--mh-screen-title-size, 2.4rem);
+  line-height: 1.1;
+  color: var(--mh-text-title, #f2fbff);
+  text-shadow: var(--mh-cfg-glow);
+}
+.mh-cfg-title-deco {
+  font-family: var(--mh-font-ja, sans-serif);
+  font-size: var(--mh-screen-subtitle-size, 0.8rem);
+  line-height: 1.4;
+  letter-spacing: 0.15em;
+  color: var(--mh-text-menu, #a9c8cc);
+}
+
+/* ── Onglets : serif étroit, l'actif est plus lumineux ── */
+.mh-cfg-tabs {
+  position: absolute;
+  left: 43.2%;
+  top: 4.7%;
+  display: flex;
+  align-items: flex-end;
+  gap: 2.8rem;
+  margin: 0;
+  padding: 0;
+}
+.mh-cfg-tab {
+  appearance: none;
+  margin: 0;
+  padding: 0.1rem 0.15rem 0.2rem;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  font-family: var(--mh-font-title, Georgia, serif);
+  font-size: var(--mh-title-menu-size, 1.7rem);
+  font-stretch: condensed;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  color: var(--mh-text-ui, #eef4f5);
+  text-shadow: 0 0 6px rgba(0, 192, 192, 0.3);
+  cursor: pointer;
+  transition: text-shadow var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+.mh-cfg-tab:hover { text-shadow: 0 0 12px rgba(95, 207, 197, 0.85); }
+.mh-cfg-tab.active {
+  color: #cfeff0;
+  border-bottom-color: var(--mh-cyan-glint, #5fcfc5);
+  text-shadow: 0 0 10px rgba(95, 207, 197, 0.95), 0 0 22px rgba(0, 192, 192, 0.6);
+}
+
+/* Titre de section japonais décoratif, filet blanc de ≈ 245 px @1080 (163 px @720). */
+.mh-cfg-heading {
+  position: absolute;
+  left: 43.2%;
+  top: 11.4%;
+  box-sizing: border-box;
+  min-width: 163px;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.85);
+  font-family: var(--mh-font-ja, sans-serif);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.1em;
+  color: var(--mh-text-ui, #eef4f5);
+}
+
+/* ── Corps : deux colonnes de panneaux ── */
+.mh-cfg-body {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.mh-cfg-col {
+  position: absolute;
+  top: 19.86%;
+  height: 68.06%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  /* Le libellé des panneaux dépasse du bord haut : un peu de marge pour que le défilement ne le coupe pas. */
+  padding: 0.8rem 0.4rem 0.2rem 0;
+  margin-top: -0.8rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  pointer-events: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--mh-cyan-rail, #3f889c) transparent;
+}
+.mh-cfg-col-left { left: 3.906%; width: 35.78%; }
+.mh-cfg-col-right { left: 42.19%; width: 53.91%; }
+.mh-cfg-col-wide { left: 3.906%; width: 92.19%; }
+
+/* Panneau : bord gris-bleu de 2 px (clair en haut à gauche, sombre en bas à droite), libellé sur le bord haut. */
+.mh-cfg-panel {
+  flex: none;
+  box-sizing: border-box;
+  min-width: 0;
+  margin: 0;
+  padding: 0.7rem 1.1rem 0.85rem;
+  background: var(--mh-panel-fill, #151f2b);
+  border: 2px solid var(--mh-panel-border, #444c56);
+  border-color: var(--mh-panel-border-light, #59616b) var(--mh-panel-border-dark, #333b45) var(--mh-panel-border-dark, #333b45) var(--mh-panel-border-light, #59616b);
+  border-radius: 4px;
+}
+.mh-cfg-legend {
+  margin: 0 auto;
+  padding: 0 0.7rem;
+  font-family: var(--mh-font-title, Georgia, serif);
+  font-size: 1.2rem;
+  line-height: 1.1;
+  color: var(--mh-panel-label, #c0d6d6);
+  text-shadow: var(--mh-cfg-glow);
+  white-space: nowrap;
+}
+.mh-cfg-panel-body { display: flex; flex-direction: column; gap: 0.35rem; }
+
+/* Une ligne = un réglage ; le contrôle passe sous le libellé quand la place manque. */
+.mh-cfg-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem 0.9rem;
+  min-height: var(--mh-cfg-row);
+  box-sizing: border-box;
+}
+.mh-cfg-label {
+  flex: 1 1 9rem;
+  min-width: 0;
+  font-size: 1rem;
+  line-height: 1.25;
+  color: var(--mh-text-ui, #eef4f5);
+}
+.mh-cfg-value {
+  margin-left: 0.5rem;
+  color: var(--mh-select, #c0f790);
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+}
+.mh-cfg-value::before { content: "·"; margin-right: 0.4rem; color: var(--mh-cyan-rail, #3f889c); }
+.mh-cfg-row-action { justify-content: flex-start; }
+
+/* ── Boutons à bascule : actif = sarcelle glossy, inactif = gris ── */
+.mh-cfg-toggles { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.mh-cfg-toggle,
+.mh-cfg-button {
+  appearance: none;
+  min-height: 1.85rem;
+  padding: 0.15rem 0.85rem;
+  border: 1px solid #5a5f5e;
+  border-radius: 3px;
+  background: linear-gradient(to bottom, var(--mh-grey-off-top, #404342), var(--mh-grey-off-bottom, #171717));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  color: #d3dad8;
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: filter var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+.mh-cfg-toggle:hover,
+.mh-cfg-button:hover { filter: brightness(1.18); color: #fff; }
+.mh-cfg-toggle.active {
+  border-color: var(--mh-teal-on-border, #447671);
+  background: linear-gradient(to bottom, var(--mh-teal-on-top, #3d746f), var(--mh-teal-on-bottom, #133c39));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 0 8px rgba(95, 207, 197, 0.25);
+  color: var(--mh-text-ui, #eef4f5);
+}
+
+/* ── Interrupteurs (cases natives) ── */
+.mh-cfg-row-check { cursor: pointer; }
+.mh-cfg-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  position: relative;
+  width: 2.8rem;
+  height: 1.45rem;
+  margin: 0;
+  border: 1px solid #5a5f5e;
+  border-radius: 3px;
+  background: linear-gradient(to bottom, var(--mh-grey-off-top, #404342), var(--mh-grey-off-bottom, #171717));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+}
+.mh-cfg-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(50% - 3px);
+  height: calc(100% - 6px);
+  border-radius: 2px;
+  background: linear-gradient(to bottom, #9aa2a0, #5d6362);
+  transition: transform var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+.mh-cfg-switch:checked {
+  border-color: var(--mh-teal-on-border, #447671);
+  background: linear-gradient(to bottom, var(--mh-teal-on-top, #3d746f), var(--mh-teal-on-bottom, #133c39));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 0 8px rgba(95, 207, 197, 0.25);
+}
+.mh-cfg-switch:checked::after {
+  transform: translateX(100%);
+  background: linear-gradient(to bottom, #f3fbfa, #a9c8cc);
+}
+
+/* ── Radios : disque noir, anneau #8c959a, point gris clair ── */
+.mh-cfg-radios { display: flex; gap: 1.2rem; }
+.mh-cfg-radio { display: inline-flex; align-items: center; gap: 0.45rem; cursor: pointer; }
+.mh-cfg-radio input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  border: 2px solid #8c959a;
+  border-radius: 50%;
+  background: #000;
+  cursor: pointer;
+}
+.mh-cfg-radio input:checked { background: radial-gradient(circle, #cbcbcb 0 38%, #000 42%); }
+.mh-cfg-radio-text { font-size: 0.95rem; }
+
+/* ── Curseurs : piste noire à 5 repères, pastille sphérique argent ── */
+.mh-cfg-row-slider .mh-cfg-label { flex-basis: 11rem; }
+.mh-cfg-range {
+  flex: 1 1 9rem;
+  min-width: 8rem;
+  position: relative;
+  height: 1.7rem;
+  display: flex;
+  align-items: center;
+  /* 5 repères (0, 25, 50, 75, 100 %) sous la piste */
+  background:
+    linear-gradient(#8c959a, #8c959a) 0 100% / 1px 5px no-repeat,
+    linear-gradient(#8c959a, #8c959a) 25% 100% / 1px 5px no-repeat,
+    linear-gradient(#8c959a, #8c959a) 50% 100% / 1px 5px no-repeat,
+    linear-gradient(#8c959a, #8c959a) 75% 100% / 1px 5px no-repeat,
+    linear-gradient(#8c959a, #8c959a) 100% 100% / 1px 5px no-repeat;
+}
+.mh-cfg-range input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 1.3rem;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.mh-cfg-range input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border: 1px solid #2a3038;
+  border-radius: 3px;
+  background: #080808;
+}
+.mh-cfg-range input[type="range"]::-moz-range-track {
+  height: 6px;
+  border: 1px solid #2a3038;
+  border-radius: 3px;
+  background: #080808;
+}
+.mh-cfg-range input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f4f4f4, #cbcbcb 55%, #7d8083);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+.mh-cfg-range input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f4f4f4, #cbcbcb 55%, #7d8083);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+/* ── Spinners −/+ à deux chiffres ── */
+.mh-cfg-spinner { display: inline-flex; align-items: stretch; gap: 0.25rem; }
+.mh-cfg-spin-btn {
+  appearance: none;
+  width: 1.85rem;
+  min-height: 1.85rem;
+  padding: 0;
+  border: 1px solid #5a5f5e;
+  border-radius: 3px;
+  background: linear-gradient(to bottom, var(--mh-grey-off-top, #404342), var(--mh-grey-off-bottom, #171717));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  color: #d3dad8;
+  font: inherit;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.mh-cfg-spin-btn:hover:not(:disabled) { filter: brightness(1.18); color: #fff; }
+.mh-cfg-spin-btn:disabled { opacity: 0.4; cursor: default; }
+.mh-cfg-spin-value {
+  box-sizing: border-box;
+  min-width: 2.6rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid #3a424b;
+  border-radius: 3px;
+  background: var(--mh-field-fill, #04080e);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  color: var(--mh-text-ui, #eef4f5);
+}
+
+/* ── Liste déroulante ── */
+.mh-cfg-select {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 1.85rem;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid #5a5f5e;
+  border-radius: 3px;
+  background: var(--mh-field-fill, #04080e);
+  color: var(--mh-text-ui, #eef4f5);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+/* ── Zone d'aperçu du fondu ── */
+.mh-cfg-preview {
+  box-sizing: border-box;
+  margin-top: 0.2rem;
+  padding: 0.5rem 0.8rem;
+  min-height: 4.2rem;
+  border: 1px solid #3a424b;
+  border-radius: 3px;
+  background: #080808;
+  cursor: pointer;
+}
+.mh-cfg-preview-line { margin: 0; font-family: var(--mh-font-text, serif); font-size: 1rem; line-height: 1.55; color: #fff; }
+
+/* ── Raccourcis : 14 actions sur deux colonnes, touches en capsules ── */
+.mh-cfg-hint { margin: 0 0 0.5rem; font-size: 0.9rem; color: var(--mh-text-menu, #a9c8cc); }
+.mh-cfg-keygrid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-flow: column; grid-template-rows: repeat(7, auto); gap: 0.35rem 2.2rem; }
+.mh-cfg-keyrow { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; min-height: 2.3rem; }
+.mh-cfg-keys { display: flex; gap: 0.4rem; flex: none; }
+.mh-cfg-key {
+  appearance: none;
+  min-width: 4.6rem;
+  min-height: 1.85rem;
+  padding: 0.15rem 0.7rem;
+  border: 1px solid #5a5f5e;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, var(--mh-grey-off-top, #404342), var(--mh-grey-off-bottom, #171717));
+  color: #d3dad8;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.mh-cfg-key:hover { filter: brightness(1.18); color: #fff; }
+.mh-cfg-key.capturing {
+  border-color: var(--mh-teal-on-border, #447671);
+  background: linear-gradient(to bottom, var(--mh-teal-on-top, #3d746f), var(--mh-teal-on-bottom, #133c39));
+  color: var(--mh-text-ui, #eef4f5);
+}
+
+/* ── Pied : « Retour » centré, « Réglages par défaut » à droite ── */
+.mh-cfg-back {
+  position: absolute;
+  left: 46.72%;
+  top: 94.03%;
+  appearance: none;
+  min-width: 7.03%;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: var(--mh-font-title, Georgia, serif);
+  font-size: 1.5rem;
+  line-height: 1.2;
+  color: #c7dfe1;
+  text-shadow: 0 0 6px rgba(0, 192, 192, 0.3);
+  cursor: pointer;
+}
+.mh-cfg-back:hover { color: #fff; text-shadow: 0 0 12px rgba(95, 207, 197, 0.85); }
+.mh-cfg-reset {
+  position: absolute;
+  left: 80.47%;
+  top: 92.1%;
+  box-sizing: border-box;
+  width: 15.62%;
+  height: 5.14%;
+  appearance: none;
+  padding: 0 0.5rem;
+  border: 2px solid var(--mh-panel-border, #444c56);
+  border-color: var(--mh-panel-border-light, #59616b) var(--mh-panel-border-dark, #333b45) var(--mh-panel-border-dark, #333b45) var(--mh-panel-border-light, #59616b);
+  border-radius: 4px;
+  background: var(--mh-panel-fill, #151f2b);
+  color: var(--mh-panel-label, #c0d6d6);
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.mh-cfg-reset:hover { color: #fff; background: #1b2735; }
+
+/* ── Focus clavier visible (DESIGN §10) ── */
+.mh-cfg button:focus-visible,
+.mh-cfg select:focus-visible,
+.mh-cfg input:focus-visible,
+.mh-cfg [tabindex]:focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+
+/* ── Écran tactile : cibles de 44 px au moins ── */
+@media (pointer: coarse) {
+  .mh-cfg-tab,
+  .mh-cfg-toggle,
+  .mh-cfg-button,
+  .mh-cfg-select,
+  .mh-cfg-key,
+  .mh-cfg-spin-btn,
+  .mh-cfg-spin-value,
+  .mh-cfg-reset,
+  .mh-cfg-back { min-height: 44px; }
+  .mh-cfg-spin-btn { min-width: 44px; }
+  .mh-cfg-switch { width: 56px; height: 44px; }
+  .mh-cfg-radio { min-height: 44px; }
+  .mh-cfg-row { --mh-cfg-row: 44px; }
+  .mh-cfg-range input[type="range"] { height: 44px; }
+  .mh-cfg-range { height: 44px; }
+}
