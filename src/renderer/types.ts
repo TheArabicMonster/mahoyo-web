@@ -197,7 +197,11 @@ export interface StageRenderer {
    * Résout quand l'effet ciblé est terminé ([wt], [wa], [wq]).
    * Résout immédiatement si rien n'est en cours.
    */
-  waitFor(what: Exclude<Awaitable, "audio">, target: string | undefined, signal: AbortSignal): Promise<void>;
+  waitFor(
+    what: Exclude<Awaitable, "audio" | "bgmFade">,
+    target: string | undefined,
+    signal: AbortSignal,
+  ): Promise<void>;
 
   /** Clic utilisateur : termine le typewriter et amène les effets à leur état final. */
   hurry(): void;
@@ -259,6 +263,12 @@ export interface AudioPlayer {
    * Le player convertit la `target` string en `AudioChannel` avant d'appeler cette méthode.
    */
   waitFor(channel: AudioChannel, signal: AbortSignal): Promise<void>;
+
+  /**
+   * [wb] : résout à la fin du fondu du canal (immédiatement si aucun fondu en cours).
+   * Différent de `waitFor` (fin de lecture) : ici on attend la fin d'un `fadeOut`/`fadeIn`.
+   */
+  waitForFade(channel: AudioChannel, signal: AbortSignal): Promise<void>;
 
   restore(snapshot: AudioSnapshot): void;
 
