@@ -39,6 +39,13 @@ export const fr = {
   "systemMenu.entry.title": "Titre",
   "systemMenu.quickMenuLocked": "Indisponible pendant cette séquence",
 
+  // ── Commandes tactiles (WEB-01, #203) ──
+  "touch.menuButton": "Menu",
+  "touch.barLabel": "Actions rapides",
+  "touch.qsave": "Q.Save",
+  "touch.qload": "Q.Load",
+  "touch.fullscreen": "Plein écran",
+
   // ── Confirmations ──
   "confirm.returnToTitle": "Retourner au titre ? La progression non sauvegardée sera perdue.",
   "confirm.overwriteSave": "Écraser cette sauvegarde ?",

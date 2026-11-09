@@ -31,6 +31,7 @@ import { renderFlowchartScreen } from "@/ui/flowchart-view.js";
 import { syncNightDemo } from "@/ui/night.js";
 import { focusSystemMenu, renderSystemMenu, syncSystemMenu, syncSystemMenuVeil } from "@/ui/system-menu.js";
 import { createTitleScreen, TITLE_ASSET_KEYS } from "@/ui/title-screen.js";
+import { createTouchControls, type TouchControls } from "@/ui/touch-controls.js";
 import { createUiAssets, UI_ASSET_KEYS, type UiAssets, type UiImageSource } from "@/ui/ui-assets.js";
 import "./ui-manager.css";
 
@@ -105,6 +106,7 @@ export class DomUIManager implements UIManager {
 
   private confirmDialog: ConfirmDialog | null = null;
   private saveLoad: SaveLoadScreen | null = null;
+  private touch: TouchControls | null = null;
   private cleanups: (() => void)[] = [];
   private previousDocumentLang: string | null = null;
   private readonly uiAssets: UiAssets;
@@ -156,11 +158,20 @@ export class DomUIManager implements UIManager {
       }),
     );
 
+    // Commandes tactiles (WEB-01, #203) : n'existent que sur appareil tactile.
+    this.touch = createTouchControls(this.overlay, {
+      commands,
+      getStatus: () => this.status,
+      isPlaying: () => this.playing,
+    });
+
     this.show(this.view);
     this.renderStatus();
   }
 
   dispose(): void {
+    this.touch?.dispose();
+    this.touch = null;
     for (const off of this.cleanups) off();
     this.cleanups = [];
     this.toasts?.dispose();
@@ -378,6 +389,7 @@ export class DomUIManager implements UIManager {
     }
     // Menu système : verrou du menu rapide, bascules auto et skip.
     syncSystemMenu(this.pause, this.status);
+    this.touch?.sync(this.view.screen, this.status);
     if (inGame && this.status.canRollback) {
       this.statusEl.appendChild(h("span", "mh-ui-badge mh-ui-badge-rollback", "↶"));
     }
