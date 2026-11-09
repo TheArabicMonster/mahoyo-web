@@ -16,13 +16,26 @@
  *
  * Interactions (FLOW-06, #202) : pan et zoom (`flowchart-viewport.ts`), bouton « centrer », clic sur un nœud visité
  * (volet de détails et « Relire depuis ici », `flowchart-detail.ts`). Les silhouettes et les nœuds simplement révélés
- * ne sont ni cliquables ni relisables. Clavier et lecteur d'écran avancés (nœuds focalisables) : #206.
+ * ne sont ni cliquables ni relisables.
+ *
+ * Accessibilité (FLOW-07, #206) : navigation clavier par arêtes (flèches = voisin, `Entrée` = volet, `Home`/`End` =
+ * premier/dernier nœud, `Échap` = retour), `aria-label` par nœud, équivalent liste `<ul>` imbriquée par chapitre
+ * (`.mh-flow-a11y`) et région `aria-live` annonçant la position. Anti-spoiler (décision 5) appliqué aussi à l'arbre
+ * d'accessibilité : un nœud masqué est annoncé « scène non découverte », sans identifiant, titre ni nombre d'options.
+ * En portrait, un chapitre à la fois en défilement (voir `flowchart-view.css`) et zoom ajusté à la largeur.
  */
 import { choiceLabelLines, endingProgress, groupTitle } from "@/core/flow-graph.js";
 import type { FlowEdgeLayout, FlowGroupLayout, FlowLayout, FlowNodeLayout, GraphNode, StoryGraph } from "@/core/flow-graph.js";
 import { layoutFlowchart } from "@/core/flow-layout.js";
 import { describeNode, renderDetailPanel, type ReplayDeps } from "@/ui/flowchart-detail.js";
-import { attachViewport, MAX_SCALE, MIN_SCALE, ZOOM_STEP } from "@/ui/flowchart-viewport.js";
+import {
+  attachViewport,
+  getRememberedScale,
+  MAX_SCALE,
+  MIN_SCALE,
+  setRememberedScale,
+  ZOOM_STEP,
+} from "@/ui/flowchart-viewport.js";
 import { decoKeyOf, t } from "@/ui/i18n.js";
 import type { StoryProgress } from "@/ui/types.js";
 import "./night.css";
@@ -138,6 +151,139 @@ export function visibleChoiceLabels(
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Accessibilité : navigation par arêtes et équivalent liste (FLOW-07, #206)
+// ---------------------------------------------------------------------------
+
+/** Direction d'une flèche du clavier sur la carte. */
+export type FlowDirection = "left" | "right" | "up" | "down";
+
+/** Touches de direction et direction associée. */
+export const ARROW_DIRECTIONS: Readonly<Record<string, FlowDirection>> = {
+  ArrowLeft: "left",
+  ArrowRight: "right",
+  ArrowUp: "up",
+  ArrowDown: "down",
+};
+
+/**
+ * Voisin atteint par une flèche, en suivant une arête du graphe (dans un sens ou dans l'autre).
+ *
+ * Choix géométrique, déterministe : on ne garde que les voisins situés du côté demandé (composante
+ * principale strictement positive), puis on minimise `distance principale + 2 × distance transversale`
+ * (les égalités sont départagées par l'ordre du graphe). Renvoie `null` quand aucun voisin n'est de ce côté.
+ * Le nœud voisin peut être masqué (il est alors annoncé « scène non découverte »).
+ */
+export function neighborNode(
+  graph: Pick<StoryGraph, "edges">,
+  layout: Pick<FlowLayout, "nodes">,
+  fromId: string,
+  direction: FlowDirection,
+): string | null {
+  const boxes = new Map(layout.nodes.map((n) => [n.id, n]));
+  const order = new Map(layout.nodes.map((n, i) => [n.id, i]));
+  const from = boxes.get(fromId);
+  if (!from) return null;
+  const candidates = new Set<string>();
+  for (const e of graph.edges) {
+    if (e.from === fromId && e.to !== fromId) candidates.add(e.to);
+    else if (e.to === fromId && e.from !== fromId) candidates.add(e.from);
+  }
+  const cx = from.x + from.width / 2;
+  const cy = from.y + from.height / 2;
+  let bestId: string | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  let bestOrder = Number.POSITIVE_INFINITY;
+  for (const id of candidates) {
+    const box = boxes.get(id);
+    if (!box) continue;
+    const dx = box.x + box.width / 2 - cx;
+    const dy = box.y + box.height / 2 - cy;
+    let primary: number;
+    let cross: number;
+    switch (direction) {
+      case "left":
+        primary = -dx;
+        cross = dy;
+        break;
+      case "right":
+        primary = dx;
+        cross = dy;
+        break;
+      case "up":
+        primary = -dy;
+        cross = dx;
+        break;
+      case "down":
+        primary = dy;
+        cross = dx;
+        break;
+    }
+    if (primary <= 0) continue;
+    const score = primary + 2 * Math.abs(cross);
+    const rank = order.get(id) ?? Number.POSITIVE_INFINITY;
+    if (score < bestScore || (score === bestScore && rank < bestOrder)) {
+      bestId = id;
+      bestScore = score;
+      bestOrder = rank;
+    }
+  }
+  return bestId;
+}
+
+/**
+ * Chapitre de l'équivalent liste pour lecteurs d'écran : un par groupe de la mise en page, puis un
+ * dernier pour les interludes partagés (qui n'appartiennent à aucun chapitre).
+ *
+ * Anti-spoiler (décision 5) : le titre d'un chapitre dont aucun nœud n'est découvert (et hors mode
+ * « tout révéler ») est remplacé par « ??? » ; les nœuds masqués sont listés « scène non découverte ».
+ */
+export type FlowA11yChapter = {
+  /** Identifiant interne de section (`g0`, `g1`… ou `hubs`), jamais un identifiant de script. */
+  id: string;
+  title: string;
+  /** Vrai quand le chapitre est masqué (titre « ??? »). */
+  locked: boolean;
+  nodeIds: readonly string[];
+};
+
+export function accessibleChapters(
+  layout: Pick<FlowLayout, "nodes" | "groups">,
+  chapters: readonly { id: string; label: string }[],
+  states: ReadonlyMap<string, FlowNodeState>,
+  revealAll: boolean,
+): FlowA11yChapter[] {
+  const out: FlowA11yChapter[] = layout.groups.map((group, index) => {
+    const discovered = group.nodeIds.some((id) => isDiscovered(states.get(id)));
+    const shown = discovered || revealAll;
+    return {
+      id: `g${index}`,
+      title: shown ? groupTitle(group, chapters) : t("flowchart.group.hidden"),
+      locked: !shown,
+      nodeIds: group.nodeIds,
+    };
+  });
+  const hubs = layout.nodes.filter((node) => node.hub).map((node) => node.id);
+  if (hubs.length > 0) {
+    out.push({ id: "hubs", title: t("flowchart.a11y.interludes"), locked: false, nodeIds: hubs });
+  }
+  return out;
+}
+
+/** Ordre de parcours clavier (`Home`/`End`, liste) : chapitres dans l'ordre de lecture, puis nœuds du chapitre. */
+export function focusOrder(chapters: readonly FlowA11yChapter[]): string[] {
+  return chapters.flatMap((chapter) => [...chapter.nodeIds]);
+}
+
+/** Vrai si la fenêtre est en portrait (mode « un chapitre à la fois »). */
+function isPortrait(): boolean {
+  try {
+    return typeof matchMedia === "function" && matchMedia("(orientation: portrait)").matches;
+  } catch {
+    return false;
+  }
+}
+
 /** Largeur visuelle approchée d'un caractère (plein chasse = 2). */
 function charWidth(c: string): number {
   return c.charCodeAt(0) >= 0x2e80 ? 2 : 1;
@@ -200,6 +346,9 @@ function place(el: HTMLElement, x: number, y: number, width: number, height: num
 const STATE_GLYPH: Record<Exclude<FlowNodeState, "hidden" | "current">, string> = { unvisited: "○", visited: "●", finished: "✓" };
 
 function nodeLabel(node: GraphNode, state: FlowNodeState, choiceCount: number, endingReached: boolean): string {
+  // Anti-spoiler (décision 5) : un nœud masqué n'est décrit que par son état, sans identifiant, titre
+  // ni nombre d'options — y compris pour les lecteurs d'écran.
+  if (state === "hidden") return t("flowchart.node.hidden");
   const id = node.id;
   const base =
     state === "current"
@@ -219,6 +368,8 @@ function nodeLabel(node: GraphNode, state: FlowNodeState, choiceCount: number, e
             ? t("flowchart.kind.endReached")
             : t("flowchart.kind.end")
           : "";
+  // Le nœud courant affiche le texte visible « Ici » (`.mh-flow-marker`) : `flowchart.node.current`
+  // l'inclut donc dans le nom accessible (WCAG 2.1 SC 2.5.3, règle axe `label-content-name-mismatch`).
   return kind ? `${base}, ${kind}` : base;
 }
 
@@ -228,31 +379,35 @@ type NodeContext = {
   choiceCounts: ReadonlyMap<string, number>;
 };
 
-function renderNode(index: number, graphNode: GraphNode, box: FlowNodeLayout, state: FlowNodeState, ctx: NodeContext): HTMLElement {
+function renderNode(index: number, graphNode: GraphNode, box: FlowNodeLayout, state: FlowNodeState, ctx: NodeContext, roving: boolean): HTMLElement {
   const el = h("div", "mh-flow-node");
   place(el, box.x, box.y, box.width, box.height);
   el.dataset.n = String(index);
   el.dataset.state = state;
+  el.tabIndex = roving ? 0 : -1;
   const shape = h("div", "mh-flow-shape");
   const fill = h("div", "mh-flow-fill");
   shape.appendChild(fill);
   el.appendChild(shape);
 
+  const reached = graphNode.kind === "end" && ctx.endings.has(graphNode.id);
+  // Tous les nœuds sont des boutons pour l'arbre d'accessibilité ; seuls les nœuds ouverts agissent.
+  el.setAttribute("role", "button");
+  el.setAttribute("aria-label", nodeLabel(graphNode, state, ctx.choiceCounts.get(graphNode.id) ?? 0, reached));
+  if (!isDiscovered(state)) el.setAttribute("aria-disabled", "true");
+
   if (state === "hidden") {
-    // Silhouette : aucune information du jeu, y compris pour les lecteurs d'écran.
-    el.setAttribute("aria-hidden", "true");
+    // Silhouette : aucun identifiant ni information du jeu, y compris pour les lecteurs d'écran :
+    // le libellé reste « scène non découverte ». Le focus clavier peut l'annoncer sans rien révéler.
     return el;
   }
 
-  const reached = graphNode.kind === "end" && ctx.endings.has(graphNode.id);
   el.dataset.id = graphNode.id;
   el.dataset.kind = graphNode.kind;
   // Seuls les nœuds ouverts répondent au clic (volet de détails) ; un nœud révélé non visité reste inerte.
   if (isDiscovered(state)) el.dataset.interactive = "true";
   if (graphNode.kind === "end") el.dataset.ending = reached ? "reached" : "pending";
   if (box.hub) el.dataset.hub = "true";
-  el.setAttribute("role", "img");
-  el.setAttribute("aria-label", nodeLabel(graphNode, state, ctx.choiceCounts.get(graphNode.id) ?? 0, reached));
   if (state === "current") el.setAttribute("aria-current", "location");
 
   // Une silhouette est déjà sortie plus haut : ici le nœud est ouvert, ou révélé par `revealAll`.
@@ -276,7 +431,12 @@ function renderNode(index: number, graphNode: GraphNode, box: FlowNodeLayout, st
   } else {
     const marker = h("span", "mh-flow-marker");
     marker.setAttribute("aria-hidden", "true");
-    marker.append(h("span", "mh-flow-marker-arrow"), h("span", "mh-flow-marker-text", t("flowchart.here")));
+    // Le libellé « Ici » est décoratif (l'état est déjà dans le nom accessible « position actuelle »)
+    // et rendu par CSS (`::before { content: attr(data-text) }`) : ce texte généré n'entre pas dans le
+    // texte visible du bouton, donc pas de conflit avec son `aria-label` (axe SC 2.5.3).
+    const markerText = h("span", "mh-flow-marker-text");
+    markerText.dataset.text = t("flowchart.here");
+    marker.append(h("span", "mh-flow-marker-arrow"), markerText);
     el.appendChild(marker);
   }
   if (graphNode.kind === "end") {
@@ -442,6 +602,70 @@ function renderCounters(graph: StoryGraph | null | undefined, layout: FlowLayout
 }
 
 /**
+ * Région `aria-live` : annonce la position quand le focus clavier se déplace de nœud en nœud.
+ * Visuellement masquée (`.mh-flow-sr`), jamais `display: none`.
+ */
+function renderLiveRegion(): HTMLParagraphElement {
+  const live = h("p", "mh-flow-live mh-flow-sr");
+  live.setAttribute("role", "status");
+  live.setAttribute("aria-live", "polite");
+  live.setAttribute("aria-atomic", "true");
+  return live;
+}
+
+type A11yTreeConfig = {
+  chapters: readonly FlowA11yChapter[];
+  nodeIndex: ReadonlyMap<string, number>;
+  labelOf: (id: string) => string;
+  activatable: (id: string) => boolean;
+  onActivate: (index: number) => void;
+};
+
+/**
+ * Équivalent liste de la carte pour les lecteurs d'écran : `<ul>` imbriquée par chapitre, un bouton par
+ * nœud (`aria-label`), dans le même ordre que le parcours clavier. Anti-spoiler (décision 5) : un nœud
+ * masqué n'y apparaît que comme « scène non découverte », sans identifiant, titre ni nombre d'options.
+ */
+function renderA11yTree(config: A11yTreeConfig): HTMLElement {
+  const box = h("div", "mh-flow-a11y");
+  const title = h("h3", "mh-flow-a11y-title", t("flowchart.a11y.title"));
+  title.id = "mh-flow-a11y-title";
+  const help = h("p", "mh-flow-a11y-help", t("flowchart.region.help"));
+  help.id = "mh-flow-keyboard-help";
+  const nav = h("nav", "mh-flow-a11y-nav");
+  nav.setAttribute("aria-labelledby", title.id);
+  const list = h("ul", "mh-flow-a11y-list");
+  for (const chapter of config.chapters) {
+    const item = h("li", "mh-flow-a11y-chapter");
+    item.dataset.a11ySection = chapter.id;
+    if (chapter.locked) item.dataset.a11yLocked = "true";
+    item.appendChild(h("h4", "mh-flow-a11y-chapter-title", chapter.title));
+    const nodes = h("ul", "mh-flow-a11y-nodes");
+    for (const id of chapter.nodeIds) {
+      const index = config.nodeIndex.get(id);
+      if (index === undefined) continue;
+      const label = config.labelOf(id);
+      const li = h("li");
+      const button = h("button", "mh-flow-a11y-node", label);
+      button.type = "button";
+      // Pas de second arrêt de tabulation par nœud : le parcours clavier se fait sur la carte.
+      button.tabIndex = -1;
+      button.dataset.a11yNode = String(index);
+      button.setAttribute("aria-label", label);
+      if (!config.activatable(id)) button.setAttribute("aria-disabled", "true");
+      button.addEventListener("click", () => config.onActivate(index));
+      li.appendChild(button);
+      nodes.appendChild(li);
+    }
+    item.appendChild(nodes);
+    list.appendChild(item);
+  }
+  nav.appendChild(list);
+  box.append(title, help, nav);
+  return box;
+}
+
+/**
  * Construit l'écran complet (titre, compteurs, légende, carte, « Retour »). L'appelant l'ajoute au slot
  * `#ui-flowchart` et fournit `onBack`.
  */
@@ -488,6 +712,7 @@ export function renderFlowchartScreen(data: FlowchartData, onBack: () => void): 
   scroller.tabIndex = 0;
   scroller.setAttribute("role", "region");
   scroller.setAttribute("aria-label", t("flowchart.region"));
+  scroller.setAttribute("aria-describedby", "mh-flow-keyboard-help");
   // sizer : taille `contenu x zoom`, centré ; stage : la scène à l'échelle 1 (unités de la mise en page).
   const sizer = h("div", "mh-flow-sizer");
   const stage = h("div", "mh-flow-stage");
@@ -497,6 +722,16 @@ export function renderFlowchartScreen(data: FlowchartData, onBack: () => void): 
   const nodeIndex = new Map<string, number>();
   graph.nodes.forEach((n, i) => nodeIndex.set(n.id, i));
   const layoutOfNode = new Map(layout.nodes.map((n) => [n.id, n]));
+
+  // Équivalent liste et ordre de parcours clavier (FLOW-07, #206). Le nœud actif du roving tabindex est
+  // la position courante si elle est découverte, sinon le premier nœud découvert, sinon le premier nœud.
+  const a11yChapters = accessibleChapters(layout, data.chapters, states, data.revealAll);
+  const order = focusOrder(a11yChapters);
+  const currentDiscovered = data.currentScript !== null && isDiscovered(states.get(data.currentScript));
+  const activeId =
+    (currentDiscovered ? data.currentScript : undefined) ?? order.find((id) => isDiscovered(states.get(id))) ?? order[0];
+  const activeIndex = activeId === undefined ? -1 : (nodeIndex.get(activeId) ?? -1);
+  const nodeEls = new Map<string, HTMLElement>();
 
   // 1. Groupes et titre de la section Bonus (sous les arêtes).
   layout.groups.forEach((g, i) => {
@@ -517,11 +752,13 @@ export function renderFlowchartScreen(data: FlowchartData, onBack: () => void): 
   const edgesOfNode = new Map<number, SVGElement[]>();
   stage.appendChild(renderEdges(layout, graph, hubIds, taken, nodeIndex, edgesOfNode));
 
-  // 3. Nœuds.
+  // 3. Nœuds (focalisables : roving tabindex, un seul arrêt de tabulation).
   graph.nodes.forEach((n, i) => {
     const box = layoutOfNode.get(n.id);
     if (!box) return;
-    stage.appendChild(renderNode(i, n, box, states.get(n.id) ?? "hidden", ctx));
+    const el = renderNode(i, n, box, states.get(n.id) ?? "hidden", ctx, i === activeIndex);
+    nodeEls.set(n.id, el);
+    stage.appendChild(el);
   });
 
   // 4. Libellés des choix empruntés, au-dessus des nœuds.
@@ -567,24 +804,21 @@ export function renderFlowchartScreen(data: FlowchartData, onBack: () => void): 
   syncTools = tools.sync;
   tools.sync();
 
-  // Clic sur un nœud ouvert : volet de détails (jamais pour une silhouette ni un nœud révélé non visité).
+  // Volet de détails d'un nœud ouvert (clic, `Entrée` ou bouton de la liste équivalente).
   let detail: HTMLElement | null = null;
   let selected: HTMLElement | null = null;
   const closeDetail = (restoreFocus: boolean): void => {
     detail?.remove();
     detail = null;
-    selected?.removeAttribute("data-selected");
+    const previous = selected;
+    previous?.removeAttribute("data-selected");
     selected = null;
-    if (restoreFocus) scroller.focus({ preventScroll: true });
+    // Échap = retour : le focus revient au nœud d'origine, pas en haut de la carte.
+    if (restoreFocus) (previous ?? scroller).focus({ preventScroll: true });
   };
   const deps: ReplayDeps = { confirm: data.confirm, replay: data.replay };
-  scroller.addEventListener("click", (ev) => {
-    const target = ev.target instanceof Element ? ev.target.closest<HTMLElement>(".mh-flow-node[data-n]") : null;
-    if (!target) return;
-    const index = Number(target.dataset.n);
-    const node = graph.nodes[index];
-    if (!node) return;
-    const details = describeNode(graph, node.id, states.get(node.id), data.story, layout.endings, data.chapters);
+  const openDetail = (target: HTMLElement, nodeId: string): void => {
+    const details = describeNode(graph, nodeId, states.get(nodeId), data.story, layout.endings, data.chapters);
     if (!details) return;
     closeDetail(false);
     selected = target;
@@ -598,14 +832,101 @@ export function renderFlowchartScreen(data: FlowchartData, onBack: () => void): 
     });
     map.appendChild(detail);
     detail.focus({ preventScroll: true });
+  };
+  scroller.addEventListener("click", (ev) => {
+    const target = ev.target instanceof Element ? ev.target.closest<HTMLElement>(".mh-flow-node[data-n]") : null;
+    if (!target) return;
+    const node = graph.nodes[Number(target.dataset.n)];
+    if (!node) return;
+    openDetail(target, node.id);
+  });
+
+  // ── Clavier par nœud (FLOW-07, #206) : flèches = voisin par arête, Entrée = volet, Home/End, Échap ──
+  const live = renderLiveRegion();
+
+  /** Annonce le libellé accessible du nœud dans la région `aria-live` (jamais son identifiant s'il est masqué). */
+  const announce = (el: HTMLElement): void => {
+    live.textContent = el.getAttribute("aria-label") ?? "";
+    setLit(Number(el.dataset.n));
+  };
+
+  /** Déplace le focus sur un nœud : roving tabindex, annonce, éclairage de ses arêtes, défilement minimal. */
+  const focusNode = (id: string): void => {
+    const el = nodeEls.get(id);
+    if (!el) return;
+    for (const node of nodeEls.values()) node.tabIndex = node === el ? 0 : -1;
+    el.focus({ preventScroll: true });
+    announce(el);
+    if (typeof el.scrollIntoView === "function") {
+      try {
+        el.scrollIntoView({ block: "nearest", inline: "nearest" });
+      } catch {
+        // Environnement sans défilement (jsdom) : rien à faire.
+      }
+    }
+  };
+
+  for (const [id, el] of nodeEls) {
+    el.addEventListener("focus", () => {
+      for (const node of nodeEls.values()) node.tabIndex = node === el ? 0 : -1;
+      announce(el);
+    });
+    el.addEventListener("keydown", (ev) => {
+      if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+      const direction = ARROW_DIRECTIONS[ev.key];
+      if (direction) {
+        ev.preventDefault();
+        // La carte défile avec les flèches quand c'est elle qui a le focus ; sur un nœud, les flèches
+        // naviguent : on empêche l'événement d'atteindre la région (et son défilement clavier).
+        ev.stopPropagation();
+        const next = neighborNode(graph, layout, id, direction);
+        if (next) focusNode(next);
+        return;
+      }
+      if (ev.key === "Home" || ev.key === "End") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const target = ev.key === "Home" ? order[0] : order[order.length - 1];
+        if (target) focusNode(target);
+        return;
+      }
+      if (ev.key === "Enter" || ev.key === " ") {
+        if (!isDiscovered(states.get(id))) return; // non ouvrable (`aria-disabled`) : aucune action
+        ev.preventDefault();
+        ev.stopPropagation();
+        openDetail(el, id);
+      }
+    });
+  }
+
+  // Liste équivalente pour lecteurs d'écran : un bouton par nœud, activé comme un clic sur la carte.
+  const a11y = renderA11yTree({
+    chapters: a11yChapters,
+    nodeIndex,
+    labelOf: (id) => nodeEls.get(id)?.getAttribute("aria-label") ?? "",
+    activatable: (id) => isDiscovered(states.get(id)),
+    onActivate: (index) => {
+      const node = graph.nodes[index];
+      if (!node) return;
+      focusNode(node.id);
+      const el = nodeEls.get(node.id);
+      if (el && isDiscovered(states.get(node.id))) openDetail(el, node.id);
+    },
   });
 
   map.append(scroller, tools.el);
-  screen.append(head, aside, map, foot);
+  screen.append(head, aside, map, live, a11y, foot);
 
-  // Position initiale : le zoom mémorisé est déjà posé ; on centre le nœud courant, sinon on reste en haut.
-  // L'écran est ajouté au DOM de façon synchrone par l'appelant.
+  // Position initiale : en portrait, on ajuste d'abord le zoom à la largeur (un chapitre à la fois en
+  // défilement), puis on centre le nœud courant. L'écran est ajouté au DOM de façon synchrone par l'appelant.
   queueMicrotask(() => {
+    if (isPortrait()) {
+      const remembered = getRememberedScale();
+      const fit = Math.min(1, (scroller.clientWidth - 6) / layout.width);
+      if (fit > 0 && fit < viewport.getScale()) viewport.setScale(fit);
+      // L'ajustement portrait ne doit pas écraser le zoom paysage mémorisé pour les ouvertures suivantes.
+      setRememberedScale(remembered);
+    }
     if (currentBox) viewport.centerOn(currentBox);
     scroller.focus({ preventScroll: true });
   });

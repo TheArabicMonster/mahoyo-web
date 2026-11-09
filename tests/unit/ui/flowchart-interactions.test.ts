@@ -139,10 +139,11 @@ describe("clic sur un nœud et volet de détails", () => {
     panel(r)!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(panel(r)).toBeNull();
     expect(outer).not.toHaveBeenCalled(); // Échap ne ferme pas l'écran en plus du volet
-    expect(document.activeElement).toBe(r.querySelector(".mh-flow-scroll"));
+    // Échap = retour : le focus revient au nœud ouvert, pas en haut de la carte.
+    expect(document.activeElement).toBe(node(r, "start"));
   });
 
-  it("une silhouette n'ouvre rien, n'est pas cliquable et ne porte aucun identifiant", () => {
+  it("une silhouette n'ouvre rien et ne porte aucun identifiant (mais reste annonçable)", () => {
     const r = render();
     const hidden = silhouettes(r);
     expect(hidden.length).toBe(4);
@@ -150,7 +151,10 @@ describe("clic sur un nœud et volet de détails", () => {
       el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       expect(el.hasAttribute("data-id")).toBe(false);
       expect(el.hasAttribute("data-interactive")).toBe(false);
-      expect(el.getAttribute("aria-hidden")).toBe("true");
+      // Décision 5 : annoncée « scène non découverte », sans identifiant ni compteur d'options.
+      expect(el.getAttribute("role")).toBe("button");
+      expect(el.getAttribute("aria-label")).toBe("Scène non découverte");
+      expect(el.getAttribute("aria-disabled")).toBe("true");
       expect(el.tabIndex).toBe(-1);
       expect(el.querySelector("button, a, [tabindex]")).toBeNull();
     }
