@@ -52,14 +52,21 @@ const DIR_TO_KIND: Record<string, AssetKind> = {
 
 /**
  * Détermine le kind d'un fichier à partir de son chemin relatif et de son extension.
- * Priorité : dossier parent > extension.
+ * Priorité : dossier parent > extension, avec une exception pour `data/scenario`.
  */
 export function classifyAsset(relPath: string): AssetKind {
   const parts = relPath.toLowerCase().split(/[\\/]/);
   const ext = extname(relPath).toLowerCase();
 
-  // Dossier data/scenario → scenario
-  if (parts.includes("scenario") || (parts.includes("data") && ext === ".ks")) {
+  // Dossier data/scenario → scénario **uniquement pour les `.ks`** (issue #111).
+  // Le jeu y place aussi des plugins `.tjs`, des scripts système chiffrés `.ttd`,
+  // des timelines `.tla` et des médias (`.tlg`, `.png`, `.wav`) utilisés par les
+  // plugins moteur (billets tombants, neige, sons de menus). Les classer tous en
+  // scénario les faisait transcoder en `.ks` illisibles ; ils suivent désormais
+  // leur extension (médias → image/se, fichiers moteur → ignorés).
+  if (parts.includes("scenario")) {
+    if (ext === ".ks") return "scenario";
+  } else if (parts.includes("data") && ext === ".ks") {
     return "scenario";
   }
 

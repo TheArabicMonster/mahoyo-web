@@ -62,12 +62,16 @@ async function main(): Promise<void> {
   }
 
   // Lister et filtrer le corpus
-  const { allKsFiles, systemScripts, encryptedScripts, auditableScripts, scriptTexts } =
+  const { allKsFiles, systemScripts, encryptedScripts, binaryAssets, auditableScripts, scriptTexts } =
     listCorpus(SCENARIO_DIR);
 
   console.log(`Scripts trouvés : ${allKsFiles.length}`);
   console.log(`Scripts système ignorés : ${systemScripts.length}`);
-  console.log(`Scripts chiffrés ignorés : ${encryptedScripts.length} (${encryptedScripts.join(", ")})`);
+  const binaryByKind = { image: 0, audio: 0, unknown: 0 };
+  for (const b of binaryAssets) binaryByKind[b.kind]++;
+  console.log(
+    `Fichiers binaires ignorés : ${encryptedScripts.length} (${binaryByKind.image} image(s), ${binaryByKind.audio} son(s), ${binaryByKind.unknown} indéterminé(s))`,
+  );
   console.log(`Scripts à auditer : ${auditableScripts.length}`);
 
   // Auditer chaque script auditable
@@ -115,6 +119,7 @@ async function main(): Promise<void> {
     totalScriptsFound: allKsFiles.length,
     skippedSystem: systemScripts.length,
     skippedEncrypted: encryptedScripts.length,
+    skippedBinary: binaryAssets,
     totalScripts: auditableScripts.length,
     scriptsWithErrors,
     scriptsWithMaxSteps,

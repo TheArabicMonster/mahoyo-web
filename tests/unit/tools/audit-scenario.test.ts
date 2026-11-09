@@ -277,7 +277,7 @@ describe("formatMarkdownReport", () => {
     expect(md).toContain("Détail par script");
     expect(md).toContain("a.ks");
     expect(md).toContain("b.ks");
-    expect(md).toContain("Scripts chiffrés ignorés");
+    expect(md).toContain("Fichiers binaires ignorés");
     expect(md).toContain("1");
   });
 

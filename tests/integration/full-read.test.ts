@@ -38,7 +38,12 @@ function buildSummary(report: AuditReport): string {
   lines.push("=== Lecture complète du corpus KAG ===");
   lines.push(`Scripts trouvés : ${report.totalScriptsFound}`);
   lines.push(`Scripts système ignorés : ${report.skippedSystem}`);
-  lines.push(`Scripts chiffrés ignorés : ${report.skippedEncrypted}`);
+  const binary = report.skippedBinary ?? [];
+  const binaryByKind = { image: 0, audio: 0, unknown: 0 };
+  for (const b of binary) binaryByKind[b.kind]++;
+  lines.push(
+    `Fichiers binaires ignorés : ${report.skippedEncrypted} (${binaryByKind.image} image(s), ${binaryByKind.audio} son(s), ${binaryByKind.unknown} indéterminé(s))`,
+  );
   lines.push(`Scripts narratifs audités : ${report.totalScripts}`);
   lines.push(`Scripts en erreur fatale : ${report.scriptsWithErrors}`);
   lines.push(`Scripts ayant atteint maxSteps : ${report.scriptsWithMaxSteps}`);
@@ -95,7 +100,8 @@ describe.skipIf(!hasAssets)("Lecture complète du corpus KAG", () => {
     }
 
     const listing = listCorpus(scenarioDir);
-    const { allKsFiles, systemScripts, encryptedScripts, auditableScripts, scriptTexts } = listing;
+    const { allKsFiles, systemScripts, encryptedScripts, binaryAssets, auditableScripts, scriptTexts } =
+      listing;
 
     const results: ScriptAuditResult[] = [];
     for (const f of auditableScripts) {
@@ -121,6 +127,7 @@ describe.skipIf(!hasAssets)("Lecture complète du corpus KAG", () => {
       totalScriptsFound: allKsFiles.length,
       skippedSystem: systemScripts.length,
       skippedEncrypted: encryptedScripts.length,
+      skippedBinary: binaryAssets,
       totalScripts: auditableScripts.length,
       scriptsWithErrors,
       scriptsWithMaxSteps,

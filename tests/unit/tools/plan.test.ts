@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { classifyAsset } from "../../../tools/inventory.js";
 import { planTasks, summarizeResults, type PlanContext } from "../../../tools/plan.js";
 import type { InventoryEntry } from "../../../tools/inventory.js";
 import type { TaskResult } from "../../../tools/plan.js";
@@ -26,6 +27,22 @@ const baseCtx: PlanContext = {
 };
 
 describe("planTasks", () => {
+  it("ne transcode pas les médias de data/scenario en .ks (#111)", () => {
+    const entries = [
+      makeEntry("data/scenario/1-0.ks", classifyAsset("data/scenario/1-0.ks"), ".ks", "1-0"),
+      makeEntry("data/scenario/note0.tlg", classifyAsset("data/scenario/note0.tlg"), ".tlg", "note0"),
+      makeEntry("data/scenario/se083.wav", classifyAsset("data/scenario/se083.wav"), ".wav", "se083"),
+      makeEntry("data/scenario/archivemenu.tjs", classifyAsset("data/scenario/archivemenu.tjs"), ".tjs", "archivemenu"),
+    ];
+    const tasks = planTasks(entries, baseCtx);
+
+    expect(tasks.filter((t) => t.action === "transcode-ks")).toHaveLength(1);
+    expect(tasks.filter((t) => t.action === "convert-image")).toHaveLength(1);
+    expect(tasks.filter((t) => t.action === "copy" && t.outputExt === ".wav")).toHaveLength(1);
+    // Le .tjs n'est pas un asset à produire.
+    expect(tasks).toHaveLength(3);
+  });
+
   it("planifie la conversion .tlg → .webp avec convertisseur", () => {
     const entries = [makeEntry("bg/night.tlg", "bg", ".tlg", "night")];
     const tasks = planTasks(entries, { ...baseCtx, tlgCommand: "tlg2png {in} {out}" });
