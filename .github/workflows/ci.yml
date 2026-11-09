@@ -56,15 +56,12 @@ jobs:
         env:
           MAHOYO_ASSETS_DIR: ${{ runner.temp }}/mahoyo-full-read/assets
 
-      # Garde-fou du registre de commandes KAG (#275) : registre valide, baseline
-      # intègre et non croissante par rapport à main, doc générée à jour, et aucune
-      # inconnue hors baseline sur le corpus de placeholders (0 inconnue attendu).
-      # La vérification de décroissance nécessite origin/main : on le récupère.
-      - name: Fetch main for audit baseline comparison
-        run: git fetch --no-tags --depth=1 origin main
-
-      - name: Audit command registry guard
-        run: npm run audit:guard
+      # Garde-fou du registre de commandes KAG — mode zéro strict (#275, #302) :
+      # registre des no-ops justifiés valide, baseline vide, doc générée à jour, et
+      # AUCUNE commande inconnue sur le corpus de placeholders. Le mécanisme de
+      # décroissance (comparaison à origin/main) a été supprimé à la clôture v1.0.
+      - name: Audit command registry guard (zero-strict)
+        run: npm run audit:guard -- --strict
         env:
           MAHOYO_ASSETS_DIR: ${{ runner.temp }}/mahoyo-full-read/assets
 
@@ -72,9 +69,10 @@ jobs:
       # - doc générée à jour (LECTURE_COMPLETE) : `audit:doc` régénère sans assets puis échoue si
       #   le fichier committé diverge ;
       # - registre des approximations valide (4 éléments, tests figés, compteurs non croissants).
-      # Limite documentée : la baseline réelle (221 scripts) ne peut pas être régénérée en CI sans
-      # assets utilisateur ; elle est contrôlée statiquement par `audit:guard` (baseline↔registre)
-      # et régénérée localement avec `npm run audit:baseline` (vrais assets).
+      # Depuis la clôture v1.0 (#302), le mode zéro strict s'applique : la baseline est figée
+      # vide (plus de `npm run audit:baseline`) et toute commande inconnue fait échouer
+      # `audit:guard` ; le corpus de clôture a été vérifié localement avec les vrais assets
+      # (0 inconnue).
       - name: Check generated artifacts and approximations registry (#295)
         run: npm run check:generated
 

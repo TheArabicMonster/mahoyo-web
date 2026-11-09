@@ -1,49 +1,31 @@
 /**
- * Garde-fou CI du registre de commandes KAG (#275).
+ * Garde-fou CI du registre de commandes KAG — **mode zéro strict** (#275, #302).
  *
- * Vérifie :
- * 1. la validité du registre (`tools/ignored-commands.ts`) — aucune commande à
- *    effet visible/audible/de déroulement sans justification explicite et accord ;
- * 2. l'intégrité de la baseline versionnée (`tools/audit-commands-baseline.json`) ;
- * 3. la fraîcheur de la section générée de `docs/LECTURE_COMPLETE.md` ;
- * 4. que la baseline **ne peut que baisser** par rapport à `origin/main` (option
- *    `--ref`, désactivable) ;
- * 5. si les assets sont disponibles (`MAHOYO_ASSETS_DIR` ou `public/assets`), que
- *    l'audit du corpus ne révèle aucune inconnue hors baseline (`--strict` exige
- *    en plus que chaque inconnue de la baseline soit encore mesurée, donc que
- *    toute résolution ait été répercutée).
+ * Depuis la clôture v1.0, **aucune commande inconnue n'est tolérée** :
+ * 1. le registre des no-ops justifiés (`tools/ignored-commands.ts`) est valide
+ *    (raison, effet, issue) ;
+ * 2. la baseline (`tools/audit-commands-baseline.json`) est **vide** (métadonnées
+ *    seules) — le mécanisme de décroissance a été supprimé ;
+ * 3. la section générée de `docs/LECTURE_COMPLETE.md` est à jour ;
+ * 4. si les assets sont disponibles (`MAHOYO_ASSETS_DIR` ou `public/assets`), l'audit
+ *    du corpus ne doit révéler **aucune** commande inconnue : la moindre inconnue
+ *    fait échouer le garde-fou (exit 1). Sans assets, seule la partie statique est
+ *    vérifiée (avertissement).
  *
- * Modes :
- *   npm run audit:guard                    garde-fou (CI : partie statique + doc)
- *   npm run audit:guard -- --strict        exige en plus que la baseline soit à jour
- *   npm run audit:baseline                 recalcule la baseline + la doc (assets requis)
- *
- * Sans assets (cas de la CI sur placeholders), le garde-fou statique (registre,
- * baseline, doc, décroissance) reste actif et l'absence d'audit est signalée.
+ * Modes : `npm run audit:guard` (statique + doc) et `--strict` (compatibilité ; le
+ * zéro strict est désormais le comportement par défaut). Il n'existe plus de
+ * `npm run audit:baseline` : la baseline ne doit jamais être modifiée.
  */
-import { spawnSync } from "child_process";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
-import {
-  BASELINE_PATH,
-  compareWithBaseline,
-  countOccurrences,
-  loadBaseline,
-  normalizeCommandCounts,
-  parseBaseline,
-  serializeBaseline,
-  type CommandBaseline,
-  type CommandCounts,
-} from "./audit-commands.js";
+import { countOccurrences, loadBaseline, type CommandBaseline, type CommandCounts } from "./audit-commands.js";
 import { auditScript, aggregateGlobal, listCorpus } from "./audit-lib.js";
-import { checkGeneratedBlock, writeGeneratedBlock } from "./audit-commands-doc.js";
+import { checkGeneratedBlock } from "./audit-commands-doc.js";
 import { IGNORED_COMMANDS_BY_NAME, validateIgnoredCommands } from "./ignored-commands.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const DEFAULT_ASSETS_DIR = join(REPO_ROOT, "public/assets");
-/** Référence git utilisée pour vérifier que la baseline ne peut que baisser. */
-export const DEFAULT_BASELINE_REF = "origin/main";
 
 /** Résultat partagé d'un audit de corpus (sous-ensemble utile au garde-fou). */
 export interface CorpusCommandAudit {
@@ -83,105 +65,58 @@ export async function auditCorpusCommands(assetsDir: string): Promise<CorpusComm
 }
 
 /**
- * Problèmes de l'audit d'un corpus vis-à-vis de la baseline.
- * En mode strict, une inconnue de la baseline devenue silencieuse doit être
- * retirée (mise à jour explicite dans la PR).
+ * Mode zéro strict : toute commande inconnue mesurée est une erreur. Aucune baseline, aucune
+ * tolérance de décroissance — l'inconnue doit être implémentée, approximée (registre #296) ou
+ * déclarée no-op justifié (#275).
  */
-export function evaluateCorpusAudit(
-  audit: Pick<CorpusCommandAudit, "unknown">,
-  baseline: CommandCounts,
-  options: { strict: boolean },
-): string[] {
-  const comparison = compareWithBaseline(audit.unknown, baseline);
-  const problems: string[] = [];
-  for (const name of comparison.newCommands) {
-    problems.push(
-      `nouvelle commande inconnue « @${name} » (absente de la baseline) : à trier (#276) ou à implémenter.`,
+export function evaluateCorpusAudit(audit: Pick<CorpusCommandAudit, "unknown">): string[] {
+  const unknown = Object.keys(audit.unknown).sort();
+  const lines: string[] = [];
+  for (const name of unknown) {
+    lines.push(
+      `commande inconnue « @${name} » (${audit.unknown[name]} occurrence(s)) : le mode zéro strict interdit toute inconnue — l'implémenter, l'approximer (registre #296) ou la déclarer no-op justifié (#275).`,
     );
   }
-  for (const entry of comparison.increased) {
-    problems.push(
-      `« @${entry.name} » : ${entry.measured} occurrence(s) contre ${entry.baseline} en baseline — le nombre d'inconnues ne peut que baisser.`,
-    );
-  }
-  if (options.strict) {
-    for (const name of comparison.resolved) {
-      problems.push(
-        `« @${name} » n'est plus inconnue (implémentée ou déclarée no-op) : retirer de la baseline (npm run audit:baseline).`,
-      );
-    }
-  }
-  return problems;
+  return lines;
 }
 
-/** Vérifie que la baseline ne croît pas par rapport à une plus ancienne (ex. origin/main). */
-export function evaluateBaselineGrowth(
-  baseline: CommandCounts,
-  reference: CommandCounts,
-): string[] {
-  const comparison = compareWithBaseline(baseline, reference);
-  const problems: string[] = [];
-  for (const name of comparison.newCommands) {
-    problems.push(`la baseline ajoute « @${name} » : une inconnue ne peut qu'être retirée, pas ajoutée.`);
-  }
-  for (const entry of comparison.increased) {
-    problems.push(
-      `la baseline augmente « @${entry.name} » (${entry.baseline} → ${entry.measured}) : le nombre d'inconnues ne peut que baisser.`,
-    );
-  }
-  return problems;
-}
-
-/** Lit la baseline d'une référence git (ex. origin/main), ou null si indisponible. */
-function loadBaselineFromRef(ref: string): CommandBaseline | null {
-  const res = spawnSync("git", ["-C", REPO_ROOT, "show", `${ref}:tools/audit-commands-baseline.json`], {
-    encoding: "utf-8",
-  });
-  if (res.status !== 0) return null;
-  try {
-    return parseBaseline(JSON.parse(res.stdout));
-  } catch {
-    return null;
-  }
-}
-
-/** Construit la baseline à partir d'un audit de corpus. */
-export function buildBaseline(audit: CorpusCommandAudit, today = new Date().toISOString().slice(0, 10)): CommandBaseline {
-  return {
-    generatedAt: today,
-    source: `npm run audit sur ${audit.scriptsAudited} scripts narratifs (assets locaux, non commités)`,
-    note: "Inconnues constatées sur le corpus de référence, en attente de triage (#276). Ne peut que décroître ; mise à jour explicite dans la PR (npm run audit:baseline).",
-    triageIssue: "#276",
-    commands: normalizeCommandCounts(audit.unknown),
-  };
+/**
+ * Mode zéro strict : la baseline versionnée doit être **vide** (métadonnées seules). Le
+ * mécanisme de décroissance (et `npm run audit:baseline`) a été supprimé à la clôture v1.0.
+ */
+export function evaluateBaselineShape(baseline: CommandBaseline): string[] {
+  const names = Object.keys(baseline.commands);
+  if (names.length === 0) return [];
+  return [
+    `baseline non vide (${names.length} commande(s) inconnue(s)) : en mode zéro strict la baseline doit rester vide — ne jamais y ajouter d'inconnue (#302).`,
+  ];
 }
 
 type Finding = { level: "error" | "warning" | "info"; message: string };
 
 /** Garde-fou complet : retourne les constats et le rapport d'audit éventuel. */
-export async function runGuard(options: {
-  strict: boolean;
-  ref?: string;
-  updateBaseline: boolean;
-  allowBaselineIncrease: boolean;
-}): Promise<{ findings: Finding[]; audit: CorpusCommandAudit | null }> {
+export async function runGuard(_options: { strict?: boolean } = {}): Promise<{
+  findings: Finding[];
+  audit: CorpusCommandAudit | null;
+}> {
   const findings: Finding[] = [];
 
-  // 1. Registre.
+  // 1. Registre des no-ops justifiés (raison, effet, issue).
   for (const problem of validateIgnoredCommands()) {
     findings.push({ level: "error", message: `registre : ${problem}` });
   }
 
-  // 2. Baseline versionnée.
+  // 2. Baseline : lecture + mode zéro strict (elle doit rester vide).
   let baseline: CommandBaseline | null = null;
   try {
     baseline = loadBaseline();
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // Premier lancement (`--update-baseline`) : la baseline est créée, pas une erreur.
-    findings.push({ level: options.updateBaseline ? "warning" : "error", message });
+    findings.push({ level: "error", message: err instanceof Error ? err.message : String(err) });
   }
   if (baseline) {
+    for (const message of evaluateBaselineShape(baseline)) {
+      findings.push({ level: "error", message });
+    }
     for (const name of Object.keys(baseline.commands)) {
       if (IGNORED_COMMANDS_BY_NAME.has(name)) {
         findings.push({
@@ -192,7 +127,7 @@ export async function runGuard(options: {
     }
   }
 
-  // 3. Doc générée.
+  // 3. Doc générée à jour.
   try {
     const docError = checkGeneratedBlock();
     if (docError) findings.push({ level: "error", message: docError });
@@ -200,55 +135,23 @@ export async function runGuard(options: {
     findings.push({ level: "error", message: err instanceof Error ? err.message : String(err) });
   }
 
-  // 4. Baseline vs référence git (ne peut que baisser).
-  if (baseline && options.ref !== "none") {
-    const ref = options.ref ?? DEFAULT_BASELINE_REF;
-    const reference = loadBaselineFromRef(ref);
-    if (!reference) {
-      findings.push({
-        level: "warning",
-        message: `comparaison avec ${ref} indisponible (première introduction de la baseline ou réf non fetchée).`,
-      });
-    } else {
-      const growth = evaluateBaselineGrowth(baseline.commands, reference.commands);
-      for (const message of growth) {
-        findings.push({
-          level: options.allowBaselineIncrease ? "warning" : "error",
-          message,
-        });
-      }
-    }
-  }
-
-  // 5. Audit du corpus si assets disponibles (ou mise à jour de la baseline).
+  // 4. Audit du corpus si assets disponibles : zéro inconnue tolérée.
   const assetsDir = resolveAssetsDir();
   let audit: CorpusCommandAudit | null = null;
   if (assetsDir) {
     audit = await auditCorpusCommands(assetsDir);
-    if (options.updateBaseline) {
-      const next = buildBaseline(audit);
-      writeFileSync(BASELINE_PATH, serializeBaseline(next), "utf-8");
-      findings.push({
-        level: "info",
-        message: `baseline mise à jour : ${Object.keys(next.commands).length} commande(s) inconnue(s), ${countOccurrences(next.commands)} occurrence(s).`,
-      });
-      writeGeneratedBlock();
-      findings.push({ level: "info", message: "section générée de docs/LECTURE_COMPLETE.md mise à jour." });
-      baseline = next;
+    for (const message of evaluateCorpusAudit(audit)) {
+      findings.push({ level: "error", message });
     }
-    if (baseline) {
-      const corpusProblems = evaluateCorpusAudit(audit, baseline.commands, { strict: options.strict });
-      for (const message of corpusProblems) findings.push({ level: "error", message });
-      findings.push({
-        level: "info",
-        message: `audit corpus : ${audit.scriptsAudited} scripts, ${Object.keys(audit.implemented).length} implémentée(s), ${Object.keys(audit.ignored).length} ignorée(s) volontairement, ${Object.keys(audit.unknown).length} inconnue(s) (${countOccurrences(audit.unknown)} occurrences).`,
-      });
-    }
+    findings.push({
+      level: "info",
+      message: `audit corpus (zéro strict) : ${audit.scriptsAudited} scripts, ${Object.keys(audit.implemented).length} implémentée(s), ${Object.keys(audit.ignored).length} ignorée(s) volontairement, ${Object.keys(audit.unknown).length} inconnue(s) (${countOccurrences(audit.unknown)} occurrences).`,
+    });
   } else {
     findings.push({
       level: "warning",
       message:
-        "aucun asset local (MAHOYO_ASSETS_DIR/public/assets) : garde-fou statique seulement (registre, baseline, doc, décroissance).",
+        "aucun asset local (MAHOYO_ASSETS_DIR/public/assets) : garde-fou statique seulement (registre, baseline vide, doc) ; l'audit zéro strict est vérifié en CI avec le corpus de placeholders.",
     });
   }
 
@@ -263,21 +166,19 @@ export function formatFindings(findings: readonly Finding[]): string {
 
 function main(): void {
   const args = process.argv.slice(2);
-  const strict = args.includes("--strict");
-  const updateBaseline = args.includes("--update-baseline");
-  const allowBaselineIncrease = args.includes("--allow-baseline-increase");
-  const noRef = args.includes("--no-ref");
-  const refIndex = args.indexOf("--ref");
-  const ref = noRef ? "none" : refIndex !== -1 ? args[refIndex + 1] : undefined;
-
-  runGuard({ strict, ref, updateBaseline, allowBaselineIncrease })
+  // `--strict` est conservé pour compatibilité : le zéro strict est le comportement par défaut.
+  if (args.some((arg) => arg !== "--strict")) {
+    console.error(`[audit:guard] option inconnue : ${args.join(" ")}`);
+    process.exit(1);
+  }
+  runGuard({ strict: args.includes("--strict") })
     .then(({ findings }) => {
       const errors = findings.filter((finding) => finding.level === "error");
       const warnings = findings.filter((finding) => finding.level === "warning");
       console.log(formatFindings(findings));
       console.log("");
       console.log(
-        `[audit:guard] ${errors.length === 0 ? "OK" : "ÉCHEC"} — ${errors.length} erreur(s), ${warnings.length} avertissement(s)${strict ? ", mode strict" : ""}.`,
+        `[audit:guard] ${errors.length === 0 ? "OK" : "ÉCHEC"} — ${errors.length} erreur(s), ${warnings.length} avertissement(s), mode zéro strict${args.includes("--strict") ? " (--strict)" : ""}.`,
       );
       process.exit(errors.length === 0 ? 0 : 1);
     })

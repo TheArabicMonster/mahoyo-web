@@ -1,10 +1,10 @@
 /**
- * Génération de la section « commandes KAG » de `docs/LECTURE_COMPLETE.md` (#275).
+ * Génération de la section « commandes KAG » de `docs/LECTURE_COMPLETE.md` (#275, #302).
  *
- * La section est **générée** depuis le registre (`tools/ignored-commands.ts`) et la
- * baseline des inconnues (`tools/audit-commands-baseline.json`) : pas de double
- * liste manuscrite. Le bloc est délimité par des marqueurs ; `npm run audit:doc`
- * le met à jour, `npm run audit:guard` vérifie qu'il est à jour.
+ * La section est **générée** depuis le registre des no-ops justifiés
+ * (`tools/ignored-commands.ts`) et la baseline **vide** (`tools/audit-commands-baseline.json`,
+ * mode zéro strict) : pas de double liste manuscrite. Le bloc est délimité par des marqueurs ;
+ * `npm run audit:doc` le met à jour, `npm run audit:guard` vérifie qu'il est à jour.
  */
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -71,19 +71,23 @@ export function renderGeneratedBlock(
   }
   lines.push("");
 
-  lines.push("#### Commandes inconnues restantes (baseline, à trier)");
+  lines.push("#### Commandes inconnues restantes (aucune tolérée — mode zéro strict)");
   lines.push("");
   lines.push(
-    `Baseline générée le ${baseline.generatedAt} — ${baseline.source}. Issue de triage : ${baseline.triageIssue}.`,
+    `Dernière mesure du corpus de référence : ${baseline.generatedAt} — ${baseline.source}. Issue de clôture : ${baseline.triageIssue}.`,
   );
   lines.push(
-    "Le nombre d'inconnues ne peut que baisser : toute commande résolue (implémentée ou déclarée no-op) doit être retirée de la baseline dans la PR correspondante (`npm run audit:baseline`).",
+    "Depuis la clôture v1.0 (#302), le **mode zéro strict** interdit toute commande inconnue : la baseline est vide et n'est plus mise à jour (plus de `npm run audit:baseline`). Toute commande non reconnue fait échouer `npm run audit` et `npm run audit:guard` ; elle doit être implémentée, approximée (registre #296) ou déclarée no-op justifié (#275).",
   );
   lines.push("");
-  lines.push("| Commande | Occurrences |");
-  lines.push("|---|---|");
-  for (const [name, count] of Object.entries(baseline.commands)) {
-    lines.push(`| \`@${escapeMdPipe(name)}\` | ${count} |`);
+  if (Object.keys(baseline.commands).length === 0) {
+    lines.push("Aucune commande inconnue mesurée sur le corpus de référence (0 occurrence).");
+  } else {
+    lines.push("| Commande | Occurrences |");
+    lines.push("|---|---|");
+    for (const [name, count] of Object.entries(baseline.commands)) {
+      lines.push(`| \`@${escapeMdPipe(name)}\` | ${count} |`);
+    }
   }
   lines.push("");
 

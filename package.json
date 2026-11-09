@@ -22,7 +22,6 @@
     "convert-audio": "tsx tools/convert-audio.ts",
     "audit": "tsx tools/audit-scenario.ts",
     "audit:guard": "tsx tools/audit-guard.ts",
-    "audit:baseline": "tsx tools/audit-guard.ts --update-baseline",
     "audit:doc": "tsx tools/audit-commands-doc.ts",
     "translation": "tsx tools/translation.ts",
     "progress": "tsx tools/progress.ts",

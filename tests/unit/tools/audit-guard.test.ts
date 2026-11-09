@@ -1,90 +1,73 @@
 /**
- * Tests du garde-fou du registre de commandes KAG (#275).
+ * Tests du garde-fou « mode zéro strict » (#275, #302).
  *
- * Le CLI complet est couvert par `npm run audit:guard` (CI + vérifications) ;
- * ici on teste les évaluateurs purs utilisés par le garde-fou, dont le cas de
- * régression « ajout d'une inconnue → échec » et « no-op déclaré → OK ».
+ * Depuis la clôture v1.0, **aucune commande inconnue n'est tolérée** : le mécanisme de
+ * décroissance (baseline non vide, `npm run audit:baseline`, comparaison à origin/main) a été
+ * supprimé. Le CLI complet est couvert par `npm run audit:guard` (CI) ; ici on teste les
+ * évaluateurs purs, dont le cas de régression « une inconnue → échec ».
  *
  * @vitest-environment node
  */
 import { describe, expect, it } from "vitest";
 import {
-  buildBaseline,
-  evaluateBaselineGrowth,
+  evaluateBaselineShape,
   evaluateCorpusAudit,
   formatFindings,
   type CorpusCommandAudit,
 } from "../../../tools/audit-guard.js";
+import { parseBaseline } from "../../../tools/audit-commands.js";
 
 function audit(unknown: Record<string, number>): Pick<CorpusCommandAudit, "unknown"> {
   return { unknown };
 }
 
-const BASELINE = { chgpartbg: 2, tickclock: 1 };
+const EMPTY_BASELINE = parseBaseline({
+  generatedAt: "2026-11-09",
+  source: "audit final avant clôture v1.0",
+  note: "Mode zéro strict (#302) : aucune inconnue tolérée.",
+  triageIssue: "#302",
+  commands: {},
+});
 
-describe("evaluateCorpusAudit", () => {
-  it("échoue sur une commande inconnue absente de la baseline (régression)", () => {
-    const problems = evaluateCorpusAudit(audit({ chgpartbg: 2, nouvelle: 1 }), BASELINE, {
-      strict: false,
-    });
+const LEGACY_BASELINE = parseBaseline({
+  generatedAt: "2026-11-09",
+  source: "ancienne baseline",
+  note: "obsolète",
+  triageIssue: "#276",
+  commands: { chgpartbg: 2, tickclock: 1 },
+});
+
+describe("evaluateCorpusAudit — zéro strict", () => {
+  it("accepte un audit sans aucune inconnue", () => {
+    expect(evaluateCorpusAudit(audit({}))).toEqual([]);
+  });
+
+  it("échoue sur UNE SEULE inconnue, même anciennement en baseline (plus de décroissance)", () => {
+    const problems = evaluateCorpusAudit(audit({ nouvelle: 1 }));
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("nouvelle commande inconnue « @nouvelle »");
+    expect(problems[0]).toContain("commande inconnue « @nouvelle » (1 occurrence(s))");
+    expect(problems[0]).toContain("zéro strict");
   });
 
-  it("accepte une inconnue déjà figée dans la baseline", () => {
-    expect(
-      evaluateCorpusAudit(audit({ chgpartbg: 1, tickclock: 1 }), BASELINE, { strict: false }),
-    ).toEqual([]);
-  });
-
-  it("échoue si le nombre d'occurrences augmente", () => {
-    const problems = evaluateCorpusAudit(audit({ chgpartbg: 3, tickclock: 1 }), BASELINE, {
-      strict: false,
-    });
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("ne peut que baisser");
-  });
-
-  it("en mode strict, exige la mise à jour de la baseline quand une inconnue est résolue", () => {
-    expect(
-      evaluateCorpusAudit(audit({ chgpartbg: 2 }), BASELINE, { strict: true }),
-    ).toEqual([expect.stringContaining("retirer de la baseline")]);
-    // En mode non strict, une résolution est permise (la PR met à jour la baseline).
-    expect(evaluateCorpusAudit(audit({ chgpartbg: 2 }), BASELINE, { strict: false })).toEqual([]);
+  it("échoue sur chaque inconnue mesurée, triées par nom, avec le nombre d'occurrences", () => {
+    const problems = evaluateCorpusAudit(audit({ zeta: 2, alpha: 3 }));
+    expect(problems).toHaveLength(2);
+    expect(problems[0]).toContain("@alpha");
+    expect(problems[0]).toContain("3 occurrence(s)");
+    expect(problems[1]).toContain("@zeta");
   });
 });
 
-describe("evaluateBaselineGrowth", () => {
-  it("échoue si la baseline ajoute une inconnue ou augmente un compteur", () => {
-    const added = evaluateBaselineGrowth({ ...BASELINE, nouveau: 1 }, BASELINE);
-    expect(added.some((p) => p.includes("ajoute « @nouveau »"))).toBe(true);
-
-    const increased = evaluateBaselineGrowth({ chgpartbg: 5, tickclock: 1 }, BASELINE);
-    expect(increased.some((p) => p.includes("augmente « @chgpartbg »"))).toBe(true);
+describe("evaluateBaselineShape — baseline vide obligatoire", () => {
+  it("accepte la baseline vide (métadonnées seules)", () => {
+    expect(evaluateBaselineShape(EMPTY_BASELINE)).toEqual([]);
   });
 
-  it("accepte une baseline qui ne fait que décroître", () => {
-    expect(evaluateBaselineGrowth({ chgpartbg: 1 }, BASELINE)).toEqual([]);
-    expect(evaluateBaselineGrowth({}, BASELINE)).toEqual([]);
-  });
-});
-
-describe("buildBaseline", () => {
-  it("construit une baseline datée et normalisée depuis l'audit", () => {
-    const baseline = buildBaseline(
-      {
-        assetsDir: "/tmp/assets",
-        scriptsAudited: 221,
-        unknown: { ChgPartBg: 2, tickclock: 1 },
-        ignored: {},
-        implemented: {},
-      },
-      "2026-11-09",
-    );
-    expect(baseline.generatedAt).toBe("2026-11-09");
-    expect(baseline.triageIssue).toBe("#276");
-    expect(baseline.source).toContain("221 scripts");
-    expect(baseline.commands).toEqual({ chgpartbg: 2, tickclock: 1 });
+  it("échoue si la baseline contient encore une inconnue (même une seule)", () => {
+    const problems = evaluateBaselineShape(LEGACY_BASELINE);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("baseline non vide (2 commande(s)");
+    expect(problems[0]).toContain("zéro strict");
   });
 });
 

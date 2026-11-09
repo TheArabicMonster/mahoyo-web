@@ -498,7 +498,8 @@ sont pas déduits du nom.
 **#285 (audio et déroulement)** sont implémentés : `@wstaffroll`, `@staffrolluninit`,
 `@staffrollsetting`, `@xchgbgm`, `@wb`, `@clickskip`, `@cancelskip`, `@effectskip` ne sont plus des
 inconnues. La baseline est passée à **29 commandes inconnues / 58 occurrences**
-(`npm run audit:baseline` ; `npm run audit:guard -- --strict` OK). Légende :
+(`npm run audit:baseline` — script supprimé depuis la clôture #302, les chiffres cités sont
+historiques ; `npm run audit:guard -- --strict` OK). Légende :
 
 - **Origine** : `KAG3` = standard KAG3 (documentation des tags), `plugin TJS` = tag de plugin
   (`data/scenario/*.tjs`), `macro Mahoyo` = macro définie par `@macro` d'un script système,
@@ -595,8 +596,9 @@ passe à **23 commandes / 31 occurrences**. #295 (garde-fous de clôture DoD, §
 lot). #284 (texte et options message) est traité — voir §9 decies ; la baseline passe à
 **13 commandes / 17 occurrences**. #282 (actions/effets de scène) est traité — voir §9 undecies ;
 la baseline passe à **4 commandes / 5 occurrences**. **#287 (tracer/timeline) est traité — voir
-§9 duodecies ; la baseline passe à 0 commande / 0 occurrence** (mode zéro strict, 5 no-ops
-justifiés). Tous les lots du triage #276 sont clos.
+§9 duodecies ; la baseline passe à 0 commande / 0 occurrence**. Tous les lots du triage #276 sont
+clos ; la clôture v1.0 (#302, §9 terdecies) passe en **mode zéro strict** : baseline **vide**
+(métadonnées seules), plus de `npm run audit:baseline`, toute inconnue fait échouer le garde-fou.
 
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
@@ -1029,7 +1031,36 @@ volontairement (11 occurrences), 0 inconnue** sur les 221 scripts (`npm run audi
 - **Pas d'e2e ajouté** pour ce lot : aucune commande n'a d'effet visible/jouable (scripts système
   ou de test non chargés par le player) ; la couverture est unitaire + audit réel.
 
+## 9 terdecies. Clôture v1.0 — mode zéro strict (#302)
+
+La clôture DoD v1.0 s'appuie sur le triage #276 entièrement clos (#281–#287) et sur les
+garde-fous #295. Le mode **zéro strict** remplace le mécanisme de décroissance de la baseline :
+
+- **Baseline vidée** : `tools/audit-commands-baseline.json` ne contient plus que ses métadonnées
+  (`generatedAt`, `source`, `note`, `triageIssue: "#302"`, `commands: {}`) ; elle est **figée** et
+  ne doit jamais être modifiée.
+- **Garde-fou** (`npm run audit:guard`) : échoue sur **toute** commande inconnue mesurée sur le
+  corpus (exit 1), sans comparaison à `origin/main` ; `npm run audit:baseline` a été **supprimé**
+  (plus d'écriture possible de la baseline). Le registre des **5 no-ops justifiés** (`@autocache`,
+  `@deffont`, `@settracerreturn`, `@startchart`, `@loadtimeline`) reste validé (raison, `effet:
+  "aucun"`, issue) et la doc générée est contrôlée (`check:generated`).
+- **Mesure de clôture** (vrais assets, 221 scripts) : **125 commandes implémentées**, **5 ignorées
+  volontairement** (11 occurrences), **0 inconnue (0 occurrence)**, 0 erreur, 0 maxSteps.
+- **CI** : l'étape « Fetch main for audit baseline comparison » est retirée ; `audit:guard`
+  s'exécute en `--strict` (zéro strict par défaut) avec le corpus de placeholders,
+  `check:generated` et `approximations:check` restent actifs.
+- **Démonstration négative** (preuve de non-maquillage) : ajout d'une commande inconnue dans un
+  script du corpus de placeholders → `audit:guard` échoue avec « commande inconnue … le mode zéro
+  strict interdit toute inconnue » ; retrait → retour au vert.
+- Les approximations connues restent suivies en v1.1 via l'issue #296 (registre à 4 éléments) ;
+  les bugs de fidélité hors DoD suivent #297 (horloge `time=0`) et #300 (ruby + emoji #graph).
+
 ## 10. Commandes non implémentées à figer plus tard
+
+> **Clôture v1.0 (#302)** : le corpus de référence ne contient plus **aucune** commande inconnue
+> (mode zéro strict, §9 terdecies). Toute commande KAG rencontrée à l'avenir devra être
+> implémentée, approximée (registre #296) ou déclarée no-op justifié (#275) — le garde-fou CI
+> échoue sinon. La liste ci-dessous est un historique de triage, plus une liste d'écarts ouverts.
 
 - ~~`@s`, `@image`, `@ruby`, `@endif` (commandes KAG standard)~~ : implémentées (#277) ; voir
   §4 « Ruby » et « Commandes KAG standard ».
