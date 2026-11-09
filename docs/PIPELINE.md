@@ -36,7 +36,7 @@ Il faut posséder une copie du jeu PC 2012 ; le dépôt ne contient aucun asset.
      --work .pipeline-work \
      --xp3-cmd "<extracteur> {in} {out}" \
      --tlg-cmd "<convertisseur TLG→WebP> {in} {out}" \
-     --audio-cmd "ffmpeg -y -i {in} -c:a libvorbis -q:a 4 {out}"
+     --audio-cmd "ffmpeg -y -i {in} -c:a libopus -b:a 96k -f ogg {out}"
    ```
 
    - `./jeu` contient les archives (`data.xp3`, `bg.xp3`, …) **ou** les fichiers
@@ -45,6 +45,9 @@ Il faut posséder une copie du jeu PC 2012 ; le dépôt ne contient aucun asset.
      inventorie, convertit et écrit `public/assets/asset-manifest.json`.
    - Sans `--tlg-cmd`, les `.tlg` sont décodés en `.png` par le décodeur intégré
      (voir « Étapes ») ; sans `--audio-cmd`, les audio sont copiés.
+   - Le gabarit audio doit **forcer le format de sortie** (`-f ogg` avec ffmpeg) :
+     le pipeline écrit d'abord `<sortie>.tmp` (écriture atomique), et ffmpeg ne
+     peut pas déduire le conteneur de cette extension.
    - Le résumé final liste les fichiers non convertis et le rapport
      `<work>/pipeline-report.json` (code de sortie 1 en cas d'échec).
 
@@ -83,7 +86,7 @@ npm run pipeline -- \
   --output ./public/assets \
   --xp3-cmd "/usr/local/bin/xp3extract {in} {out}" \
   --tlg-cmd "/usr/local/bin/tlg2webp {in} {out}" \
-  --audio-cmd "ffmpeg -y -i {in} -c:a libvorbis -q:a 4 {out}"
+  --audio-cmd "ffmpeg -y -i {in} -c:a libopus -b:a 96k -f ogg {out}"
 ```
 
 Les gabarits sont exécutés **sans shell** (`execFile`), avec `{in}` et `{out}`
@@ -165,6 +168,10 @@ npm run normalize-ks -- <input.ks>
 - **Sortie** : fichiers `.ogg` dans la même arborescence relative
 - **Sans encodeur** : copie simple des fichiers OGG (déjà compatibles navigateur)
 - **Avec encodeur** : re-encodage via l'outil fourni (ex: ffmpeg)
+- **Format de sortie forcé** : la sortie est d'abord écrite en `<sortie>.tmp`
+  (écriture atomique) ; l'extension `.tmp` empêche ffmpeg de déduire le
+  conteneur, forcez-le donc dans le gabarit : `-f ogg`, par exemple
+  `ffmpeg -y -i {in} -c:a libopus -b:a 96k -f ogg {out}`.
 
 ### 4. normalize-ks
 
