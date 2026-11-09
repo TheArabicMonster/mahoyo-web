@@ -26,8 +26,16 @@ afterAll(() => {
 
 const BASELINE: CommandBaseline = parseBaseline({
   generatedAt: "2026-11-09",
-  source: "npm run audit sur 221 scripts",
-  note: "Ne peut que décroître.",
+  source: "audit final avant clôture v1.0",
+  note: "Mode zéro strict (#302).",
+  triageIssue: "#302",
+  commands: {},
+});
+
+const LEGACY_BASELINE: CommandBaseline = parseBaseline({
+  generatedAt: "2026-11-09",
+  source: "ancienne baseline",
+  note: "obsolète",
   triageIssue: "#276",
   commands: { chgpartbg: 2, tickclock: 1 },
 });
@@ -42,13 +50,20 @@ const REGISTRY: IgnoredCommand[] = [
 ];
 
 describe("renderGeneratedBlock", () => {
-  it("génère les trois catégories et le tableau des inconnues", () => {
+  it("génère les trois catégories en mode zéro strict (aucune inconnue)", () => {
     const block = renderGeneratedBlock(REGISTRY, BASELINE);
     expect(block).toContain("| **Implémentée** |");
     expect(block).toContain("| **Ignorée volontairement** |");
     expect(block).toContain("| **Inconnue** |");
-    expect(block).toContain("2 commande(s) distincte(s), 3 occurrence(s)");
+    expect(block).toContain("0 commande(s) distincte(s), 0 occurrence(s)");
     expect(block).toContain("| `@tickclock` | aucun |");
+    expect(block).toContain("Aucune commande inconnue mesurée");
+    expect(block).not.toContain("| `@chgpartbg` |");
+  });
+
+  it("conserve un tableau de traçabilité si une ancienne baseline non vide est fournie", () => {
+    const block = renderGeneratedBlock(REGISTRY, LEGACY_BASELINE);
+    expect(block).toContain("2 commande(s) distincte(s), 3 occurrence(s)");
     expect(block).toContain("| `@chgpartbg` | 2 |");
   });
 
