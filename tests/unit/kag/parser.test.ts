@@ -669,3 +669,58 @@ describe("parse — audio et déroulement (#285)", () => {
     expect(first("@cancelskip")).toEqual({ kind: "cancelskip" });
   });
 });
+
+describe("parse — commandes visuelles secondaires (#85)", () => {
+  const first = (source: string) => parse(lex(source)).pages[0]!.instructions[0]!;
+
+  it("@chgpartbg : image/paramètres d'un partbg existant (id, transition, apparence)", () => {
+    expect(first("@chgpartbg id=pb1 storage=ev0901 time=500 rule=crossfade blur=2 textoff=0")).toMatchObject({
+      kind: "chgpartbg",
+      id: "pb1",
+      storage: "ev0901",
+      time: 500,
+      rule: "crossfade",
+      blurx: 2,
+      blury: 2,
+    });
+  });
+
+  it("@dispclock : h/m, position, zoom (zoomx/zoomy/zoom), effet, time", () => {
+    expect(first("@dispclock h=10 m=51 left=-800 top=-600 time=200 effect=屋外深夜 zoom=80")).toMatchObject({
+      kind: "dispclock",
+      h: 10,
+      m: 51,
+      left: -800,
+      top: -600,
+      zoomx: 80,
+      zoomy: 80,
+      effect: "屋外深夜",
+      time: 200,
+    });
+    expect(first("@dispclock h=3 m=18 left=-2000 top=-1300")).toMatchObject({ zoomx: 100, zoomy: 100 });
+  });
+
+  it("@tickclock : h/m, attente par défaut, `wait` inverse la sémantique du moteur", () => {
+    expect(first("@tickclock h=6 m=55")).toMatchObject({ kind: "tickclock", h: 6, m: 55, wait: true });
+    expect(first("@tickclock h=6 m=55 wait=1")).toMatchObject({ wait: false });
+    expect(first("@tickclock h=6 m=55 wait=0")).toMatchObject({ wait: true });
+  });
+
+  it("@setdefaultmessageaction / @resetdefaultmessageaction (commande et balise en ligne)", () => {
+    expect(first("@setdefaultmessageaction type=swing")).toEqual({ kind: "setdefaultmessageaction", type: "swing" });
+    expect(first("@resetdefaultmessageaction")).toEqual({ kind: "resetdefaultmessageaction" });
+    // Forme balise en ligne du corpus (1.5-3.ks).
+    const ins = parse(lex("[setdefaultmessageaction type=swing]abc[resetdefaultmessageaction]")).pages[0]!.instructions;
+    expect(ins[0]).toEqual({ kind: "setdefaultmessageaction", type: "swing" });
+    expect(ins.some((i) => i.kind === "resetdefaultmessageaction")).toBe(true);
+  });
+
+  it("@fg accepte afx/afy (point d'ancrage utilisé par l'horloge)", () => {
+    expect(first("@fg storage=hand center=100 vcenter=200 index=1200 afx=69 afy=621 rotate=45")).toMatchObject({
+      kind: "fg",
+      afx: 69,
+      afy: 621,
+      rotate: 45,
+    });
+  });
+});

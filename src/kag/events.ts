@@ -55,6 +55,9 @@ export type SpriteState = {
   zoomx?: number;
   zoomy?: number;
   rotate?: number;
+  /** Point d'ancrage du zoom/rotation (px dans l'image) ; absent = centre de l'image. */
+  afx?: number;
+  afy?: number;
   /** Si défini, ce sprite est un partbg (crop viewport @partbg). */
   crop?: {
     width: number;
@@ -209,7 +212,16 @@ export type TimelineLayerState = {
  *   tant qu'aucun script ne l'a fixée (le renderer applique alors son cadre par défaut), `""` pour
  *   un cadre sans image (#173).
  */
-export type TextboxState = { visible: boolean; frame: boolean; frameImage?: string };
+export type TextboxState = {
+  visible: boolean;
+  frame: boolean;
+  frameImage?: string;
+  /**
+   * Action continue des messages (`@setdefaultmessageaction type=…`, ex. « swing ») ; absente =
+   * aucune. Le moteur l'applique aux caractères affichés (approximé en CSS par le port).
+   */
+  action?: string;
+};
 
 /**
  * Bulle « ploy » active (scripts omake). `mode` est la valeur brute de

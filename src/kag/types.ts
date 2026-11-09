@@ -70,6 +70,9 @@ export type Layer = {
   zoomx?: number;
   zoomy?: number;
   rotate?: number;
+  /** Point d'ancrage du zoom/rotation (px dans l'image) ; absent = centre de l'image. */
+  afx?: number;
+  afy?: number;
   /** Mode de fusion et filtre d'image (`type=`, `effect=`, `blur`, `brightness`, `contrast`). */
   type?: number;
   effect?: string;
@@ -148,8 +151,17 @@ export type AnimationDef = {
   isMove?: boolean;
 };
 
-/** Zoom (%) et rotation (degrés) lus sur un `@bg`, `@fg` ou `@chgfg` ; absents = non précisés. */
-export type TransformArgs = { zoomx?: number; zoomy?: number; rotate?: number };
+/**
+ * Zoom (%) et rotation (degrés) lus sur un `@bg`, `@fg` ou `@chgfg` ; absents = non précisés.
+ * `afx`/`afy` déplacent le point d'ancrage du zoom/rotation (px dans l'image).
+ */
+export type TransformArgs = {
+  zoomx?: number;
+  zoomy?: number;
+  rotate?: number;
+  afx?: number;
+  afy?: number;
+};
 
 /**
  * Apparence d'un calque (`@bg`, `@fg`, `@chgfg`, `@partbg`) : mode de fusion, filtre d'image,
@@ -295,6 +307,15 @@ export type Instruction =
   | { kind: "clickskip"; enabled: boolean }
   | { kind: "cancelskip" }
   | { kind: "effectskip"; enabled: boolean }
+  /** `@chgpartbg` : change l'image/les paramètres d'un partbg existant (avec transition optionnelle). */
+  | ({ kind: "chgpartbg"; storage?: string; id?: string; page?: PageLayer; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs & AppearanceArgs)
+  /** `@dispclock` : horloge in-game — fond + 4 aiguilles (plugin `macro.tjs`). */
+  | { kind: "dispclock"; h: number; m: number; left: number; top: number; zoomx: number; zoomy: number; effect?: string; time?: number }
+  /** `@tickclock` : avance les aiguilles de l'horloge (animations `fgact` de 300 ms). */
+  | { kind: "tickclock"; h: number; m: number; wait: boolean }
+  /** `@setdefaultmessageaction` / `@resetdefaultmessageaction` : action continue des messages. */
+  | { kind: "setdefaultmessageaction"; type: string }
+  | { kind: "resetdefaultmessageaction" }
   | { kind: "iscript" }
   | { kind: "endscript" }
   | { kind: "wait"; time: number; skippable?: boolean }

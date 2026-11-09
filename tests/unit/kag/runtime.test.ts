@@ -1171,3 +1171,118 @@ describe("Runtime — audio et déroulement (#285)", () => {
     expect(step.events).toContainEqual({ kind: "cancelSkip" });
   });
 });
+
+describe("Runtime — commandes visuelles secondaires (#85)", () => {
+  const run = (src: string) => new Runtime(parse(lex(src)));
+
+  it("@dispclock pose le fond d'horloge et 4 aiguilles (angles CSS, ombres mono/blur)", () => {
+    const runtime = run(`
+*page0|
+@dispclock h=3 m=0 left=-800 top=-600 time=300 effect=monocro zoom=80
+@pg
+`);
+    const allEvents: RenderEvent[] = [];
+    for (let i = 0; i < 4; i++) {
+      const step = runtime.step();
+      allEvents.push(...step.events);
+      if (step.stop.kind === "end" || step.stop.kind === "click") break;
+    }
+    // Transition implicite back→fore : la scène émise contient les aiguilles + le fond.
+    expect(allEvents.some((e) => e.kind === "scene")).toBe(true);
+    const fore = runtime.getSaveData().state.fore;
+    expect(fore.background).toBe("im03lロビー時計(x2)");
+    expect(fore.bgEffect).toBe("monocro");
+    const ids = fore.layers.map((l) => l.id).sort();
+    expect(ids).toEqual(["clock1", "clock2", "clock3", "clock4"]);
+    const hour = fore.layers.find((l) => l.id === "clock1")!;
+    // h=3, m=0 → aiguille des heures à 90° (sens horaire du port).
+    expect(hour.rotate).toBe(90);
+    expect(hour.afx).toBe(69);
+    expect(hour.afy).toBe(621);
+    expect(hour.zoomx).toBe(80);
+    const shadow = fore.layers.find((l) => l.id === "clock3")!;
+    expect(shadow.effect).toBe("mono000000");
+    expect(shadow.blurx).toBe(2);
+    expect(shadow.opacity).toBeCloseTo(64 / 255, 5);
+    expect(runtime.getSaveData().state.clockHour).toBe(3);
+  });
+
+  it("@tickclock anime les 4 aiguilles puis attend la fin des animations", () => {
+    const runtime = run(`
+*page0|
+@dispclock h=3 m=0 left=-800 top=-600 time=0
+@tickclock h=6 m=55
+@pg
+`);
+    const events: RenderEvent[] = [];
+    let waitStop: Extract<StopReason, { kind: "waitFor" }> | null = null;
+    for (let i = 0; i < 4 && !waitStop; i++) {
+      const step = runtime.step();
+      events.push(...step.events);
+      if (step.stop.kind === "waitFor" && step.stop.what === "animation") waitStop = step.stop;
+      if (step.stop.kind === "end" || step.stop.kind === "click") break;
+    }
+    expect(events.some((e) => e.kind === "scene")).toBe(true);
+    const animated = events.filter((e) => e.kind === "animate");
+    expect(animated.map((e) => (e as { target: string }).target).sort()).toEqual([
+      "clock1",
+      "clock2",
+      "clock3",
+      "clock4",
+    ]);
+    expect(waitStop).toMatchObject({ kind: "waitFor", what: "animation" });
+    expect(runtime.getSaveData().state.clockHour).toBe(6);
+    expect(runtime.getSaveData().state.clockMinute).toBe(55);
+  });
+
+  it("@chgpartbg met à jour l'unique partbg de la page (image + flou)", () => {
+    const runtime = run(`
+*page0|
+@partbg page=fore storage=paneold center=512 vcenter=288 index=1000 width=420 height=576
+@chgpartbg page=fore storage=panenew blur=2
+@pg
+`);
+    const step = runtime.step();
+    expect(step.events.some((e) => e.kind === "scene")).toBe(true);
+    const layer = runtime.getSaveData().state.fore.layers.find((l) => l.crop);
+    expect(layer?.storage).toBe("panenew");
+    expect(layer?.blurx).toBe(2);
+  });
+
+  it("@chgpartbg id= cible le bon partbg et transitionne avec time=", () => {
+    const runtime = run(`
+*page0|
+@partbg page=back storage=p1 center=100 vcenter=100 index=1000 width=100 height=100 id=pb1
+@partbg page=back storage=p2 center=200 vcenter=200 index=1100 width=100 height=100 id=pb2
+@chgpartbg id=pb2 storage=p2b time=300
+@pg
+`);
+    let waitStop: Extract<StopReason, { kind: "waitFor" }> | null = null;
+    for (let i = 0; i < 4 && !waitStop; i++) {
+      const step = runtime.step();
+      if (step.stop.kind === "waitFor" && step.stop.what === "transition") waitStop = step.stop;
+      if (step.stop.kind === "end" || step.stop.kind === "click") break;
+    }
+    // Transition back→fore (le moteur appelle partbg_object.doTrans).
+    expect(waitStop).toMatchObject({ kind: "waitFor", what: "transition" });
+    const fore = runtime.getSaveData().state.fore;
+    expect(fore.layers.find((l) => l.id === "pb2")?.storage).toBe("p2b");
+    expect(fore.layers.find((l) => l.id === "pb1")?.storage).toBe("p1");
+  });
+
+  it("@setdefaultmessageaction / reset : action continue des messages dans l'état", () => {
+    const runtime = run(`
+*page0|
+@setdefaultmessageaction type=swing
+@resetdefaultmessageaction
+@pg
+`);
+    const step = runtime.step();
+    const textboxEvents = step.events.filter((e) => e.kind === "textbox");
+    expect(textboxEvents.length).toBeGreaterThanOrEqual(2);
+    expect(runtime.getSaveData().state.textbox?.action).toBeUndefined();
+    // Après la pose (premier événement), l'action est bien « swing ».
+    const withAction = textboxEvents.find((e) => (e as { state: { action?: string } }).state.action === "swing");
+    expect(withAction).toBeDefined();
+  });
+});

@@ -497,7 +497,7 @@ sont pas déduits du nom.
 `@deffont`) sont **déclarés dans `tools/ignored-commands.ts`**. Les lots **#286 (crédits de fin)** et
 **#285 (audio et déroulement)** sont implémentés : `@wstaffroll`, `@staffrolluninit`,
 `@staffrollsetting`, `@xchgbgm`, `@wb`, `@clickskip`, `@cancelskip`, `@effectskip` ne sont plus des
-inconnues. La baseline est passée à **34 commandes inconnues / 133 occurrences**
+inconnues. La baseline est passée à **29 commandes inconnues / 58 occurrences**
 (`npm run audit:baseline` ; `npm run audit:guard -- --strict` OK). Légende :
 
 - **Origine** : `KAG3` = standard KAG3 (documentation des tags), `plugin TJS` = tag de plugin
@@ -585,10 +585,10 @@ registre #275** (`@autocache` → #283, `@deffont` → #284). Aucune commande à
 visible/audible/de déroulement n'est classée no-op.
 
 **Suivi des lots** : #281 (effets d'écran plugin, §9 quater), #285 (audio/déroulement,
-§9 quinquies) et #286 (crédits de fin, §9 ter) sont traités : la baseline est passée à
-**34 commandes inconnues / 133 occurrences** (`npm run audit:baseline` ; `npm run audit:guard
--- --strict` OK). #283 (calques image) est traité — voir §9 sexies ; la baseline passe à
-**30 commandes / 121 occurrences**. Les autres lots (#85, #86, #282, #284, #287) restent ouverts.
+§9 quinquies), #286 (crédits de fin, §9 ter), #283 (calques image, §9 sexies) et #85
+(commandes visuelles secondaires, §9 septies) sont traités : la baseline est passée à
+**25 commandes inconnues / 46 occurrences** (`npm run audit:baseline` ; `npm run audit:guard
+-- --strict` OK). Les autres lots (#86, #282, #284, #287) restent ouverts.
 
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
@@ -744,6 +744,52 @@ Sémantique vérifiée dans `data/scenario/fgplugin.tjs` (`kt.infg`/`fg_object.i
   visibilité `@layopt`).
 - **Coordination #285** (audio/déroulement) : aucun chevauchement de fichiers hors `parser.ts`/
   `runtime.ts` (ajouts localisés : instructions + `applyInfg`/`applyOutfg`/`applyLayopt`/`@bindbg`).
+## 9 septies. Commandes visuelles secondaires (#85)
+
+Traitement du lot #85 (75 occurrences) : `@chgpartbg`, `@dispclock`, `@tickclock`,
+`@setdefaultmessageaction`, `@resetdefaultmessageaction`. Sémantique lue dans
+`data/scenario/partbgplugin.tjs`, `data/scenario/macro.tjs` et `data/override/tagex.tjs`.
+
+### `@chgpartbg` (22)
+
+- Moteur : change l'image/les paramètres d'un partbg **existant**. Cible : `id=` si fourni, sinon
+  l'unique partbg de la page, sinon celui dont le `storage` partage le plus long préfixe avec le
+  nouveau ; aucune cible = no-op. `time=`/`rule=` déclenchent la transition (`doTrans`).
+- Port : mise à jour du calque ciblé (storage, zoom/rotation/pivot, apparence `blur`/`effect`/…),
+  puis transition implicite back→fore si `time` ou `rule` (sinon rien sur back, scène immédiate sur
+  fore). Le `bgstorage` et le crop du partbg sont conservés.
+
+### `@dispclock` / `@tickclock` (20 + 11)
+
+- Moteur (`macro.tjs`) : `@dispclock` pose 4 calques d'aiguilles sur la page arrière — 2 vraies
+  (`短針x2` index 1200, `長針x2` index 1300) et 2 ombres (`effect=mono000000`, `blur=2`,
+  `opacity=64`, index 1000/1100), pivot `afx/afy`, zoom, rotation calculée depuis `h`/`m` — puis
+  charge le fond `im03lロビー時計(x2)` (`noclear=1`, `left`/`top`, `zoom`, `time` = transition).
+  `@tickclock` anime les 4 aiguilles en 300 ms (repos → léger dépassement à 100 ms → nouvel
+  angle) et attend la fin des animations par défaut.
+- Port : traduit ces commandes en primitives existantes (calques `fg` + `@bg` avec transition
+  implicite, puis animations `fgact` 3 keyframes). Les angles du moteur (sens anti-horaire) sont
+  convertis en **degrés CSS horaires** ; le miroir (`zoomx < 0`) inverse les angles. Le pivot
+  `afx`/`afy` est désormais supporté par les calques (`transform-origin` du sprite) et conservé
+  pendant les animations.
+- **Validation visuelle** (captures locales) : horloge centrée à 3:00, 6:55 et 9:15 — aiguilles
+  dans les directions attendues ; `@tickclock` 3:00→6:55 donne bien 207,5° / 330°.
+- Écarts : l'heure est suivie dans le runtime (`clockHour`/`clockMinute`, sauvegardés) mais pas
+  dans les variables `f.lastHour`/`f.lastMinute` du moteur ; `textoff`/`texton` des commandes
+  d'horloge ne sont pas interprétés (le port ne masque pas la boîte pour l'horloge).
+
+### `@setdefaultmessageaction` / `@resetdefaultmessageaction` (11 + 11)
+
+- Moteur (`tagex.tjs`) : règle/reinitialise le `continuousType` du message layer — une **action
+  continue appliquée aux caractères** affichés (`swing` = oscillation, `chgfont`, etc.).
+  La valeur est sauvegardée avec le message layer.
+- Port : `type=` est stocké dans `TextboxState.action` (sauvegardé, événement `textbox` à chaque
+  changement). Le renderer approxime l'action `swing` par une animation CSS par caractère
+  (oscillation 2,2 s, délai décalé), désactivée par `prefers-reduced-motion`. Les autres types
+  (`chgfont`, etc.) sont conservés dans l'état mais **non rendus** (aucune occurrence dans le
+  corpus).
+- Écarts : animation par caractère approximée côté CSS (le moteur anime les couches de glyphes) ;
+  rayon/amplitude non paramétrables par script.
 
 ## 10. Commandes non implémentées à figer plus tard
 

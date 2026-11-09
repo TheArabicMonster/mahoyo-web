@@ -147,6 +147,8 @@ export class DomStageRenderer implements StageRenderer {
   private typewriterTimer: ReturnType<typeof setTimeout> | null = null;
   private typewriterResolve: (() => void) | null = null;
   private typewriterHurry = false;
+  /** Action continue des messages (`@setdefaultmessageaction`, ex. « swing ») ; null = aucune. */
+  private textAction: string | null = null;
   /** Nombre d'unités de texte déjà révélées (anti re-type après [l]). */
   private typedUnits = 0;
 
@@ -866,6 +868,17 @@ export class DomStageRenderer implements StageRenderer {
         letter-spacing: ${FRAME_TEXT_LETTER_SPACING};
         text-shadow: 0 0 3px rgba(0,0,0,0.85), 1px 1px 2px rgba(0,0,0,0.7);
       }
+      .mh-stage-text-swing {
+        display: inline-block;
+        animation: mh-text-swing 2.2s ease-in-out infinite;
+      }
+      @keyframes mh-text-swing {
+        0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+        50% { transform: translateY(-1px) rotate(1.5deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .mh-stage-text-swing { animation: none; }
+      }
       .mh-stage-text-read {
         opacity: var(--mh-read-opacity, ${READ_TEXT_OPACITY});
         transition: opacity var(--mh-read-duration, 300ms) ease;
@@ -1252,6 +1265,9 @@ export class DomStageRenderer implements StageRenderer {
         } else {
           img.style.removeProperty("transform");
         }
+        // Point d'ancrage du zoom/rotation (aiguilles d'horloge : afx/afy du moteur).
+        if (s.afx !== undefined && s.afy !== undefined) img.style.transformOrigin = `${s.afx}px ${s.afy}px`;
+        else img.style.removeProperty("transform-origin");
         this.spritesEl.appendChild(img);
       }
     }
@@ -2106,6 +2122,9 @@ export class DomStageRenderer implements StageRenderer {
 
   private applyTextbox(): void {
     if (!this.textboxEl || !this.textbox) return;
+    const action = this.textbox.action ?? null;
+    const actionChanged = action !== this.textAction;
+    this.textAction = action;
     const hidden = this.userHidden || !this.textbox.visible;
     this.textboxEl.style.opacity = hidden ? "0" : "1";
     const style = resolveFrameStyle(this.textbox, this.frameFailed);
@@ -2126,6 +2145,8 @@ export class DomStageRenderer implements StageRenderer {
       }
     }
     if (modeChanged) this.fitText(this.buildTextUnits(), this.typedUnits);
+    // Action continue des messages : re-rendu du texte déjà affiché (animation CSS par caractère).
+    if (actionChanged) this.renderTextUpTo(this.buildTextUnits(), this.typedUnits);
     this.placeIndicator();
   }
 
@@ -2193,6 +2214,7 @@ export class DomStageRenderer implements StageRenderer {
       readEl.className = "mh-stage-text-read";
       frag.appendChild(readEl);
     }
+    const swing = this.textAction === "swing";
     for (let i = 0; i < limit; i++) {
       const parent: Node = readEl && i < dim ? readEl : frag;
       const u = units[i];
@@ -2212,9 +2234,14 @@ export class DomStageRenderer implements StageRenderer {
         rt.textContent = u.ruby;
         ruby.appendChild(rt);
         node = ruby;
-      } else if (hasCss) {
+      } else if (hasCss || swing) {
         node = document.createElement("span");
         node.textContent = u.char;
+        if (swing) {
+          // Approximation de l'action continue « swing » du moteur (oscillation par caractère).
+          (node as HTMLElement).className = "mh-stage-text-swing";
+          (node as HTMLElement).style.animationDelay = `${(-(i % 17) * 0.12).toFixed(2)}s`;
+        }
       } else {
         node = document.createTextNode(u.char);
       }

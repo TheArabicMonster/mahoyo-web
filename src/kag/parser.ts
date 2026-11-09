@@ -116,20 +116,26 @@ function normStorageOpt(value: string | undefined): string | undefined {
  * précisé reste absent (le runtime le lit comme 100 %). Une valeur illisible (expression
  * `&…`) est ignorée sans invalider le reste de la commande.
  */
+/** Nombre flottant optionnel (attribut absent/invalide → undefined). */
+function numArg(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const n = Number.parseFloat(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function parseTransformArgs(args: Record<string, string>): TransformArgs {
-  const num = (value: string | undefined): number | undefined => {
-    if (value === undefined) return undefined;
-    const n = Number.parseFloat(value);
-    return Number.isFinite(n) ? n : undefined;
-  };
-  const zoom = num(args.zoom);
-  const zoomx = num(args.zoomx) ?? zoom;
-  const zoomy = num(args.zoomy) ?? zoom;
-  const rotate = num(args.rotate);
+  const zoom = numArg(args.zoom);
+  const zoomx = numArg(args.zoomx) ?? zoom;
+  const zoomy = numArg(args.zoomy) ?? zoom;
+  const rotate = numArg(args.rotate);
   const out: TransformArgs = {};
   if (zoomx !== undefined) out.zoomx = zoomx;
   if (zoomy !== undefined) out.zoomy = zoomy;
   if (rotate !== undefined) out.rotate = rotate;
+  const afx = numArg(args.afx);
+  const afy = numArg(args.afy);
+  if (afx !== undefined) out.afx = afx;
+  if (afy !== undefined) out.afy = afy;
   return out;
 }
 
@@ -845,6 +851,50 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         ...parseAppearanceArgs(args),
       };
     }
+    case "chgpartbg": {
+      // Change l'image/les paramètres d'un partbg existant (partbgplugin.tjs, `kt.chgpartbg`).
+      return {
+        kind: "chgpartbg",
+        storage: args.storage !== undefined ? normStorage(args.storage) : undefined,
+        id: normStorage(args.id) || undefined,
+        page: parsePageLayer(args.page),
+        time: args.time !== undefined ? parseIntArg(args.time) : undefined,
+        rule: args.rule,
+        nowait: args.nowait !== undefined && parseKagBool(args.nowait),
+        canskip: args.canskip !== undefined ? parseKagBool(args.canskip) : undefined,
+        ...parseTransformArgs(args),
+        ...parseAppearanceArgs(args),
+      };
+    }
+    case "dispclock": {
+      // Horloge in-game (macro.tjs, tagHandlers.dispclock) : fond + 4 aiguilles.
+      const zoom = numArg(args.zoom);
+      const zoomx = numArg(args.zoomx) ?? zoom ?? 100;
+      const zoomy = numArg(args.zoomy) ?? zoom ?? 100;
+      const effect = args.effect?.trim();
+      return {
+        kind: "dispclock",
+        h: parseIntArg(args.h, 0),
+        m: parseIntArg(args.m, 0),
+        left: parseIntArg(args.left, 0),
+        top: parseIntArg(args.top, 0),
+        zoomx,
+        zoomy,
+        effect: effect !== undefined && effect !== "" && effect !== "none" ? effect : undefined,
+        time: args.time !== undefined ? parseIntArg(args.time) : undefined,
+      };
+    }
+    case "tickclock": {
+      // Avance les aiguilles (macro.tjs, tagHandlers.tickclock). Le moteur attend la fin des
+      // animations par défaut ; l'attribut `wait` inverse `nowait`.
+      const wait = args.wait === undefined ? true : !parseKagBool(args.wait);
+      return { kind: "tickclock", h: parseIntArg(args.h, 0), m: parseIntArg(args.m, 0), wait };
+    }
+    case "setdefaultmessageaction":
+      // action continue des messages (`continuousType` du message layer).
+      return { kind: "setdefaultmessageaction", type: args.type?.trim() ?? "" };
+    case "resetdefaultmessageaction":
+      return { kind: "resetdefaultmessageaction" };
     case "s":
       // @s : arrête le déroulement en attendant une sélection (bouton/lien).
       return { kind: "stop" };
