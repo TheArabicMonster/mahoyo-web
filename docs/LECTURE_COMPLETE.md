@@ -126,7 +126,7 @@ inconnue hors baseline.
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
 | **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 0 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 55 commande(s) distincte(s), 188 occurrence(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 51 commande(s) distincte(s), 181 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
@@ -158,12 +158,10 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@effectskip` | 2 |
 | `@endcockrobin` | 1 |
 | `@endfallnote` | 1 |
-| `@endif` | 2 |
 | `@eywz` | 1 |
 | `@fallnoteopt` | 2 |
 | `@focusline` | 1 |
 | `@heart` | 3 |
-| `@image` | 2 |
 | `@infg` | 5 |
 | `@ingz` | 1 |
 | `@layopt` | 1 |
@@ -177,8 +175,6 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@resetdefaultmessageaction` | 11 |
 | `@resumeaction` | 1 |
 | `@resumeploy` | 1 |
-| `@ruby` | 1 |
-| `@s` | 2 |
 | `@setdefaultmessageaction` | 11 |
 | `@settracerreturn` | 2 |
 | `@shake` | 4 |
