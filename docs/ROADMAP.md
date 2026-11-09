@@ -4,18 +4,21 @@ Découpage en épics. Chaque épic est une milestone GitHub, et chaque ligne est
 
 Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (voir la fin du document).
 
-## État au 2026-11-08
+## État au 2026-11-09
 
-- **v1.0 : 74/82 (90 %)** — 8 issues restantes ; **v1.1 : 13/52 (25 %)**.
+- **v1.0 : 75/82 (91 %)** — 7 issues restantes ; **v1.1 : 32/54 (59 %)**.
 - **E1–E4** : livrés (extraction, parser KAG3, runtime/rendu, pipeline et traductions).
-- **E7** : avancé — player complet, lecture du corpus, sauvegardes, historique, configuration à quatre onglets,
-  sélecteur de langue et contrôle du viewport.
-- **E5** : en cours — analyse du HUD d'origine, design system et tokens CSS livrés (#179, #181) ; refonte des
-  écrans système suivie par le backlog `HUD-xx`, `WEB-xx` et `FLOW-xx` (issues #182 à #213).
-- **E6** : en cours — 1014 tests unitaires et 20 tests d'intégration, build et `check:assets` verts ; e2e
-  Chrome/Firefox, mobile et migration ESLint 9 encore ouverts.
-- Dernières briques : fenêtre de message sans boîte (#173), indicateur de page (#175), configuration (#177),
-  sauvegardes enrichies côté modèle (#183), progression par scène (#186) et graphe de scénario (#185).
+- **E7** : avancé — player complet, lecture du corpus, sauvegardes IndexedDB avec export/import JSON, historique,
+  configuration au design d'origine, sélecteur de langue et contrôle du viewport.
+- **E5** : en cours — analyse du HUD d'origine, design system et tokens CSS livrés (#179, #181). La vague 4 est
+  mergée le 2026-11-09 : HUD-08 Extra/Archive (#199), HUD-09 configuration (#200), HUD-12 historique (#201),
+  FLOW-06 interactions du flowchart (#202), WEB-01 gestes tactiles (#203) et WEB-04 routes d'URL (#204).
+  Restent HUD-14/15/16/17/18, FLOW-07/08/09, WEB-02/06, PWA, accessibilité et thème complet.
+- **E6** : en cours — 1662 tests unitaires et 27 tests d'intégration, build et `check:assets` verts ; e2e
+  Chrome/Firefox, mobile et migration ESLint 9 (#220) encore ouverts.
+- Dernières briques : sauvegardes en IndexedDB (#198), progression par scène (#193), graphe de scénario (#192),
+  historique plein cadre (#201), gestes tactiles (#203), Extra/Archive (#199), configuration (#200),
+  interactions du flowchart (#202) et routes d'URL (#204).
 
 ## E0 — Gouvernance & socle 🔄
 
