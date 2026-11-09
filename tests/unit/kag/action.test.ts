@@ -79,7 +79,7 @@ describe("parseActionKeys", () => {
       "-storage,center,vcenter,opacity,-type,rotate,zoomx,zoomy,-effect,-contrast,-visible",
     );
     expect(kfs[0].storage).toBe("im12宇宙の果て01(中心無し)");
-    expect(kfs[0].type).toBe("13");
+    expect(kfs[0].type).toBe(13);
     expect(kfs[0].effect).toBe("nega");
     expect(kfs[0].contrast).toBe(62);
     // frame1 : zoomx=zoomy="5" → 0.05 ; rotate vide (carry, frame0 vide aussi).

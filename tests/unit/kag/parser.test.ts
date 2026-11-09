@@ -476,3 +476,46 @@ describe("parse — position par défaut des calques (#134)", () => {
     expect(first("@fg storage=a center=0 vcenter=0")).toMatchObject({ center: 0, vcenter: 0 });
   });
 });
+
+describe("parse — apparence des calques (#252)", () => {
+  const first = (source: string) => parse(lex(source)).pages[0]!.instructions[0]!;
+
+  it("@fg : type, effect, flou, luminosité, contraste sont lus", () => {
+    const ins = first("@fg storage=ev01 center=512 vcenter=288 index=1000 type=16 effect=monoff1313 blur=6 brightness=-35 contrast=80");
+    expect(ins).toMatchObject({
+      kind: "fg",
+      type: 16,
+      effect: "monoff1313",
+      blurx: 6,
+      blury: 6,
+      brightness: -35,
+      contrast: 80,
+    });
+  });
+
+  it("@bg : mêmes attributs (flou du décor de 1-1)", () => {
+    const ins = first("@bg storage=im01オープニング02c time=600 rule=crossfade blur=8 contrast=-26");
+    expect(ins).toMatchObject({ kind: "bg", blurx: 8, blury: 8, contrast: -26 });
+  });
+
+  it("@partbg et @chgfg : mêmes attributs", () => {
+    const partbg = first("@partbg storage=pane width=420 height=576 type=19 effect=nega brightness=-18");
+    expect(partbg).toMatchObject({ kind: "partbg", type: 19, effect: "nega", brightness: -18 });
+    const chgfg = first("@chgfg storage=p1a|b time=300 effect=monocro blur=2");
+    expect(chgfg).toMatchObject({ kind: "chgfg", effect: "monocro", blurx: 2, blury: 2 });
+  });
+
+  it("effect=none ou vide = aucun effet ; flou par axe (xblur/yblur)", () => {
+    expect(first("@fg storage=a effect=none").kind === "fg" && (first("@fg storage=a effect=none") as { effect?: string }).effect).toBeUndefined();
+    const ins = first("@fg storage=a xblur=4 yblur=1");
+    expect(ins).toMatchObject({ kind: "fg", blurx: 4, blury: 1 });
+  });
+
+  it("un attribut absent ne pose pas de champ (le moteur applique ses défauts)", () => {
+    const ins = first("@fg storage=a center=1 vcenter=2 index=3");
+    expect((ins as { type?: number }).type).toBeUndefined();
+    expect((ins as { effect?: string }).effect).toBeUndefined();
+    expect((ins as { brightness?: number }).brightness).toBeUndefined();
+    expect((ins as { contrast?: number }).contrast).toBeUndefined();
+  });
+});

@@ -873,3 +873,74 @@ describe("Runtime — @movefg sans center (#65)", () => {
     expect(layer?.vcenter).toBe(200);
   });
 });
+
+describe("Runtime — apparence des calques (#252)", () => {
+  it("@fg/@partbg/@bg : type, effect, blur, brightness, contrast dans l'état", () => {
+    const SRC = `
+*page0|
+@bg page=fore storage=pano type=1 effect=monoff1313 blur=8 brightness=-20 contrast=40
+@fg page=fore storage=perso index=1600 type=19 effect=nega xblur=4 yblur=2 brightness=-35 contrast=80
+@partbg page=fore storage=pane width=420 height=576 type=13 effect=monocro
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.step();
+    const state = runtime.getSaveData().state;
+    expect(state.fore).toMatchObject({
+      bgEffect: "monoff1313",
+      bgBrightness: -20,
+      bgContrast: 40,
+      bgBlurX: 8,
+      bgBlurY: 8,
+    });
+    const perso = state.fore.layers.find((l) => l.id === "perso")!;
+    expect(perso).toMatchObject({ type: 19, effect: "nega", blurx: 4, blury: 2, brightness: -35, contrast: 80 });
+    const pane = state.fore.layers.find((l) => l.storage === "pane")!;
+    expect(pane).toMatchObject({ type: 13, effect: "monocro" });
+  });
+
+  it("@bg sans attributs d'apparence réinitialise ceux du fond précédent (comme @image)", () => {
+    const SRC = `
+*page0|
+@bg page=fore storage=un effect=monocro blur=8 brightness=-20 contrast=40
+@bg page=fore storage=deux
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.step();
+    const fore = runtime.getSaveData().state.fore;
+    expect(fore.background).toBe("deux");
+    expect(fore.bgEffect).toBeUndefined();
+    expect(fore.bgBrightness).toBeUndefined();
+    expect(fore.bgContrast).toBeUndefined();
+    expect(fore.bgBlurX).toBeUndefined();
+  });
+
+  it("@chgfg conserve l'apparence du calque sauf attributs précisés", () => {
+    const SRC = `
+*page0|
+@fg page=fore storage=p1a index=1600 type=16 effect=monoff1313 blur=4
+@chgfg page=fore storage=p1a|b
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.step();
+    const layer = runtime.getSaveData().state.fore.layers.find((l) => l.id === "p1a")!;
+    expect(layer.storage).toBe("p1a");
+    expect(layer).toMatchObject({ type: 16, effect: "monoff1313", blurx: 4 });
+  });
+
+  it("@fgact : la dernière keyframe devient l'apparence du calque", () => {
+    const SRC = `
+*page0|
+@fg page=fore storage=p1 index=1600
+@fgact page=fore id=p1 props=-storage,-type,-effect,-visible keys=(0,0,l,p1,19,nega,1)(500,0,l,p1,16,monocro,1)
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.step();
+    const layer = runtime.getSaveData().state.fore.layers.find((l) => l.id === "p1")!;
+    expect(layer.type).toBe(16);
+    expect(layer.effect).toBe("monocro");
+  });
+});
