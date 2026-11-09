@@ -107,6 +107,35 @@ describe("DomStageRenderer", () => {
     expect(indicator.style.visibility).toBe("hidden");
   });
 
+  it("n'affiche rien pour un calque sans image puis l'affiche si une image arrive (#110)", async () => {
+    const applySprite = (storage: string) =>
+      renderer.apply(
+        [
+          {
+            kind: "scene",
+            scene: {
+              bg: null,
+              sprites: [{ id: "pb1", storage, x: 512, y: 288, z: 1, opacity: 1 }],
+              effect: null,
+            },
+            transition: { method: "none" },
+          } as RenderEvent,
+        ],
+        { instant: true, signal: new AbortController().signal },
+      );
+
+    // Calque placeholder sans image : aucun <img> (et aucune URL vide) dans le DOM.
+    await applySprite("");
+    expect(root.querySelector(".mh-stage-sprite")).toBeNull();
+    expect([...root.querySelectorAll("img")].some((img) => img.getAttribute("src") === "")).toBe(false);
+
+    // La même couche reçoit une image (@chgfg) : elle s'affiche.
+    await applySprite("perso01(全)");
+    const img = root.querySelector(".mh-stage-sprite") as HTMLImageElement;
+    expect(img).not.toBeNull();
+    expect(img.src).toContain("perso01");
+  });
+
   it("affiche et retire l'indicateur d'attente non interruptible, hors de la boîte de texte (#134)", () => {
     const wait = root.querySelector(".mh-stage-wait") as HTMLElement;
     expect(wait).not.toBeNull();
