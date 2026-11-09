@@ -55,38 +55,47 @@ export const SKIP_SCRIPTS = new Set([
   "tracerplugin.ks",
 ]);
 
+/** Nature d'un fichier `.ks` qui est en réalité un média binaire (issue #111). */
+export type BinaryAssetKind = "image" | "audio" | "unknown";
+
+/** Fichier `.ks` en réalité binaire, avec la nature et le format détectés. */
+export interface BinaryAssetInfo {
+  /** Nom du fichier `.ks` (relatif à scenario/). */
+  file: string;
+  /** Nature du média d'origine, ou `unknown` si la signature est illisible. */
+  kind: BinaryAssetKind;
+  /** Format d'origine détecté par signature (`png`, `wav`, `tlg`, `inconnu`). */
+  format: string;
+}
+
 /**
- * Signatures magiques de fichiers binaires qui peuvent porter l'extension .ks
- * dans l'archive KiriKiri XP3. Le décodeur les lit comme du texte mais ce
- * sont en réalité des images ou des fichiers audio.
+ * Signatures des médias binaires qui portent l'extension `.ks` dans l'archive
+ * KiriKiri. Ils viennent du dossier `data/scenario/` du jeu, qui contient aussi
+ * des médias utilisés par les plugins moteur (sons de menus, images d'effets) :
+ * ce ne sont pas des scripts (issue #111).
  *
- * Après décodage Shift-JIS→UTF-8, certaines signatures sont déformées :
- * - PNG : 0x89→U+81FC (臼), puis "NG" intact → on cherche "臼NG"
- * - RIFF : peut rester intact ou être déformé → on cherche "RIFF"
- *
- * Les patterns sont ancrés en début de chaîne (un BOM optionnel est toléré).
+ * Le texte est celui obtenu après décodage malheureux du binaire comme du texte :
+ * - PNG lu en Shift-JIS : 0x89 0x50 0x4E 0x47 → « 臼NG » ;
+ * - PNG lu en UTF-16LE : 0x89 0x50 0x4E 0x47 → « 傉䝎 » ;
+ * - RIFF/WAV intact (ASCII) ou lu en UTF-16LE : « RIFF » → « 䥒䙆 » ;
+ * - TLG intact (ASCII).
  */
-export const BINARY_PATTERNS: RegExp[] = [
-  /^\uFEFF?\u0089PNG/,   // PNG (décodage UTF-8 direct)
-  /^\uFEFF?臼NG/,        // PNG (0x89 décodé en U+81FC par Shift-JIS)
-  /^\uFEFF?RIFF/,        // RIFF container (WAV, etc.)
+const BINARY_SIGNATURES: { pattern: RegExp; kind: BinaryAssetKind; format: string }[] = [
+  { pattern: /^\uFEFF?\u0089PNG/, kind: "image", format: "png" },
+  { pattern: /^\uFEFF?臼NG/, kind: "image", format: "png" },
+  { pattern: /^\uFEFF?傉䝎/, kind: "image", format: "png" },
+  { pattern: /^\uFEFF?(?:RIFF|䥒䙆)/, kind: "audio", format: "wav" },
+  { pattern: /^\uFEFF?TLG[056]\.0/, kind: "image", format: "tlg" },
 ];
 
-/**
- * Détecte un script chiffré/binaire en examinant les premiers octets.
- *
- * Les scripts KAG normaux commencent par du texte ASCII/Japonais (commentaires
- * `;`, labels `*`, commandes `@`). Les scripts chiffrés contiennent des bytes
- * de contrôle ou du binaire brut.
- */
-export function isEncrypted(text: string): boolean {
-  // 1. Vérifier les signatures magiques de fichiers binaires
-  const head = text.slice(0, 32);
-  for (const pat of BINARY_PATTERNS) {
-    if (pat.test(head)) return true;
-  }
+/** Anciennes signatures exportées (compatibilité) : voir `BINARY_SIGNATURES`. */
+export const BINARY_PATTERNS: RegExp[] = BINARY_SIGNATURES.map((s) => s.pattern);
 
-  // 2. Examiner les 512 premiers caractères pour les bytes de contrôle
+/**
+ * Ratio de caractères suspects au-delà duquel un fichier est considéré binaire
+ * (sans signature connue : chiffré ou format non identifié).
+ */
+function looksBinaryText(text: string): boolean {
   const sample = text.slice(0, 512);
   if (sample.length === 0) return false;
 
@@ -109,6 +118,33 @@ export function isEncrypted(text: string): boolean {
   }
 
   return badBytes / sample.length > ENCRYPTED_BYTE_THRESHOLD;
+}
+
+/**
+ * Identifie la nature d'un fichier `.ks` en réalité binaire (image/son) ou
+ * indéterminé. Retourne null pour un vrai script texte.
+ */
+export function detectBinaryAsset(text: string): { kind: BinaryAssetKind; format: string } | null {
+  const head = text.slice(0, 32);
+  if (head.length === 0) return null;
+  for (const sig of BINARY_SIGNATURES) {
+    if (sig.pattern.test(head)) return { kind: sig.kind, format: sig.format };
+  }
+  if (looksBinaryText(text)) {
+    return { kind: "unknown", format: "inconnu (chiffré ou binaire)" };
+  }
+  return null;
+}
+
+/**
+ * Détecte un script chiffré/binaire en examinant les premiers octets.
+ *
+ * Les scripts KAG normaux commencent par du texte ASCII/Japonais (commentaires
+ * `;`, labels `*`, commandes `@`). Les fichiers binaires portent une signature
+ * de média ou contiennent des bytes de contrôle/binaire brut.
+ */
+export function isEncrypted(text: string): boolean {
+  return detectBinaryAsset(text) !== null;
 }
 
 // ── Types du rapport ──
@@ -152,8 +188,10 @@ export interface AuditReport {
   totalScriptsFound: number;
   /** Nombre de scripts système ignorés. */
   skippedSystem: number;
-  /** Nombre de scripts chiffrés ignorés. */
+  /** Nombre de fichiers `.ks` binaires ignorés (voir `skippedBinary`). */
   skippedEncrypted: number;
+  /** Détail des fichiers `.ks` en réalité binaires (nature et format, issue #111). */
+  skippedBinary?: BinaryAssetInfo[];
   /** Nombre de scripts audités. */
   totalScripts: number;
   /** Nombre de scripts avec au moins une erreur fatale. */
@@ -439,12 +477,32 @@ export function formatMarkdownReport(report: AuditReport): string {
   lines.push(`- **Date** : ${report.timestamp}`);
   lines.push(`- **Scripts trouvés** : ${report.totalScriptsFound}`);
   lines.push(`- **Scripts système ignorés** : ${report.skippedSystem}`);
-  lines.push(`- **Scripts chiffrés ignorés** : ${report.skippedEncrypted}`);
+  lines.push(`- **Fichiers binaires ignorés** : ${report.skippedEncrypted}`);
   lines.push(`- **Scripts audités** : ${report.totalScripts}`);
   lines.push(`- **Scripts en erreur** : ${report.scriptsWithErrors}`);
   lines.push(`- **Scripts maxSteps atteint** : ${report.scriptsWithMaxSteps}`);
   lines.push(`- **Durée totale** : ${(report.totalDurationMs / 1000).toFixed(1)}s`);
   lines.push("");
+
+  // Fichiers binaires ignorés (médias déguisés en .ks)
+  const binaryFiles = report.skippedBinary ?? [];
+  if (binaryFiles.length > 0) {
+    const countByKind = { image: 0, audio: 0, unknown: 0 };
+    for (const b of binaryFiles) countByKind[b.kind]++;
+    lines.push("## Fichiers binaires ignorés (non-scripts)");
+    lines.push("");
+    lines.push(
+      `Médias du dossier \`data/scenario/\` du jeu portant l'extension \`.ks\`, exclus du corpus narratif : ${countByKind.image} image(s), ${countByKind.audio} son(s), ${countByKind.unknown} indéterminé(s).`,
+    );
+    lines.push("");
+    lines.push("| Fichier | Nature | Format |");
+    lines.push("|---|---|---|");
+    for (const b of binaryFiles) {
+      const nature = b.kind === "image" ? "image" : b.kind === "audio" ? "son" : "indéterminé";
+      lines.push(`| ${escapeMdPipe(b.file)} | ${nature} | ${b.format} |`);
+    }
+    lines.push("");
+  }
 
   // Commandes inconnues
   lines.push("## Commandes inconnues (triées par fréquence)");
@@ -569,7 +627,10 @@ export function formatMarkdownReport(report: AuditReport): string {
 export interface CorpusListing {
   allKsFiles: string[];
   systemScripts: string[];
+  /** Fichiers `.ks` binaires (compatibilité : voir `binaryAssets`). */
   encryptedScripts: string[];
+  /** Nature détectée de chaque fichier `.ks` binaire (issue #111). */
+  binaryAssets: BinaryAssetInfo[];
   auditableScripts: string[];
   scriptTexts: Map<string, string>;
 }
@@ -584,34 +645,38 @@ export function listCorpus(scenarioDir: string): CorpusListing {
     .filter((f) => extname(f) === ".ks")
     .sort();
 
-  const storyScripts = allKsFiles.filter((f) => !SKIP_SCRIPTS.has(f));
-  const systemScripts = allKsFiles.filter((f) => SKIP_SCRIPTS.has(f));
-
   const scriptTexts = new Map<string, string>();
   for (const f of allKsFiles) {
     try {
       scriptTexts.set(f, readFileSync(join(scenarioDir, f), "utf-8"));
     } catch {
-      // Ignorer les scripts illisibles
+      // Ignorer les fichiers illisibles
     }
   }
 
-  const encryptedScripts: string[] = [];
-  const auditableScripts: string[] = [];
-  for (const f of storyScripts) {
+  // Un fichier binaire n'est jamais un script, même si son nom figure dans la
+  // liste système : le jeu place des médias dans data/scenario/ (issue #111).
+  const binaryAssets: BinaryAssetInfo[] = [];
+  const textScripts: string[] = [];
+  for (const f of allKsFiles) {
     const content = scriptTexts.get(f);
-    if (content && isEncrypted(content)) {
-      encryptedScripts.push(f);
+    const info = content === undefined ? null : detectBinaryAsset(content);
+    if (info) {
+      binaryAssets.push({ file: f, ...info });
       scriptTexts.delete(f);
     } else {
-      auditableScripts.push(f);
+      textScripts.push(f);
     }
   }
+
+  const systemScripts = textScripts.filter((f) => SKIP_SCRIPTS.has(f));
+  const auditableScripts = textScripts.filter((f) => !SKIP_SCRIPTS.has(f));
 
   return {
     allKsFiles,
     systemScripts,
-    encryptedScripts,
+    encryptedScripts: binaryAssets.map((b) => b.file),
+    binaryAssets,
     auditableScripts,
     scriptTexts,
   };

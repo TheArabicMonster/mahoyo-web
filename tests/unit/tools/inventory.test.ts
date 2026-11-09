@@ -32,6 +32,20 @@ describe("classifyAsset", () => {
     expect(classifyAsset("scenario/1-0.ks")).toBe("scenario");
   });
 
+  it("ne classe pas les médias de data/scenario en scénario (#111)", () => {
+    expect(classifyAsset("data/scenario/note0.tlg")).toBe("image");
+    expect(classifyAsset("data/scenario/im15木乃実銀行券(吹雪1枚舞).tlg")).toBe("image");
+    expect(classifyAsset("data/scenario/雪原型(blur).tlg")).toBe("image");
+    expect(classifyAsset("data/scenario/se083.wav")).toBe("se");
+    expect(classifyAsset("data/scenario/typemoon_ci.wav")).toBe("se");
+  });
+
+  it("ignore les fichiers moteur de data/scenario (.tjs, .ttd, .tla) (#111)", () => {
+    expect(classifyAsset("data/scenario/archivemenu.tjs")).toBe("other");
+    expect(classifyAsset("data/scenario/archive.ttd")).toBe("other");
+    expect(classifyAsset("data/scenario/gamemenu.tla")).toBe("other");
+  });
+
   it("classe .ks sans dossier → scenario", () => {
     expect(classifyAsset("1-0.ks")).toBe("scenario");
   });
