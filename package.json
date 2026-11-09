@@ -27,7 +27,8 @@
     "chain": "tsx tools/story-chain.ts",
     "timelines": "tsx tools/timelines.ts",
     "trace:visual": "tsx tools/trace-visual.ts",
-    "lint:fix": "eslint src tools tests *.config.ts eslint.config.js --fix"
+    "lint:fix": "eslint src tools tests *.config.ts eslint.config.js --fix",
+    "corpus:full-read": "tsx tests/integration/prepare-full-read-corpus.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
