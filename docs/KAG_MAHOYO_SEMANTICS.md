@@ -487,19 +487,25 @@ sur la **page entière** avant la frappe, donc sans changement de taille en cour
 
 ## 9 bis. Triage des commandes KAG restantes (#276)
 
-État au triage : `npm run audit` (vrais assets, 221 scripts narratifs) signale **51 commandes
+État au triage : `npm run audit` (vrais assets, 221 scripts narratifs) signalait **51 commandes
 distinctes / 181 occurrences** ; les commandes standard `@s`, `@endif`, `@image`, `@ruby` ont été
 traitées par #277. Chaque commande ci-dessous a été vérifiée dans les **scripts, les macros et les
 TJS du moteur installé** (`data/scenario/*.tjs`, `data/override/*.tjs`) — l'origine et l'effet ne
-sont pas déduits du nom. Légende :
+sont pas déduits du nom.
+
+**Après intégration du registre #275** : les 2 no-ops justifiés ci-dessous (`@autocache`,
+`@deffont`) sont **déclarés dans `tools/ignored-commands.ts`** et la baseline versionnée est passée
+à **49 commandes inconnues / 174 occurrences** (`npm run audit:baseline` ; `npm run audit:guard
+-- --strict` OK). Légende :
 
 - **Origine** : `KAG3` = standard KAG3 (documentation des tags), `plugin TJS` = tag de plugin
   (`data/scenario/*.tjs`), `macro Mahoyo` = macro définie par `@macro` d'un script système,
   `macro plugin` = macro enregistrée par un plugin TJS (`kag.conductor.macros`), `override` =
   extension TYPE-MOON de `data/override/*.tjs`.
 - **Effet réel** : `aucun` | `déroulement` | `texte` | `image` | `audio` | `ui` | `effets`.
-- **Décision** : *implémenter* | *approximer* (écart documenté) | *no-op justifié* (aucun effet —
-  à déclarer dans le registre #275, accord requis si `effet ≠ "aucun"`).
+- **Décision** : *implémenter* | *approximer* (écart documenté) | *no-op justifié* (aucun effet,
+  déclaré dans le registre #275 avec `effet: "aucun"` ; un accord explicite est requis pour tout
+  effet non nul, interdit par la DoD).
 
 ### Lots de suivi (issues créées depuis ce triage)
 
@@ -546,7 +552,7 @@ sont pas déduits du nom. Légende :
 | `@outfg` | 3 | plugin TJS (`fgplugin.tjs`, `kt.outfg`) | image : disparition animée d'un calque | implémenter | #283 |
 | `@layopt` | 1 | KAG3 | image : options de calque (visible/opacité/position) | implémenter | #283 |
 | `@bindbg` | 3 | override TYPE-MOON (`tagex.tjs`, `.bindbg`) | image/effets : calques liés aux mouvements du fond | approximer | #283 |
-| `@autocache` | 1 | override TYPE-MOON (`tagex.tjs`, `.autocache`) | **aucun** (préchargement d'images avant attente) | no-op justifié (`effet: "aucun"`) | #283 |
+| `@autocache` | 1 | override TYPE-MOON (`tagex.tjs`, `.autocache`) | **aucun** (préchargement d'images avant attente) | no-op justifié — **déclaré au registre #275** (`effet: "aucun"`) | #283 |
 | `@heart` | 3 | macro plugin (`macro.tjs`, `exCharTags` → `[graph]`) | texte : image emoji dans le texte | implémenter (balise `[graph]`) | #284 |
 | `@ageage` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
 | `@ansz` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
@@ -556,7 +562,7 @@ sont pas déduits du nom. Légende :
 | `@cockrobin` | 1 | macro plugin (`robinserifplugin.tjs`) | texte/ui : encadrement conditionnel d'une réplique | approximer | #284 |
 | `@endcockrobin` | 1 | macro plugin (`robinserifplugin.tjs`) | texte/ui : fin de cet encadrement | approximer | #284 |
 | `@current` | 1 | KAG3 | texte : sélection de la couche message (`message0`/`message1`) | implémenter | #284 |
-| `@deffont` | 6 | KAG3 | **aucun ici** : seul `face=user` est utilisé, le port n'expose pas de police utilisateur et `@resetfont` retombe sur la police du thème | no-op justifié (`effet: "aucun"`) | #284 |
+| `@deffont` | 6 | KAG3 | **aucun ici** : seul `face=user` est utilisé, le port n'expose pas de police utilisateur et `@resetfont` retombe sur la police du thème | no-op justifié — **déclaré au registre #275** (`effet: "aucun"`) | #284 |
 | `@store` | 1 | KAG3 | ui : active/désactive sauvegarde et chargement | implémenter | #284 |
 | `@xchgbgm` | 7 | KAG3 | audio : fondu croisé de BGM | implémenter | #285 |
 | `@wb` | 1 | KAG3 | audio/déroulement : attente de fin de fondu BGM | implémenter | #285 |
@@ -572,10 +578,10 @@ sont pas déduits du nom. Légende :
 | `@loadtimeline` | 1 | macro plugin (`timelineplugin.tjs`) | effets : charge un `.tla` puis joue la timeline | implémenter | #287 |
 
 **Bilan des décisions** : 37 à implémenter, 11 à approximer (écart documenté), 1 variante
-malformée à tolérer (`@playtimeline` de test), 2 no-op justifiés sans effet
-(`@autocache`, `@deffont`). Aucune commande à effet visible/audible/de déroulement n'est classée
-no-op. Le mécanisme de registre/audit classé de #275 accueillera les deux no-ops ; les autres
-lignes restent des inconnues à résorber par leurs issues de suivi.
+malformée à tolérer (`@playtimeline` de test), **2 no-op justifiés sans effet désormais intégrés au
+registre #275** (`@autocache` → #283, `@deffont` → #284). Aucune commande à effet
+visible/audible/de déroulement n'est classée no-op. Les 49 autres lignes restent des inconnues de
+la baseline, à résorber par leurs issues de suivi.
 
 ## 10. Commandes non implémentées à figer plus tard
 
