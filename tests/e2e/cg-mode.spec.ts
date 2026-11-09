@@ -77,8 +77,13 @@ test.describe("CG mode (HUD-15)", () => {
     await expect(first).toHaveAttribute("data-locked", "false");
     const thumb = first.locator("img.mh-cg-thumb");
     await expect(thumb).toHaveAttribute("src", /\/assets\/image\/cg01\.webp$/);
-    // L'image de la tuile est bien chargée (PNG 1×1 servi par la route de test).
-    expect(await thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+    // L'image de la tuile est bien chargée (PNG 1×1 servi par la route de test). On attend son
+    // décodage : sous charge (workers parallèles), Firefox peut exposer l'`<img>` avant `load`.
+    await expect
+      .poll(() => thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0), {
+        timeout: 5000,
+      })
+      .toBe(true);
     // La CG non vue reste verrouillée.
     await expect(tiles.nth(1)).toHaveAttribute("data-locked", "true");
 
