@@ -2,6 +2,8 @@
  * Rendu des commandes visuelles secondaires (#85) : point d'ancrage des aiguilles d'horloge
  * (`afx`/`afy`) et action continue des messages (`@setdefaultmessageaction type=swing`).
  */
+// Registre des approximations (#295) — test figé :
+// approx:message-actions-non-swing — seule l'action « swing » est rendue (tests ci-dessous).
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createDomStageRenderer } from "@/renderer/stage-renderer.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";

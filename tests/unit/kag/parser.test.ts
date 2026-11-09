@@ -1,3 +1,6 @@
+// Registre des approximations (#295) — test figé :
+// approx:ruby-proportional — répartition du ruby proportionnelle (tests [ruby] ci-dessous).
+// approx:s-click-wait — @s attend un clic simple (test « commandes KAG standard » ci-dessous).
 import { describe, it, expect } from "vitest";
 import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";

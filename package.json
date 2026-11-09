@@ -31,7 +31,10 @@
     "timelines": "tsx tools/timelines.ts",
     "trace:visual": "tsx tools/trace-visual.ts",
     "lint:fix": "eslint src tools tests *.config.ts eslint.config.js --fix",
-    "corpus:full-read": "tsx tests/integration/prepare-full-read-corpus.ts"
+    "corpus:full-read": "tsx tests/integration/prepare-full-read-corpus.ts",
+    "approximations:check": "tsx tools/approximations-guard.ts",
+    "approximations:baseline": "tsx tools/approximations-guard.ts --update-baseline",
+    "check:generated": "npm run audit:doc && git diff --exit-code -- docs/LECTURE_COMPLETE.md && npm run approximations:check"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

@@ -1,3 +1,6 @@
+// Registre des approximations (#295) — tests figés :
+// approx:bindbg-not-persisted — liaison visuelle non persistée (tests @bindbg ci-dessous).
+// approx:infg-outfg-fore-page — page fore directe sans transition (tests @infg/@outfg ci-dessous).
 import { describe, it, expect } from "vitest";
 import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";

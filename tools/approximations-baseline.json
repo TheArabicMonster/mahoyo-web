@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-11-09",
+  "note": "Compteurs des approximations documentées (#295). Non croissants : mise à jour explicite dans la PR.",
+  "issue": "#296",
+  "counters": {
+    "bindbg-not-persisted": 1,
+    "clock-runtime-vars": 1,
+    "focusline-canvas": 1,
+    "infg-outfg-fore-page": 1,
+    "message-actions-non-swing": 1,
+    "playtimeline-test-variant": 1,
+    "ruby-proportional": 1,
+    "s-click-wait": 1,
+    "shake-fullscreen": 1,
+    "staffrollsetting-bgcolor": 1,
+    "xchgbgm-volume": 1
+  }
+}
