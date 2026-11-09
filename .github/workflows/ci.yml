@@ -35,14 +35,23 @@ jobs:
       - name: Check formatting (optional)
         run: npx prettier --check "src/**/*.ts" "tests/**/*.ts" "tools/**/*.ts" || true
 
-  # Tests end-to-end en mode placeholders (#243) : aucun asset du jeu n'est requis, le scénario et
-  # les images sont générés par `tests/e2e/prepare-assets.ts` avant le démarrage de Vite.
-  # Chromium est obligatoire ; le projet Firefox existe dans `playwright.config.ts` et se vérifie en
-  # local (`npx playwright install firefox && npm run test:e2e -- --project=firefox`) — il sera
-  # ajouté à ce job quand la couverture Firefox et #94 seront stabilisées (budget CI).
+  # Tests end-to-end en mode placeholders (#243) : aucun asset du jeu n'est requis, les scripts, la
+  # table d'enchaînement et les images sont générés par `tests/e2e/prepare-assets.ts` avant le
+  # démarrage de Vite.
+  #
+  # Matrice chromium + firefox (#94). Choix documenté : deux jobs en parallèle plutôt qu'un job
+  # séquentiel. Le temps de mur reste celui d'un seul navigateur (~3-4 min, tôt dans la PR) au lieu
+  # de la somme des deux (~6-7 min) ; le coût est de deux runners au lieu d'un, ce qui est le
+  # compromis retenu pour garder la CI rapide. `fail-fast: false` pour que les deux navigateurs
+  # s'exécutent toujours (un échec Firefox ne masque pas le résultat Chromium).
   e2e:
+    name: e2e (${{ matrix.browser }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
 
     steps:
       - name: Checkout
@@ -57,11 +66,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browser (${{ matrix.browser }})
+        run: npx playwright install --with-deps ${{ matrix.browser }}
 
       - name: Generate e2e placeholders and run the suite
-        run: npm run test:e2e -- --project=chromium
+        run: npm run test:e2e -- --project=${{ matrix.browser }}
         env:
           MAHOYO_E2E_ASSETS: ${{ runner.temp }}/mahoyo-e2e-assets
 
@@ -69,7 +78,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.browser }}
           path: |
             test-results/
             playwright-report/
