@@ -31,14 +31,14 @@ La v1.0 est atteinte quand **toutes** les cases ci-dessous sont cochées. Chaque
 
 ### Complétude
 
-- [ ] Une lecture automatisée traverse les **221 scripts narratifs** (251 fichiers = 235 scripts + 16 médias ; 235 - 14 scripts système = 221), du prologue à la dernière scène, sans blocage ni erreur (test d'intégration de lecture complète : 221/221 scripts lus, 0 exception, 0 boucle sans progression). Voir [`docs/LECTURE_COMPLETE.md`](docs/LECTURE_COMPLETE.md) pour l'usage.
+- [ ] Une lecture automatisée traverse les **221 scripts narratifs** (251 fichiers = 235 scripts + 16 médias ; 235 - 14 scripts système = 221), du prologue à la dernière scène, sans blocage ni erreur (test d'intégration de lecture complète : 221/221 scripts lus, 0 exception, 0 boucle sans progression). Voir [`docs/LECTURE_COMPLETE.md`](LECTURE_COMPLETE.md) pour l'usage.
 - [ ] Ce test utilise les **vrais assets locaux** (non commités), dont le chemin est fourni par la variable d'environnement `MAHOYO_ASSETS_DIR` (aucun chemin absolu en dur ; le test est ignoré avec un message explicite si la variable est absente).
 - [ ] La CI exécute la même logique de lecture avec des **placeholders originaux** (aucun asset sous copyright) et reste verte.
 
 ### Commandes KAG
 
-- [ ] `npm run audit` ne signale **plus aucune commande inconnue ayant un effet visible** (sortie de la commande : 0 commande inconnue à effet visible).
-- [ ] Les commandes **volontairement ignorées** (no-op) sont documentées dans le dépôt, avec la raison, et l'audit les distingue des commandes inconnues.
+- [x] `npm run audit` ne signale **plus aucune commande inconnue ayant un effet visible** (sortie de la commande : 0 commande inconnue à effet visible).
+- [x] Les commandes **volontairement ignorées** (no-op) sont documentées dans le dépôt, avec la raison, et l'audit les distingue des commandes inconnues.
 
 ### Navigation
 

@@ -4,52 +4,27 @@ Découpage en épics. Chaque épic est une milestone GitHub, et chaque ligne est
 
 Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (voir la fin du document).
 
-## État au 2026-11-09
+## État au 2026-11-09 — v1.0 close
 
-- **v1.0 : 89/99 (90 %, 🟡 rouverte)** — 10 issues ouvertes : l'écart DoD « Commandes KAG » (#274), les
-  implémentations #85/#86 et les lots #281–#287. #275 (registre + audit classé + garde-fou CI), #276
-  (triage documenté) et #277 (commandes KAG standard) sont livrées. L'audit classe **84 commandes
-  implémentées / 2 ignorées volontairement / 49 inconnues (174 occurrences)** ; la baseline versionnée
-  décroît **55 → 51 → 49** et le garde-fou `npm run audit:guard` tourne en CI. **Aucun tag ni release
-  v1.0 n'a été publié** ; voir l'écart ci-dessous et [`PROGRESS.md`](PROGRESS.md).
-- **v1.1 : 43/59 (73 %)** — 16 issues restantes, détaillées ci-dessous ; c'est l'**épic suivant, en cours**.
-- **E1–E4** : livrés (extraction, parser KAG3, runtime/rendu, pipeline et traductions).
-- **E7** : périmètre v1.0 livré — player complet, lecture du corpus, sauvegardes IndexedDB avec export/import
-  JSON, écrans HUD refaits (titre, Extra/Archive, menu système, historique, chargement/sauvegarde,
-  configuration, flowchart, CG mode, Sound mode), sélecteur de langue et parcours utilisateur du README.
+- **v1.0 : 101/101 (100 %, 🟢 Terminé)** — clôture formelle le 2026-11-09 (#302) : audit KAG **0 commande
+  inconnue** (**125 implémentées**, **5 no-ops justifiés**, baseline vide), lecture complète
+  **221/221 scripts** (0 erreur, 0 maxSteps), mode **zéro strict** et garde-fous CI (`audit:guard`,
+  `check:generated`). **Prête pour le test manuel du propriétaire (CI verte)** ; notes de version
+  préparées mais **non publiées** ([`RELEASE_NOTES_V1.0.md`](RELEASE_NOTES_V1.0.md)), **aucun tag ni
+  release avant validation** ; issue chapeau **#274** fermée.
+- **v1.1 : 43/62 (69 %)** — 19 issues restantes, listées ci-dessous ; c'est l'**épic suivant, en cours**.
+- **E1–E4, E7** : livrés (extraction, parser KAG3, runtime/rendu, pipeline, player et projet réel).
 - **E5** : en cours (v1.1) — analyse du HUD, design system et tokens CSS livrés (#179, #181). Les vagues 4
   (HUD-08/09/12, FLOW-06, WEB-01/04) et 5/6 sont mergées le 2026-11-09 : HUD-14 transitions (#205), HUD-15
   CG mode (#208), HUD-16 Sound mode (#209), FLOW-07 accessibilité du flowchart (#206) et FLOW-08 intégration
   au titre/menu/route (#207). Restent v1.1 : HUD-17/18, WEB-02/06, FLOW-09, accessibilité WCAG AA, mobile et
   responsive, PWA et thème complet.
-- **E6** : en cours (v1.1) — **1986 tests unitaires** (116 fichiers), `npm run lint` (ESLint 9), build et
-  `check:assets` verts ; e2e Playwright sur **Chromium et Firefox** en placeholders (15 fichiers de spec) ;
+- **E6** : en cours (v1.1) — **2166 tests unitaires** (140 fichiers), `npm run lint` (ESLint 9), build et
+  `check:assets` verts ; e2e Playwright sur **Chromium et Firefox** en placeholders (17 fichiers de spec) ;
   CI à **3 jobs** (`build-and-test` avec lint, anti-assets, build, tests unitaires, tests d'intégration en
-  skip sur checkout nu et lecture complète des 221 scripts sur placeholders ; matrice e2e). Restent : l'écart
-  DoD v1.0 des commandes KAG (#274, #85/#86, #281–#287), FLOW-09, mobile et objectifs de performance
-  chiffrés (#100).
-
-### Écart DoD v1.0 — commandes KAG (en cours)
-
-La DoD v1.0 exige que `npm run audit` ne signale « aucune commande inconnue ayant un effet visible » et que
-les no-ops volontaires soient documentés et distingués des inconnues. L'audit est désormais **classé**
-(#275) : **84 commandes implémentées**, **2 ignorées volontairement** (registre `tools/ignored-commands.ts`,
-raison et issue par entrée) et **49 inconnues** (174 occurrences), figées dans une baseline versionnée qui
-ne peut que décroître (**55 → 51 → 49**). Le garde-fou `npm run audit:guard` vérifie registre, baseline, doc
-générée et décroissance en CI. Le triage documenté des 51 commandes est livré (#276) ainsi que les
-commandes KAG standard (`@s`, `@endif`, `@image`, `@ruby`, #277). Le critère de la DoD reste **ouvert** :
-les 49 inconnues sont réparties en lots d'implémentation. Résolution :
-
-| Issue | Rôle | État |
-|---|---|---|
-| #274 | chapeau : écart DoD, critères d'acceptation, clôture (tag/release après résolution) | ouvert |
-| #275 | registre unique `ignoredCommands` + audit classé *implémentée / ignorée volontairement / inconnue* + garde-fou CI | livré |
-| #276 | triage documenté des 51 commandes (origine, effet réel, décision, issue) | livré |
-| #277 | commandes KAG standard (`@s`, `@endif`, `@image`, `@ruby`) et macros système | livré |
-| #85, #86, #281–#287 | implémentation des commandes restantes, par lots | en cours |
-
-La [DoD](DEFINITION_OF_DONE.md) n'est **pas modifiée** : l'écart est documenté, pas contourné. `PROGRESS.md`
-reflète l'état réel (89/99, 90 %, 🟡).
+  skip sur checkout nu et lecture complète des 221 scripts sur placeholders ; matrice e2e). Audit KAG
+  **0 inconnue / 125 implémentées / 5 no-ops justifiés** ; **14 approximations** documentées (#296) et
+  garde-fous CI `audit:guard`, `approximations:check`, `check:generated`.
 
 ### Livré depuis la vague 4 (2026-11-09)
 
@@ -60,24 +35,29 @@ reflète l'état réel (89/99, 90 %, 🟡).
   des calques (#252), effets d'ambiance `envcolor` (#260), garde-fou du dossier de travail du pipeline (#264).
 - **Lint & CI** : ESLint 9 en flat config et `npm run lint` en CI (#220) ; lecture complète en placeholders et
   skip propre des tests d'intégration sans assets (#269, #273).
-- **Audit KAG classé** : registre des no-ops, audit *implémentée / ignorée volontairement / inconnue*,
-  baseline versionnée et garde-fou CI `audit:guard` (#275) ; triage documenté des 51 inconnues (#276) ;
-  commandes KAG standard `@s`, `@endif`, `@image`, `@ruby` implémentées (#277).
-- **Documentation** : README (parcours #93, état #270), ROADMAP, PROGRESS et ARCHITECTURE à jour ; la
-  clôture v1.0 est **rouverte** le temps de résoudre l'écart DoD des commandes KAG.
+- **Audit KAG zéro inconnue** : registre des **5 no-ops justifiés** (`@autocache`, `@deffont`,
+  `@settracerreturn`, `@startchart`, `@loadtimeline`), **125 commandes implémentées**, audit classé
+  (#275), triage documenté (#276), commandes standard `@s`/`@endif`/`@image`/`@ruby` (#277) et lots
+  d'implémentation #85/#86/#281–#287 ; mode **zéro strict** et garde-fou CI (#302).
+- **Approximations** : registre de **14 approximations documentées** (écart précis, test figé, issue de
+  suivi #296, compteur versionné) et garde-fou `approximations:check` (#295).
+- **Documentation de clôture** : README (parcours #93, état #302), ROADMAP, PROGRESS et ARCHITECTURE à
+  jour, notes de version prêtes (non publiées, [`RELEASE_NOTES_V1.0.md`](RELEASE_NOTES_V1.0.md)) et DoD
+  v1.0 cochée. Issue chapeau de l'écart DoD **#274** fermée ; **aucun tag ni release** avant le test
+  manuel du propriétaire.
 
-### Reste en v1.1 (16 issues ouvertes)
+### Reste en v1.1 (19 issues ouvertes)
 
 | Thème | Issues |
 |---|---|
-| UI/UX | #210 WEB-02 responsive portrait · #211 WEB-06 accessibilité des écrans système · #213 HUD-18 écran de choix · #187 HUD-17 captures complémentaires de l'original |
-| Flowchart | #212 FLOW-09 test e2e du flowchart |
-| Fidélité / rendu | #158 fidélité de l'ouverture (synchro musique) · #253 `@trans` exchange/backlay · #254 ouverture (flash blanc/panoramique) · #257 focus Firefox du menu système |
-| Accessibilité / mobile | #97 WCAG AA · #98 mobile et tablette |
-| Confort / plateforme | #99 thème complet et animations · #96 PWA hors ligne · #100 objectifs de performance chiffrés |
-| Moteur KAG | #80 `@if`/`@macro` à plat et `@call` fiable |
-| Outillage | #265 `.gitignore` du lien symbolique `node_modules` |
-
+| UI/UX | [#210](https://github.com/TheArabicMonster/mahoyo-web/issues/210) WEB-02 responsive portrait · [#211](https://github.com/TheArabicMonster/mahoyo-web/issues/211) WEB-06 accessibilité des écrans système · [#213](https://github.com/TheArabicMonster/mahoyo-web/issues/213) HUD-18 écran de choix (bloqué par [#187](https://github.com/TheArabicMonster/mahoyo-web/issues/187)) · [#187](https://github.com/TheArabicMonster/mahoyo-web/issues/187) HUD-17 captures complémentaires de l'original |
+| Flowchart | [#212](https://github.com/TheArabicMonster/mahoyo-web/issues/212) FLOW-09 test e2e du flowchart |
+| Fidélité / rendu | [#158](https://github.com/TheArabicMonster/mahoyo-web/issues/158) fidélité de l'ouverture · [#253](https://github.com/TheArabicMonster/mahoyo-web/issues/253) `@trans` exchange/backlay · [#254](https://github.com/TheArabicMonster/mahoyo-web/issues/254) ouverture (flash/panoramique) · [#297](https://github.com/TheArabicMonster/mahoyo-web/issues/297) horloge `@dispclock time=0` · [#300](https://github.com/TheArabicMonster/mahoyo-web/issues/300) ruby + emoji |
+| Accessibilité / mobile | [#97](https://github.com/TheArabicMonster/mahoyo-web/issues/97) WCAG AA · [#98](https://github.com/TheArabicMonster/mahoyo-web/issues/98) mobile et tablette |
+| Confort / plateforme | [#99](https://github.com/TheArabicMonster/mahoyo-web/issues/99) thème complet et animations · [#96](https://github.com/TheArabicMonster/mahoyo-web/issues/96) PWA hors ligne · [#100](https://github.com/TheArabicMonster/mahoyo-web/issues/100) objectifs de performance chiffrés |
+| Moteur KAG | [#80](https://github.com/TheArabicMonster/mahoyo-web/issues/80) `@if`/`@macro` à plat et `@call` fiable |
+| Approximations | [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) suivi commun des approximations documentées (registre #295) |
+| Outillage | [#265](https://github.com/TheArabicMonster/mahoyo-web/issues/265) `.gitignore` du lien symbolique `node_modules` |
 
 ## E0 — Gouvernance & socle 🔄
 
@@ -122,8 +102,8 @@ reflète l'état réel (89/99, 90 %, 🟡).
 
 ## E6 — QA & optimisation 🔄
 
-- Tests de non-régression : **1986 tests unitaires** (116 fichiers) et suite e2e Playwright sur Chromium et
-  Firefox en placeholders (15 fichiers de spec, dont le parcours complet #94 et l'accessibilité du flowchart).
+- Tests de non-régression : **2166 tests unitaires** (140 fichiers) et suite e2e Playwright sur Chromium et
+  Firefox en placeholders (17 fichiers de spec, dont le parcours complet #94 et l'accessibilité du flowchart).
 - CI à **3 jobs** : `build-and-test` (lint, contrôle anti-assets, build, tests unitaires, tests d'intégration
   en skip propre sur checkout nu puis lecture complète des 221 scripts sur corpus de placeholders) et matrice
   `e2e (chromium)` / `e2e (firefox)` avec placeholders (#220, #243, #269, #273).
@@ -148,16 +128,17 @@ reflète l'état réel (89/99, 90 %, 🟡).
 
 Objectif : lecture complète des 221 scripts narratifs, du prologue à la dernière scène, sur Chrome et Firefox récents (desktop).
 
-- **État au 2026-11-09 : rouverte, 89/99 (90 %), release non déclarée.** Les livraisons de fonctionnalités
-  sont faites (lecture complète, lint et CI verts) et l'audit KAG est désormais classé (84 implémentées,
-  2 no-ops justifiés, 49 inconnues ; baseline 55 → 51 → 49) ; le critère « Commandes KAG » de la DoD v1.0
-  reste ouvert avec les lots #85/#86 et #281–#287. Voir « Écart DoD v1.0 » ci-dessus, la section
-  « DoD — v1.0 » de [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) et [`PROGRESS.md`](PROGRESS.md).
+- **Terminée le 2026-11-09 (101/101), prête pour le test manuel du propriétaire.** Audit KAG sans
+  inconnue (**125 implémentées**, **5 no-ops justifiés**, baseline vide), lecture complète
+  **221/221 scripts**, mode **zéro strict**, docs régénérées et notes de version prêtes mais **non
+  publiées** ([`RELEASE_NOTES_V1.0.md`](RELEASE_NOTES_V1.0.md)). **Aucun tag ni release** avant
+  validation. Voir la section « DoD — v1.0 » de [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) et
+  [`PROGRESS.md`](PROGRESS.md).
 - Épics concernés : E1 à E4, E7, et la part de E6 consacrée aux tests de non-régression et e2e.
 
 ### v1.1 — Confort, accessibilité et finitions
 
-**En cours** (épic suivant), 43/61 (70 %). Reporté après la v1.0 :
+**En cours** (épic suivant), 43/62 (69 %). Reporté après la v1.0 :
 
 - Mobile et tablette (interface tactile, responsive).
 - PWA et mode hors ligne.

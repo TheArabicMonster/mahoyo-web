@@ -3,6 +3,30 @@
 Ce document décrit le test d'intégration qui lit l'ensemble des scripts narratifs
 Mahoyo avec les vrais assets locaux.
 
+## Clôture v1.0 (2026-11-09)
+
+La v1.0 est **close** : le critère « 0 commande KAG inconnue à effet visible » de la
+[DoD v1.0](DEFINITION_OF_DONE.md) est satisfait et l'écart suivi par #274 est résolu (#302).
+
+- **Date de clôture** : 2026-11-09.
+- **Commit de référence** : `03b98f7` (main au moment de la préparation ; SHA actualisé au rebase final
+  après la PR « zéro strict »). **Aucun tag ni release n'est publié** : la publication interviendra après
+  le test manuel du propriétaire.
+- **Audit final** (`npm run audit` sur les vrais assets, 221 scripts narratifs) : **125 commandes
+  implémentées**, **5 commandes ignorées volontairement** (`@autocache`, `@deffont`, `@settracerreturn`,
+  `@startchart`, `@loadtimeline` — justifiées dans `tools/ignored-commands.ts`), **0 commande inconnue**
+  (baseline vide), **0 erreur**, **0 maxSteps**.
+- **Lecture complète** : **221/221 scripts narratifs** lus du prologue à la dernière scène, sans exception
+  ni boucle sans progression.
+- **Garde-fous** : mode **zéro strict** (`npm run audit:guard` : toute inconnue fait échouer, plus de
+  baseline), doc générée à jour (`npm run audit:doc`, `npm run check:generated`) et registre des
+  **14 approximations documentées** (`npm run approximations:check`, suivi #296).
+- **Approximations connues** : liste complète et écarts assumés dans
+  [`RELEASE_NOTES_V1.0.md`](RELEASE_NOTES_V1.0.md) ; chaque approximation porte un écart précis, un test
+  qui la fige et une issue de suivi.
+- **Publication** : reportée après le test manuel du propriétaire ; les bugs éventuels deviennent des
+  issues avant tout tag ou release.
+
 ## Prérequis
 
 Le test nécessite les assets originaux convertis par le pipeline. Le chemin
