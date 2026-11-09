@@ -170,6 +170,11 @@ export type RunOptions = {
 /** Dépendances injectées dans StageRenderer. */
 export type StageRendererDeps = {
   resolver: AssetResolver;
+  /**
+   * Effets d'ambiance `envcolor.ksc` (`effect=屋外深夜`…), chargés par le player quand les
+   * données du jeu sont installées. Absent : ces effets ne sont pas appliqués (avertissement).
+   */
+  envEffects?: import("@/kag/envcolor.js").EnvColorTable;
 };
 
 /** Factory pour instancier un StageRenderer. */
