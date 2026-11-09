@@ -5,7 +5,7 @@ import { LANGUAGE_NAMES, t } from "@/ui/i18n.js";
 import "./config-screen.css";
 
 /**
- * Écran de configuration au design d'origine (HUD-09, #200 ; docs/ANALYSE_HUD_ORIGINAL.md §2.9, docs/DESIGN.md §9.6).
+ * Écran de configuration au design d'origine (HUD-09, #200 ; docs/ANALYSE_HUD_ORIGINAL.md §2.9, docs/DESIGN.md §9.10).
  *
  * Module autonome : il ne connaît pas `DomUIManager`, seulement l'interface `ConfigScreenHost`. Le modèle de
  * réglages ne change pas (`GameSettings`, migration dans `settings-store.ts`) : chaque contrôle envoie le même

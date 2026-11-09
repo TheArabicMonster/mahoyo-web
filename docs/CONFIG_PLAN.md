@@ -18,7 +18,7 @@ et un écran à quatre onglets, avec persistance dans `localStorage`.
   sauvegardes (les champs absents prennent la valeur par défaut).
 - **Orchestration** : `src/ui/player.ts` applique les réglages au renderer, à l'audio
   et aux entrées.
-- **UI** : `src/ui/ui-manager.ts`, quatre onglets et composants segmentés.
+- **UI** : `src/ui/config-screen.ts` (+ `config-screen.css`), quatre onglets au design d'origine (§6), branché par `src/ui/ui-manager.ts`.
 
 ## 2. Correspondance des réglages
 
@@ -128,7 +128,7 @@ rechargement et les anciennes sauvegardes restent lisibles.
 |---|---|---|
 | Modèle et migration | `src/renderer/types.ts`, `src/player/settings-store.ts` | fait (anciens `textSpeed`/`autoDelay` et « Muet » global migrés) |
 | Raccourcis | `src/core/shortcuts.ts`, `src/ui/ui-manager.ts` | fait (14 actions, deux touches, capture, réinitialisation) |
-| Écran 4 onglets | `src/ui/ui-manager.ts`, `src/ui/ui-manager.css` | fait (plein écran sombre, en-tête « Config », onglets serif, cadres lumineux, boutons verts, curseurs or, pied de page fixe) |
+| Écran 4 onglets | `src/ui/config-screen.ts`, `src/ui/config-screen.css` (HUD-09, #200), branché par `src/ui/ui-manager.ts` | fait (design d'origine : voir §6 ; ex-#177 dans `ui-manager.ts`/`ui-manager.css`, supprimé) |
 | Lecture et affichage | `src/ui/player.ts`, `src/renderer/stage-renderer.ts` | fait (vitesses lu/non lu, page entière, délais page/ligne, clic auto, skip automatique, avance rapide, police, fondu, effets) |
 | Système | `src/core/display.ts`, `src/ui/player.ts` | fait (plein écran fit/fill/1:1, plafond de taille, souris, curseur) |
 | Audio | `src/renderer/audio-manager.ts` | fait (BGM/SE/système, mutes, test SE synthétique) |
@@ -145,7 +145,33 @@ d'interface n'est encore émis ; la taille de fenêtre plafonne l'affichage au l
 redimensionner la fenêtre du système ; « Quitter » utilise `window.close()` avec repli
 sur un message.
 
-## 6. Direction visuelle (2026-11-08)
+## 6. Direction visuelle
+
+### 6.1 Décision du 2026-11-09 : retour au design d'origine (HUD-09, #200)
+
+**La direction Tsukiweb de #177 est abandonnée.** Le propriétaire a décidé de revenir au design d'origine du jeu
+(docs/ANALYSE_HUD_ORIGINAL.md §2.9, écart E15 ; docs/DESIGN.md §2.2 à §2.4, §8 et §9.10) : panneaux bordés, boutons
+sarcelle/gris, radios, curseurs à sphère, spinners. **Le modèle de réglages, la persistance et la migration des anciennes
+sauvegardes ne changent pas** (§1 à §5) ; seuls l'habillage et la mise en page sont refaits, dans `src/ui/config-screen.ts`
+et `config-screen.css` (le code de #177 dans `ui-manager.ts` et `ui-manager.css` est supprimé).
+
+Ce qui change par rapport à §6.2 : fond « nuit bleue » commun (`mh-ui-night`) au lieu du dégradé étoilé ; onglets en
+serif étroit (l'actif plus lumineux, souligné) au lieu du fil d'Ariane ; panneaux à bord gris-bleu de 2 px avec libellé
+centré sur le bord haut au lieu de lignes pleine largeur ; boutons à bascule sarcelle (actif) ou gris (inactif) au lieu
+de segments sans cadre ; radios Oui/Non ; curseurs à piste noire à 5 repères et pastille sphérique argent ; spinners
+−/+ à deux chiffres (durée et opacité du fondu) ; zone d'aperçu du fondu ; pied avec *Retour* centré et
+*Réglages par défaut* à droite.
+
+Ajouts de HUD-09 : l'interrupteur **« Flowchart : tout révéler »** (`GameSettings.flowchartRevealAll`, FLOW-03) dans l'onglet
+Système, désactivé par défaut, inclus dans « Réglages par défaut », sauvegardé à chaque changement ; **confirmation**
+(Non présélectionné) avant « Réglages par défaut » ; le bouton Exit n'existe pas ; clavier : onglets en `tablist` avec
+tabulation itinérante (← → Début Fin), focus visible de 2 px, cibles de 44 px sur écran tactile.
+
+Écarts assumés : l'original place une case à cocher devant chaque raccourci, le modèle n'a pas de drapeau « actif » par
+action (pas de case) ; le portrait (onglets défilables, panneaux empilés) relève de WEB-02 (#210) ; l'aperçu du fondu
+rejoue l'effet sur deux lignes d'exemple (textes du projet), pas sur un texte saisi.
+
+### 6.2 Ancienne direction (2026-11-08, #177), abandonnée
 
 Référence de qualité : la config de **Tsukiweb** (`tsukiweb.holofield.fr/config`), avec
 reprise de la sobriété bleu nuit du jeu d'origine. Tokens retenus :

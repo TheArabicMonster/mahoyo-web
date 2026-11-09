@@ -197,7 +197,7 @@ describe("DomUIManager", () => {
       ui.show(v);
       expect(q("#ui-overlay")!.dataset.screen).toBe(v.screen);
       // Menu système plein cadre (HUD-06, #194), écran titre plein cadre (HUD-07, #195) et flowchart (FLOW-05, #197) : pas de panneau centré.
-      const full: Record<string, string> = { pause: ".mh-sysmenu", title: ".mh-ui-title-screen", flowchart: ".mh-flow-screen", backlog: ".mh-bl" };
+      const full: Record<string, string> = { pause: ".mh-sysmenu", title: ".mh-ui-title-screen", flowchart: ".mh-flow-screen", backlog: ".mh-bl", settings: ".mh-cfg" };
       expect(q(full[v.screen] ?? ".mh-ui-panel, .mh-sl")).not.toBeNull();
       ui.show({ screen: "game" });
       expect(q(".mh-ui-panel, .mh-sl")).toBeNull();
@@ -205,6 +205,7 @@ describe("DomUIManager", () => {
       expect(q(".mh-ui-title-screen")).toBeNull();
       expect(q(".mh-flow-screen")).toBeNull();
       expect(q(".mh-bl")).toBeNull();
+      expect(q(".mh-cfg")).toBeNull();
     });
 
     it("title : la grille de chapitres n'est plus au titre, Extra > Archive l'ouvre", () => {
@@ -321,13 +322,23 @@ describe("DomUIManager", () => {
         shortcuts: { ...settings.shortcuts, saveMenu: ["x", "F2"] },
       });
     });
-    it("settings : test du volume SE et réinitialisation (#177)", () => {
+    it("settings : test du volume SE et réinitialisation avec confirmation (#177, #200)", async () => {
       ui.show({ screen: "settings", settings, availableLanguages: ["ja"] });
       (q('[data-tab="sound"]') as HTMLButtonElement).click();
       (q(".mh-ui-test-se") as HTMLButtonElement).click();
       expect(cmd.testSe).toHaveBeenCalled();
+      // « Non » (présélectionné) : rien n'est réinitialisé.
       (q(".mh-ui-reset") as HTMLButtonElement).click();
-      expect(cmd.resetSettings).toHaveBeenCalled();
+      await vi.waitFor(() => expect(q(".mh-ui-confirm")).not.toBeNull());
+      expect(q(".mh-ui-confirm-no")).toBe(document.activeElement);
+      q(".mh-ui-confirm-no")!.click();
+      await vi.waitFor(() => expect(q(".mh-ui-confirm")).toBeNull());
+      expect(cmd.resetSettings).not.toHaveBeenCalled();
+      // « Oui » : les réglages par défaut sont demandés.
+      (q(".mh-ui-reset") as HTMLButtonElement).click();
+      await vi.waitFor(() => expect(q(".mh-ui-confirm")).not.toBeNull());
+      q(".mh-ui-confirm-yes")!.click();
+      await vi.waitFor(() => expect(cmd.resetSettings).toHaveBeenCalledTimes(1));
     });
     it("flowchart : sans graphe, état vide et « Retour » fonctionnel", () => {
       ui.show(views[6]!);

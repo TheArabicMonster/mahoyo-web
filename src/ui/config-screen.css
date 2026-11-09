@@ -1,5 +1,5 @@
 /* ── Écran de configuration au design d'origine (HUD-09, #200) ───────────────────────────────────────
-   docs/ANALYSE_HUD_ORIGINAL.md §2.9 et docs/DESIGN.md §2.2, §2.3, §2.4, §8, §9.6. CSS pur sur les tokens
+   docs/ANALYSE_HUD_ORIGINAL.md §2.9 et docs/DESIGN.md §2.2, §2.3, §2.4, §8, §9.10. CSS pur sur les tokens
    `--mh-*`, aucune image du jeu ; le fond est la « nuit bleue » (`mh-ui-night`, posée sur #ui-menu).
 
    Repères : les mesures de l'analyse sont en 1920×1080 ; le HUD vit dans #viewport, en 1280×720 logique

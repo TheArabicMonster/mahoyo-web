@@ -1498,6 +1498,22 @@ describe("Player — événements de progression (flowchart)", () => {
     ctx.player.closeScreen();
   });
 
+  it("« tout révéler » (HUD-09) : le réglage est persisté, et « Réglages par défaut » le remet à false", async () => {
+    const store = createMemorySettingsStore();
+    const ctx = setup([], { settingsStore: store });
+    current = ctx.player;
+    await ctx.player.ready;
+    expect((await store.loadSettings()).flowchartRevealAll).toBe(false);
+
+    ctx.player.updateSettings({ flowchartRevealAll: true });
+    await wait(5);
+    expect((await store.loadSettings()).flowchartRevealAll).toBe(true);
+
+    ctx.player.resetSettings();
+    await wait(5);
+    expect((await store.loadSettings()).flowchartRevealAll).toBe(false);
+  });
+
   it("sans graphe (assets absents), la vue du flowchart reçoit null", async () => {
     const ctx = progressSetup({ loadGraph: async () => null });
     current = ctx.player;
