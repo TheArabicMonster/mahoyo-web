@@ -84,10 +84,11 @@ test.describe("Configuration (HUD-09)", () => {
     await toggle.check();
     await expect.poll(async () => (await storedSettings(page)).flowchartRevealAll).toBe(true);
 
-    // Rechargé : la valeur est restituée.
+    // Rechargé : la valeur est restituée. Depuis WEB-04 (#204) le hash `#/config` est routé : le
+    // rechargement rouvre directement l'écran de configuration (plus d'écran titre intermédiaire).
     await page.reload();
-    await page.locator(".mh-ui-title-screen").waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: "Config" }).first().click();
+    await expect(page).toHaveURL(/#\/config$/);
+    await page.locator(".mh-cfg").waitFor({ timeout: 15000 });
     await expect(page.locator('input[name="flowchartRevealAll"]')).toBeChecked();
 
     // Non (présélectionné) : rien ne change.
