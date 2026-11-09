@@ -380,7 +380,11 @@ export async function runTrace(scriptPath: string, assetsDir: string, maxSteps =
     const exact = info?.exact === true;
     const raw = exact ? rawStorageOf(rawLine) : null;
     const key = raw !== null ? storageKey(raw) : null;
-    const url = raw !== null ? resolver.image(raw) : null;
+    // Les commandes audio n'ont pas de storage image : ne pas les compter comme images manquantes.
+    const kind = sample.instruction.kind;
+    const audioKind = kind === "se" || kind === "play" || kind === "playstop" || kind === "playpause" ||
+      kind === "playresume" || kind === "fadebgm" || kind === "seact" || kind === "sestop" || kind === "fadese";
+    const url = raw === null ? null : audioKind ? resolver.se(raw) : resolver.image(raw);
     const crops: string[] = [];
     for (const layer of [...sample.fore.layers, ...sample.back.layers]) {
       if (!layer.crop) continue;
