@@ -188,6 +188,15 @@ export const APPROXIMATIONS: readonly Approximation[] = [
     test: "tests/unit/renderer/stage-renderer.test.ts",
     compteur: 1,
   },
+    id: "trans-nowait-timing",
+    ecart:
+      "@trans nowait=1 : le moteur n'échange fore/back qu'à la fin du fondu ; le port applique la " +
+      "permutation immédiatement (état final correct après @wt). Une commande qui lirait back pendant " +
+      "la fenêtre nowait, avant le @wt, verrait donc l'ancien affichage au lieu du contenu préparé.",
+    issue: APPROXIMATIONS_ISSUE,
+    test: "tests/unit/kag/runtime.test.ts",
+    compteur: 1,
+  },
   {
     id: "clock-runtime-vars",
     ecart:

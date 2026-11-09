@@ -53,12 +53,16 @@ const PERSISTED_STATE_KEYS = [
  *   suspendue par `@pauseploy` et les particules de `@beginfallnote`. Le moteur les restaure via
  *   ses objets de plugin, hors sauvegarde narrative ; le port ne les persiste pas (le prochain
  *   `@pauseploy`/`@beginfallnote` les réinitialise).
+ * - `transitionBacklayPending` (#253) : attente de backlay après un `@trans nowait=1` (le `@wt`
+ *   suivant copie fore→back). Le moteur ne sauvegarde pas les attentes (`conductor.pendings`) ;
+ *   après un load, aucune transition n'est en cours.
  */
 const TRANSIENT_STATE_KEYS = [
   "clickSkipEnabled",
   "effectSkipEnabled",
   "ployPaused",
   "fallnote",
+  "transitionBacklayPending",
 ] as const satisfies readonly (keyof RuntimeState)[];
 
 // ── Garde-fou type-level ─────────────────────────────────────────────────────
