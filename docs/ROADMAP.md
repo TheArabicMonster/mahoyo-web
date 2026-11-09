@@ -6,10 +6,11 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
 
 ## État au 2026-11-09
 
-- **v1.0 : 86/86 (100 %, 🟢 Terminé)** — release close le 2026-11-09 : lint ESLint 9 (#220), lecture
-  complète des 221 scripts en CI sur un corpus de placeholders (#269, #273) et documentation de clôture
-  (#270). La DoD de release est satisfaite ; voir [`PROGRESS.md`](PROGRESS.md).
-- **v1.1 : 43/61 (70 %)** — 18 issues restantes, détaillées ci-dessous ; c'est l'**épic suivant, en cours**.
+- **v1.0 : 86/92 (93 %, 🟡 rouverte)** — les 86 issues initialement closes le 9 novembre le restent, mais la
+  milestone a été **rouverte** par l'écart DoD « Commandes KAG » : #274 (chapeau), #275 (audit classé),
+  #276 (triage), #277 (commandes KAG standard) et #85/#86 (implémentations). **Aucun tag ni release v1.0
+  n'a été publié** ; voir l'écart ci-dessous et [`PROGRESS.md`](PROGRESS.md).
+- **v1.1 : 43/59 (73 %)** — 16 issues restantes, détaillées ci-dessous ; c'est l'**épic suivant, en cours**.
 - **E1–E4** : livrés (extraction, parser KAG3, runtime/rendu, pipeline et traductions).
 - **E7** : périmètre v1.0 livré — player complet, lecture du corpus, sauvegardes IndexedDB avec export/import
   JSON, écrans HUD refaits (titre, Extra/Archive, menu système, historique, chargement/sauvegarde,
@@ -22,8 +23,27 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
 - **E6** : en cours (v1.1) — **1939 tests unitaires** (112 fichiers), `npm run lint` (ESLint 9), build et
   `check:assets` verts ; e2e Playwright sur **Chromium et Firefox** en placeholders (15 fichiers de spec) ;
   CI à **3 jobs** (`build-and-test` avec lint, anti-assets, build, tests unitaires, tests d'intégration en
-  skip sur checkout nu et lecture complète des 221 scripts sur placeholders ; matrice e2e). Restent : FLOW-09,
-  mobile et objectifs de performance chiffrés (#100).
+  skip sur checkout nu et lecture complète des 221 scripts sur placeholders ; matrice e2e). Restent : l'écart
+  DoD v1.0 des commandes KAG (#274 à #277), FLOW-09, mobile et objectifs de performance chiffrés (#100).
+
+### Écart DoD v1.0 — commandes KAG (en cours)
+
+La DoD v1.0 exige que `npm run audit` ne signale « aucune commande inconnue ayant un effet visible » et que
+les no-ops volontaires soient documentés et distingués des inconnues. L'audit sur les vrais assets
+(221 scripts, 0 erreur, 0 maxSteps) relève **55 commandes KAG distinctes inconnues**, dont plusieurs à effet
+visible ou audible (`@chgpartbg`, `@dispclock`, `@setdefaultmessageaction`, `@xchgbgm`, `@staffroll`, `@s`,
+`@endif`, `@image`, `@ruby`…). Résolution :
+
+| Issue | Rôle |
+|---|---|
+| #274 | chapeau : écart DoD, critères d'acceptation, clôture (tag/release après résolution) |
+| #275 | registre unique `ignoredCommands` + audit classé *implémentée / ignorée volontairement / inconnue* + garde-fou CI |
+| #276 | triage documenté des 55 commandes (origine, effet réel, décision, issue) |
+| #277 | vérifier/corriger les commandes KAG standard (`@s`, `@endif`, `@image`, `@ruby`) et les macros système |
+| #85, #86 | implémentation des commandes visuelles secondaires et restantes |
+
+La [DoD](DEFINITION_OF_DONE.md) n'est **pas modifiée** : l'écart est documenté, pas contourné. `PROGRESS.md`
+reflète l'état réel (86/92, 93 %, 🟡).
 
 ### Livré depuis la vague 4 (2026-11-09)
 
@@ -34,9 +54,10 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
   des calques (#252), effets d'ambiance `envcolor` (#260), garde-fou du dossier de travail du pipeline (#264).
 - **Lint & CI** : ESLint 9 en flat config et `npm run lint` en CI (#220) ; lecture complète en placeholders et
   skip propre des tests d'intégration sans assets (#269, #273).
-- **Clôture v1.0** : README (parcours #93, état #270), ROADMAP, PROGRESS et ARCHITECTURE à jour.
+- **Documentation** : README (parcours #93, état #270), ROADMAP, PROGRESS et ARCHITECTURE à jour ; la
+  clôture v1.0 est **rouverte** le temps de résoudre l'écart DoD des commandes KAG.
 
-### Reste en v1.1 (18 issues ouvertes)
+### Reste en v1.1 (16 issues ouvertes)
 
 | Thème | Issues |
 |---|---|
@@ -45,7 +66,7 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
 | Fidélité / rendu | #158 fidélité de l'ouverture (synchro musique) · #253 `@trans` exchange/backlay · #254 ouverture (flash blanc/panoramique) · #257 focus Firefox du menu système |
 | Accessibilité / mobile | #97 WCAG AA · #98 mobile et tablette |
 | Confort / plateforme | #99 thème complet et animations · #96 PWA hors ligne · #100 objectifs de performance chiffrés |
-| Moteur KAG | #80 `@if`/`@macro` à plat et `@call` fiable · #85 commandes visuelles secondaires · #86 commandes KAG restantes |
+| Moteur KAG | #80 `@if`/`@macro` à plat et `@call` fiable |
 | Outillage | #265 `.gitignore` du lien symbolique `node_modules` |
 
 
@@ -118,9 +139,10 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
 
 Objectif : lecture complète des 221 scripts narratifs, du prologue à la dernière scène, sur Chrome et Firefox récents (desktop).
 
-- **État au 2026-11-09 : terminée, 86/86 (100 %).** Toutes les issues de la milestone sont fermées ; lint
-  (#220) et lecture complète en CI sur placeholders (#269, #273) sont verts, la documentation de clôture est
-  livrée (#270). Voir la section « DoD — v1.0 » de [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) et
+- **État au 2026-11-09 : rouverte, 86/92 (93 %), release non déclarée.** Les livraisons de fonctionnalités
+  sont faites (lecture complète, lint et CI verts), mais le critère « Commandes KAG » de la DoD v1.0 reste
+  ouvert : 55 commandes inconnues, dont à effet visible (#274 à #277, #85/#86). Voir « Écart DoD v1.0 »
+  ci-dessus, la section « DoD — v1.0 » de [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) et
   [`PROGRESS.md`](PROGRESS.md).
 - Épics concernés : E1 à E4, E7, et la part de E6 consacrée aux tests de non-régression et e2e.
 
