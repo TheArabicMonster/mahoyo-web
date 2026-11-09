@@ -14,12 +14,15 @@
  * - Aucune image du jeu : les vignettes sont une surcouche (`<img>`, clé du manifeste de l'utilisateur) au-dessus
  *   d'un repli CSS ; sans graphe, un état vide s'affiche.
  *
- * Interactions (pan, zoom, centrer, clic sur un nœud) : #202. Clavier et lecteur d'écran avancés : #206.
- * Ici, le strict nécessaire : défilement natif et défilement initial vers la position courante.
+ * Interactions (FLOW-06, #202) : pan et zoom (`flowchart-viewport.ts`), bouton « centrer », clic sur un nœud visité
+ * (volet de détails et « Relire depuis ici », `flowchart-detail.ts`). Les silhouettes et les nœuds simplement révélés
+ * ne sont ni cliquables ni relisables. Clavier et lecteur d'écran avancés (nœuds focalisables) : #206.
  */
 import { choiceLabelLines, endingProgress, groupTitle } from "@/core/flow-graph.js";
 import type { FlowEdgeLayout, FlowGroupLayout, FlowLayout, FlowNodeLayout, GraphNode, StoryGraph } from "@/core/flow-graph.js";
 import { layoutFlowchart } from "@/core/flow-layout.js";
+import { describeNode, renderDetailPanel, type ReplayDeps } from "@/ui/flowchart-detail.js";
+import { attachViewport, MAX_SCALE, MIN_SCALE, ZOOM_STEP } from "@/ui/flowchart-viewport.js";
 import { decoKeyOf, t } from "@/ui/i18n.js";
 import type { StoryProgress } from "@/ui/types.js";
 import "./night.css";
@@ -50,6 +53,10 @@ export type FlowchartData = {
   revealAll: boolean;
   /** URL de la vignette d'une clé d'image du manifeste, ou `null`. Absent : repli CSS seul. */
   thumbnail?: (key: string) => string | null;
+  /** « Relire depuis ici » : boîte de confirmation (`UIManager.confirm`, « Non » par défaut). Absente : aucune relecture. */
+  confirm?: ReplayDeps["confirm"];
+  /** « Relire depuis ici » : lance le script (`PlayerCommands.startScript`). Absent : pas de bouton de relecture. */
+  replay?: ReplayDeps["replay"];
 };
 
 // ---------------------------------------------------------------------------
@@ -240,6 +247,8 @@ function renderNode(index: number, graphNode: GraphNode, box: FlowNodeLayout, st
   const reached = graphNode.kind === "end" && ctx.endings.has(graphNode.id);
   el.dataset.id = graphNode.id;
   el.dataset.kind = graphNode.kind;
+  // Seuls les nœuds ouverts répondent au clic (volet de détails) ; un nœud révélé non visité reste inerte.
+  if (isDiscovered(state)) el.dataset.interactive = "true";
   if (graphNode.kind === "end") el.dataset.ending = reached ? "reached" : "pending";
   if (box.hub) el.dataset.hub = "true";
   el.setAttribute("role", "img");
@@ -474,10 +483,13 @@ export function renderFlowchartScreen(data: FlowchartData, onBack: () => void): 
   const aside = h("aside", "mh-flow-aside");
   aside.append(renderCounters(graph, layout, data.story), renderLegend());
 
+  const map = h("div", "mh-flow-map");
   const scroller = h("div", "mh-flow-scroll");
   scroller.tabIndex = 0;
   scroller.setAttribute("role", "region");
   scroller.setAttribute("aria-label", t("flowchart.region"));
+  // sizer : taille `contenu x zoom`, centré ; stage : la scène à l'échelle 1 (unités de la mise en page).
+  const sizer = h("div", "mh-flow-sizer");
   const stage = h("div", "mh-flow-stage");
   stage.style.width = `${layout.width}px`;
   stage.style.height = `${layout.height}px`;
@@ -529,16 +541,105 @@ export function renderFlowchartScreen(data: FlowchartData, onBack: () => void): 
   });
   stage.addEventListener("pointerleave", () => setLit(null));
 
-  scroller.appendChild(stage);
-  screen.append(head, aside, scroller, foot);
+  sizer.appendChild(stage);
+  scroller.appendChild(sizer);
 
-  // Défilement initial vers la position courante (ou le début). L'écran est ajouté au DOM de façon synchrone.
-  queueMicrotask(() => scrollToCurrent(scroller, layoutOfNode.get(data.currentScript ?? "")));
+  // Pan, zoom, centrage. `initialScale` : le zoom est conservé d'une ouverture à l'autre (mémoire du module).
+  const zoomValue = h("output", "mh-flow-zoom-value");
+  const showZoom = (scale: number): void => {
+    zoomValue.textContent = t("flowchart.zoom.value", { percent: Math.round(scale * 100) });
+  };
+  let syncTools = (): void => {};
+  const viewport = attachViewport({
+    scroller,
+    sizer,
+    stage,
+    content: { width: layout.width, height: layout.height },
+    onScaleChange: (scale) => {
+      showZoom(scale);
+      syncTools();
+    },
+  });
+  showZoom(viewport.getScale());
+
+  const currentBox = data.currentScript ? layoutOfNode.get(data.currentScript) : undefined;
+  const tools = renderTools(viewport, currentBox ? () => viewport.centerOn(currentBox, true) : null, zoomValue);
+  syncTools = tools.sync;
+  tools.sync();
+
+  // Clic sur un nœud ouvert : volet de détails (jamais pour une silhouette ni un nœud révélé non visité).
+  let detail: HTMLElement | null = null;
+  let selected: HTMLElement | null = null;
+  const closeDetail = (restoreFocus: boolean): void => {
+    detail?.remove();
+    detail = null;
+    selected?.removeAttribute("data-selected");
+    selected = null;
+    if (restoreFocus) scroller.focus({ preventScroll: true });
+  };
+  const deps: ReplayDeps = { confirm: data.confirm, replay: data.replay };
+  scroller.addEventListener("click", (ev) => {
+    const target = ev.target instanceof Element ? ev.target.closest<HTMLElement>(".mh-flow-node[data-n]") : null;
+    if (!target) return;
+    const index = Number(target.dataset.n);
+    const node = graph.nodes[index];
+    if (!node) return;
+    const details = describeNode(graph, node.id, states.get(node.id), data.story, layout.endings, data.chapters);
+    if (!details) return;
+    closeDetail(false);
+    selected = target;
+    target.dataset.selected = "true";
+    detail = renderDetailPanel(details, deps, () => closeDetail(true));
+    detail.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      // Échap ferme d'abord le volet ; l'écran ne se ferme qu'à l'Échap suivant.
+      e.stopPropagation();
+      closeDetail(true);
+    });
+    map.appendChild(detail);
+    detail.focus({ preventScroll: true });
+  });
+
+  map.append(scroller, tools.el);
+  screen.append(head, aside, map, foot);
+
+  // Position initiale : le zoom mémorisé est déjà posé ; on centre le nœud courant, sinon on reste en haut.
+  // L'écran est ajouté au DOM de façon synchrone par l'appelant.
+  queueMicrotask(() => {
+    if (currentBox) viewport.centerOn(currentBox);
+    scroller.focus({ preventScroll: true });
+  });
   return screen;
 }
 
-/** Fait défiler la carte pour centrer verticalement le nœud ; sans nœud, reste en haut. */
-export function scrollToCurrent(scroller: HTMLElement, node: Pick<FlowNodeLayout, "y" | "height"> | undefined): void {
-  if (!node) return;
-  scroller.scrollTop = Math.max(0, node.y + node.height / 2 - scroller.clientHeight / 2);
+function toolButton(cls: string, label: string, glyph: string, onClick: () => void): HTMLButtonElement {
+  const btn = h("button", `mh-flow-tool ${cls}`, glyph);
+  btn.type = "button";
+  btn.setAttribute("aria-label", label);
+  btn.title = label;
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+/** Boutons ronds (zoom +, zoom −, centrer sur ma position) et pourcentage de zoom, au-dessus de la carte. */
+function renderTools(
+  viewport: ReturnType<typeof attachViewport>,
+  center: (() => void) | null,
+  zoomValue: HTMLElement,
+): { el: HTMLElement; sync: () => void } {
+  const box = h("div", "mh-flow-tools");
+  box.setAttribute("role", "group");
+  box.setAttribute("aria-label", t("flowchart.tools"));
+  const zoomIn = toolButton("mh-flow-zoom-in", t("flowchart.zoom.in"), "+", () => viewport.zoomBy(ZOOM_STEP));
+  const zoomOut = toolButton("mh-flow-zoom-out", t("flowchart.zoom.out"), "\u2212", () => viewport.zoomBy(1 / ZOOM_STEP));
+  const centre = toolButton("mh-flow-center", t("flowchart.center"), "", () => center?.());
+  centre.disabled = center === null;
+  // Pas de position courante (écran titre) : bouton inactif, l'état est dit en toutes lettres.
+  if (center === null) centre.title = t("flowchart.center.none");
+  const sync = (): void => {
+    zoomIn.disabled = viewport.getScale() >= MAX_SCALE - 1e-9;
+    zoomOut.disabled = viewport.getScale() <= MIN_SCALE + 1e-9;
+  };
+  box.append(zoomIn, zoomValue, zoomOut, centre);
+  return { el: box, sync };
 }
