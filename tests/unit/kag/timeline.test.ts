@@ -119,8 +119,8 @@ describe("parse @playtimeline / @seloop", () => {
     expect(first("@playtimeline scene=7")).toEqual({ kind: "playtimeline", scene: 7, next: undefined });
   });
 
-  it("@playtimeline sans scène retombe en commande brute", () => {
-    expect(first("@playtimeline next=10").kind).toBe("raw");
+  it("@playtimeline sans scène : variante tolérée en no-op explicite (#287)", () => {
+    expect(first("@playtimeline next=10")).toMatchObject({ kind: "noop", command: "playtimeline" });
   });
 
   it("@seloop : SE en boucle avec fondu d'entrée, volume et condition", () => {

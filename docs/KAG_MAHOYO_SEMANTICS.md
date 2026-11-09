@@ -574,14 +574,15 @@ inconnues. La baseline est passée à **29 commandes inconnues / 58 occurrences*
 | `@wstaffroll` | 2 | plugin TJS (`staffrollplugin.tjs`, `kt.wstaffroll`) | déroulement : attente de la fin du générique | implémenter | #286 |
 | `@staffrolluninit` | 3 | plugin TJS (`staffrollplugin.tjs`) | ui : termine/libère l'affichage des crédits | implémenter | #286 |
 | `@staffrollsetting` | 1 | plugin TJS (`staffrollplugin.tjs`) | ui : couleur de fond des crédits | implémenter | #286 |
-| `@settracerreturn` | 2 | macro Mahoyo (`tracerplugin.ks`) | ui : cible de retour du flowchart | approximer (flowchart #211/#212) | #287 |
-| `@startchart` | 1 | macro Mahoyo (`tracerplugin.ks`) | ui : démarre le flowchart | approximer | #287 |
-| `@playtimeline` | 1 | plugin TJS (`timelineplugin.tjs`, usage de test `frame=0` sans `scene`) | effets : timeline ; l'occurrence brute est malformée | tolérer sans warning (fallback documenté) | #287 |
-| `@loadtimeline` | 1 | macro plugin (`timelineplugin.tjs`) | effets : charge un `.tla` puis joue la timeline | implémenter | #287 |
+| `@settracerreturn` | 2 | macro Mahoyo (`tracerplugin.ks`) | ui : cible de retour du flowchart | no-op justifié (sp2.ks non chargé, voir §9 duodecies) | #287 |
+| `@startchart` | 1 | macro Mahoyo (`tracerplugin.ks`) | ui : démarre le flowchart | no-op justifié (carte .gc non modélisée, §9 duodecies) | #287 |
+| `@playtimeline` | 1 | plugin TJS (`timelineplugin.tjs`, usage de test `frame=0` sans `scene`) | effets : timeline ; l'occurrence brute est malformée | variante tolérée en no-op explicite (§9 duodecies) | #287 |
+| `@loadtimeline` | 1 | macro plugin (`timelineplugin.tjs`) | effets : charge un `.tla` puis joue la timeline | no-op justifié (.tla non convertis, §9 duodecies) | #287 |
 
 **Bilan des décisions** : 37 à implémenter, 11 à approximer (écart documenté), 1 variante
-malformée à tolérer (`@playtimeline` de test), **2 no-op justifiés sans effet désormais intégrés au
-registre #275** (`@autocache` → #283, `@deffont` → #284). Aucune commande à effet
+malformée à tolérer (`@playtimeline` de test), **5 no-ops justifiés sans effet intégrés au registre
+#275** (`@autocache` → #283, `@deffont` → #284, `@settracerreturn`/`@startchart`/`@loadtimeline` →
+#287). Aucune commande à effet
 visible/audible/de déroulement n'est classée no-op.
 
 **Suivi des lots** : #281 (effets d'écran plugin, §9 quater), #285 (audio/déroulement,
@@ -593,8 +594,9 @@ passe à **23 commandes / 31 occurrences**. #295 (garde-fous de clôture DoD, §
 **sans changement de baseline** (delta 0 commande / 0 occurrence : aucune commande implémentée par ce
 lot). #284 (texte et options message) est traité — voir §9 decies ; la baseline passe à
 **13 commandes / 17 occurrences**. #282 (actions/effets de scène) est traité — voir §9 undecies ;
-la baseline passe à **4 commandes / 5 occurrences**. Seul le lot #287 (tracer/timeline) reste
-ouvert.
+la baseline passe à **4 commandes / 5 occurrences**. **#287 (tracer/timeline) est traité — voir
+§9 duodecies ; la baseline passe à 0 commande / 0 occurrence** (mode zéro strict, 5 no-ops
+justifiés). Tous les lots du triage #276 sont clos.
 
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
@@ -993,6 +995,39 @@ usages réels (`wik_k.ks`, `wik_z-3.ks`, `nz6.ks`, `system_window.ks`, `wik_g-a.
   (`npm run approximations:check` OK).
 - Aucune nouvelle e2e (protocole « max 1 e2e par lot » ; animations/particules couvertes en unitaire,
   la suite e2e existante reste verte en CI).
+
+## 9 duodecies. Tracer et timelines — clôture du triage (#287)
+
+Dernier lot du triage #276 : les 4 commandes restantes (`@settracerreturn` 2, `@startchart` 1,
+`@loadtimeline` 1, `@playtimeline` 1 occurrence de test) sortent de la baseline, qui passe de
+**4 commandes / 5 occurrences à 0 / 0**. L'audit réel affiche **125 implémentée(s), 5 ignorée(s)
+volontairement (11 occurrences), 0 inconnue** sur les 221 scripts (`npm run audit:baseline` ;
+`audit:guard -- --strict` OK) : mode zéro strict atteint.
+
+| Commande | Statut | Justification (registre #275 / documentée) |
+|---|---|---|
+| `@settracerreturn` | **no-op justifié** (`effet: "aucun"`, issue #287) | Règle la destination de retour du traceur de parcours (mode debug d'origine). Seuls usages : `sp2.ks`, script système **non chargé par le player** (écrans spéciaux/archive) : aucun effet visible, audible ou de déroulement dans le port. |
+| `@startchart` | **no-op justifié** (`effet: "aucun"`, issue #287) | Lance une carte de fin de chapitre TYPE-MOON (graphique de flowchart `.gc`) non modélisée par le player ; scripts concernés (`sp2.ks`, `first.ks`) système/non chargés. |
+| `@loadtimeline` | **no-op justifié** (`effet: "aucun"`, issue #287) | Charge un `.tla` : le pipeline ne convertit pas ce format (aucun asset timeline au manifeste) ; seul usage utile `menutest.ks` (script de test non chargé). Les timelines jouables passent par les données `*tladata` embarquées + `@playtimeline scene=`. |
+| `@playtimeline frame=…` | **variante tolérée en no-op explicite** (hors registre) | Formulaire de test sans `scene=` (`menutest.ks`, `gamemenu.ks`) : le parser renvoie `{ kind: "noop", command: "playtimeline", reason }`, **aucun warning**, aucun effet. Ce n'est pas un no-op volontaire permanent : il ne va **pas** au registre #275. `@playtimeline scene=N` reste inchangé (rejeu depuis les timelines ; sans données : avertissement « timeline introuvable », pas « commande non gérée »). |
+
+### Registre final et classification de l'audit
+
+- `tools/ignored-commands.ts` contient **exactement 5 no-ops** (`effet: "aucun"`), tous sourcés :
+  `autocache` (#283), `deffont` (#284), `settracerreturn`/`startchart`/`loadtimeline` (#287).
+- Le parser reconnaît explicitement les 3 nouveaux no-ops (plus de warning « commande non
+  gérée »), et l'audit compte les no-ops **réellement exécutés** via le nouveau hook léger
+  `Runtime.onCommand` : le registre #275 est la source de vérité de la classification
+  « ignorée volontairement », indépendamment du warning runtime (les commandes encore lues en
+  `raw` comme `autocache`/`deffont` restent classées ignorées). La baseline ne contient donc plus
+  **aucune** commande inconnue.
+- Tests : `tests/unit/kag/tracer-noops.test.ts` (classement registre + zéro warning + 5 no-ops),
+  `tests/unit/kag/playtimeline-frame-noop.test.ts` (no-op explicite, non-régression `scene=N`),
+  `tests/unit/tools/audit-ignored.test.ts` (classification audit : ignorées vs implémentée pour
+  `frame=`, warnings « timeline introuvable » hors inconnues), et mise à jour des tests figés
+  `playtimeline-variant.test.ts`/`timeline.test.ts`.
+- **Pas d'e2e ajouté** pour ce lot : aucune commande n'a d'effet visible/jouable (scripts système
+  ou de test non chargés par le player) ; la couverture est unitaire + audit réel.
 
 ## 10. Commandes non implémentées à figer plus tard
 

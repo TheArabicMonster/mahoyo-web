@@ -54,10 +54,10 @@ export const IGNORED_COMMAND_EFFECTS: readonly IgnoredCommandEffect[] = [
 /**
  * Registre effectif.
  *
- * Les deux premières entrées sont issues du triage #276 : commandes sans aucun
- * effet visible, audible ou de déroulement dans le port. Toutes les autres
- * commandes inconnues restent à implémenter ou approximer (lots #85, #86,
- * #281-#287) et ne doivent pas être déclarées no-op.
+ * Les cinq entrées sont issues du triage #276 et des lots #283, #284 et #287 :
+ * commandes sans aucun effet visible, audible ou de déroulement dans le port.
+ * Toute autre commande inconnue reste à implémenter ou approximer et ne doit
+ * pas être déclarée no-op.
  */
 export const IGNORED_COMMANDS: readonly IgnoredCommand[] = [
   {
@@ -66,6 +66,27 @@ export const IGNORED_COMMANDS: readonly IgnoredCommand[] = [
       "Préchargement d'images avant une attente : uniquement de la performance, aucun effet visible, audible ou de déroulement (triage #276).",
     effet: "aucun",
     issue: "#283",
+  },
+  {
+    name: "settracerreturn",
+    raison:
+      "Règle la destination de retour du traceur de parcours (mode debug d'origine). Seuls usages utiles : sp2.ks, script système non chargé par le player (écrans spéciaux/archive) : aucun effet visible, audible ou de déroulement dans le port (triage #276).",
+    effet: "aucun",
+    issue: "#287",
+  },
+  {
+    name: "startchart",
+    raison:
+      "Lance une carte de fin de chapitre TYPE-MOON (graphique de flowchart .gc) propre au moteur d'origine. Aucun écran de ce type n'est modélisé par le player et les scripts concernés (sp2.ks, first.ks) sont des scripts système non chargés par le parcours jouable : aucun effet dans le port (triage #276).",
+    effet: "aucun",
+    issue: "#287",
+  },
+  {
+    name: "loadtimeline",
+    raison:
+      "Charge un fichier de timeline .tla : le pipeline d'assets ne convertit pas les .tla (aucun asset timeline dans le manifeste) et l'unique usage utile est menutest.ks, script de test non chargé par le player ; les timelines jouables passent par les données *tladata embarquées et @playtimeline scene=. Aucun effet dans le port (triage #276).",
+    effet: "aucun",
+    issue: "#287",
   },
   {
     name: "deffont",

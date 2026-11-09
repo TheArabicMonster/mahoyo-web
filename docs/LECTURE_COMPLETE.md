@@ -127,14 +127,17 @@ inconnue hors baseline.
 | Catégorie | Définition | Mesure actuelle |
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
-| **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 4 commande(s) distincte(s), 5 occurrence(s) |
+| **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 5 commande(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 0 commande(s) distincte(s), 0 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
 | Commande | Effet | Raison | Issue |
 |---|---|---|---|
 | `@autocache` | aucun | Préchargement d'images avant une attente : uniquement de la performance, aucun effet visible, audible ou de déroulement (triage #276). | #283 |
+| `@settracerreturn` | aucun | Règle la destination de retour du traceur de parcours (mode debug d'origine). Seuls usages utiles : sp2.ks, script système non chargé par le player (écrans spéciaux/archive) : aucun effet visible, audible ou de déroulement dans le port (triage #276). | #287 |
+| `@startchart` | aucun | Lance une carte de fin de chapitre TYPE-MOON (graphique de flowchart .gc) propre au moteur d'origine. Aucun écran de ce type n'est modélisé par le player et les scripts concernés (sp2.ks, first.ks) sont des scripts système non chargés par le parcours jouable : aucun effet dans le port (triage #276). | #287 |
+| `@loadtimeline` | aucun | Charge un fichier de timeline .tla : le pipeline d'assets ne convertit pas les .tla (aucun asset timeline dans le manifeste) et l'unique usage utile est menutest.ks, script de test non chargé par le player ; les timelines jouables passent par les données *tladata embarquées et @playtimeline scene=. Aucun effet dans le port (triage #276). | #287 |
 | `@deffont` | aucun | Seul usage du corpus : face=user. Le port web n'expose aucun réglage de police utilisateur et @resetfont retombe sur la police du thème : aucun effet visible (triage #276). | #284 |
 
 #### Commandes inconnues restantes (baseline, à trier)
@@ -144,10 +147,6 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 
 | Commande | Occurrences |
 |---|---|
-| `@loadtimeline` | 1 |
-| `@playtimeline` | 1 |
-| `@settracerreturn` | 2 |
-| `@startchart` | 1 |
 <!-- END AUTO: commandes-kag -->
 
 ## Critère de réussite

@@ -623,7 +623,16 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
     }
     case "playtimeline": {
       // @playtimeline scene=N next=ms : séquence minutée issue des données *tladata du script.
-      if (args.scene === undefined) return { kind: "raw", command: "playtimeline", args } as unknown as Instruction;
+      // Variante de test `frame=N` (menutest.ks, gamemenu.ks) sans `scene=` : tolérée en no-op
+      // explicite (pas un no-op volontaire permanent, donc hors registre #275) — les .tla ne sont
+      // pas convertis par le pipeline (#287).
+      if (args.scene === undefined) {
+        return {
+          kind: "noop",
+          command: "playtimeline",
+          reason: "variante frame= sans scene= (timeline .tla non convertie) — tolérée (#287)",
+        };
+      }
       const next = args.next !== undefined ? parseIntArg(args.next, 0) : undefined;
       return { kind: "playtimeline", scene: parseIntArg(args.scene, 0), next };
     }
@@ -952,6 +961,15 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
     case "store":
       // @store (KAG3) : autorise/interdit la sauvegarde et le chargement (défaut : activé).
       return { kind: "store", enabled: args.enabled === undefined || (args.enabled !== "0" && args.enabled !== "false") };
+    // No-ops justifiés du registre #275 (effet "aucun", issue #287) : le parser les reconnaît
+    // explicitement pour ne pas émettre de warning de commande inconnue. L'audit les classe
+    // « ignorée(s) volontairement » via le registre ; les raisons détaillées y sont centralisées.
+    case "settracerreturn":
+      return { kind: "noop", command: "settracerreturn", reason: "traceur debug : script système sp2.ks non chargé par le player (#287)" };
+    case "startchart":
+      return { kind: "noop", command: "startchart", reason: "carte de fin de chapitre .gc non modélisée ; scripts système non chargés (#287)" };
+    case "loadtimeline":
+      return { kind: "noop", command: "loadtimeline", reason: "timelines .tla non converties ; menutest.ks non chargé (#287)" };
     case "action": {
       // @action (tagex.tjs, override/action.tjs) : action animée d'un calque par module.
       // Seul LayerNormalMoveModule a une sémantique complète (startx/x, starty/y, time).

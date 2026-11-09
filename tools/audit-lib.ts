@@ -262,6 +262,16 @@ export async function auditScript(
   const warnings: string[] = [];
   runtime.onWarning = (msg: string) => warnings.push(msg);
 
+  // No-ops déclarés : comptés sur les commandes réellement exécutées (le parser les reconnaît
+  // désormais en `noop`, sans warning). Le registre #275 reste la source de vérité.
+  const ignoredCommands: Record<string, number> = {};
+  runtime.onCommand = (command: string) => {
+    const name = normalizeCommandName(command);
+    if (IGNORED_COMMANDS_BY_NAME.has(name)) {
+      ignoredCommands[name] = (ignoredCommands[name] ?? 0) + 1;
+    }
+  };
+
   // ScriptLoader qui lit les scripts référencés depuis le cache texte.
   runtime.scriptLoader = async (storage: string) => {
     try {
@@ -316,18 +326,15 @@ export async function auditScript(
 
   const durationMs = Math.round(performance.now() - start);
 
-  // Classer les commandes non gérées : no-op déclaré (registre) ou inconnue.
+  // Inconnues : uniquement les warnings hors registre (les no-ops déclarés sont comptés par
+  // `onCommand` ci-dessus, y compris les commandes encore lues en `raw` comme autocache/deffont).
   const unknownCommands: Record<string, number> = {};
-  const ignoredCommands: Record<string, number> = {};
   for (const w of warnings) {
     const match = w.match(/commande non gérée: @(\S+)/);
     if (!match) continue;
     const name = normalizeCommandName(match[1]);
-    if (IGNORED_COMMANDS_BY_NAME.has(name)) {
-      ignoredCommands[name] = (ignoredCommands[name] ?? 0) + 1;
-    } else {
-      unknownCommands[name] = (unknownCommands[name] ?? 0) + 1;
-    }
+    if (IGNORED_COMMANDS_BY_NAME.has(name)) continue;
+    unknownCommands[name] = (unknownCommands[name] ?? 0) + 1;
   }
   // « Implémentée » = rencontrée et sans warning (le total inclut les compteurs
   // inconnus/ignorés, donc on les retranche par occurrence).
