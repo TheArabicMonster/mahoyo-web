@@ -118,7 +118,6 @@ describe.skipIf(!hasChain)("Enchaînement de l'histoire (vrais assets)", () => {
     }
 
     // Résumé chiffré, sans texte du jeu.
-    // eslint-disable-next-line no-console
     console.log(`\nHistoire jouée : ${played.length} scripts, de ${played[0]} à ${played[played.length - 1]}\n`);
 
     expect(errors).toEqual([]);

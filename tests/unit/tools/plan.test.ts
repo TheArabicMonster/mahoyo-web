@@ -13,7 +13,7 @@ function makeEntry(
   return {
     source: `/input/${relPath}`,
     relPath,
-    kind: kind as any,
+    kind: kind as InventoryEntry["kind"],
     ext,
     key,
     webPath: `${kind}/${key}${ext}`,

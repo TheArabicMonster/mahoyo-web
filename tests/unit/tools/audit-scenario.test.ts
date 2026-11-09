@@ -8,6 +8,7 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { auditScript, formatMarkdownReport, isEncrypted } from "../../../tools/audit-scenario.js";
 import type { AuditReport } from "../../../tools/audit-scenario.js";
+import type { AssetManifest } from "../../../src/core/asset-manifest.js";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 
@@ -123,7 +124,7 @@ Inside sub.[l]
 @play storage=missing_bgm
 `);
     const cache = makeScriptCache({});
-    const manifest = { images: {}, audio: {} } as any;
+    const manifest: AssetManifest = { version: 1, generatedAt: "", images: {}, audio: {}, scenarios: {} };
     const result = await auditScript(path, "assets.ks", manifest, cache, TEST_MAX_STEPS);
 
     expect(result.missingAssets).toContain("image:missing_bg");

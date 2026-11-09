@@ -5,8 +5,8 @@
  * classe chaque fichier par kind (bg, image, rule, bgm, se, scenario, other),
  * et calcule la clé de storage normalisée et le chemin de sortie web.
  */
-import { extname, basename, join, relative, resolve } from "path";
-import { readdirSync, statSync } from "fs";
+import { extname, join, relative, resolve } from "path";
+import { readdirSync } from "fs";
 import { storageKey } from "../src/core/storage-key.js";
 import type { AssetKind } from "../src/core/asset-manifest.js";
 

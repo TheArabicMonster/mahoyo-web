@@ -584,7 +584,6 @@ describe("DomStageRenderer", () => {
     expect(elA1).not.toBeNull();
     expect(elB1).not.toBeNull();
     const identityA = elA1;
-    const identityB = elB1;
 
     // 2ᵉ scène : A déplacé (même id), B retiré, C ajouté.
     await renderer.apply(
@@ -610,7 +609,6 @@ describe("DomStageRenderer", () => {
 
   it("la transition est non-bloquante et waitFor la résout", async () => {
     const sig = () => new AbortController().signal;
-    const t0 = performance.now();
     await renderer.apply(
       [{ kind: "scene", scene: { bg: "old", sprites: [], effect: null }, transition: { method: "none" } }],
       { instant: true, signal: sig() },

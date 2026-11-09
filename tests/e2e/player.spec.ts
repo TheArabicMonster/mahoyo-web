@@ -5,7 +5,7 @@ test.describe("Player e2e", () => {
   test("démarre le prologue et affiche la scène + le texte", async ({ page }) => {
     // Intercepter et geler les animations WAAPI avant que le player ne démarre.
     await page.addInitScript(() => {
-      // @ts-ignore
+      // @ts-ignore: stub de test — signature volontairement réduite de WAAPI
       window.Element.prototype.animate = function () {
         return { play: () => this, pause: () => this, cancel: () => this, finish: () => this, onfinish: null };
       };
@@ -76,7 +76,7 @@ test.describe("Player e2e", () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     // Animations figées : WAAPI neutralisée et mouvement réduit (transitions HUD instantanées).
     await page.addInitScript(() => {
-      // @ts-ignore
+      // @ts-ignore: stub de test — signature volontairement réduite de WAAPI
       window.Element.prototype.animate = function () {
         return { play: () => this, pause: () => this, cancel: () => this, finish: () => this, onfinish: null };
       };

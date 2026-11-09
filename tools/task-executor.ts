@@ -12,8 +12,7 @@
  * (écriture atomique) pour éviter les fichiers tronqués en cas de crash.
  */
 import { copyFile, mkdir, rename, writeFile } from "fs/promises";
-import { existsSync } from "fs";
-import { dirname, join } from "path";
+import { dirname } from "path";
 import { runCommand } from "./command-template.js";
 import { normalizeScriptText } from "./normalize-ks.js";
 import { decodeKs } from "./ks-encoding.js";
@@ -43,7 +42,7 @@ export async function executeTask(task: Task, dryRun: boolean): Promise<TaskResu
         break;
 
       case "convert-image":
-      case "convert-audio":
+      case "convert-audio": {
         // TLG sans outil externe : décodeur intégré (TLG0.0 / TLG5), écriture PNG.
         if (!task.commandTemplate && task.action === "convert-image" && task.entry.ext === ".tlg") {
           await convertTlgFile(task.entry.source, task.outputPath);
@@ -61,13 +60,15 @@ export async function executeTask(task: Task, dryRun: boolean): Promise<TaskResu
         await runCommand(task.commandTemplate, task.entry.source, tmpPath);
         await rename(tmpPath, task.outputPath);
         break;
+      }
 
-      case "transcode-ks":
+      case "transcode-ks": {
         const buffer = readFileSync(task.entry.source);
         const decoded = decodeKs(buffer);
         const text = normalizeScriptText(decoded.text);
         await writeFile(task.outputPath, text, "utf-8");
         break;
+      }
     }
 
     return { task, status: "ok", actualOutputPath: task.outputPath };

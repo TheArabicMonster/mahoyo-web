@@ -55,7 +55,6 @@ export type BuildCgCatalogOptions = {
 
 /** Dossiers sources (pipeline, `docs/PIPELINE.md`) : `fg/` = sprites, pas des CG. */
 const SPRITE_DIR = "fg/";
-const EVENT_DIR = "image/";
 const BACKGROUND_DIR = "bg/";
 
 function normalizedSource(source: string): string {

@@ -11,7 +11,7 @@ Ce dépôt contient le **projet réel** : un player web moderne et maintenable p
 - Phases actives : **E7 — Projet réel**, **E5 — UI/UX** (refonte HUD) et **E6 — QA**.
 - Le player lit le corpus narratif, gère les choix, l'historique, les sauvegardes et un écran de configuration complet.
 - Dernières livraisons (vague 4, 9 novembre) : routes d'URL des écrans (#204), historique plein cadre avec toast « historique vide » (#201), gestes tactiles et barre d'actions rapides (#203), sous-menu Extra et Archive (#199), configuration au design d'origine (#200), interactions du flowchart — pan, zoom, volet de détails (#202).
-- Vérification locale : `npm run test:unit` (**1662 tests**), `npm run test:integration` (**27 tests**) et `npm run build` passent. `npm run lint` attend la migration ESLint 9 (#220).
+- Vérification locale : `npm run test:unit` (**1939 tests**), `npm run test:integration` (**27 tests**), `npm run lint` et `npm run build` passent.
 
 Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 
@@ -64,6 +64,7 @@ npm run preview
 | `npm run test:unit` | Vitest, code et composants |
 | `npm run test:integration` | fixtures de scénario (lecture complète, traduction) |
 | `npm run test:e2e` | Playwright, player dans un vrai navigateur (voir ci-dessous) |
+| `npm run lint` | ESLint 9 (flat config) sur `src/`, `tools/`, `tests/` et les configs (voir [`docs/LINT.md`](docs/LINT.md)) |
 
 ### Tests end-to-end (Playwright)
 
@@ -309,7 +310,6 @@ Détail complet : [`docs/CONFIG_PLAN.md`](docs/CONFIG_PLAN.md).
 - La refonte des écrans HUD (titre, menu système, chargement, historique, flowchart) est suivie dans le backlog `HUD-xx`, `WEB-xx` et `FLOW-xx` ; la configuration est déjà refaite (#177), les autres écrans restent à aligner (#200).
 - Les sauvegardes et vignettes vivent dans IndexedDB (repli `localStorage`, puis mémoire) avec export/import JSON ; les boutons correspondants de l'écran de sauvegarde restent à faire (#196). En attendant : `mahoyoSaves.export()` / `mahoyoSaves.import()` dans la console du navigateur. Voir [`docs/SAUVEGARDES.md`](docs/SAUVEGARDES.md).
 - Le jeu est testé en CI sur Chrome (Chromium) **et** Firefox desktop (matrix Playwright) ; le mobile reste à valider (v1.1). Un écart Firefox connu est listé dans la section Tests.
-- `npm run lint` est indisponible tant que la configuration ESLint 9 n'est pas rétablie (#220).
 
 ## Documentation
 

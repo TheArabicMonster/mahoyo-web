@@ -149,7 +149,6 @@ describe.skipIf(!hasAssets)("Lecture complète du corpus KAG", () => {
 
     // Afficher seulement le résumé chiffré, jamais le texte original.
     const summary = buildSummary(report);
-    // eslint-disable-next-line no-console
     console.log(`\n${summary}\n`);
 
     // Garde-fou contre une classification qui écarterait des scripts à tort

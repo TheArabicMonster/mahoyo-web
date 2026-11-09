@@ -21,6 +21,7 @@ export class FakeBrowserHistory implements RouterHost {
   }
 
   get location() {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- getter d'objet : `this` désigne l'objet retourné, pas l'instance
     const self = this;
     return {
       get hash() {
@@ -36,6 +37,7 @@ export class FakeBrowserHistory implements RouterHost {
   }
 
   get history() {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- getter d'objet : `this` désigne l'objet retourné, pas l'instance
     const self = this;
     return {
       get state() {

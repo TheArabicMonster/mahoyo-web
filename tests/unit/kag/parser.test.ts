@@ -5,8 +5,8 @@ import { parse } from "@/kag/parser.js";
 const SAMPLE = `
 *page0|
 @bg time=100 rule=crossfade storage=black
-　その子の影になったのは８年前の冬のこと。[l][r]
-　彼女がはじめて命に[ruby text=ふ]触れた。
+\u3000その子の影になったのは８年前の冬のこと。[l][r]
+\u3000彼女がはじめて命に[ruby text=ふ]触れた。
 @pg
 *page1|
 @fg storage=青子 center=512 vcenter=288 index=1000
@@ -290,7 +290,7 @@ describe("parse", () => {
       expect(macro.rawTokens.length).toBeGreaterThanOrEqual(1);
       const evalToken = macro.rawTokens.find((t) => t.type === "command");
       expect(evalToken).toBeDefined();
-      expect((evalToken as any)?.name).toBe("eval");
+      expect(evalToken?.type === "command" ? evalToken.name : undefined).toBe("eval");
     }
   });
 

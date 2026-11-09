@@ -56,11 +56,6 @@ const DISCRETE_FIELDS = new Set([
   "blury",
 ]);
 
-/** True si la prop est continue (interpolable). */
-function isContinuous(field: string): boolean {
-  return field === "center" || field === "vcenter" || field === "opacity" || field === "zoomx" || field === "zoomy" || field === "rotate";
-}
-
 /**
  * Complète chaque keyframe avec les props continues de la keyframe précédente.
  * Garantit que les listes de fonctions transform sont identiques d'une keyframe

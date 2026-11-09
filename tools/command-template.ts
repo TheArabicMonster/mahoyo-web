@@ -8,7 +8,6 @@
  */
 import { execFile } from "child_process";
 import { existsSync } from "fs";
-import { access } from "fs/promises";
 import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);

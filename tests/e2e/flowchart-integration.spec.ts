@@ -59,7 +59,6 @@ const progress = {
 
 const overlay = (page: Page) => page.locator("#ui-overlay");
 const hash = (page: Page) => page.evaluate(() => location.hash);
-const stageNodes = (page: Page) => page.locator(".mh-flow-stage .mh-flow-node");
 
 /** Ouvre le jeu sur l'écran titre avec les fixtures (aucun asset du jeu requis). */
 async function boot(page: Page): Promise<void> {

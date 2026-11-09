@@ -10,7 +10,6 @@ import type {
   ConfirmOptions,
   GameLanguage,
   GameSettings,
-  OverlayScreen,
   PlayerCommands,
   PlayerStatus,
   SaveSlot,

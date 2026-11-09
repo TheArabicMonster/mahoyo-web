@@ -54,15 +54,14 @@ describe("Pipeline integration", () => {
   it("génère le manifest et les fichiers de sortie", async () => {
     const { inputDir, outputDir, workDir } = setupFixture();
 
-    const report = await runPipeline({
+    await runPipeline({
       inputDir,
       outputDir,
       workDir,
       dryRun: false,
-      copyWavIfNoEncoder: true,
       strict: false,
       force: true,
-    } as any);
+    });
 
     // Vérifier que le manifest existe.
     const manifestPath = join(outputDir, "asset-manifest.json");
@@ -103,10 +102,9 @@ describe("Pipeline integration", () => {
       outputDir,
       workDir,
       dryRun: false,
-      copyWavIfNoEncoder: true,
       strict: false,
       force: true,
-    } as any);
+    });
 
     // Lire le manifest.
     const manifestPath = join(outputDir, "asset-manifest.json");
@@ -129,15 +127,14 @@ describe("Pipeline integration", () => {
   it("dry-run n'écrit aucun fichier", async () => {
     const { inputDir, outputDir, workDir } = setupFixture();
 
-    const report = await runPipeline({
+    await runPipeline({
       inputDir,
       outputDir,
       workDir,
       dryRun: true,
-      copyWavIfNoEncoder: true,
       strict: false,
       force: true,
-    } as any);
+    });
 
     // Aucun fichier ne doit exister dans outputDir.
     expect(existsSync(join(outputDir, "asset-manifest.json"))).toBe(false);
@@ -153,10 +150,9 @@ describe("Pipeline integration", () => {
       outputDir,
       workDir,
       dryRun: false,
-      copyWavIfNoEncoder: true,
       strict: false,
       force: true,
-    } as any);
+    });
 
     // Le rapport de vérification doit exister.
     expect(report.verification).toBeDefined();
@@ -206,7 +202,7 @@ describe("Pipeline integration — E1 (extraction, erreurs, sorties)", () => {
       strict: false,
       force: true,
       xp3Command: `"${process.execPath}" "${extractor}" {in} {out}`,
-    } as any);
+    });
 
     expect(report.inventoryCount).toBe(3);
     expect(existsSync(join(workDir, "extracted", "data", "bg", "night.png"))).toBe(true);
@@ -232,7 +228,7 @@ describe("Pipeline integration — E1 (extraction, erreurs, sorties)", () => {
       dryRun: false,
       strict: false,
       force: true,
-    } as any);
+    });
 
     expect(report.results.failed).toBe(1);
     expect(report.failedTasks).toHaveLength(1);
@@ -256,7 +252,7 @@ describe("Pipeline integration — E1 (extraction, erreurs, sorties)", () => {
           dryRun: false,
           strict: false,
           force: true,
-        } as any),
+        }),
       ).rejects.toThrow(/ignoré par git/);
       expect(existsSync(unsafeOutput)).toBe(false);
     } finally {

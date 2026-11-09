@@ -5,7 +5,7 @@
  * Page boundaries are: @pg/[p] (page break), end of input.
  */
 
-import type { AnimationDef, AppearanceArgs, CropSpec, Instruction, ParsedScript, TextSegment, TextStyle, Token, TransformArgs } from "./types.js";
+import type { AppearanceArgs, CropSpec, Instruction, ParsedScript, TextSegment, TextStyle, Token, TransformArgs } from "./types.js";
 import { storageKey } from "@/core/storage-key.js";
 import { parseActionKeys } from "./action.js";
 

@@ -129,7 +129,6 @@ describe.skipIf(!hasTimelines)("Après l'ouverture (vrais assets)", () => {
     // s'affichaient à leur taille d'origine, à une position qui ne correspond qu'à l'image zoomée.
     expect(zoomedBg.length).toBeGreaterThan(0);
     expect(zoomedSprites.length).toBeGreaterThan(0);
-    // eslint-disable-next-line no-console
     console.log(`\nAprès l'ouverture : ${pages.length} pages, ${zoomedBg.length} avec un fond zoomé/tourné, ${zoomedSprites.length} sprites zoomés/tournés`);
   });
 });

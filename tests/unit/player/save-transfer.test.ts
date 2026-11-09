@@ -4,7 +4,6 @@ import { createSaveStore } from "@/player/save-store-idb.js";
 import { createMemorySaveStore, type SaveRecord, type SaveStore } from "@/player/save-store.js";
 import {
   exportSaves,
-  importSaves,
   importSavesFromText,
   parseSaveExport,
   serializeSaveExport,

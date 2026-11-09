@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";
-import { Runtime, createRuntimeState } from "@/kag/runtime.js";
+import { Runtime } from "@/kag/runtime.js";
 import type { RenderEvent } from "@/kag/events.js";
 
 function textOf(events: readonly RenderEvent[]): string {
