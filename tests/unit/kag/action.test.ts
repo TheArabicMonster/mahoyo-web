@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseActionKeys,
+  parseNoiseActKeys,
   parsePropHeaders,
   splitKeyframes,
   SAMPLE_FGACT,
@@ -118,5 +119,35 @@ describe("parseActionKeys", () => {
     // -unknown ignoré (discret inconnu), center="b"/"d" → parseInt NaN → undefined.
     expect(kfs[0].center).toBeUndefined();
     expect(kfs[1].center).toBeUndefined();
+  });
+});
+
+describe("parseNoiseActKeys (@noiseact, #281)", () => {
+  it("parse l'exemple réel de wik_x-2.ks avec carry et props discrètes", () => {
+    const frames = parseNoiseActKeys(
+      "(0,0,l,0,1900,50,play,1)(500,,n,,,,,)",
+      "-monocro,absolute,opacity,-status,-visible",
+    );
+    expect(frames).toEqual([
+      { time: 0, duration: 0, interp: "l", opacity: 50, monocro: false, visible: true, status: "play", absolute: 1900 },
+      { time: 500, duration: 500, interp: "n", opacity: 50, monocro: false, visible: true, status: "play", absolute: 1900 },
+    ]);
+  });
+
+  it("propage les valeurs non précisées et applique les props discrètes", () => {
+    const frames = parseNoiseActKeys(
+      "(0,0,l,1,128,1,play)(100,,n,)(200,,l,0,0)",
+      "-monocro,opacity,-visible,-status",
+    );
+    expect(frames.map((f) => [f.time, f.opacity, f.monocro, f.visible, f.status])).toEqual([
+      [0, 128, true, true, "play"],
+      [100, 128, true, true, "play"],
+      [200, 0, false, true, "play"],
+    ]);
+  });
+
+  it("sans keys : aucune keyframe", () => {
+    expect(parseNoiseActKeys(undefined, "opacity")).toEqual([]);
+    expect(parseNoiseActKeys("", "opacity")).toEqual([]);
   });
 });
