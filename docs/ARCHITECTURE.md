@@ -203,7 +203,10 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
   placeholders (défaut, CI incluse), `tests/e2e/placeholders.ts` génère un jeu d'assets synthétique
   déterministe sous `$MAHOYO_E2E_ASSETS/assets/` : manifeste minimal, PNG générés, quatre scripts KAG
   originaux (prologue, deux voies, chapitre 2) et une `story-chain.json` qui fait se terminer le
-  prologue sur un **choix** puis enchaîne les chapitres. Aucun asset du jeu n'est lu ni commité.
+  prologue sur un **choix** puis enchaîne les chapitres. L'ouverture du prologue reprend la géométrie
+  du vrai `1-0.ks` (`@bg` noir puis `@partbg center=748 width=522 height=576 srcleft=542`, image
+  1120×672) pour couvrir la bounding box des calques `partbg` (#70). Aucun asset du jeu n'est lu ni
+  commité.
 - `MAHOYO_E2E_REAL_ASSETS=1` sert de vrais assets (`MAHOYO_E2E_ASSETS` pointe vers un dossier
   contenant `assets/`) ; utile pour vérifier le rendu avec les vrais assets, sans être nécessaire à
   la suite (le retour au titre est corrigé depuis #231).

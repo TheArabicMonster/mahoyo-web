@@ -151,10 +151,43 @@ function pagesFor(marker: string, count: number): string {
   return `${pages.join("\n")}\n@return\n`;
 }
 
+/**
+ * Ouverture du prologue (#70) : géométrie du `@partbg` du vrai `1-0.ks`, relevée avec
+ * `npm run trace:visual -- 1-0.ks` (le vrai script reste local, non commité).
+ *
+ * `@partbg … center=748 width=522 height=576 srcleft=542` sur une image de fond 1120×672 :
+ * le wrapper occupe x ∈ [487, 1009] et y ∈ [0, 576] dans le repère logique du stage (1024×576),
+ * et l'image interne, décalée de -542 px, couvre tout le cadre (rect source x[542, 1064]).
+ */
+export const PLACEHOLDER_OPENING = {
+  center: 748,
+  vcenter: 288,
+  width: 522,
+  height: 576,
+  srcLeft: 542,
+  /** Dimensions de l'image placeholder de fond de l'opening (mêmes proportions que les bg convertis). */
+  imageWidth: 1120,
+  imageHeight: 672,
+} as const;
+
+/**
+ * Commandes d'ouverture du prologue : `@bg` noir puis `@partbg`, écrits directement sur la page
+ * `fore`. Le vrai `1-0.ks` passe par un trans implicite `back → fore` (`time=800`) ; ici on écrit
+ * sur `fore` pour éviter toute animation (stabilité e2e) tout en gardant la même géométrie.
+ */
+function prologueOpening(): string {
+  return [
+    "@bg page=fore time=0 rule=crossfade storage=black",
+    "@partbg page=fore rule=crossfade time=0 storage=partbg" +
+      ` srcleft=${PLACEHOLDER_OPENING.srcLeft} index=1000 width=${PLACEHOLDER_OPENING.width}` +
+      ` height=${PLACEHOLDER_OPENING.height} center=${PLACEHOLDER_OPENING.center} id=pb1 bgstorage=black`,
+  ].join("\n");
+}
+
 /** Les quatre scripts du parcours complet (textes originaux, aucun asset du jeu). */
 function placeholderScripts(): Record<string, string> {
   return {
-    "1-0.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES),
+    "1-0.ks": `${prologueOpening()}\n${pagesFor(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES)}`,
     "1-1a.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieA, PLACEHOLDER_CHAPTER_PAGES),
     "1-1b.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieB, PLACEHOLDER_CHAPTER_PAGES),
     "2-0.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.chapitre2, PLACEHOLDER_CHAPTER_PAGES),
@@ -173,6 +206,9 @@ function placeholderManifest(): string {
         black: image("bg/black.png"),
         white: image("bg/white.png"),
         placeholder: image("image/placeholder.png"),
+        // Image de fond de l'opening (#70) : dimensions natives d'un bg converti (1120×672), pour
+        // que le crop `@partbg srcleft=542 width=522` montre bien une zone de l'image.
+        partbg: image("image/partbg.png"),
         txtwindow02: image("image/txtwindow02.png"),
         linebreak_a: image("image/linebreak_a.png"),
         pagebreak_a: image("image/pagebreak_a.png"),
@@ -195,10 +231,20 @@ function placeholderManifest(): string {
 export function generatePlaceholderAssets(publicDir: string): number {
   const assets = join(publicDir, "assets");
 
-  // Fond et sprites : PNG 1×1 (les placeholders ne sont pas jugés sur leur contenu).
+  // Fond et sprites : PNG uni (les placeholders ne sont pas jugés sur leur contenu).
   writePng(join(assets, "bg", "black.png"), 1, 1, 0, 0, 0);
   writePng(join(assets, "bg", "white.png"), 1, 1, 255, 255, 255);
   writePng(join(assets, "image", "placeholder.png"), 1, 1, 255, 0, 0);
+  // Image de fond de l'opening du prologue (#70) : dimensions natives 1120×672, nécessaires pour
+  // que le rect source du `@partbg` (srcleft=542, width=522) reste dans l'image et couvre le cadre.
+  writePng(
+    join(assets, "image", "partbg.png"),
+    PLACEHOLDER_OPENING.imageWidth,
+    PLACEHOLDER_OPENING.imageHeight,
+    32,
+    48,
+    64,
+  );
   // Cadre de la fenêtre de message par défaut (#182) : sans lui, le player retombe sur l'ancienne
   // boîte. Vrai PNG, résolu par le manifeste (`txtwindow02` → `image/txtwindow02.png`).
   writePng(join(assets, "image", "txtwindow02.png"), 1, 1, 0, 0, 0);
@@ -216,5 +262,6 @@ export function generatePlaceholderAssets(publicDir: string): number {
   writeFileSync(join(assets, "story-chain.json"), JSON.stringify(PLACEHOLDER_CHAIN, null, 2));
   writeFileSync(join(assets, "asset-manifest.json"), placeholderManifest());
 
-  return 10 + Object.keys(scripts).length + 1;
+  // 7 PNG + partbg + 5 scripts/manifest = 13 fichiers (utile aux diagnostics).
+  return 11 + Object.keys(scripts).length + 1;
 }
