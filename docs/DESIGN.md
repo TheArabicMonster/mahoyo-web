@@ -201,6 +201,20 @@ Tokens proposés : `--mh-dur-fast: 150ms`, `--mh-dur-menu: 270ms`, `--mh-dur-fad
 `--mh-dur-scene-out: 1200ms`, `--mh-dur-scene-in: 850ms`, `--mh-ease: linear`. Avec `prefers-reduced-motion`,
 toutes ces durées tombent à 0 sauf la frappe du texte.
 
+> **Transitions plein écran (HUD-14, #205).** Mise en œuvre dans `src/ui/transitions.ts` (séquencement) et
+> `src/ui/transitions.css` (rideau et écran de chargement, CSS pur), branchés dans `player.ts` par trois appels :
+> `beginScript` (titre → jeu, ou chargement → scène depuis la partie), `returnToTitle` (jeu → titre) et `load`
+> (chargement → scène). Un rideau `#ui-transition` (`.mh-ui-transition`, z-index 250, dans `#ui-overlay`) passe par
+> les phases `out` → `black` → `in` → `idle` : fondu noir **1,2 s** puis noir **0,2 s** puis scène **0,85 s**
+> (titre → jeu), **0,4 s / 0,1 s / 0,8 s** (jeu → titre), **0,4 s** puis **0,85 s** (chargement → scène, ≈ 1 s de noir
+> au total). Les durées ne sont pas codées en JS : `transitions.css` pose `--mh-transition-out/-in/-hold` en
+> `var(--mh-dur-scene-out)` etc., le module les lit par `getComputedStyle`. Le fondu démarre **avec** le
+> préchargement : quand les assets sont prêts pendant le fondu, le noir entièrement opaque ne dure que 0,2 s
+> (critère « pas de noir prolongé > 1 s », testé à l'horloge simulée). Si le chargement depasse le fondu,
+> `#ui-loading` (z-index 300, au-dessus du rideau) affiche un indicateur stylé, CSS pur, sans texte ni asset ; son
+> apparition est retardée pour ne pas clignoter sur une scène déjà prête. Sous `prefers-reduced-motion`, tokens à 0 ms
+> et module sans minuteur : aucune transition, aucun flash noir. Le détail est en §9.12.
+
 ## 8. États des composants
 
 | Composant | Repos | Survol | Actif / sélectionné | Désactivé | Focus clavier |
@@ -397,6 +411,26 @@ Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le 
 - **Curseurs** : `grab` / `grabbing` sur la carte, `pointer` seulement sur les nœuds ouverts ; silhouettes et nœuds révélés non visités gardent le curseur de la carte.
 - **Mouvement** : le zoom est instantané ; le centrage défile en douceur sauf sous `prefers-reduced-motion` (instantané) ; l'animation d'ouverture de l'écran est supprimée dans ce mode.
 - **Tactile** : `touch-action: none` sur la carte (le glissement et le pincement passent par les pointer events) ; cibles de 44 px.
+
+### 9.12 Transitions plein écran (`src/ui/transitions.ts`, HUD-14 / #205)
+
+`src/ui/transitions.ts` (séquencement et lecture des durées) + `src/ui/transitions.css` (rideau, phases, écran de chargement) ; branchement minimal dans `player.ts` (trois appels et une dépendance injectable, `PlayerDeps.transitions`). CSS pur, aucun asset, aucune URL. Lecture des mesures : `ANALYSE_HUD_ORIGINAL.md` §2.12 et §7 ci-dessus, écart E23.
+
+- **Rideau** : `#ui-transition` (`.mh-ui-transition`, `aria-hidden="true"`) créé dans `#ui-overlay` — ou dans la racine du player s'il n'y a pas d'overlay. `position: absolute; inset: 0; z-index: 250`, noir opaque, `pointer-events: auto` pendant la transition (il bloque les clics), `none` au repos. L'ordre d'empilement reste celui de `layout.md` : interface 100 < toasts 200 < rideau 250 < `#ui-loading` 300.
+- **Phases** : `data-phase` = `idle` → `out` (opacité 0 → 1, `--mh-transition-out`) → `black` (opacité 1, aucun fondu, plateau `--mh-transition-hold`) → `in` (opacité 1 → 0, `--mh-transition-in`) → `idle`. Deux moments distincts sont exposés : `transition.black` (promesse résolue quand le noir est complet, utilisée par le player pour **échanger les écrans** — la scène ou le titre n'apparaît jamais pendant le fondu) puis `reveal()` (appelé une fois le préchargement terminé, après le plateau noir). Le fondu au noir tourne **pendant** `getScript`/`restore`, ce qui évite le noir prolongé quand les assets sont prêts.
+- **Durées par type** (`data-kind`), toutes en `var(--mh-dur-*)` de `tokens.css` :
+
+  | `data-kind` | `out` | `hold` | `in` | Mesures |
+  |---|---|---|---|---|
+  | `title-to-game` (défaut) | `--mh-dur-scene-out` (1200 ms) | 200 ms | `--mh-dur-scene-in` (850 ms) | §2.12 : 1,2 s / 0,2 s / 0,85 s |
+  | `game-to-title` | `--mh-dur-fade-out` (400 ms) | 100 ms | `--mh-dur-fade-in` (800 ms) | §2.12 : 0,4 s / 0,1 s / 0,8 s |
+  | `loading-to-scene` | `--mh-dur-fade-out` (400 ms) | 0 ms | `--mh-dur-scene-in` (850 ms) | §2.12 : ≈ 1 s avec la scène |
+
+  `--mh-transition-hold` n'est pas une durée d'animation : le CSS la déclare pour que le module la lise par `getComputedStyle` (une seule source de vérité). `FALLBACK_TIMINGS` (TS) ne sert qu'en l'absence de feuille de style ; `tests/unit/ui/transitions-css.test.ts` vérifie qu'il reste égal aux tokens et que le CSS ne fige aucune durée en dur.
+- **Branchement** : `beginScript` choisit `title-to-game` si le player est sur le titre, sinon `loading-to-scene` ; `returnToTitle` fait `game-to-title` (aucun fondu si l'on est déjà sur le titre) ; `load` fait `loading-to-scene` (le rollback, qui passe aussi par `restoreEntry`, reste sans fondu). Une transition en cours est interrompue par `start()` et `cancel()` est appelé si le chargement échoue : aucun minuteur orphelin, aucun rideau bloqué. Sous `prefers-reduced-motion`, le module n'ouvre pas de transition (tokens à 0 ms, aucun minuteur).
+- **Écran de chargement** : `#ui-loading` (créé par `ui-manager`, visible quand les entrées sont bloquées) reste au-dessus du rideau ; pendant la transition son voile `rgba(0,0,0,.5)` devient transparent et son pseudo-élément `::before` dessine un anneau de 28 px (bordure `--mh-panel-border-light`, segment `--mh-cyan-glint`, lueur `color-mix`, rotation de 1,1 s) qui n'apparaît qu'après `--mh-loading-delay` (fin du fondu), donc pas de clignotement sur une scène déjà prête. Aucun libellé en dur (pas de clé i18n) ; sous `prefers-reduced-motion`, ni rotation ni apparition.
+- **Tests** : `tests/unit/ui/transitions.test.ts` (horloge simulée : phases et durées exactes, noir ≤ 1 s quand les assets sont prêts, attente d'assets lents, `prefers-reduced-motion` sans minuteur, interruption, `dispose`), `transitions-css.test.ts` (tokens, phases, écran de chargement, absence d'asset et de `!important`), `player.test.ts` (types de transition choisis et ordre `reveal`/affichage), `tests/e2e/transitions.spec.ts` (rideau rendu dans `#ui-overlay`, durées effectives calculées par le navigateur et `prefers-reduced-motion` émulé).
+- **Écarts connus** : le rôle `#ui-loading` est inchangé (il reste la couche qui bloque les entrées, pas un écran complet) ; le sous-menu Extra garde son propre fondu croisé de 1 s (HUD-08) ; les transitions d'écran internes (menu système 270 ms, confirmation 150 ms) ne passent pas par le rideau.
 
 ## 10. Accessibilité minimale à conserver
 

@@ -4,6 +4,7 @@ import { createMemorySaveStore } from "@/player/save-store.js";
 import { createMemorySettingsStore } from "@/player/settings-store.js";
 import { HistoryRouter } from "@/ui/router.js";
 import { FakeAudioPlayer } from "../mocks/fake-audio-player.js";
+import { FakeScreenTransitions } from "../mocks/fake-screen-transitions.js";
 import { FakeUIManager } from "../mocks/fake-ui-manager.js";
 import { FakeBrowserHistory } from "../mocks/fake-browser-history.js";
 import { RecordingStageRenderer } from "../renderer/recording-stage-renderer.js";
@@ -98,6 +99,7 @@ async function setup(initialHash = "", steps: Step[] = prologue as Step[]) {
     settingsStore: createMemorySettingsStore(),
     skipDelay: 1,
     router: new HistoryRouter(host),
+    transitions: new FakeScreenTransitions(),
   });
   current = player;
   await player.ready;

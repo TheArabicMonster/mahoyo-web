@@ -3,6 +3,7 @@ import { Player, type PlayerDeps, type RuntimeLike } from "@/ui/player.js";
 import { createMemorySaveStore, type SaveRecord } from "@/player/save-store.js";
 import { createMemorySettingsStore } from "@/player/settings-store.js";
 import { FakeAudioPlayer } from "../mocks/fake-audio-player.js";
+import { FakeScreenTransitions } from "../mocks/fake-screen-transitions.js";
 import { FakeUIManager } from "../mocks/fake-ui-manager.js";
 import { RecordingStageRenderer } from "../renderer/recording-stage-renderer.js";
 import { DEFAULT_AUDIO_SETTINGS, DEFAULT_DISPLAY_SETTINGS } from "@/renderer/types.js";
@@ -118,6 +119,7 @@ function setup(steps: Step[] = prologue as Step[], extra: Partial<PlayerDeps> = 
   const ui = new FakeUIManager();
   const saveStore = createMemorySaveStore();
   const settingsStore = extra.settingsStore ?? createMemorySettingsStore();
+  const transitions = new FakeScreenTransitions();
   const runtimes: ScriptedRuntime[] = [];
   const player = new Player({
     root: document.body,
@@ -133,9 +135,10 @@ function setup(steps: Step[] = prologue as Step[], extra: Partial<PlayerDeps> = 
     saveStore,
     settingsStore,
     skipDelay: 1,
+    transitions,
     ...extra,
   });
-  return { player, stage, audio, ui, saveStore, settingsStore, runtimes };
+  return { player, stage, audio, ui, saveStore, settingsStore, runtimes, transitions };
 }
 
 let current: Player | null = null;
@@ -1630,3 +1633,95 @@ describe("Player — événements de progression (flowchart)", () => {
   });
 });
 
+
+describe("Player — transitions plein écran (HUD-14, #205)", () => {
+  it("titre → jeu : démarre le fondu avec le préchargement, révèle après l'affichage de la scène", async () => {
+    const ctx = setup();
+    current = ctx.player;
+    await ctx.player.ready;
+    const viewsAtReveal: string[] = [];
+    ctx.transitions.onReveal = () => viewsAtReveal.push(ctx.ui.views.at(-1)?.screen ?? "");
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-click", "waiting-click");
+    expect(ctx.transitions.kinds).toEqual(["title-to-game"]);
+    expect(ctx.transitions.reveals).toBe(1);
+    expect(ctx.transitions.cancels).toBe(0);
+    expect(viewsAtReveal).toEqual(["game"]);
+    expect(ctx.transitions.active).toBe(0);
+  });
+
+  it("n'échange les écrans qu'une fois le noir complet (titre encore affiché pendant le fondu)", async () => {
+    const ctx = setup();
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.transitions.autoBlack = false;
+    ctx.player.startScript("t.ks");
+    expect(ctx.transitions.kinds).toEqual(["title-to-game"]);
+    expect(ctx.ui.views.at(-1)?.screen).toBe("title");
+    await until(
+      () => ctx.transitions.pendingBlack.length === 1 && ctx.player.currentState === "loading",
+      "préchargement",
+    );
+    await wait(5);
+    // Le script est chargé mais le rideau n'est pas encore noir : la scène ne doit pas être visible.
+    expect(ctx.ui.views.at(-1)?.screen).toBe("title");
+    ctx.transitions.pendingBlack.shift()!();
+    await until(() => ctx.player.currentState === "waiting-click", "waiting-click");
+    expect(ctx.ui.views.some((v) => v.screen === "game")).toBe(true);
+    expect(ctx.transitions.reveals).toBe(1);
+  });
+
+  it("chargement d'un chapitre depuis la partie : transition loading-to-scene", async () => {
+    const ctx = setup();
+    await start(ctx);
+    ctx.transitions.kinds = [];
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.transitions.reveals === 1, "reveal");
+    expect(ctx.transitions.kinds).toEqual(["loading-to-scene"]);
+  });
+
+  it("jeu → titre : game-to-title, révélé quand le titre est rendu", async () => {
+    const ctx = setup();
+    await start(ctx);
+    ctx.transitions.kinds = [];
+    ctx.transitions.reveals = 0;
+    const viewsAtReveal: string[] = [];
+    ctx.transitions.onReveal = () => viewsAtReveal.push(ctx.ui.views.at(-1)?.screen ?? "");
+    await ctx.player.returnToTitle();
+    expect(ctx.transitions.kinds).toEqual(["game-to-title"]);
+    expect(ctx.transitions.reveals).toBe(1);
+    expect(viewsAtReveal).toEqual(["title"]);
+    expect(ctx.player.currentState).toBe("title");
+  });
+
+  it("chargement d'une sauvegarde : loading-to-scene ; emplacement vide : aucune transition", async () => {
+    const ctx = setup();
+    await start(ctx);
+    await ctx.player.save(1);
+    await ctx.player.returnToTitle();
+    ctx.transitions.kinds = [];
+    ctx.transitions.reveals = 0;
+    await ctx.player.load(1);
+    expect(ctx.transitions.kinds).toEqual(["loading-to-scene"]);
+    expect(ctx.transitions.reveals).toBe(1);
+
+    ctx.transitions.kinds = [];
+    ctx.transitions.reveals = 0;
+    await ctx.player.load(3); // emplacement vide : toast, pas de fondu
+    expect(ctx.transitions.kinds).toEqual([]);
+    expect(ctx.transitions.reveals).toBe(0);
+  });
+
+  it("script introuvable : le rideau se lève quand même sur le titre réaffiché", async () => {
+    const ctx = setup([], { loadScript: async () => null });
+    current = ctx.player;
+    const viewsAtReveal: string[] = [];
+    ctx.transitions.onReveal = () => viewsAtReveal.push(ctx.ui.views.at(-1)?.screen ?? "");
+    ctx.player.startScript("absent.ks");
+    await until(() => ctx.transitions.reveals === 1, "reveal");
+    expect(ctx.transitions.kinds).toEqual(["title-to-game"]);
+    expect(ctx.transitions.cancels).toBe(0);
+    expect(viewsAtReveal).toEqual(["title"]);
+    expect(ctx.player.currentState).toBe("title");
+  });
+});
