@@ -10,13 +10,14 @@ describe("Approximation — @playtimeline variante de test (#295)", () => {
     // Variante de test de `menutest.ks` ; l'usage narratif (`scene=`) est couvert ailleurs.
     const parsed = parse(lex("*page0|\n@playtimeline frame=0\n@pg\n"));
     const first = parsed.pages[0]!.instructions[0]!;
-    expect(first).toMatchObject({ kind: "raw", command: "playtimeline" });
+    // #287 : no-op explicite (plus de commande brute), sans warning d'inconnue.
+    expect(first).toMatchObject({ kind: "noop", command: "playtimeline" });
     const warnings: string[] = [];
     const runtime = new Runtime(parsed, "menutest.ks");
     runtime.onWarning = (message) => warnings.push(message);
     const step = runtime.step();
     // Aucune animation/scène : la variante de test reste un no-op toléré (comportement figé).
     expect(step.events.some((e) => e.kind === "animate")).toBe(false);
-    expect(warnings.join(" ")).toContain("commande non gérée: @playtimeline");
+    expect(warnings.join(" ")).not.toContain("commande non gérée");
   });
 });
