@@ -35,6 +35,27 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
 
+      # Vérifie d'abord le comportement d'un checkout nu : les tests d'intégration se skippent
+      # proprement (aucun `public/assets`, exit 0) — non-régression du correctif #269.
+      - name: Integration tests skip cleanly without assets
+        run: npm run test:integration
+
+      # Génère un corpus de placeholders originaux (aucun asset du jeu) puis exécute la même logique
+      # de lecture complète que le corpus réel (DoD v1.0 : « la CI exécute la même logique de lecture
+      # avec des placeholders et reste verte »). Le corpus est paramétrable via
+      # MAHOYO_FULL_READ_SCRIPTS (défaut 221, taille du corpus de référence) ; il est écrit dans le
+      # dossier temporaire du runner et jamais commité.
+      - name: Generate placeholder corpus for full read
+        run: npm run corpus:full-read
+        env:
+          MAHOYO_E2E_ASSETS: ${{ runner.temp }}/mahoyo-full-read
+          MAHOYO_FULL_READ_SCRIPTS: "221"
+
+      - name: Full read of the placeholder corpus (221 scripts)
+        run: npm run test:full-read
+        env:
+          MAHOYO_ASSETS_DIR: ${{ runner.temp }}/mahoyo-full-read/assets
+
       - name: Check formatting (optional)
         run: npx prettier --check "src/**/*.ts" "tests/**/*.ts" "tools/**/*.ts" || true
 
