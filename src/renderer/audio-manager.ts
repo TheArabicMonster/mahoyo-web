@@ -199,6 +199,10 @@ type Voice = {
   paused: boolean;
   /** Appelé à la fin du son (naturelle, erreur ou arrêt). */
   waiters: Set<() => void>;
+  /** Attentes de fin de fondu (`@wb`), résolues à la fin du fondu ou à son interruption. */
+  fadeWaiters: Set<() => void>;
+  /** Canal d'origine quand la voix est détachée pour un fondu de sortie (`fading`). */
+  fadingChannel?: AudioChannel;
   onEnded: () => void;
   onError: () => void;
 };
@@ -297,6 +301,40 @@ export class WebAudioPlayer implements AudioPlayer {
       voice.waiters.add(done);
       signal.addEventListener("abort", done, { once: true });
     });
+  }
+
+  /**
+   * [wb] : résout à la fin du fondu BGM en cours (sortie ou changement de volume).
+   * Résout immédiatement si aucun fondu n'est actif. Une interruption (abort) libère l'attente.
+   */
+  waitForFade(channel: AudioChannel, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return Promise.resolve();
+    const candidates: Voice[] = [];
+    const current = this.voices.get(channel);
+    if (current?.cancelRamp) candidates.push(current);
+    for (const voice of this.fading) {
+      if (voice.fadingChannel === channel) candidates.push(voice);
+    }
+    if (candidates.length === 0) return Promise.resolve();
+    return Promise.all(candidates.map((voice) => this.waitVoiceFade(voice, signal))).then(() => {});
+  }
+
+  private waitVoiceFade(voice: Voice, signal: AbortSignal): Promise<void> {
+    if (!voice.cancelRamp) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const done = () => {
+        voice.fadeWaiters.delete(done);
+        signal.removeEventListener("abort", done);
+        resolve();
+      };
+      voice.fadeWaiters.add(done);
+      signal.addEventListener("abort", done, { once: true });
+    });
+  }
+
+  private wakeFadeWaiters(voice: Voice): void {
+    for (const wake of Array.from(voice.fadeWaiters)) wake();
+    voice.fadeWaiters.clear();
   }
 
   restore(snapshot: AudioSnapshot): void {
@@ -434,6 +472,7 @@ export class WebAudioPlayer implements AudioPlayer {
       suspended: this.suspended,
       paused: false,
       waiters: new Set(),
+      fadeWaiters: new Set(),
       onEnded: () => this.finish(channel, voice),
       onError: () => {
         // Dédoublonné par le résolveur : un seul avertissement par asset (#143).
@@ -472,6 +511,8 @@ export class WebAudioPlayer implements AudioPlayer {
   private release(voice: Voice): void {
     voice.cancelRamp?.();
     voice.cancelRamp = null;
+    this.wakeFadeWaiters(voice);
+    voice.fadingChannel = undefined;
     voice.audio.removeEventListener("ended", voice.onEnded);
     voice.audio.removeEventListener("error", voice.onError);
     voice.audio.pause();
@@ -501,6 +542,7 @@ export class WebAudioPlayer implements AudioPlayer {
     for (const wake of Array.from(voice.waiters)) wake();
     voice.waiters.clear();
     const gain = this.channelGain(channel);
+    voice.fadingChannel = channel;
     this.fading.add(voice);
     this.rampWith(
       voice,
@@ -564,9 +606,12 @@ export class WebAudioPlayer implements AudioPlayer {
   ): void {
     voice.cancelRamp?.();
     voice.cancelRamp = null;
+    // Un nouveau fondu remplace l'ancien : les attentes de fin de fondu sont libérées.
+    this.wakeFadeWaiters(voice);
 
     if (time <= 0) {
       apply(target);
+      this.wakeFadeWaiters(voice);
       onDone?.();
       return;
     }
@@ -582,6 +627,7 @@ export class WebAudioPlayer implements AudioPlayer {
         timer = setTimeout(tick, FADE_STEP_MS);
       } else {
         voice.cancelRamp = null;
+        this.wakeFadeWaiters(voice);
         onDone?.();
       }
     };

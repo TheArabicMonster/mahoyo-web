@@ -133,6 +133,12 @@ function parseTransformArgs(args: Record<string, string>): TransformArgs {
   return out;
 }
 
+/** Booléen KAG : `false`/`0` = false, toute autre valeur (ou absente si `defaultTrue`) = true. */
+function parseKagBool(value: string | undefined, defaultTrue = true): boolean {
+  if (value === undefined) return defaultTrue;
+  return value !== "0" && value !== "false";
+}
+
 /**
  * Apparence d'un calque : `type=` (mode de fusion), `effect=` (filtre), `blur=`/`xblur=`/`yblur=`
  * (flou de boîte), `brightness=`, `contrast=`. `effect=none`/vide = aucun filtre. Un axe de flou
@@ -462,6 +468,30 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         time: parseIntArg(args.time, 1000),
         volume: args.volume !== undefined ? parseIntArg(args.volume) : undefined,
       };
+    case "xchgbgm":
+      // KAG3 : échange de BGM avec fondu croisé (time/intime/outtime/overlap/volume).
+      return {
+        kind: "xchgbgm",
+        storage: normStorage(args.storage),
+        time: args.time !== undefined ? parseIntArg(args.time) : undefined,
+        intime: args.intime !== undefined ? parseIntArg(args.intime) : undefined,
+        outtime: args.outtime !== undefined ? parseIntArg(args.outtime) : undefined,
+        overlap: args.overlap !== undefined ? parseIntArg(args.overlap) : undefined,
+        volume: args.volume !== undefined ? parseIntArg(args.volume) : undefined,
+        loop: args.loop === undefined ? undefined : parseKagBool(args.loop),
+      };
+    case "clickskip":
+      // KAG3 : autorise/interdit le saut au clic (fin de texte, interruption d'effets).
+      return { kind: "clickskip", enabled: parseKagBool(args.enabled) };
+    case "cancelskip":
+      // KAG3 : annule l'état de skip courant.
+      return { kind: "cancelskip" };
+    case "effectskip":
+      // Override TYPE-MOON (tagex.tjs) : autorise/interdit le skip des effets.
+      return { kind: "effectskip", enabled: parseKagBool(args.enabled) };
+    case "wb":
+      // KAG3 : attend la fin du fondu BGM (impossible à interrompre par défaut).
+      return { kind: "waitfor", what: "bgmFade", skippable: args.canskip !== undefined && parseKagBool(args.canskip, false) };
     case "se":
       return {
         kind: "se",

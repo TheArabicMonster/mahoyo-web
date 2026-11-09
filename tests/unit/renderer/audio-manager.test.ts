@@ -313,3 +313,51 @@ describe("WebAudioPlayer", () => {
     });
   });
 });
+
+describe("WebAudioPlayer — waitForFade (@wb, #285)", () => {
+  const fadeOut = (channel: "bgm", time: number): AudioEvent => ({
+    kind: "stop",
+    channel,
+    fadeOut: time,
+  });
+
+  it("résout immédiatement sans fondu en cours", async () => {
+    await player.waitForFade("bgm", live);
+    player.apply(play("bgm", "m01", true), { instant: false });
+    await player.waitForFade("bgm", live);
+  });
+
+  it("attend la fin d'un fondu de sortie", async () => {
+    player.apply(play("bgm", "m01", true), { instant: false });
+    player.apply(fadeOut("bgm", 1000), { instant: false });
+    let done = false;
+    const p = player.waitForFade("bgm", live).then(() => (done = true));
+    await Promise.resolve();
+    expect(done).toBe(false);
+    // + une étape de fondu (16 ms) : la résolution se fait au tick qui atteint la cible.
+    await vi.advanceTimersByTimeAsync(1050);
+    await p;
+    expect(done).toBe(true);
+  });
+
+  it("attend la fin d'un fondu de volume (@fadebgm)", async () => {
+    player.apply(play("bgm", "m01", true), { instant: false });
+    player.apply({ kind: "fade", channel: "bgm", volume: 0.2, time: 500 }, { instant: false });
+    let done = false;
+    const p = player.waitForFade("bgm", live).then(() => (done = true));
+    await Promise.resolve();
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(550);
+    await p;
+    expect(done).toBe(true);
+  });
+
+  it("résout sur abort", async () => {
+    player.apply(play("bgm", "m01", true), { instant: false });
+    player.apply(fadeOut("bgm", 5000), { instant: false });
+    const ctrl = new AbortController();
+    const p = player.waitForFade("bgm", ctrl.signal);
+    ctrl.abort();
+    await p;
+  });
+});

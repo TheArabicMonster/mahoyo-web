@@ -249,10 +249,14 @@ export type Instruction =
   | { kind: "staffrollstart"; height: number; time: number }
   | { kind: "staffrolluninit" }
   | { kind: "staffrollsetting"; bgcolor?: string }
+  | { kind: "xchgbgm"; storage: string; time?: number; intime?: number; outtime?: number; overlap?: number; volume?: number; loop?: boolean }
+  | { kind: "clickskip"; enabled: boolean }
+  | { kind: "cancelskip" }
+  | { kind: "effectskip"; enabled: boolean }
   | { kind: "iscript" }
   | { kind: "endscript" }
   | { kind: "wait"; time: number; skippable?: boolean }
-  | { kind: "waitfor"; what: "transition" | "animation" | "quake" | "staffroll"; skippable?: boolean }
+  | { kind: "waitfor"; what: "transition" | "animation" | "quake" | "bgmFade" | "staffroll"; skippable?: boolean }
   | { kind: "text"; segments: TextSegment[] }
   | { kind: "break" }
   | { kind: "jump"; target?: string; storage?: string; cond?: string }

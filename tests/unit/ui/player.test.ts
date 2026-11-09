@@ -1985,3 +1985,86 @@ describe("Player — persistance complète (#91)", () => {
     expect(ctx2.player.currentState).toBe("waiting-click");
   });
 });
+
+describe("Player — skips scriptés (#285)", () => {
+  const step = (events: RenderEvent[], stop: Step["stop"]): Step => ({
+    position: { scriptName: "t.ks", page: 0, instruction: 0, segment: 0 },
+    events,
+    stop,
+  });
+
+  it("@clickskip enabled=0 : un clic pendant la frappe n'appelle pas hurry()", async () => {
+    const steps = [
+      step([{ kind: "skipSetting", clickSkip: false }, { kind: "text", segments: [{ text: "a" }] }], {
+        kind: "click",
+        style: "line",
+      }),
+    ];
+    const ctx = setup(steps);
+    current = ctx.player;
+    let release!: () => void;
+    ctx.stage.gate = new Promise((r) => (release = r));
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.stage.applyCalls.length > 0);
+    ctx.player.advance();
+    expect(ctx.stage.hurries).toBe(0);
+    release();
+    await until(() => ctx.player.currentState === "waiting-click");
+  });
+
+  it("@effectskip enabled=false : le clic n'interrompt pas une attente d'effet", async () => {
+    const steps = [
+      step([{ kind: "skipSetting", effectSkip: false }], {
+        kind: "waitFor",
+        what: "animation",
+        skippable: true,
+      }),
+      step([], { kind: "end" }),
+    ];
+    const ctx = setup(steps);
+    current = ctx.player;
+    await ctx.player.ready;
+    // Attente d'effet volontairement non résolue : seul un clic (interrupt) pourrait la lever.
+    let resolveWait!: () => void;
+    ctx.stage.waitFor = () =>
+      new Promise<void>((resolve) => {
+        resolveWait = resolve;
+      });
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait");
+    ctx.player.advance();
+    await wait(20);
+    expect(ctx.player.currentState).toBe("waiting-wait");
+    resolveWait();
+    await until(() => ctx.player.currentState !== "waiting-wait");
+  });
+
+  it("@cancelskip : sort du mode skip au passage de l'événement", async () => {
+    const steps = [
+      step([], { kind: "wait", time: 50, skippable: true }),
+      step([{ kind: "cancelSkip" }], { kind: "click", style: "line" }),
+    ];
+    const ctx = setup(steps);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.player.currentState === "waiting-wait");
+    ctx.player.setMode("skip");
+    await until(() => ctx.player.currentState === "waiting-click", "waiting-click après skip");
+    expect(ctx.player.currentMode).toBe("normal");
+  });
+
+  it("@wb : attend la fin de fondu BGM via waitForFade", async () => {
+    const steps = [
+      step([], { kind: "waitFor", what: "bgmFade", skippable: false }),
+      step([], { kind: "end" }),
+    ];
+    const ctx = setup(steps);
+    current = ctx.player;
+    await ctx.player.ready;
+    ctx.player.startScript("t.ks");
+    await until(() => ctx.audio.fadeWaits.length > 0);
+    expect(ctx.audio.fadeWaits).toContain("bgm");
+  });
+});
