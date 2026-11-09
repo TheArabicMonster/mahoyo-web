@@ -149,6 +149,13 @@ output/           ← Généré par le pipeline
 └── ...
 ```
 
+> ℹ️ `data/scenario/` de l'archive 2012 contient, à côté des scripts `.ks`, des
+> plugins `.tjs`, des scripts système chiffrés `.ttd`, des timelines `.tla` et des
+> médias (`.tlg`, `.wav`) utilisés par les plugins moteur. L'inventaire ne classe
+> en scénario que les `.ks` ; les médias suivent leur extension (image/son) et les
+> fichiers moteur sont ignorés. Avant cette règle, tous étaient transcodés en
+> `.ks` illisibles (issue #111).
+>
 > ⚠️ `public/assets` (dossier **ou** lien symbolique) est ignoré par git grâce à la règle `.gitignore` `public/assets`, **sans barre finale** : une règle avec barre finale (`public/assets/`) ne s'applique pas à un lien symbolique.
 >
 > - Un lien symbolique local vers les assets du jeu est autorisé pour le développement : il reste non suivi (donc ignoré).
