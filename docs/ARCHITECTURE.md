@@ -165,9 +165,9 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`timelines.ts`** : génère `timelines.json` pour l'ouverture.
 - **`audit-scenario.ts`** : audit des commandes KAG et des assets référencés (`MAHOYO_ASSETS_DIR` ou `public/assets`). Chaque commande rencontrée est classée **implémentée / ignorée volontairement / inconnue** (#275) ; sortie console, JSON (`unknownCommandsGlobal` séparé de `ignoredCommandsGlobal`) et Markdown.
 - **`ignored-commands.ts`** : registre **unique** des no-ops volontaires (`name`, `raison`, `effet`, `issue`) ; une commande à effet visible/audible/de déroulement exige une justification explicite et un accord (DoD v1.0).
-- **`audit-commands.ts`** / **`audit-commands-baseline.json`** : helpers de classification et **baseline versionnée** des inconnues du corpus de référence ; le nombre ne peut que baisser, toute résolution met la baseline à jour explicitement.
-- **`audit-guard.ts`** (`npm run audit:guard`) : garde-fou CI — registre valide, baseline intègre, doc générée à jour, baseline non croissante par rapport à `origin/main`, et (avec les assets) aucune inconnue hors baseline ; `--strict` exige la baseline à jour.
-- **`audit-commands-doc.ts`** (`npm run audit:doc`) : génère la section « commandes KAG » de [`LECTURE_COMPLETE.md`](LECTURE_COMPLETE.md) depuis le registre et la baseline (pas de double liste manuelle).
+- **`audit-commands.ts`** / **`audit-commands-baseline.json`** : helpers de classification et **baseline figée vide** (mode zéro strict, #302) ; plus de mécanisme de décroissance ni de script `audit:baseline`, la baseline ne doit jamais contenir d'inconnue.
+- **`audit-guard.ts`** (`npm run audit:guard`) : garde-fou CI **zéro strict** — registre des no-ops justifiés valide, baseline vide, doc générée à jour, et (avec les assets) **aucune** commande inconnue ; `--strict` est conservé pour compatibilité (comportement par défaut).
+- **`audit-commands-doc.ts`** (`npm run audit:doc`) : génère la section « commandes KAG » de [`LECTURE_COMPLETE.md`](LECTURE_COMPLETE.md) depuis le registre et la baseline vide (pas de double liste manuelle).
 - Conversions `convert-tlg.ts` / `convert-audio.ts`, normalisation `normalize-ks.ts`, traduction `translation.ts`,
   contrôle anti-assets `check-no-assets.ts` et progression `progress.ts` ; tests unitaires dans `tests/unit/tools/`.
 

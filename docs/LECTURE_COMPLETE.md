@@ -109,15 +109,14 @@ La console affiche uniquement un résumé chiffré (pas de texte original).
 
 ## Commandes KAG : registre et audit classé
 
-L'audit ne traite plus toute commande non gérée comme un no-op : il la classe en
+L'audit ne traite pas toute commande non gérée comme un no-op : il la classe en
 **implémentée**, **ignorée volontairement** (déclarée dans
 `tools/ignored-commands.ts`, avec raison, effet et issue) ou **inconnue** (ni
-implémentée ni déclarée). Les inconnues du corpus de référence sont figées dans
-`tools/audit-commands-baseline.json` : leur nombre ne peut que baisser, toute
-résolution impose une mise à jour explicite (PR). Le garde-fou `npm run
-audit:guard` vérifie registre, baseline, doc générée et décroissance de la
-baseline ; avec les assets locaux, il audite aussi le corpus et refuse toute
-inconnue hors baseline.
+implémentée ni déclarée). Depuis la clôture v1.0 (#302), le **mode zéro strict**
+s'applique : la baseline `tools/audit-commands-baseline.json` est **vide** (métadonnées
+seules), le mécanisme de décroissance et `npm run audit:baseline` ont été supprimés,
+et **toute** commande inconnue fait échouer `npm run audit:guard` (avec les assets locaux,
+il audite le corpus et refuse la moindre inconnue).
 
 <!-- BEGIN AUTO: commandes-kag -->
 ### Commandes KAG : registre et classification (généré)
@@ -140,13 +139,12 @@ inconnue hors baseline.
 | `@loadtimeline` | aucun | Charge un fichier de timeline .tla : le pipeline d'assets ne convertit pas les .tla (aucun asset timeline dans le manifeste) et l'unique usage utile est menutest.ks, script de test non chargé par le player ; les timelines jouables passent par les données *tladata embarquées et @playtimeline scene=. Aucun effet dans le port (triage #276). | #287 |
 | `@deffont` | aucun | Seul usage du corpus : face=user. Le port web n'expose aucun réglage de police utilisateur et @resetfont retombe sur la police du thème : aucun effet visible (triage #276). | #284 |
 
-#### Commandes inconnues restantes (baseline, à trier)
+#### Commandes inconnues restantes (aucune tolérée — mode zéro strict)
 
-Baseline générée le 2026-11-09 — npm run audit sur 221 scripts narratifs (assets locaux, non commités). Issue de triage : #276.
-Le nombre d'inconnues ne peut que baisser : toute commande résolue (implémentée ou déclarée no-op) doit être retirée de la baseline dans la PR correspondante (`npm run audit:baseline`).
+Dernière mesure du corpus de référence : 2026-11-09 — audit final avant clôture v1.0 : 221 scripts narratifs (assets locaux, non commités). Issue de clôture : #302.
+Depuis la clôture v1.0 (#302), le **mode zéro strict** interdit toute commande inconnue : la baseline est vide et n'est plus mise à jour (plus de `npm run audit:baseline`). Toute commande non reconnue fait échouer `npm run audit` et `npm run audit:guard` ; elle doit être implémentée, approximée (registre #296) ou déclarée no-op justifié (#275).
 
-| Commande | Occurrences |
-|---|---|
+Aucune commande inconnue mesurée sur le corpus de référence (0 occurrence).
 <!-- END AUTO: commandes-kag -->
 
 ## Critère de réussite
