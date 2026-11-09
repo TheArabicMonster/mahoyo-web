@@ -49,8 +49,17 @@ const PERSISTED_STATE_KEYS = [
  * - `clickSkipEnabled` / `effectSkipEnabled` : réglages de lecture propres au script et à la
  *   session (@clickskip/@effectskip) ; le moteur les garde dans l'état de fenêtre, pas dans la
  *   sauvegarde, et le port les remet à `true` au début de chaque session (`endSession`).
+ * - `ployPaused` / `fallnote` (#282) : état **transitoire** d'effets en cours — la bulle ploy
+ *   suspendue par `@pauseploy` et les particules de `@beginfallnote`. Le moteur les restaure via
+ *   ses objets de plugin, hors sauvegarde narrative ; le port ne les persiste pas (le prochain
+ *   `@pauseploy`/`@beginfallnote` les réinitialise).
  */
-const TRANSIENT_STATE_KEYS = ["clickSkipEnabled", "effectSkipEnabled"] as const satisfies readonly (keyof RuntimeState)[];
+const TRANSIENT_STATE_KEYS = [
+  "clickSkipEnabled",
+  "effectSkipEnabled",
+  "ployPaused",
+  "fallnote",
+] as const satisfies readonly (keyof RuntimeState)[];
 
 // ── Garde-fou type-level ─────────────────────────────────────────────────────
 type SerializedKey = (typeof PERSISTED_STATE_KEYS)[number];

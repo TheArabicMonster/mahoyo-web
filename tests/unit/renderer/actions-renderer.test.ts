@@ -1,4 +1,6 @@
-// Tests d'avance #282 — rendu des actions/effets de scène (TDD, implémentation à venir).
+// Tests #282 — rendu des actions/effets de scène.
+// Registre des approximations (#295) — test figé :
+// approx:fallnote-particles — particules CSS génériques (images/options du plugin non reproduites).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createDomStageRenderer } from "@/renderer/stage-renderer.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
@@ -75,7 +77,7 @@ describe("DomStageRenderer — pause/resume d'animations (#282)", () => {
     root.remove();
   });
 
-  const apply = (events: RenderEvent[]) => renderer.apply(events, { instant: true, signal: sig() });
+  const apply = (events: RenderEvent[]) => renderer.apply(events, { instant: false, signal: sig() });
 
   it("@action démarre une animation WAAPI ; @pauseaction la met en pause ; @resumeaction la relance", async () => {
     await apply([scene([{ id: "l1", storage: "sprite", x: 100, y: 100, z: 100, opacity: 1 }])]);

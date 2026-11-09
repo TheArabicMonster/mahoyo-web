@@ -21,11 +21,14 @@ const ROOT = process.cwd();
 
 /** Liste des approximations à couvrir au moment de la clôture DoD v1.0 (#295). */
 const EXPECTED_IDS = [
+  "action-modules-subset",
   "bindbg-not-persisted",
   "clock-runtime-vars",
   "focusline-canvas",
   "infg-outfg-fore-page",
+  "fallnote-particles",
   "message-actions-non-swing",
+  "pauseploy-font",
   "playtimeline-test-variant",
   "ruby-proportional",
   "s-click-wait",

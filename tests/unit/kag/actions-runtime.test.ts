@@ -1,4 +1,7 @@
-// Tests d'avance #282 — runtime des actions/effets de scène (TDD, implémentation à venir).
+// Tests #282 — runtime des actions/effets de scène.
+// Registre des approximations (#295) — tests figés :
+// approx:action-modules-subset — translation linéaire pour tous les modules, accel non interpolée.
+// approx:pauseploy-font — police du thème au lieu de MS PGothic/user.
 import { describe, it, expect } from "vitest";
 import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";
@@ -21,7 +24,7 @@ function runAll(source: string): { events: AnyEvent[]; state: ReturnType<Runtime
 
 const ACTION_SCRIPT = `
 *page0|
-@partbg page=back storage=pane.center center=500 vcenter=300 index=1000 width=200 height=100 id=pb1
+@partbg page=fore storage=pane.center center=500 vcenter=300 index=1000 width=200 height=100 id=pb1
 @action page=fore id=pb1 module=LayerNormalMoveModule startx=335 x=94 starty=81 y=81 time=700
 @pauseaction id=pb1
 @resumeaction id=pb1
