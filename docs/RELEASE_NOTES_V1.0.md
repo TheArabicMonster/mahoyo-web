@@ -6,7 +6,8 @@
 
 - **Version visée** : `v1.0.0` (tag et release **non publiés**)
 - **Date de clôture de la DoD** : 2026-11-09
-- **Commit de référence** : `2b30586` (main après le merge de la PR code « zéro strict » #304 ; le merge de clôture est la PR #305, SHA final reporté dans la PR de régénération PROGRESS)
+- **Commit de référence de l'audit** : `2b30586` (PR code « zéro strict » #304)
+- **SHA de clôture** : `e974a2a` (merge de la PR #305) ; docs finales régénérées par la PR finale `chore(progress): clôture v1.0 finale` (`Refs #302`)
 - **Milestone** : v1.0, 101/101 issues fermées
 - **DoD** : [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md), section « DoD — v1.0 » ; écart de l'issue chapeau #274 résolu, clôture #302.
 
