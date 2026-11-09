@@ -24,7 +24,7 @@ import type {
 } from "./types.js";
 import { parseCommand } from "./parser.js";
 import { lookupTimeline, type TimelineBg, type TimelineData } from "@/core/timeline.js";
-import type { PageLayer } from "./types.js";
+import type { AnimationDef, PageLayer } from "./types.js";
 import type {
   AudioChannel,
   AudioEvent,
@@ -76,9 +76,27 @@ export type PageState = {
 };
 
 /** Zoom (%) et rotation (degrés) qui s'appliquent à un fond ou un calque. */
-type TransformValues = { zoomx?: number; zoomy?: number; rotate?: number };
+type TransformValues = { zoomx?: number; zoomy?: number; rotate?: number; afx?: number; afy?: number };
 
 /** Valeurs neutres : un zoom de 100 % ou une rotation de 0° ne s'écrivent pas dans l'état. */
+/** Noms des images de l'horloge in-game (macro.tjs, tagHandlers.dispclock). */
+const CLOCK_BG_STORAGE = "im03lロビー時計(x2)";
+const CLOCK_HOUR_HAND = "im03lロビー時計(短針x2)";
+const CLOCK_MINUTE_HAND = "im03lロビー時計(長針x2)";
+
+/**
+ * Angles CSS (degrés, sens horaire — convention du port) des aiguilles pour `h:m`.
+ * Le moteur calcule `(m + h*60) * -0.5` en convention anti-horaire ; on convertit en sens
+ * horaire. Quand le fond est miroir (zoomx < 0), le moteur inverse les deux angles.
+ */
+function clockHandAngles(hour: number, minute: number, mirror: boolean): { hour: number; minute: number } {
+  const h = ((hour % 12) + 12) % 12;
+  const m = ((minute % 60) + 60) % 60;
+  const hourAngle = (m + h * 60) * 0.5;
+  const minuteAngle = m * 6;
+  return mirror ? { hour: -hourAngle, minute: -minuteAngle } : { hour: hourAngle, minute: minuteAngle };
+}
+
 const NEUTRAL_ZOOM = 100;
 const NEUTRAL_ROTATE = 0;
 
@@ -87,7 +105,7 @@ const NEUTRAL_ROTATE = 0;
  * changent rien). Une valeur neutre retire le champ : l'état ne porte que ce qui modifie l'image.
  */
 function patchTransform(
-  target: { zoomx?: number; zoomy?: number; rotate?: number },
+  target: { zoomx?: number; zoomy?: number; rotate?: number; afx?: number; afy?: number },
   patch: TransformValues,
 ): void {
   if (patch.zoomx !== undefined) {
@@ -102,6 +120,8 @@ function patchTransform(
     if (patch.rotate === NEUTRAL_ROTATE) delete target.rotate;
     else target.rotate = patch.rotate;
   }
+  if (patch.afx !== undefined) target.afx = patch.afx;
+  if (patch.afy !== undefined) target.afy = patch.afy;
 }
 
 /** Copie les champs d'apparence d'une commande (`type`, `effect`, blur, brightness, contrast). */
@@ -192,6 +212,9 @@ export type RuntimeState = {
   clickSkipEnabled?: boolean;
   /** Saut des effets autorisé (@effectskip) ; absent = true (défaut moteur). */
   effectSkipEnabled?: boolean;
+  /** Heure/minute affichées par l'horloge in-game (@dispclock/@tickclock). */
+  clockHour?: number;
+  clockMinute?: number;
 };
 
 /**
@@ -882,6 +905,8 @@ export class Runtime {
     if (layer.zoomx !== undefined) sprite.zoomx = layer.zoomx;
     if (layer.zoomy !== undefined) sprite.zoomy = layer.zoomy;
     if (layer.rotate !== undefined) sprite.rotate = layer.rotate;
+    if (layer.afx !== undefined) sprite.afx = layer.afx;
+    if (layer.afy !== undefined) sprite.afy = layer.afy;
     if (layer.type !== undefined) sprite.type = layer.type;
     if (layer.effect !== undefined) sprite.effect = layer.effect;
     if (layer.brightness !== undefined) sprite.brightness = layer.brightness;
@@ -1321,6 +1346,234 @@ export class Runtime {
     return this.emitScene({ method: "none" });
   }
 
+  /**
+   * `@chgpartbg` : change l'image/les paramètres d'un partbg **existant**
+   * (`data/scenario/partbgplugin.tjs`, `kt.chgpartbg`).
+   *
+   * Cible : `id=` si fourni ; sinon l'unique partbg de la page ; sinon le partbg dont le `storage`
+   * partage le plus long préfixe avec le nouveau (comme le moteur). Aucune cible = no-op.
+   * `time=`/`rule=` déclenchent la transition back→fore (le moteur appelle `partbg_object.doTrans`).
+   */
+  private applyChgpartbg(
+    instruction: Extract<Instruction, { kind: "chgpartbg" }>,
+  ): { events: RenderEvent[]; stop?: StopReason } {
+    const page = this.resolvePage("chgpartbg", instruction.page);
+    const target = this.getPageState(page);
+    const partbgs = target.layers.filter((l) => l.crop !== undefined);
+    let selected: Layer | undefined;
+    if (instruction.id !== undefined) selected = partbgs.find((l) => l.id === instruction.id);
+    if (!selected && partbgs.length === 1) selected = partbgs[0];
+    if (!selected && partbgs.length > 1 && instruction.storage) {
+      let best = -1;
+      for (const layer of partbgs) {
+        let common = 0;
+        while (common < layer.storage.length && common < instruction.storage.length && layer.storage[common] === instruction.storage[common]) common++;
+        if (common > best) {
+          best = common;
+          selected = layer;
+        }
+      }
+    }
+    if (!selected) return { events: [] };
+    const updated: Layer = { ...selected };
+    if (instruction.storage !== undefined && instruction.storage !== "") updated.storage = instruction.storage;
+    patchTransform(updated, instruction);
+    patchAppearance(updated, instruction);
+    target.layers = target.layers.map((l) => (l.id === updated.id ? updated : l));
+
+    const time = instruction.time ?? 0;
+    if (time > 0 || instruction.rule) {
+      return this.runImplicitTrans(time, instruction.rule, instruction.nowait, instruction.canskip);
+    }
+    if (page === "fore") return { events: [this.emitScene({ method: "none" })] };
+    return { events: [] };
+  }
+
+  /**
+   * `@dispclock` : horloge in-game (`data/scenario/macro.tjs`, `tagHandlers.dispclock`).
+   * Le moteur pose 4 calques (2 aiguilles réelles + 2 ombres `mono000000` floues) sur la page
+   * arrière, puis charge le fond d'horloge avec `time` (transition).
+   */
+  private applyDispclock(
+    instruction: Extract<Instruction, { kind: "dispclock" }>,
+  ): { events: RenderEvent[]; stop?: StopReason } {
+    const { h, m, left, top, zoomx, zoomy } = instruction;
+    this.state.clockHour = h;
+    this.state.clockMinute = m;
+    const mirror = zoomx < 0;
+    const angles = clockHandAngles(h, m, mirror);
+    const ratex = zoomx / 100;
+    const ratey = zoomy / 100;
+    const hands: Array<Extract<Instruction, { kind: "fg" }>> = [
+      {
+        kind: "fg",
+        storage: CLOCK_HOUR_HAND,
+        center: left + 1748,
+        vcenter: top + 1050,
+        index: 1200,
+        opacity: 1,
+        page: "back",
+        id: "clock1",
+        zoomx,
+        zoomy,
+        rotate: angles.hour,
+        afx: 69,
+        afy: 621,
+        effect: instruction.effect,
+      },
+      {
+        kind: "fg",
+        storage: CLOCK_MINUTE_HAND,
+        center: left + 1750,
+        vcenter: top + 954,
+        index: 1300,
+        opacity: 1,
+        page: "back",
+        id: "clock2",
+        zoomx,
+        zoomy,
+        rotate: angles.minute,
+        afx: 62,
+        afy: 817,
+        effect: instruction.effect,
+      },
+      {
+        kind: "fg",
+        storage: CLOCK_HOUR_HAND,
+        center: left + 1748 + ratex * 9,
+        vcenter: top + 1050 + ratey * 13,
+        index: 1000,
+        opacity: 64 / 255,
+        page: "back",
+        id: "clock3",
+        zoomx,
+        zoomy,
+        rotate: angles.hour,
+        afx: 69,
+        afy: 621,
+        blurx: 2,
+        blury: 2,
+        effect: "mono000000",
+      },
+      {
+        kind: "fg",
+        storage: CLOCK_MINUTE_HAND,
+        center: left + 1750 + ratex * 9,
+        vcenter: top + 954 + ratey * 13,
+        index: 1100,
+        opacity: 64 / 255,
+        page: "back",
+        id: "clock4",
+        zoomx,
+        zoomy,
+        rotate: angles.minute,
+        afx: 62,
+        afy: 817,
+        blurx: 2,
+        blury: 2,
+        effect: "mono000000",
+      },
+    ];
+    const events: RenderEvent[] = [];
+    for (const hand of hands) {
+      const res = this.applyFg(hand);
+      events.push(...res.events);
+    }
+    // Fond d'horloge : avec `time`, le moteur fait une transition back→fore (le port fait de même).
+    const bgInstruction: Extract<Instruction, { kind: "bg" }> = {
+      kind: "bg",
+      storage: CLOCK_BG_STORAGE,
+      noclear: true,
+      left,
+      top,
+      zoomx,
+      zoomy,
+      effect: instruction.effect,
+      time: instruction.time ?? 0,
+      ...((instruction.time ?? 0) > 0 ? {} : { page: "fore" as const }),
+    };
+    const bg = this.applyBg(bgInstruction);
+    events.push(...bg.events);
+    return { events, stop: bg.stop };
+  }
+
+  /**
+   * `@tickclock` : avance les aiguilles (`data/scenario/macro.tjs`, `tagHandlers.tickclock`).
+   * Le moteur lance 4 `fgact` de 300 ms (repos → léger dépassement à 100 ms → nouvel angle),
+   * puis attend leur fin sauf attribut `wait`.
+   */
+  private applyTickclock(
+    instruction: Extract<Instruction, { kind: "tickclock" }>,
+  ): { events: RenderEvent[]; stop?: StopReason } {
+    const lastHour = this.state.clockHour;
+    const lastMinute = this.state.clockMinute;
+    if (lastHour === undefined || lastMinute === undefined) return { events: [] };
+    const h = ((instruction.h % 12) + 12) % 12;
+    const m = ((instruction.m % 60) + 60) % 60;
+    // Le moteur ajoute 12 h / 60 min quand l'aiguille recule, pour tourner dans le bon sens.
+    const newHourAngle = (m + (h + (h < lastHour ? 12 : 0)) * 60) * 0.5;
+    const newMinuteAngle = (m + (m < lastMinute ? 60 : 0)) * 6;
+    const oldHourAngle = (lastMinute + lastHour * 60) * 0.5;
+    const oldMinuteAngle = lastMinute * 6;
+    const over = 0.3;
+    const overHourAngle = newHourAngle + (newHourAngle - oldHourAngle) * over;
+    const overMinuteAngle = newMinuteAngle + (newMinuteAngle - oldMinuteAngle) * over;
+    this.state.clockHour = instruction.h;
+    this.state.clockMinute = instruction.m;
+
+    const kf = (time: number, duration: number, rotate: number) => ({
+      time,
+      duration,
+      interp: "l" as const,
+      easing: "linear",
+      accel: 0,
+      rotate,
+    });
+    const defs: AnimationDef[] = [
+      {
+        storage: CLOCK_HOUR_HAND,
+        page: "fore",
+        id: "clock1",
+        keyframes: [kf(0, 0, oldHourAngle), kf(100, 100, overHourAngle), kf(300, 200, newHourAngle)],
+      },
+      {
+        storage: CLOCK_MINUTE_HAND,
+        page: "fore",
+        id: "clock2",
+        keyframes: [kf(0, 0, oldMinuteAngle), kf(100, 100, overMinuteAngle), kf(300, 200, newMinuteAngle)],
+      },
+      {
+        storage: CLOCK_HOUR_HAND,
+        page: "fore",
+        id: "clock3",
+        keyframes: [kf(0, 0, oldHourAngle), kf(100, 100, overHourAngle), kf(300, 200, newHourAngle)],
+      },
+      {
+        storage: CLOCK_MINUTE_HAND,
+        page: "fore",
+        id: "clock4",
+        keyframes: [kf(0, 0, oldMinuteAngle), kf(100, 100, overMinuteAngle), kf(300, 200, newMinuteAngle)],
+      },
+    ];
+    const events: RenderEvent[] = [];
+    for (const def of defs) {
+      events.push(...this.applyAnimate({ kind: "animate", def }));
+    }
+    if (instruction.wait) {
+      return { events, stop: { kind: "waitFor", what: "animation", skippable: true } };
+    }
+    return { events };
+  }
+
+  /** Applique l'action continue des messages (`@setdefaultmessageaction` / reset). */
+  private applyTextAction(type: string | null): RenderEvent {
+    const state: TextboxState = { ...this.buildTextboxState() };
+    if (type === null || type === "") delete state.action;
+    else state.action = type;
+    this.state.textbox = state;
+    return { kind: "textbox", state, time: 0 };
+  }
+
   private applyAnimate(instruction: Extract<Instruction, { kind: "animate" }>): RenderEvent[] {
     const def = instruction.def;
     const events: RenderEvent[] = [];
@@ -1384,6 +1637,9 @@ export class Runtime {
       opacity: lastFrame?.opacity ?? firstFrame?.opacity ?? existing?.opacity ?? 1,
       crop: existing?.crop,
       partbgId: existing?.partbgId,
+      // Pivot du zoom/rotation (aiguilles d'horloge) : conservé pendant les animations.
+      afx: existing?.afx,
+      afy: existing?.afy,
     };
     // Apparence : `-type`/`-effect`/`-contrast`/`-brightness`/`-xblur`/`-yblur` sont discrets,
     // leur dernière valeur connue devient l'apparence finale du calque.
@@ -2291,6 +2547,30 @@ export class Runtime {
         // Sans @font préalable, aucun effet.
         this.state.textStyle = null;
         break;
+      case "chgpartbg": {
+        const res = this.applyChgpartbg(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
+        break;
+      }
+      case "dispclock": {
+        const res = this.applyDispclock(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
+        break;
+      }
+      case "tickclock": {
+        const res = this.applyTickclock(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
+        break;
+      }
+      case "setdefaultmessageaction":
+        events.push(this.applyTextAction(instruction.type));
+        break;
+      case "resetdefaultmessageaction":
+        events.push(this.applyTextAction(null));
+        break;
       case "staffrollinit":
       case "staffrolltext":
       case "staffrollstart":
@@ -2660,6 +2940,8 @@ export class Runtime {
         ploy: this.state.ploy ? { ...this.state.ploy } : null,
         quickMenuLocked: this.state.quickMenuLocked ?? false,
         autoModePaused: this.state.autoModePaused ?? false,
+        clockHour: this.state.clockHour,
+        clockMinute: this.state.clockMinute,
         staffroll: this.state.staffroll
           ? structuredClone(this.state.staffroll)
           : undefined,
