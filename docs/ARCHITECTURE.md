@@ -120,14 +120,21 @@ src/renderer/ + src/ui/  ── rendu navigateur
   d'identifiants de scripts) garde le chemin de la **partie** en cours, restauré au chargement et au retour arrière.
   La progression **globale** est cumulative : charger une sauvegarde ou revenir en arrière n'y retire rien ; le
   chargement y ajoute seulement les arêtes de la sauvegarde (utile pour une sauvegarde importée).
-- Réglage `flowchartRevealAll` (défaut `false`) : anti-spoiler du flowchart actif tant qu'il est faux.
+- Réglage `flowchartRevealAll` (défaut `false`) : anti-spoiler du flowchart actif tant qu'il est faux ; relu à chaque
+  ouverture de l'écran (FLOW-08 / #207).
+- **Intégration du flowchart (FLOW-08 / #207)** : une seule vue `screen: "flowchart"` (FLOW-05/06/07) pour les trois
+  entrées — menu de l'écran titre, menu système en jeu (entre `backlog` et `graphic`) et route `#/flowchart`. Hors Extra
+  et historique (décision 2). `Player` transmet `currentScript`, `story`, graphe, vignettes et `revealAll` ; la carte se
+  centre sur la position courante. L'ancien écran en liste (et ses champs de position/progression devenus morts) a été
+  retiré.
 - **`flowchart-view.ts`** / **`flowchart-view.css`** : rendu statique de l'écran Flowchart (FLOW-05, #197 ; accessibilité
   clavier/lecteur d'écran/portrait FLOW-07, #206 : navigation par arêtes, équivalent liste `<ul>`, `aria-live`,
   anti-spoiler de l'arbre d'accessibilité) ; voir `ENCHAINEMENT_SCRIPTS.md` (« Rendu du flowchart »).
   `DomUIManager` n'y délègue que `renderFlowchartScreen`.
 - **`flowchart-viewport.ts`** : pan et zoom de la carte (FLOW-06, #202) : fonctions pures (`zoomAround`, `centerOn`, `pinchView`, `keyAction`…) et `attachViewport` (pointeur, molette, pincement, clavier), zoom mémorisé pour la session. **`flowchart-detail.ts`** : volet de détails d'un nœud visité (`describeNode`) et « Relire depuis ici » (`requestReplay` : confirmation Non par défaut puis `startScript`). `DomUIManager` ne branche que `confirm` et `replay`.
   `Player` charge `story-graph.json` (`AssetResolver.graph()`) à la première ouverture de l'écran, puis le fournit à
-  la vue `flowchart` avec `revealAll` (réglage) et `thumbnail` (clé du manifeste -> URL, `AssetResolver.uiImage`).
+  la vue `flowchart` avec `revealAll` (réglage), `currentScript`, `story` et `thumbnail` (clé du manifeste -> URL,
+  `AssetResolver.uiImage`). Les entrées titre/menu système et la route ouvrent tous cette vue (FLOW-08 / #207).
 
 ### `src/core/` — utilitaires
 

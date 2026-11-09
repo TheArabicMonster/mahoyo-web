@@ -286,8 +286,8 @@ Premier composant à suivre ce principe : `src/ui/night.css` (importé par `src/
   `config`, `auto`, `skip`, `backlog`, `flowchart`, `graphic`, `title`, puis « Back » (`common.back`) en bas à droite.
   `save` et `load` sont désactivés quand `quickMenuLocked` (info-bulle `systemMenu.quickMenuLocked`). `auto` et `skip`
   basculent le mode puis referment le menu (`aria-pressed`, entrée éclaircie quand le mode est actif) ; `graphic` appelle
-  `toggleUserHide` puis referme ; `title` passe par `confirm(…)` avec **Non** par défaut ; `flowchart` ouvre l'écran
-  existant en attendant FLOW-08 (#207), qui le rebranchera (une ligne du tableau).
+  `toggleUserHide` puis referme ; `title` passe par `confirm(…)` avec **Non** par défaut ; `flowchart` ouvre la vue
+  intégrée (FLOW-05/06/07, branchement FLOW-08 / #207) entre `backlog` et `graphic`.
 - **Voile** : le slot `#ui-pause` reçoit `mh-ui-night mh-ui-night-veil` (voile `#152539` à 82 %, feuillage et arabesques
   de HUD-02) tant que le menu est rendu ; apparition en `--mh-dur-menu` (270 ms, linéaire), sans animation sous
   `prefers-reduced-motion`. Un nouveau clic droit ou `Échap` referme ; un clic droit pendant la confirmation ne fait rien.
@@ -346,7 +346,7 @@ Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le 
 | `#/save` | sauvegarde | repli sur `#/title` |
 | `#/config` | configuration (écran `settings`) | oui |
 | `#/backlog` | historique | repli sur `#/title` |
-| `#/flowchart` | flowchart (l'écran de #197 ; FLOW-08 / #207 le complète) | oui |
+| `#/flowchart` | flowchart (vue FLOW-05/06/07, intégrée par FLOW-08 / #207) | oui |
 
 - **Hash, pas de chemin** : aucun `base` Vite n'est configuré et un hébergement statique ne réécrit pas `/load` vers `index.html` ; `#/load` marche partout sans configuration serveur, et le changement de hash ne recharge jamais la page.
 - **Aucun spoiler dans l'URL** : seulement le nom de l'écran. Jamais d'identifiant de script, de libellé, de chapitre ni de progression ; `parseRoute` refuse sous-chemins, paramètres et inconnus (repli sur le titre).
@@ -438,7 +438,7 @@ Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le 
 - **Contraste** : libellés ≥ 4,5:1 ; les états ne reposent jamais sur la seule couleur (forme + pastille + texte accessible).
 - **Portrait** (`orientation: portrait`) : une seule colonne, colonne latérale (compteurs et légende) masquée, zoom ajusté à la largeur et `scroll-snap` sur les groupes de chapitre (un chapitre à la fois en défilement).
 
-### 9.13 CG mode (`src/ui/cg-mode.ts`, HUD-15 / #208)
+### 9.14 CG mode (`src/ui/cg-mode.ts`, HUD-15 / #208)
 
 `src/ui/cg-mode.ts` + `src/ui/cg-mode.css` (galerie et visionneuse), branchés dans `ui-manager.ts` (création du slot `#ui-cg`, action `cgMode` du sous-menu Extra, ouverture/fermeture) ; suivi des CG vues dans `src/player/cg-seen.ts`, persisté par `SettingsStore.loadSeenCg` / `saveSeenCg` (`src/player/settings-store.ts`, stockage `mahoyo.cg` de WEB-03) ; catalogue calculé à l'exécution par `AssetResolver.imageEntries()` (`src/core/asset-resolver.ts`, `listImages` dans `asset-manifest.ts`). Aucune image ni miniature n'est commitée : la grille ne contient que des clés du manifeste et des URL fournies par le résolveur. CSS pur, sans asset ni URL. Lecture des mesures : `ANALYSE_HUD_ORIGINAL.md` §2.11 et §8 (écart E18), `DESIGN.md` §2.4, §4 et §8.
 
@@ -450,6 +450,25 @@ Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le 
 - **Mouvement** : aucune animation de grille ; le zoom de la visionneuse est une transition `--mh-dur-fast`, supprimée sous `prefers-reduced-motion` ; cibles de 44 px en pointeur grossier.
 - **Tests** : `tests/unit/ui/cg-mode.test.ts` (catalogue, déverrouillage, grille, clavier, visionneuse, zoom, états), `cg-mode-css.test.ts` (responsive, sélection non chromatique, visionneuse, aucune ressource), `tests/unit/player/cg-seen.test.ts` (déverrouillage de bout en bout via le résolveur, débounce, persistance), `tests/unit/player/settings-store.test.ts` (stockage, données corrompues), `tests/unit/core/asset-*.test.ts` (énumération du manifeste), `tests/unit/ui/ui-manager.test.ts` (ouverture depuis Extra, focus, fermeture), `tests/e2e/cg-mode.spec.ts` (Chromium, manifeste et PNG mockés : galerie verrouillée, CG vue persistée, visionneuse).
 - **Écarts connus** : le regroupement par chapitre de l'original (`cgmode.ks`, colonne de chapitres) n'est pas repris : le manifeste ne porte pas cette information ; la bascule Évènement / Arrière-plan remplace la colonne de chapitres. Le pincement tactile de la visionneuse n'est pas implémenté (molette et boutons seulement) ; le niveau de zoom n'est pas mémorisé ; aucune vignette n'est générée côté pipeline (l'image pleine résolution est affichée comme vignette, mise à l'échelle par le navigateur).
+
+### 9.15 Intégration du flowchart (FLOW-08 / #207)
+
+- **Trois points d'entrée** (décision 2 du propriétaire) : l'entrée *Flowchart* du menu de l'écran titre (sous *Load*, HUD-07),
+  l'entrée du **menu système en jeu** (entre `backlog` et `graphic`, HUD-06) et la **route `#/flowchart`** (WEB-04), qui
+  ouvre l'écran sans rechargement et reste refermable par précédent / `Échap`. L'écran **n'est pas** dans Extra ni dans
+  l'historique. Les trois points passent par la même vue `screen: "flowchart"` (`FLOW-05/06/07`) ; l'ancien rendu en
+  liste de chapitres a été supprimé en #197 (les champs `x`/`y` de `ScriptSummary` et le champ `progress` de la vue,
+  devenus morts, sont retirés en #207).
+- **Position courante** : en cours de partie, `Player.currentScript` est transmis à la vue ; le nœud courant porte
+  `data-state="current"` + `aria-current="location"`, et la carte se centre dessus à l'ouverture (défilement animé,
+  instantané sous `prefers-reduced-motion`). Au titre, aucun nœud courant.
+- **Anti-spoiler configurable** (décision 5) : `flowchartRevealAll` (HUD-09) est relu à **chaque** ouverture de l'écran ;
+  désactivé (défaut), les scènes non visitées restent des silhouettes ; activé, elles apparaissent en « non visitée » et
+  les chapitres masqués sont nommés.
+- **Preuves** : unités `player.test.ts` (réglage transmis), `ui-manager.test.ts` (entrées titre et menu système),
+  `ui-manager-flowchart.test.ts` (tout révéler) ; e2e `tests/e2e/flowchart-integration.spec.ts` (titre, menu système,
+  route, absent d'Extra et de l'historique, position courante, bascule tout révéler).
+
 
 ## 10. Accessibilité minimale à conserver
 

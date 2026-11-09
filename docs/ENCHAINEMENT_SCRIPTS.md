@@ -289,6 +289,27 @@ ou entrées bloquées, rien ne démarre.
   parcours clavier, anti-spoiler de l'arbre, portrait). La CI n'exécute pas encore les tests e2e : l'audit axe-core est
   donc lancé à la main / en local, écart connu.
 
+### Intégration (FLOW-08 / #207)
+
+L'écran n'a qu'une seule vue (`screen: "flowchart"`, FLOW-05/06/07) et trois points d'entrée, tous branchés par
+`ui-manager.ts` / `player.ts` :
+
+| Point d'entrée | Câblage | Retour |
+|---|---|---|
+| Écran titre, entrée *Flowchart* (sous *Load*, HUD-07) | `TitleActions.flowchart` → `openScreen("flowchart")` | `Échap` / « Retour » → titre |
+| Menu système en jeu, entre `backlog` et `graphic` (HUD-06) | `SYSTEM_MENU_ENTRIES` → `openScreen("flowchart")` | `Échap` → menu système |
+| Route `#/flowchart` (WEB-04) | `router.ts` → `Player.openScreen("flowchart")`, sans rechargement | précédent / `Échap` → écran précédent |
+
+- L'écran **n'est pas** proposé dans Extra (sous-menu du titre) ni comme onglet de l'historique (décision 2 du propriétaire).
+- À l'ouverture en cours de partie, `Player` transmet `currentScript` ; le nœud courant porte `data-state="current"` et
+  `aria-current="location"`, et la carte se centre dessus. Au titre, aucun nœud courant.
+- `flowchartRevealAll` (HUD-09) est relu à chaque ouverture : désactivé (défaut) = silhouettes anti-spoiler, activé =
+  nœuds non visités révélés (décision 5).
+- L'ancien rendu du flowchart en liste de chapitres (et ses champs `x`/`y` de `ScriptSummary`, ainsi que le champ
+  `progress` de la vue) a été supprimé ; `chapter-list.ts` reste utilisé par Extra > Archive.
+- Preuve e2e : `tests/e2e/flowchart-integration.spec.ts` (titre, route, menu système, position courante, absent
+  d'Extra et de l'historique, bascule tout révéler).
+
 ## Résultat sur le corpus de référence
 
 194 blocs dont 161 avec script, 200 scripts dans la table dont 19 avec plusieurs suites,

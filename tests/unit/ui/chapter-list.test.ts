@@ -18,13 +18,12 @@ describe("chaptersToScripts", () => {
     ]));
     expect(list.map((s) => s.file)).toEqual(["1-0.ks", "2-1.ks"]);
     expect(list.map((s) => s.label)).toEqual(["Un", "Deux"]);
-    expect(list[1]!.y).toBeGreaterThan(list[0]!.y);
     expect(list[0]).toMatchObject({ id: "1-0", arc: "A" });
   });
 
   it("ne modifie pas la liste par défaut", () => {
     const a = chaptersToScripts(null);
-    a.push({ id: "x", label: "x", file: "x.ks", arc: "x", x: 0, y: 0 });
+    a.push({ id: "x", label: "x", file: "x.ks", arc: "x" });
     expect(DEFAULT_CHAPTERS).toHaveLength(1);
   });
 });

@@ -30,8 +30,8 @@ const status = (p: Partial<PlayerStatus> = {}): PlayerStatus => ({
   mouseMode: "menu", autoHideCursor: false, fastForwardKey: "shift", shortcuts: defaultShortcuts(), ...p,
 });
 const scripts = [
-  { id: "a", label: "A", file: "a.ks", arc: "X", x: 100, y: 100 },
-  { id: "b", label: "B", file: "b.ks", arc: "X", x: 300, y: 200 },
+  { id: "a", label: "A", file: "a.ks", arc: "X" },
+  { id: "b", label: "B", file: "b.ks", arc: "X" },
 ];
 const slotData = { scriptFile: "a.ks", timestamp: 0, previewText: "hello", thumbnailUrl: null, stage: {} as never };
 
@@ -188,7 +188,6 @@ describe("DomUIManager", () => {
       {
         screen: "flowchart",
         scripts,
-        progress: { unlocked: ["a"], completed: [] },
         currentScript: null,
         story: { visited: [], finished: [], choices: [], endings: [] },
       },

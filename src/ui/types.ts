@@ -97,14 +97,6 @@ export type ScriptSummary = {
   label: string;
   file: string;
   arc: string;
-  /** Position dans le flowchart (unités logiques). */
-  x: number;
-  y: number;
-};
-
-export type ScriptProgress = {
-  unlocked: readonly string[];
-  completed: readonly string[];
 };
 
 /** Arête de choix prise : scripts uniquement, jamais le libellé de l'option. */
@@ -177,7 +169,6 @@ export type UIView =
       screen: "flowchart";
       /** Chapitres (titres des groupes) ; `id` = `story-chain.json.chapters[].id`. */
       scripts: readonly ScriptSummary[];
-      progress: ScriptProgress;
       /** Identifiant du script en cours (nom sans extension, minuscules) ; null au titre. */
       currentScript: string | null;
       /** Progression par scène (cumulative, indépendante de la sauvegarde chargée). */
