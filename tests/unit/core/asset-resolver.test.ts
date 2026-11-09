@@ -222,3 +222,26 @@ describe("AssetResolver — énumération des images (galerie CG, HUD-15)", () =
     expect(createAssetResolver().imageEntries()).toEqual([]);
   });
 });
+
+describe("AssetResolver — énumération des sons (galerie sonore, HUD-16)", () => {
+  it("liste les sons du manifeste avec l'URL absolue et les métadonnées utilisateur", () => {
+    const manifest: AssetManifest = {
+      version: 1,
+      generatedAt: "2026-01-01T00:00:00Z",
+      images: {},
+      audio: {
+        bgm01: { url: "bgm/a.ogg", source: "bgm/a.ogg", kind: "bgm", title: "Titre utilisateur", composer: "Compositeur" },
+        se01: { url: "se/s.ogg", source: "sound/s.wav", kind: "se" },
+      },
+      scenarios: {},
+    };
+    expect(createAssetResolver({ manifest }).audioEntries()).toEqual([
+      { key: "bgm01", url: "/assets/bgm/a.ogg", kind: "bgm", source: "bgm/a.ogg", title: "Titre utilisateur", composer: "Compositeur" },
+      { key: "se01", url: "/assets/se/s.ogg", kind: "se", source: "sound/s.wav" },
+    ]);
+  });
+
+  it("sans manifeste : aucune entrée", () => {
+    expect(createAssetResolver().audioEntries()).toEqual([]);
+  });
+});

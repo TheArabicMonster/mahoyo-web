@@ -16,6 +16,12 @@ export type ManifestEntry = {
   source: string;
   /** Kind original pour débogage. */
   kind: AssetKind;
+  /**
+   * Métadonnées **facultatives de l'utilisateur** pour la galerie sonore (HUD-16, #209) :
+   * titres et compositeurs ne sont jamais versionnés, le manifeste de l'utilisateur peut les porter.
+   */
+  title?: string;
+  composer?: string;
 };
 
 /** Entrée d'un scénario dans le manifest. */
@@ -122,6 +128,22 @@ export function lookupScenario(
 }
 
 /**
+ * Entrée audio aplatie (clé du manifeste + kind + source, et métadonnées utilisateur éventuelles).
+ * Utilisée par la galerie sonore (HUD-16, #209).
+ */
+export type AudioEntry = {
+  key: string;
+  /** URL relative au baseUrl du résolveur. */
+  url: string;
+  kind: AssetKind;
+  source: string;
+  /** Titre fourni par l'utilisateur (jamais commité) ; absent = libellé neutre côté interface. */
+  title?: string;
+  /** Compositeur fourni par l'utilisateur (jamais commité). */
+  composer?: string;
+};
+
+/**
  * Liste les images du manifeste, aplaties en entrées triées par clé.
  *
  * Utilisé par la galerie CG (#208) : les clés et les chemins sources sont des données du
@@ -131,5 +153,23 @@ export function listImages(manifest: AssetManifest | undefined): ImageEntry[] {
   if (!manifest) return [];
   return Object.entries(manifest.images)
     .map(([key, entry]) => ({ key, url: entry.url, kind: entry.kind, source: entry.source }))
+    .sort((a, b) => a.key.localeCompare(b.key, "ja", { numeric: true }));
+}
+
+/**
+ * Liste les sons du manifeste, aplatis en entrées triées par clé (galerie sonore, #209).
+ * Seuls les BGM sont retenus par l'appelant : les SE ne sont pas des morceaux de la galerie.
+ */
+export function listAudio(manifest: AssetManifest | undefined): AudioEntry[] {
+  if (!manifest) return [];
+  return Object.entries(manifest.audio)
+    .map(([key, entry]) => ({
+      key,
+      url: entry.url,
+      kind: entry.kind,
+      source: entry.source,
+      ...(entry.title === undefined ? {} : { title: entry.title }),
+      ...(entry.composer === undefined ? {} : { composer: entry.composer }),
+    }))
     .sort((a, b) => a.key.localeCompare(b.key, "ja", { numeric: true }));
 }

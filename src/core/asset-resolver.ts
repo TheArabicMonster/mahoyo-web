@@ -20,6 +20,7 @@ import type {
   AssetManifest,
 } from "./asset-manifest.js";
 import {
+  listAudio,
   listImages,
   lookupImage as lookupImg,
   lookupAudio as lookupAud,
@@ -32,6 +33,16 @@ export type ResolvedImageEntry = {
   url: string;
   kind: AssetKind;
   source: string;
+};
+
+/** Entrée audio résolue (galerie sonore, HUD-16 / #209) : URL complète et métadonnées utilisateur. */
+export type ResolvedAudioEntry = {
+  key: string;
+  url: string;
+  kind: AssetKind;
+  source: string;
+  title?: string;
+  composer?: string;
 };
 
 export type AssetResolver = {
@@ -53,6 +64,11 @@ export type AssetResolver = {
    * Sans manifeste : liste vide (le repli par convention ne permet pas de lister les fichiers).
    */
   imageEntries(): readonly ResolvedImageEntry[];
+  /**
+   * Tous les sons du manifeste, avec leur URL résolue et leurs métadonnées utilisateur
+   * (galerie sonore, HUD-16 / #209). Sans manifeste : liste vide.
+   */
+  audioEntries(): readonly ResolvedAudioEntry[];
   /** Résout un fichier BGM. */
   bgm(storage: string): string;
   /** Résout un fichier SE. */
@@ -161,6 +177,9 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
     imageEntries(): ResolvedImageEntry[] {
       // Aucune URL sans manifeste : on ne peut pas lister les fichiers par convention.
       return listImages(manifest).map((entry) => ({ ...entry, url: `${baseUrl}/${entry.url}` }));
+    },
+    audioEntries(): ResolvedAudioEntry[] {
+      return listAudio(manifest).map((entry) => ({ ...entry, url: `${baseUrl}/${entry.url}` }));
     },
     scenario(storage: string): string {
       const key = storageKey(storage);

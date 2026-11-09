@@ -51,6 +51,27 @@ export const fr = {
   "cg.viewer.zoomOut": "Réduire",
   "cg.viewer.zoomReset": "Taille réelle",
 
+  // ── Sound mode (HUD-16, #209) ──
+  // Les titres/compositeurs des morceaux viennent du manifeste de l'utilisateur : jamais en dur ici.
+  "sound.title": "Sound mode",
+  "sound.title.deco": "サウンドモード",
+  "sound.list": "Liste des morceaux",
+  "sound.empty": "Aucune musique disponible.",
+  "sound.controls": "Commandes du lecteur",
+  "sound.play": "Lire",
+  "sound.pause": "Mettre en pause",
+  "sound.stop": "Arrêter",
+  "sound.previous": "Morceau précédent",
+  "sound.next": "Morceau suivant",
+  "sound.repeatOne": "Répéter le morceau",
+  "sound.repeatAll": "Répéter la liste",
+  "sound.shuffle": "Lecture aléatoire",
+  "sound.progress": "Progression du morceau",
+  "sound.volume": "Volume",
+  "sound.volumeValue": "{n} %",
+  "sound.track": "Morceau {n}",
+  "sound.noMetadata": "Aucune métadonnée fournie.",
+
   // ── Menu système (clic droit) ──
   "systemMenu.title": "Système",
   "systemMenu.title.deco": "システム",

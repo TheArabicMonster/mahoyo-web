@@ -4,6 +4,7 @@ import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { AssetResolver } from "@/core/asset-resolver.js";
 import { applyViewportScale, computeViewportScale } from "@/core/display.js";
 import { createDomStageRenderer } from "./renderer/stage-renderer.js";
+import { createSoundEngine } from "./renderer/audio-manager.js";
 import { DomUIManager } from "./ui/ui-manager.js";
 import type { SaveTransferActions } from "./ui/save-load-screen.js";
 import { Player } from "./ui/player.js";
@@ -54,6 +55,8 @@ async function main() {
   const cgProgress = createCgProgress(settingsStore);
   await cgProgress.load();
   window.addEventListener("pagehide", () => void cgProgress.flush());
+  // Galerie sonore (HUD-16, #209) : lecteur indépendant des canaux du jeu.
+  const soundEngine = createSoundEngine();
   const baseResolver: AssetResolver = createAssetResolver({ baseUrl: ASSET_BASE, manifest });
   const resolver: AssetResolver = trackCgImages(baseResolver, cgProgress);
 
@@ -94,6 +97,16 @@ async function main() {
         cgGallery: {
           images: () => resolver.imageEntries().map(({ key, url, kind, source }) => ({ key, url, kind, source })),
           seen: () => cgProgress.seen(),
+        },
+        // Galerie sonore (HUD-16, #209) : BGM du manifeste de l'utilisateur (titres et
+        // compositeurs facultatifs, jamais commités) et lecteur indépendant.
+        soundGallery: {
+          tracks: () =>
+            resolver
+              .audioEntries()
+              .filter((entry) => entry.kind === "bgm")
+              .map(({ key, url, title, composer }) => ({ key, url, ...(title === undefined ? {} : { title }), ...(composer === undefined ? {} : { composer }) })),
+          audio: soundEngine,
         },
       }),
     scripts: chaptersToScripts(chain),

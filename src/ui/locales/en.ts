@@ -44,6 +44,27 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "cg.viewer.zoomOut": "Zoom out",
   "cg.viewer.zoomReset": "Actual size",
 
+  // ── Sound mode (HUD-16, #209) ──
+  // Track titles/composers come from the user's manifest: never hard-coded here.
+  "sound.title": "Sound mode",
+  "sound.title.deco": "サウンドモード",
+  "sound.list": "Track list",
+  "sound.empty": "No music available.",
+  "sound.controls": "Player controls",
+  "sound.play": "Play",
+  "sound.pause": "Pause",
+  "sound.stop": "Stop",
+  "sound.previous": "Previous track",
+  "sound.next": "Next track",
+  "sound.repeatOne": "Repeat track",
+  "sound.repeatAll": "Repeat list",
+  "sound.shuffle": "Shuffle",
+  "sound.progress": "Track progress",
+  "sound.volume": "Volume",
+  "sound.volumeValue": "{n}%",
+  "sound.track": "Track {n}",
+  "sound.noMetadata": "No metadata provided.",
+
   // ── System menu (right click) ──
   "systemMenu.title": "System",
   "systemMenu.title.deco": "システム",

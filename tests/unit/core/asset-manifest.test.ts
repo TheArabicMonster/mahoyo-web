@@ -3,7 +3,7 @@
  * Les noms ci-dessous sont inventés.
  */
 import { describe, it, expect } from "vitest";
-import { foldKey, listImages, lookupAudio, lookupImage, type AssetManifest } from "@/core/asset-manifest.js";
+import { foldKey, listAudio, listImages, lookupAudio, lookupImage, type AssetManifest } from "@/core/asset-manifest.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import { storageKey } from "@/core/storage-key.js";
 
@@ -99,5 +99,30 @@ describe("listImages — galerie CG (HUD-15, #208)", () => {
 
   it("sans manifeste : liste vide", () => {
     expect(listImages(undefined)).toEqual([]);
+  });
+});
+
+describe("listAudio — galerie sonore (HUD-16, #209)", () => {
+  it("aplatit les sons du manifeste, triés par clé, avec les métadonnées utilisateur éventuelles", () => {
+    const withMetadata: AssetManifest = {
+      version: 1,
+      generatedAt: "2026-01-01T00:00:00Z",
+      images: {},
+      audio: {
+        bgm02: { url: "bgm/b.webp", source: "bgm/b.ogg", kind: "bgm" },
+        bgm01: { url: "bgm/a.webp", source: "bgm/a.ogg", kind: "bgm", title: "Titre utilisateur", composer: "Compositeur" },
+        se01: { url: "se/s.ogg", source: "sound/s.wav", kind: "se" },
+      },
+      scenarios: {},
+    };
+    expect(listAudio(withMetadata)).toEqual([
+      { key: "bgm01", url: "bgm/a.webp", kind: "bgm", source: "bgm/a.ogg", title: "Titre utilisateur", composer: "Compositeur" },
+      { key: "bgm02", url: "bgm/b.webp", kind: "bgm", source: "bgm/b.ogg" },
+      { key: "se01", url: "se/s.ogg", kind: "se", source: "sound/s.wav" },
+    ]);
+  });
+
+  it("sans manifeste : liste vide", () => {
+    expect(listAudio(undefined)).toEqual([]);
   });
 });

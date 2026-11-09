@@ -4,6 +4,7 @@ import { DEFAULT_AUDIO_SETTINGS, DEFAULT_DISPLAY_SETTINGS } from "@/renderer/typ
 import { setUiLanguage } from "@/ui/i18n.js";
 import { TOAST_LEAVE_MS } from "@/ui/toast.js";
 import { DomUIManager } from "@/ui/ui-manager.js";
+import { FakeAudioPlayer } from "../mocks/fake-audio-player.js";
 import type { GameSettings, PlayerCommands, PlayerStatus, UIView } from "@/ui/types.js";
 
 function makeCommands() {
@@ -59,7 +60,7 @@ describe("DomUIManager", () => {
   });
 
   it("crée le layout #ui-overlay", () => {
-    for (const id of ["ui-menu", "ui-flowchart", "ui-pause", "ui-cg", "ui-choices", "ui-toast", "ui-loading"]) {
+    for (const id of ["ui-menu", "ui-flowchart", "ui-pause", "ui-cg", "ui-sound", "ui-choices", "ui-toast", "ui-loading"]) {
       expect(q(`#ui-overlay #${id}`)).not.toBeNull();
     }
   });
@@ -645,6 +646,100 @@ describe("DomUIManager — galerie CG (HUD-15, #208)", () => {
     q("#ui-overlay")!.click();
     expect(cmd.advance).not.toHaveBeenCalled();
     // Le clic droit ne doit pas ouvrir le menu système sous la galerie.
+    q("#ui-overlay")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    expect(cmd.openScreen).not.toHaveBeenCalled();
+  });
+});
+
+describe("DomUIManager — galerie sonore (HUD-16, #209)", () => {
+  let root: HTMLElement;
+  let cmd: ReturnType<typeof makeCommands>;
+  let ui: DomUIManager;
+  let audio: FakeAudioPlayer;
+  const tracks = [
+    { key: "bgm01", url: "/assets/bgm/01.ogg", title: "Titre utilisateur", composer: "Compositeur" },
+    { key: "bgm02", url: "/assets/bgm/02.ogg" },
+  ];
+  const title = (): UIView => ({ screen: "title", scripts, hasContinue: false });
+
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="viewport"></div>';
+    root = document.getElementById("viewport")!;
+    cmd = makeCommands();
+    audio = new FakeAudioPlayer();
+  });
+  afterEach(() => {
+    ui?.dispose();
+    document.body.innerHTML = "";
+  });
+
+  const mount = (options: ConstructorParameters<typeof DomUIManager>[0] = {}): DomUIManager => {
+    ui = new DomUIManager(options);
+    ui.init(root, cmd);
+    ui.show(title());
+    return ui;
+  };
+  const q = (sel: string) => root.querySelector<HTMLElement>(sel);
+  const escape = () =>
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+  it("sans galerie : l'entrée Soundmode reste grisée, pas d'écran fantôme", () => {
+    mount();
+    q('[data-entry="extra"]')!.click();
+    const entry = q('[data-entry="soundmode"]')!;
+    expect(entry.getAttribute("aria-disabled")).toBe("true");
+    entry.click();
+    expect(q("#ui-sound")!.childElementCount).toBe(0);
+  });
+
+  it("manifeste sans BGM : entrée grisée", () => {
+    mount({ soundGallery: { tracks: () => [], audio } });
+    q('[data-entry="extra"]')!.click();
+    expect(q('[data-entry="soundmode"]')!.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("avec des BGM : l'entrée ouvre la galerie sonore au-dessus du titre, dans #ui-sound", () => {
+    mount({ soundGallery: { tracks: () => tracks, audio } });
+    q('[data-entry="extra"]')!.click();
+    const entry = q('[data-entry="soundmode"]')!;
+    expect(entry.getAttribute("aria-disabled")).toBeNull();
+    entry.click();
+    const screen = q("#ui-sound .mh-sound-screen");
+    expect(screen).not.toBeNull();
+    expect(screen!.querySelectorAll(".mh-sound-track")).toHaveLength(2);
+    expect(screen!.querySelector(".mh-sound-track-title")!.textContent).toBe("Titre utilisateur");
+    // Focus initial : premier morceau.
+    expect(document.activeElement?.classList.contains("mh-sound-track")).toBe(true);
+    expect(q(".mh-ui-title-screen")).not.toBeNull();
+  });
+
+  it("Échap ferme la galerie sonore, coupe la lecture et rend le focus à Soundmode", () => {
+    mount({ soundGallery: { tracks: () => tracks, audio } });
+    q('[data-entry="extra"]')!.click();
+    q('[data-entry="soundmode"]')!.click();
+    q("#ui-sound .mh-sound-track")!.click(); // lecture
+    expect(audio.soundPlaying).toBe(true);
+    escape();
+    expect(q("#ui-sound")!.childElementCount).toBe(0);
+    expect(audio.soundPlaying).toBe(false);
+    expect(document.activeElement).toBe(q('[data-entry="soundmode"]'));
+  });
+
+  it("un changement d'écran referme la galerie sonore", () => {
+    mount({ soundGallery: { tracks: () => tracks, audio } });
+    q('[data-entry="extra"]')!.click();
+    q('[data-entry="soundmode"]')!.click();
+    ui.show({ screen: "game" });
+    expect(q("#ui-sound")!.childElementCount).toBe(0);
+    expect(audio.soundPlaying).toBe(false);
+  });
+
+  it("les entrées de jeu sont neutralisées tant que la galerie sonore est ouverte", () => {
+    mount({ soundGallery: { tracks: () => tracks, audio } });
+    q('[data-entry="extra"]')!.click();
+    q('[data-entry="soundmode"]')!.click();
+    q("#ui-overlay")!.click();
+    expect(cmd.advance).not.toHaveBeenCalled();
     q("#ui-overlay")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     expect(cmd.openScreen).not.toHaveBeenCalled();
   });
