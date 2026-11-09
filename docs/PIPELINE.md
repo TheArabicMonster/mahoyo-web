@@ -188,6 +188,22 @@ npm run normalize-ks -- <input.ks>
   [playbgm storage=bgm_rain]
   ```
 
+### 4 bis. Données du moteur (`data/`)
+
+Certains fichiers du jeu ne sont **ni des images ni des sons** mais des données lues par le
+moteur à l'exécution. Le pipeline les copie tels quels (aucune conversion, aucune entrée au
+manifeste) de `input/` vers `output/`, en conservant leur chemin :
+
+| Fichier | Rôle |
+|---|---|
+| `data/others/envcolor.ksc` | table des **effets d'ambiance** (`@fg effect=屋外深夜`…) : gamma par canal + calques de couleur translucides. Chargée par le player (`/assets/data/others/envcolor.ksc`) ; absente, les effets d'ambiance ne sont pas appliqués (avertissement). |
+
+- Implémentation : `tools/data-files.ts` (`ENGINE_DATA_FILES`, `installEngineDataFiles`),
+  appelée par `tools/pipeline.ts` juste avant l'écriture du manifeste ;
+- `--dry-run` liste les données qui seraient installées (ou absentes) sans rien écrire ;
+- une donnée absente de l'entrée n'est pas une erreur : le pipeline l'ignore avec un
+  avertissement, le player fonctionne sans (issue #260).
+
 ### 5. Manifest et vérification des références
 
 Le pipeline écrit `asset-manifest.json` (clé de storage normalisée → URL web), puis
