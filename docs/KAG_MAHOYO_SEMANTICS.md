@@ -585,6 +585,10 @@ visible/audible/de déroulement n'est classée no-op. Le lot #286 (crédits) est
 (`@wstaffroll`, `@staffrolluninit`, `@staffrollsetting`) : la baseline restante est de
 **46 commandes / 168 occurrences**, à résorber par leurs issues de suivi.
 
+**Suivi des lots** : #281 (effets d'écran plugin) est traité — voir §9 quater ; la baseline, déjà
+réduite à 46 commandes / 168 occurrences par #286, passe à **42 / 152**. Les autres lots (#85,
+#86, #282-#287) restent ouverts.
+
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
 Le générique de fin (`staffroll.ks`, fin de `wik_fin.ks`, `d-8.ks`) utilise six commandes ; quatre
@@ -607,6 +611,57 @@ implémentées ici. Sémantique vérifiée dans `data/scenario/staffrollplugin.t
   et ne créent pas d'élément supplémentaire (avant #286, un overlay était créé par événement).
 - `@staffrollappearimage` (images apparaissant pendant le défilement) n'est utilisé par aucun
   script du corpus.
+
+## 9 quater. Effets d'écran plugin — implémentation (#281)
+
+Traitement du lot « effets d'écran plugin » du triage #276 (22 occurrences) : les 7 commandes
+sortent de la baseline des inconnues, qui passe de **46 commandes / 168 occurrences** (après
+#286) à **42 / 152** (`npm run audit:baseline` ; `npm run audit:guard -- --strict` OK). Sémantique lue
+dans les sources du moteur installé (`data/override/tagex.tjs`, `data/scenario/noiseplugin.tjs`,
+`data/scenario/focuslineplugin.tjs`) et args réels des scripts (`8.5.ks`, `1.5-4.ks`, `nz3.ks`,
+`wik_x-2.ks`, `wik_q-a.ks`, `call.ks`).
+
+| Commande | Statut | Rendu |
+|---|---|---|
+| `@shake` | implémenté (approximation écran entier) | oscillation sinusoïdale de la scène : `vmax`/`hmax` en px, `cycle` en ms, `time` optionnel (absent = continue) |
+| `@swing` | implémenté (approximation écran entier) | oscillation aléatoire continue : cycle tiré dans `[mincycle, maxcycle]`, vibration dans `[minvibration, maxvibration]`, `rate` ; arrêt par `@stopswing` |
+| `@stopswing` | implémenté | arrêt de la secousse d'écran et restitution de la transformation |
+| `@noiseact` | implémenté (approximation propriétés) | action `props=`/`keys=` sur les propriétés du bruit : `opacity`, `monocro`, `visible`, `status` ; fondu d'opacité si ≥ 2 valeurs distinctes |
+| `@focusline` | approximé (rendu dédié) | canvas de lignes radiales : `cx`/`cy`, nombre `[lmin,lmax]`, longueur `[cmin,cmax]`, apparition `max(emin,emax)` ms, `color` (entier, `0x`, `#`) et `opacity` |
+| `@stopfocusline` | approximé | retire l'effet (l'original masque sans détruire les calques) |
+| `@clearfocusline` | approximé | retire l'effet et libère le canvas |
+
+### Écarts documentés
+
+- **Secousses** : `@shake`/`@swing` visent un calque (`storage=`, `page=`) dans le moteur ; le port
+  applique l'oscillation à la **scène entière** (`@quake` utilise déjà cette transformation). Les
+  attributs `storage`, `page`, `actmode` (shake) et `force` sont **ignorés**. Une seule secousse à
+  la fois : un `@quake`, `@shake` ou `@swing` remplace l'effet précédent. Non persisté dans les
+  sauvegardes (comme `@quake`). `time` absent = secousse continue jusqu'à `@stopswing`, changement
+  de secousse ou fin de session. Désactivé par le réglage « effets spéciaux » et par
+  `prefers-reduced-motion` (aucun mouvement agressif).
+- **`@noiseact`** : seules les propriétés du bruit du port sont rendues (`opacity`, `monocro`,
+  `visible`, `status`). `absolute` et `type` sont parsés puis ignorés (le bruit est une surcouche
+  CSS plein écran, sans composition de calques). Les propriétés discrètes s'appliquent
+  instantanément ; le fondu n'est joué que si l'opacité change réellement entre keyframes (le
+  corpus réel répète la même valeur par carry). `status=stop` ou `visible=0` retire le bruit,
+  comme `@stopnoise`.
+- **`@focusline`** : rendu **approxé** en canvas (aucun `layerExYADraw` dans le navigateur) :
+  lignes radiales autour de (`cx`, `cy`), longueurs/nombre tirés aléatoirement dans les bornes,
+  fondu d'apparition puis figement. `page`, `absolute`, `interval` et `time` sont ignorés
+  (l'overlay couvre la scène) ; `cmin > cmax` (corpus) est normalisé par ordre. Sous
+  `prefers-reduced-motion`, lignes affichées sans fondu. `@stopfocusline` et `@clearfocusline`
+  ont le même effet net dans le port (retrait de l'overlay), alors que l'original distingue
+  masquage et destruction des calques.
+- **Un seul effet à la fois** : `noise`, `haze` et `focusline` partagent `SceneState.effect`
+  (limitation antérieure du port) ; un nouvel effet remplace le précédent et `@stopnoise` retire
+  aussi un éventuel `@focusline`.
+- **Tests** : `tests/unit/kag/plugin-effects.test.ts` (parse + runtime des 7 commandes, args réels
+  du corpus), `tests/unit/kag/action.test.ts` (`parseNoiseActKeys`), `tests/unit/renderer/plugin-effects.test.ts`
+  (secousses, bruit animé, canvas `@focusline`, effets spéciaux et `prefers-reduced-motion`),
+  `tests/unit/kag/stage-state.test.ts` (persistance du bruit animé).
+- **Conflit #286** : les crédits (`wstaffroll`, `staffrolluninit`, `staffrollsetting`) restent hors
+  de ce lot ; aucun refactor de `runtime.ts` au-delà des nouveaux cas de commandes.
 
 ## 10. Commandes non implémentées à figer plus tard
 

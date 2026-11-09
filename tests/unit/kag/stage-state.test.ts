@@ -81,3 +81,19 @@ describe("stage-state reducers", () => {
     expect(snapshot.loops).toHaveLength(0);
   });
 });
+
+describe("stage-state — effets plugin (#281)", () => {
+  it("noiseAct devient l'effet persistant (bruit, opacité brute)", () => {
+    const snapshot = reduceStage([
+      { kind: "noiseAct", opacity: 50, monocro: true, from: 0, time: 500 },
+    ]);
+    expect(snapshot.scene.effect).toEqual({ kind: "noise", opacity: 50, monocro: true });
+  });
+
+  it("screenShake n'est pas persisté dans le snapshot (comme quake)", () => {
+    const snapshot = reduceStage([
+      { kind: "screenShake", shake: { mode: "shake", vmax: 2, hmax: 1, cycle: 100, time: 500 } },
+    ]);
+    expect(snapshot.scene.effect).toBeNull();
+  });
+});

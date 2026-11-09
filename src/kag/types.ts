@@ -115,6 +115,23 @@ export type AnimKeyframe = {
   contrast?: number;
 };
 
+/**
+ * Keyframe d'une action de plugin (`@noiseact`, `noiseplugin.tjs` `kt.noiseact`) : mêmes colonnes
+ * que `@fgact`/`@bgact` (temps, accel, interp, puis valeurs des `props`), mais propriétés du bruit.
+ * `opacity` est en 0..255 comme dans le moteur ; les propriétés discrètes (`-`) sont appliquées
+ * instantanément.
+ */
+export type PluginKeyframe = {
+  time: number;
+  duration: number;
+  interp: "l" | "n" | "~";
+  opacity?: number;
+  monocro?: boolean;
+  visible?: boolean;
+  status?: string;
+  absolute?: number;
+};
+
 export type AnimationDef = {
   storage: string;
   page?: PageLayer;
@@ -199,6 +216,29 @@ export type Instruction =
   | { kind: "stoptrans" }
   | { kind: "haze"; power: number; delta: number; omega: number; page?: PageLayer }
   | { kind: "stophaze"; page?: PageLayer }
+  /** Secousse sinusoïdale (`@shake`, override tagex.tjs) : amplitude et période. `time` absent = continu. */
+  | { kind: "shake"; vmax: number; hmax: number; cycle: number; time?: number }
+  /** Secousse aléatoire continue (`@swing`, tagex.tjs) : périodes et vibrations tirées au hasard. */
+  | { kind: "swing"; minCycle: number; maxCycle: number; minVibration: number; maxVibration: number; rate: number; time?: number }
+  | { kind: "stopswing" }
+  /** Modification animée des propriétés du bruit (`@noiseact`, noiseplugin.tjs `kt.noiseact`). */
+  | { kind: "noiseact"; keyframes: PluginKeyframe[] }
+  /** Lignes de concentration (`@focusline`, focuslineplugin.tjs) : rendu dédié approximé. */
+  | {
+      kind: "focusline";
+      cx: number;
+      cy: number;
+      minLength: number;
+      maxLength: number;
+      minLines: number;
+      maxLines: number;
+      appear: number;
+      color: string;
+      opacity: number;
+      status: string;
+    }
+  | { kind: "stopfocusline" }
+  | { kind: "clearfocusline" }
   | { kind: "beginploy" }
   | { kind: "endploy" }
   | { kind: "ploysay"; mode: string; ox: number; oy: number }

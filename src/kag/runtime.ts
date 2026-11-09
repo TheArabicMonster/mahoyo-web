@@ -16,6 +16,7 @@ import type {
   Layer,
   Page,
   ParsedScript,
+  PluginKeyframe,
   TextSegment,
   TextStyle,
   Token,
@@ -32,6 +33,7 @@ import type {
   QuakeSpec,
   RenderEvent,
   SceneState,
+  ScreenShakeSpec,
   SpriteState,
   StaffrollState,
   Step,
@@ -1596,6 +1598,99 @@ export class Runtime {
     return { kind: "quake", quake };
   }
 
+  /**
+   * @shake / @swing : secousse d'écran (override `tagex.tjs`). Le port applique l'oscillation à la
+   * scène entière (approximation : `storage`/`page`/`actmode` visent un calque dans le moteur).
+   */
+  private applyScreenShake(instruction: Extract<Instruction, { kind: "shake" | "swing" }>): RenderEvent {
+    if (instruction.kind === "shake") {
+      const shake: ScreenShakeSpec = {
+        mode: "shake",
+        vmax: instruction.vmax,
+        hmax: instruction.hmax,
+        cycle: instruction.cycle,
+        time: instruction.time ?? null,
+      };
+      return { kind: "screenShake", shake };
+    }
+    const shake: ScreenShakeSpec = {
+      mode: "swing",
+      minCycle: instruction.minCycle,
+      maxCycle: Math.max(instruction.minCycle, instruction.maxCycle),
+      minVibration: instruction.minVibration,
+      maxVibration: Math.max(instruction.minVibration, instruction.maxVibration),
+      rate: instruction.rate,
+      time: instruction.time ?? null,
+    };
+    return { kind: "screenShake", shake };
+  }
+
+  /**
+   * @noiseact (noiseplugin.tjs `kt.noiseact`) : action sur les propriétés du bruit. Approximation :
+   * seules `opacity`, `monocro`, `visible` et `status` sont rendues ; `absolute`/`type` sont
+   * parsés puis ignorés (le bruit du port est une surcouche plein écran). Un fondu n'est joué que
+   * si l'opacité est définie à plusieurs keyframes.
+   */
+  private applyNoiseAct(instruction: Extract<Instruction, { kind: "noiseact" }>): RenderEvent {
+    const frames = instruction.keyframes;
+    // Sans keyframe exploitable, l'action ne change rien (le tag est un no-op dans le moteur).
+    if (frames.length === 0) return { kind: "effect", effect: this.state.effect ?? null };
+    const current = this.state.effect?.kind === "noise" ? this.state.effect : null;
+    const lastDefined = <T,>(get: (frame: PluginKeyframe) => T | undefined): T | undefined => {
+      for (let i = frames.length - 1; i >= 0; i--) {
+        const value = get(frames[i]!);
+        if (value !== undefined) return value;
+      }
+      return undefined;
+    };
+    const targetOpacity = lastDefined((frame) => frame.opacity) ?? current?.opacity ?? 128;
+    const monocro = lastDefined((frame) => frame.monocro) ?? current?.monocro ?? false;
+    const visible = lastDefined((frame) => frame.visible) ?? true;
+    const status = lastDefined((frame) => frame.status) ?? "play";
+
+    if (status === "stop" || !visible) {
+      this.state.effect = null;
+      return { kind: "effect", effect: null };
+    }
+
+    // Fondu seulement si l'opacité prend au moins deux valeurs distinctes dans les keyframes
+    // (le carry répète souvent la même valeur, cf. corpus réel où un fondu serait un faux positif).
+    const opacityFrames = frames.filter((frame) => frame.opacity !== undefined);
+    const animated = new Set(opacityFrames.map((frame) => frame.opacity)).size >= 2;
+    const from = animated ? opacityFrames[0]!.opacity! : (current?.opacity ?? 0);
+    const time = animated
+      ? Math.max(0, opacityFrames[opacityFrames.length - 1]!.time - opacityFrames[0]!.time)
+      : 0;
+    this.state.effect = { kind: "noise", opacity: targetOpacity, monocro };
+    return { kind: "noiseAct", opacity: targetOpacity, monocro, from, time };
+  }
+
+  /**
+   * @focusline (focuslineplugin.tjs) : lignes de concentration. Approximation documentée dans
+   * `docs/KAG_MAHOYO_SEMANTICS.md` : lignes radiales en canvas autour de (`cx`, `cy`), nombre dans
+   * `[minLines, maxLines]`, longueur dans `[minLength, maxLength]`, apparition sur `appear` ms.
+   */
+  private applyFocusLine(instruction: Extract<Instruction, { kind: "focusline" }>): RenderEvent {
+    if (instruction.status === "stop") {
+      this.state.effect = null;
+      return { kind: "effect", effect: null };
+    }
+    const effect: EffectState = {
+      kind: "focusline",
+      cx: instruction.cx,
+      cy: instruction.cy,
+      minLength: instruction.minLength,
+      maxLength: instruction.maxLength,
+      minLines: instruction.minLines,
+      maxLines: instruction.maxLines,
+      appear: instruction.appear,
+      color: instruction.color,
+      opacity: instruction.opacity,
+    };
+    this.state.effect = effect;
+    return { kind: "effect", effect };
+  }
+
   private applyTextbox(instruction: Instruction): RenderEvent | null {
     let visible: boolean | undefined;
     let time = 300;
@@ -1902,6 +1997,24 @@ export class Runtime {
         break;
       case "stopquake":
         events.push({ kind: "quake", quake: null });
+        break;
+      case "shake":
+      case "swing":
+        events.push(this.applyScreenShake(instruction));
+        break;
+      case "stopswing":
+        events.push({ kind: "screenShake", shake: null });
+        break;
+      case "noiseact":
+        events.push(this.applyNoiseAct(instruction));
+        break;
+      case "focusline":
+        events.push(this.applyFocusLine(instruction));
+        break;
+      case "stopfocusline":
+      case "clearfocusline":
+        this.state.effect = null;
+        events.push({ kind: "effect", effect: null });
         break;
       case "lockquickmenu":
       case "unlockquickmenu": {
