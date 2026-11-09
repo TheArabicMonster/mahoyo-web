@@ -1,0 +1,166 @@
+/* ── Commandes tactiles (WEB-01, #203) ───────────────────────────────────────
+   docs/ANALYSE_HUD_ORIGINAL.md §2.4, §2.5 (E24, E25) ; docs/DESIGN.md §9.6, §10, §12. CSS pur, aucun asset.
+
+   Repère : tout vit dans #viewport, 1280x720 logiques, mis à l'échelle par `transform: scale()`. Sur un
+   téléphone en paysage (844x390), l'échelle vaut ≈ 0,54 : 48 px logiques ne font plus que 26 px à l'écran.
+   Les cibles sont donc définies en pixels RÉELS et converties : `touch-controls.ts` pose `--mh-ui-scale`
+   (échelle courante du viewport) et `--mh-touch-target-px` (48) sur l'overlay, et on divise ici. Aucune valeur de
+   l'analyse (1920x1080 ou 1024x576) n'est reprise : ces commandes n'existent pas dans l'original.
+   Tout est actif seulement sous `.mh-ui-touch` (pointer: coarse, ou toucher observé) ; sur desktop souris
+   la racine `#ui-touch` n'est même pas créée. */
+
+/* ── Page : pas de zoom accidentel ni de défilement pendant le jeu ──
+   `pan-x pan-y` interdit le pincement et le double appui de zoom tout en laissant défiler les écrans qui
+   ont un contenu long (historique, sauvegardes, configuration). En jeu, l'overlay prend `none` : un
+   glissement n'est jamais un défilement de page (ni tirer pour actualiser), il appartient aux gestes. */
+html,
+body,
+#app {
+  touch-action: pan-x pan-y;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+.mh-ui-overlay[data-screen="game"] {
+  touch-action: none;
+}
+
+.mh-ui-overlay.mh-ui-touch {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── Racine ── */
+.mh-ui-overlay > .mh-touch {
+  /* Cible en px réels convertie en px logiques. */
+  --touch-target: calc(var(--mh-touch-target-px, 48) * 1px / var(--mh-ui-scale, 1));
+  --touch-gap: calc(8px / var(--mh-ui-scale, 1));
+  --touch-margin: calc(12px / var(--mh-ui-scale, 1));
+  --touch-font: calc(14px / var(--mh-ui-scale, 1));
+  --touch-line: calc(1px / var(--mh-ui-scale, 1));
+  --touch-ink: var(--mh-text-menu, #a9c8cc);
+  --touch-ink-strong: var(--mh-text-ui, #eef4f5);
+  --touch-fill: rgba(7, 17, 27, 0.72);
+  --touch-border: var(--mh-panel-border-light, #59616b);
+  z-index: 150; /* au-dessus du texte et des choix, sous les toasts (200) et les confirmations (250) */
+  font-family: var(--mh-font-ui, system-ui, sans-serif);
+}
+
+.mh-ui-overlay > .mh-touch[hidden] {
+  display: none;
+}
+
+/* Le badge Auto/Skip (haut droite) cède la place au bouton de menu. */
+.mh-ui-overlay.mh-ui-touch > .mh-ui-status {
+  right: calc((12 + var(--mh-touch-target-px, 48) + 8) * 1px / var(--mh-ui-scale, 1));
+}
+
+/* ── Boutons : base commune ── */
+.mh-touch button {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--touch-ink);
+  background: var(--touch-fill);
+  border: var(--touch-line) solid var(--touch-border);
+  border-radius: calc(4px / var(--mh-ui-scale, 1));
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+
+.mh-touch button:active:not(:disabled) {
+  color: var(--touch-ink-strong);
+  background: var(--mh-teal-on-bottom, #133c39);
+  border-color: var(--mh-cyan-glint, #5fcfc5);
+}
+
+.mh-touch button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Focus visible (clavier, lecteur d'écran) : contour 2 px cyan, décalage 2 px (DESIGN §10). */
+.mh-touch button:focus-visible {
+  outline: calc(2px / var(--mh-ui-scale, 1)) solid var(--mh-focus, #5fcfc5);
+  outline-offset: calc(2px / var(--mh-ui-scale, 1));
+}
+
+/* ── Bouton de menu persistant : coin haut-droit, discret au repos ── */
+.mh-touch-menu {
+  position: absolute;
+  top: var(--touch-margin);
+  right: var(--touch-margin);
+  width: var(--touch-target);
+  height: var(--touch-target);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(5px / var(--mh-ui-scale, 1));
+  opacity: 0.4;
+}
+
+.mh-touch.is-awake .mh-touch-menu,
+.mh-touch-menu:focus-visible {
+  opacity: 1;
+}
+
+.mh-touch-menu-bar {
+  display: block;
+  width: 46%;
+  height: calc(2px / var(--mh-ui-scale, 1));
+  background: currentColor;
+  border-radius: calc(1px / var(--mh-ui-scale, 1));
+}
+
+/* ── Barre d'actions rapides : bas de la scène, centrée ── */
+.mh-touch-bar {
+  position: absolute;
+  left: var(--touch-margin);
+  right: var(--touch-margin);
+  bottom: var(--touch-margin);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--touch-gap);
+  pointer-events: none; /* seuls les boutons captent : un appui entre deux boutons avance le texte */
+  opacity: 0.55;
+  transition: opacity var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+
+.mh-touch.is-awake .mh-touch-bar,
+.mh-touch-bar:focus-within {
+  opacity: 1;
+}
+
+.mh-touch .mh-touch-action {
+  min-width: var(--touch-target);
+  height: var(--touch-target);
+  padding: 0 calc(10px / var(--mh-ui-scale, 1));
+  font-size: var(--touch-font);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* `.mh-touch .mh-touch-action` (et non `.mh-touch-action` seul) : doit l'emporter sur `.mh-touch button` (font, padding). */
+
+/* Bascule active (Auto, Skip) : bord épais cyan + trait d'appui, jamais la seule couleur (DESIGN §10). */
+.mh-touch-action.is-active {
+  color: var(--touch-ink-strong);
+  background: var(--mh-teal-on-bottom, #133c39);
+  border-color: var(--mh-cyan-glint, #5fcfc5);
+  border-width: calc(2px / var(--mh-ui-scale, 1));
+  box-shadow: inset 0 calc(-3px / var(--mh-ui-scale, 1)) 0 var(--mh-cyan-glint, #5fcfc5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mh-touch button,
+  .mh-touch-bar {
+    transition: none;
+  }
+}
