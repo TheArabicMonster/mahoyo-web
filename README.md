@@ -31,7 +31,7 @@ Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 - **Accessibilité** : flowchart utilisable au clavier et au lecteur d'écran (navigation par arêtes, équivalent liste, portrait) et audité par axe-core (WCAG A/AA) ; `prefers-reduced-motion` respecté sur les transitions et les écrans. Conformité WCAG AA globale suivie en v1.1 (#97).
 - **Tactile** : appui long = menu système, balayage vers le haut = historique, barre d'actions rapides (Q.Save, Q.Load, Auto, Skip, Historique, Plein écran) sur appareil tactile uniquement, cibles de 48 px réels ; la souris et le clavier ne changent pas.
 - **Traductions** : japonais d'origine et patch fan français Moon-Trad installable par script ; sélecteur de langue dans la configuration.
-- **Pipeline** : extraction `.xp3` automatisée par gabarit d'outil externe, manifeste d'assets, rapport d'exécution et codes de sortie, conversion `.tlg` → PNG/WebP, audio OGG, normalisation des `.ks`, audit du corpus, table d'enchaînement et graphe de scénario.
+- **Pipeline** : extraction `.xp3` automatisée par gabarit d'outil externe, manifeste d'assets, rapport d'exécution et codes de sortie, conversion `.tlg` → PNG/WebP, audio OGG, normalisation des `.ks`, audit classé du corpus (commandes KAG implémentée / ignorée volontairement / inconnue, registre et garde-fou CI, #275), table d'enchaînement et graphe de scénario.
 - **Qualité** : 1939 tests unitaires, `npm run lint` (ESLint 9, 0 erreur), suite e2e Playwright sur Chromium et Firefox en placeholders (147 tests, 15 fichiers, parcours complet inclus), lecture complète des 221 scripts en CI sur corpus de placeholders, CI à 3 jobs et contrôle anti-assets.
 - **Design system** : palette, typographie, espacements et états mesurés sur le jeu d'origine, tokens CSS dans `src/ui/tokens.css`.
 
@@ -275,6 +275,8 @@ npm run preview
 ls -l public/assets/asset-manifest.json   # présent après l'étape 2
 npm run check:assets                      # aucun asset sous copyright dans le dépôt
 npm run audit                             # audit du corpus KAG (via public/assets, ou MAHOYO_ASSETS_DIR)
+npm run audit:guard                       # garde-fou commandes KAG (registre, baseline, doc ; inconnues hors baseline)
+npm run audit:doc -- --check              # vérifie que la doc des commandes KAG est à jour
 ```
 
 ### Dépannage
