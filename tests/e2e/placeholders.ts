@@ -102,17 +102,69 @@ const PAGE_GLYPH = { width: 32, height: 24, frames: 40 };
  */
 export const PLACEHOLDER_SCENARIO_PAGES = 40;
 
-function placeholderScenario(): string {
-  const pages = Array.from({ length: PLACEHOLDER_SCENARIO_PAGES }, (_, i) => {
+/** Pages des chapitres suivants (parcours complet #94) : assez pour lire, choisir et enchaîner. */
+export const PLACEHOLDER_CHAPTER_PAGES = 6;
+
+/** Textes distinctifs des scripts, pour vérifier dans le DOM quel chapitre est joué. */
+export const PLACEHOLDER_SCRIPT_MARKERS = {
+  prologue: "Page de test e2e",
+  voieA: "Chapitre 1 — Voie A",
+  voieB: "Chapitre 1 — Voie B",
+  chapitre2: "Chapitre 2 — Épilogue",
+} as const;
+
+/** Chapitres exposés à l'écran titre (Extra > Archive) et au flowchart. */
+export const PLACEHOLDER_CHAPTERS = [
+  { id: "1-0", label: "Prologue", file: "1-0.ks", arc: "Prologue" },
+  { id: "1-1a", label: PLACEHOLDER_SCRIPT_MARKERS.voieA, file: "1-1a.ks", arc: "Chapitre 1" },
+  { id: "1-1b", label: PLACEHOLDER_SCRIPT_MARKERS.voieB, file: "1-1b.ks", arc: "Chapitre 1" },
+  { id: "2-0", label: PLACEHOLDER_SCRIPT_MARKERS.chapitre2, file: "2-0.ks", arc: "Chapitre 2" },
+] as const;
+
+/**
+ * Table d'enchaînement (même format que `story-chain.json`, voir `docs/ENCHAINEMENT_SCRIPTS.md`).
+ *
+ * À la fin de `1-0.ks`, le joueur choisit sa voie (un **choix** de deux options) ; la voie choisie
+ * mène au chapitre 1, qui s'enchaîne automatiquement vers le chapitre 2, puis la fin. C'est le
+ * support du parcours complet e2e (#94) : choix, changement de chapitre et enchaînement.
+ */
+export const PLACEHOLDER_CHAIN = {
+  version: 1,
+  first: "1-0.ks",
+  next: {
+    "1-0.ks": [
+      { to: "1-1a.ks", choice: "Accompagner Aoko" },
+      { to: "1-1b.ks", choice: "Suivre Alice" },
+    ],
+    "1-1a.ks": [{ to: "2-0.ks" }],
+    "1-1b.ks": [{ to: "2-0.ks" }],
+  },
+  chapters: PLACEHOLDER_CHAPTERS,
+} as const;
+
+/** Pages d'un script de test, avec un marqueur de texte pour l'identifier dans le DOM. */
+function pagesFor(marker: string, count: number): string {
+  const pages = Array.from({ length: count }, (_, i) => {
     const n = String(i + 1).padStart(2, "0");
-    return `Page de test e2e ${n} — texte original généré pour le player. La lecture continue.[p]`;
+    return `${marker} — page ${n} — texte original généré pour le player. La lecture continue.[p]`;
   });
   return `${pages.join("\n")}\n@return\n`;
+}
+
+/** Les quatre scripts du parcours complet (textes originaux, aucun asset du jeu). */
+function placeholderScripts(): Record<string, string> {
+  return {
+    "1-0.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES),
+    "1-1a.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieA, PLACEHOLDER_CHAPTER_PAGES),
+    "1-1b.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieB, PLACEHOLDER_CHAPTER_PAGES),
+    "2-0.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.chapitre2, PLACEHOLDER_CHAPTER_PAGES),
+  };
 }
 
 /** Manifest minimal : résout les clés logiques vers les PNG générés (jamais de vrai asset). */
 function placeholderManifest(): string {
   const image = (url: string) => ({ url, source: url, kind: "image" as const });
+  const scenario = (file: string) => ({ url: `scenario/${file}`, source: `scenario/${file}`, encoding: "utf-8" });
   return JSON.stringify(
     {
       version: 1,
@@ -126,9 +178,9 @@ function placeholderManifest(): string {
         pagebreak_a: image("image/pagebreak_a.png"),
       },
       audio: {},
-      scenarios: {
-        "1-0": { url: "scenario/1-0.ks", source: "scenario/1-0.ks", encoding: "utf-8" },
-      },
+      scenarios: Object.fromEntries(
+        ["1-0.ks", "1-1a.ks", "1-1b.ks", "2-0.ks"].map((file) => [file.replace(/\.ks$/, ""), scenario(file)]),
+      ),
     },
     null,
     2,
@@ -155,9 +207,14 @@ export function generatePlaceholderAssets(publicDir: string): number {
   writePng(join(assets, "image", "pagebreak_a.png"), PAGE_GLYPH.width * PAGE_GLYPH.frames, PAGE_GLYPH.height, 255, 255, 255);
   writePng(join(assets, "rule", "rule.png"), 1, 1, 128, 128, 128);
 
+  // Scripts du parcours complet (#94) + table d'enchaînement (choix puis enchaînement de chapitres).
+  const scripts = placeholderScripts();
   mkdirSync(join(assets, "scenario"), { recursive: true });
-  writeFileSync(join(assets, "scenario", "1-0.ks"), placeholderScenario());
+  for (const [file, content] of Object.entries(scripts)) {
+    writeFileSync(join(assets, "scenario", file), content);
+  }
+  writeFileSync(join(assets, "story-chain.json"), JSON.stringify(PLACEHOLDER_CHAIN, null, 2));
   writeFileSync(join(assets, "asset-manifest.json"), placeholderManifest());
 
-  return 10;
+  return 10 + Object.keys(scripts).length + 1;
 }
