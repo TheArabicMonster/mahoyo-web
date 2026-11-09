@@ -20,7 +20,7 @@ import { partbgInnerTransform, spriteTransform } from "./transform-helpers.js";
 /** Un changement discret à appliquer à un instant t (ms). */
 export type DiscreteChange = {
   time: number;
-  field: "storage" | "effect" | "contrast" | "visible" | "type" | "absolute";
+  field: "storage" | "effect" | "contrast" | "visible" | "type" | "absolute" | "brightness" | "blurx" | "blury";
   value: string | number | boolean;
 };
 
@@ -44,7 +44,17 @@ export type CompiledAction = {
   discrete: DiscreteChange[];
 };
 
-const DISCRETE_FIELDS = new Set(["storage", "effect", "contrast", "visible", "type", "absolute"]);
+const DISCRETE_FIELDS = new Set([
+  "storage",
+  "effect",
+  "contrast",
+  "visible",
+  "type",
+  "absolute",
+  "brightness",
+  "blurx",
+  "blury",
+]);
 
 /** True si la prop est continue (interpolable). */
 function isContinuous(field: string): boolean {

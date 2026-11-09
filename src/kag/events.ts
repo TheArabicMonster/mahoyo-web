@@ -65,6 +65,16 @@ export type SpriteState = {
   };
   /** Pour @fg/@fgact partbgid= : id du partbg parent (clipage). */
   partbgId?: string;
+  /**
+   * Apparence du calque, telle que le moteur la lit (`type=`, `effect=`, `blur`, `brightness`,
+   * `contrast`). Absents = valeurs par défaut (fusion alpha, aucun filtre).
+   */
+  type?: number;
+  effect?: string;
+  brightness?: number;
+  contrast?: number;
+  blurx?: number;
+  blury?: number;
 };
 
 /** Effet visuel appliqué sur la scène.
@@ -90,6 +100,16 @@ export type SceneState = {
   bgZoomY?: number;
   bgRotate?: number;
   sprites: readonly SpriteState[];
+  /**
+   * Apparence du fond (`@bg type=/effect=/blur/brightness/contrast`) ; absente = défauts
+   * (fusion alpha, aucun filtre). Même sémantique que `SpriteState` (voir `AppearanceArgs`).
+   */
+  bgType?: number;
+  bgEffect?: string;
+  bgBrightness?: number;
+  bgContrast?: number;
+  bgBlurX?: number;
+  bgBlurY?: number;
   /** null = aucun effet actif. */
   effect: EffectState | null;
 };
