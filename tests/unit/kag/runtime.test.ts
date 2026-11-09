@@ -1,3 +1,6 @@
+// Registre des approximations (#295) — tests figés :
+// approx:xchgbgm-volume — volume de piste (test @xchgbgm ci-dessous).
+// approx:staffrollsetting-bgcolor — couleur stockée non peinte (tests crédits ci-dessous).
 import { describe, it, expect } from "vitest";
 import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";

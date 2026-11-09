@@ -1,3 +1,6 @@
+// Registre des approximations (#295) — tests figés :
+// approx:focusline-canvas — rendu canvas approximé (tests @focusline ci-dessous).
+// approx:shake-fullscreen — secousse approximée à l'écran entier (tests @shake/@swing ci-dessous).
 import { describe, it, expect } from "vitest";
 import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";

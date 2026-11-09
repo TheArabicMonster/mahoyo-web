@@ -68,6 +68,16 @@ jobs:
         env:
           MAHOYO_ASSETS_DIR: ${{ runner.temp }}/mahoyo-full-read/assets
 
+      # Garde-fous de clôture DoD (#295) :
+      # - doc générée à jour (LECTURE_COMPLETE) : `audit:doc` régénère sans assets puis échoue si
+      #   le fichier committé diverge ;
+      # - registre des approximations valide (4 éléments, tests figés, compteurs non croissants).
+      # Limite documentée : la baseline réelle (221 scripts) ne peut pas être régénérée en CI sans
+      # assets utilisateur ; elle est contrôlée statiquement par `audit:guard` (baseline↔registre)
+      # et régénérée localement avec `npm run audit:baseline` (vrais assets).
+      - name: Check generated artifacts and approximations registry (#295)
+        run: npm run check:generated
+
       - name: Check formatting (optional)
         run: npx prettier --check "src/**/*.ts" "tests/**/*.ts" "tools/**/*.ts" || true
 
