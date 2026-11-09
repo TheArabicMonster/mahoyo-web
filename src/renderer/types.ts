@@ -158,6 +158,9 @@ export type RunOptions = {
   /**
    * Annulation (load, retour titre). Après un abort, les promesses se RÉSOLVENT
    * (elles ne rejettent pas) et le renderer reste dans un état cohérent.
+   * Concerne aussi la frappe du texte en cours (`runTypewriter`) : elle s'arrête
+   * sans attendre la fin de la page, sinon un retour au titre pendant une longue
+   * page reste suspendu à la durée de frappe restante (#231).
    */
   signal: AbortSignal;
 };
