@@ -7,11 +7,65 @@
  */
 import { execFile } from "child_process";
 import { existsSync } from "fs";
+import { basename } from "path";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
+import { runCommand } from "./command-template.js";
 import { ensureDir, listFiles, outputPathFor, type PipelineContext } from "./pipeline-utils.js";
 
 const execFileAsync = promisify(execFile);
+
+/** Échec d'extraction d'une archive (rapport d'exécution). */
+export type Xp3Failure = { archive: string; error: string };
+
+export type ExtractXp3CommandResult = {
+  archives: string[];
+  extracted: number;
+  failures: Xp3Failure[];
+};
+
+/**
+ * Extrait les archives `.xp3` avec un **gabarit de commande** (`{in}`/`{out}`),
+ * utilisé par l'orchestrateur (`npm run pipeline -- --xp3-cmd "…"`).
+ *
+ * Chaque archive est extraite dans son propre sous-dossier du dossier de travail
+ * (`<work>/extracted/<nom-de-l-archive>/`). Les échecs sont collectés au lieu
+ * d'interrompre les autres archives : l'appelant décide du code de sortie.
+ */
+export async function extractXp3WithCommand(options: {
+  inputDir: string;
+  command: string;
+  outputDir: string;
+  dryRun?: boolean;
+}): Promise<ExtractXp3CommandResult> {
+  const archives = listFiles(options.inputDir, (p) => p.toLowerCase().endsWith(".xp3"));
+  const failures: Xp3Failure[] = [];
+  let extracted = 0;
+
+  for (const archive of archives) {
+    const outDir = joinDirForArchive(options.inputDir, options.outputDir, archive);
+    if (options.dryRun) continue;
+    try {
+      ensureDir(outDir);
+      await runCommand(options.command, archive, outDir);
+      extracted++;
+    } catch (err) {
+      failures.push({
+        archive,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return { archives, extracted, failures };
+}
+
+/** Dossier d'extraction (nom de l'archive sans extension, aplati sur un niveau). */
+function joinDirForArchive(inputDir: string, outputDir: string, archive: string): string {
+  // Conserve l'arborescence relative pour distinguer deux archives de même nom.
+  const rel = outputPathFor(inputDir, outputDir, archive).replace(/\.xp3$/i, "");
+  return rel || `${outputDir}/${basename(archive, ".xp3")}`;
+}
 
 export type ExtractXp3Options = {
   inputDir: string;
