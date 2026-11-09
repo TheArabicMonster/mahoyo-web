@@ -4,7 +4,7 @@
  *
  * @vitest-environment node
  */
-import { mkdtempSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -14,6 +14,7 @@ import {
   exitCodeFor,
   formatRunSummary,
   gitIgnoreStatus,
+  unignoredOutputError,
 } from "../../../tools/pipeline-report.js";
 import type { Task, TaskResult } from "../../../tools/plan.js";
 
@@ -124,6 +125,27 @@ describe("gitIgnoreStatus", () => {
     expect(status).toBe("ignored");
   });
 
+  it("accepte le dossier de travail par défaut même s'il n'existe pas encore (#264)", () => {
+    // Régression : la règle `.pipeline-work/` (barre finale) ne matchait pas le
+    // chemin absolu d'un dossier inexistant ; le premier lancement était refusé.
+    const status = gitIgnoreStatus(".pipeline-work");
+    if (status === "unknown") return;
+    expect(status).toBe("ignored");
+    expect(unignoredOutputError("travail", ".pipeline-work")).toBeNull();
+  });
+
+  it("accepte le dossier de travail par défaut en chemin absolu (#264)", () => {
+    const status = gitIgnoreStatus(join(process.cwd(), ".pipeline-work"));
+    if (status === "unknown") return;
+    expect(status).toBe("ignored");
+  });
+
+  it("reconnaît un dossier inexistant couvert par une règle à barre finale (`tmp-*/`)", () => {
+    const status = gitIgnoreStatus(`tmp-mh264-inexistant-${process.pid}`);
+    if (status === "unknown") return;
+    expect(status).toBe("ignored");
+  });
+
   it("détecte un dossier du dépôt non ignoré", () => {
     const status = gitIgnoreStatus("__mh-dossier-non-ignore-test");
     if (status === "unknown") return;
@@ -134,5 +156,25 @@ describe("gitIgnoreStatus", () => {
     const status = gitIgnoreStatus(OUTSIDE);
     if (status === "unknown") return;
     expect(status).toBe("outside-repo");
+  });
+
+  it("gère un symlink : ignoré via son dossier parent, non ignoré sinon", () => {
+    const suffix = `${process.pid}-${Math.random().toString(36).slice(2)}`;
+    const ignoredDir = join(process.cwd(), `tmp-mh264-link-${suffix}`);
+    const bareLink = join(process.cwd(), `mh264-lien-non-ignore-${suffix}`);
+    try {
+      mkdirSync(ignoredDir, { recursive: true });
+      symlinkSync(OUTSIDE, join(ignoredDir, "lien"), "dir");
+      symlinkSync(OUTSIDE, bareLink, "dir");
+
+      const ignored = gitIgnoreStatus(join(ignoredDir, "lien"));
+      if (ignored !== "unknown") expect(ignored).toBe("ignored");
+
+      const notIgnored = gitIgnoreStatus(bareLink);
+      if (notIgnored !== "unknown") expect(notIgnored).toBe("not-ignored");
+    } finally {
+      rmSync(ignoredDir, { recursive: true, force: true });
+      rmSync(bareLink, { force: true });
+    }
   });
 });

@@ -137,8 +137,40 @@ export function formatRunSummary(report: PipelineRunReport, reportPath: string):
 export type GitIgnoreStatus = "ignored" | "not-ignored" | "outside-repo" | "unknown";
 
 /**
+ * Teste un pathspec **relatif au dépôt** contre les règles `.gitignore`.
+ *
+ * Deux candidats sont essayés : le chemin seul, puis le chemin terminé par un
+ * `/` (forme « dossier »). C'est indispensable pour les règles à barre finale
+ * (`.pipeline-work/` par exemple) : git ne les applique à un dossier **pas
+ * encore créé** que si le pathspec a lui-même la forme d'un dossier. Un nom de
+ * dossier inexistant testé sans `/` n'est donc pas reconnu ignoré.
+ *
+ * Le chemin relatif évite les écarts entre chemin absolu et `cwd`, et permet à
+ * git d'appliquer les motifs ancrés au dépôt. Un status 128 (`check-ignore`
+ * refuse, par exemple « beyond a symbolic link » pour un symlink avec `/`) est
+ * traité comme un candidat inutilisable : l'autre décide.
+ */
+function isIgnoredFromRepoRoot(repoRoot: string, relPath: string): boolean | null {
+  // Pathspec POSIX, quel que soit l'OS.
+  const posix = relPath.split(/\\/).join("/");
+  const candidates = [posix, `${posix.replace(/\/+$/, "")}/`];
+  let gitError = false;
+  for (const candidate of candidates) {
+    const res = spawnSync("git", ["-C", repoRoot, "check-ignore", "-q", "--", candidate], {
+      encoding: "utf-8",
+    });
+    if (res.status === 0) return true;
+    if (res.status === 1) continue;
+    gitError = true;
+  }
+  return gitError ? null : false;
+}
+
+/**
  * Vérifie si `target` est ignoré par git, en le comparant au dépôt courant.
  * `unknown` si git est indisponible ou si le dossier courant n'est pas un dépôt.
+ * Robuste pour un chemin relatif ou absolu, un dossier existant **ou non**, et
+ * un symlink (testé lexicalement).
  */
 export function gitIgnoreStatus(target: string, cwd: string = process.cwd()): GitIgnoreStatus {
   const root = spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf-8" });
@@ -146,12 +178,11 @@ export function gitIgnoreStatus(target: string, cwd: string = process.cwd()): Gi
   const repoRoot = resolve(root.stdout.trim());
   const abs = resolve(cwd, target);
   const rel = relative(repoRoot, abs);
-  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return "outside-repo";
-  const res = spawnSync("git", ["-C", repoRoot, "check-ignore", "-q", "--", abs]);
-  if (res.status === 0) return "ignored";
-  // `git check-ignore` peut sortir en erreur (128) si git est indisponible.
-  if (res.status === 1) return "not-ignored";
-  return "unknown";
+  // À la racine du dépôt (rel === ""), rien n'est un dossier de sortie ignoré.
+  if (rel === "") return "not-ignored";
+  if (rel.startsWith("..") || isAbsolute(rel)) return "outside-repo";
+  const ignored = isIgnoredFromRepoRoot(repoRoot, rel);
+  return ignored === null ? "unknown" : ignored ? "ignored" : "not-ignored";
 }
 
 /** Message d'erreur pour un dossier de sortie non ignoré par git, ou null si OK. */
