@@ -6,14 +6,14 @@ Ce dépôt contient le **projet réel** : un player web moderne et maintenable p
 
 ## Statut (9 novembre 2026)
 
-## Statut (9 novembre 2026)
-
-- **v1.0 : 86 issues fermées sur 86 (100 %, 🟢 Terminé)** — jeu complet jouable sur desktop : lint ESLint 9 vert (#220), lecture complète des 221 scripts exécutée en CI sur un corpus de placeholders (#269, #273), documentation de clôture (#270). La DoD de release est satisfaite.
-- **v1.1** : 43 issues fermées sur 61 (**70 %**) — confort, accessibilité et finitions ; c'est l'épic suivant, **en cours**.
-- Phases actives : **E5 — UI/UX** (finitions v1.1) et **E6 — QA & optimisation**.
+- **v1.0 : 89 issues fermées sur 99 (90 %, 🟡 rouverte)** — la milestone a été **rouverte** pour l'écart DoD « Commandes KAG » : 10 issues ouvertes (#274 chapeau, #85/#86 et les lots d'implémentation #281–#287). L'audit est désormais **classé** (#275) : **84 commandes implémentées**, **2 ignorées volontairement** (registre justifié) et **49 inconnues** (174 occurrences) ; la baseline versionnée décroît **55 → 51 → 49** et le garde-fou `npm run audit:guard` tourne en CI. Le critère « 0 commande inconnue à effet visible » n'est **pas** encore satisfait : **aucun tag ni release v1.0 n'a été publié.**
+- **v1.1** : 43 issues fermées sur 59 (**73 %**) — confort, accessibilité et finitions ; c'est l'épic suivant, **en cours**.
+- Phases actives : **E6 — QA & optimisation** (écart DoD v1.0) et **E5 — UI/UX** (finitions v1.1).
 - Le player lit le corpus narratif complet, gère les choix, l'historique, les sauvegardes IndexedDB et les écrans du HUD d'origine.
-- Dernières livraisons (9 novembre) : transitions plein écran (#205), CG mode (#208), Sound mode (#209), accessibilité du flowchart (#206), intégration du flowchart au titre, au menu système et aux routes (#207), e2e Chromium + Firefox (#94, #243), corrections de fidélité des fonds, calques et effets (#249, #252, #260), lint ESLint 9 avec CI (#220), lecture complète en placeholders (#269, #273), parcours utilisateur et clôture du README (#93, #270).
-- Vérification locale : `npm run test:unit` (**1939 tests**), `npm run lint`, `npm run build` et `npm run check:assets` passent ; `npm run test:e2e` tourne en placeholders sur Chromium et Firefox (**147 tests**, 15 fichiers) ; la lecture complète se lance sur les assets locaux ou sur le corpus de placeholders (voir [Tests](#tests)).
+- Dernières livraisons (9 novembre) : transitions plein écran (#205), CG mode (#208), Sound mode (#209), accessibilité du flowchart (#206), intégration du flowchart au titre, au menu système et aux routes (#207), e2e Chromium + Firefox (#94, #243), corrections de fidélité des fonds, calques et effets (#249, #252, #260), lint ESLint 9 avec CI (#220), lecture complète en placeholders (#269, #273), parcours utilisateur (#93).
+- Vérification locale : `npm run test:unit` (**1986 tests**), `npm run lint`, `npm run build` et `npm run check:assets` passent ; `npm run test:e2e` tourne en placeholders sur Chromium et Firefox (**147 tests**, 15 fichiers) ; la lecture complète se lance sur les assets locaux ou sur le corpus de placeholders (voir [Tests](#tests)).
+
+> ⚠️ **Écart DoD v1.0 connu** — le critère « Commandes KAG » de la [DoD v1.0](docs/DEFINITION_OF_DONE.md) est ouvert : l'audit classé recense **84 commandes implémentées**, **2 no-ops volontairement ignorés** (registre `tools/ignored-commands.ts`, raison et issue par entrée) et **49 commandes inconnues** (174 occurrences), dont plusieurs à effet visible/audible. Les commandes KAG standard (`@s`, `@endif`, `@image`, `@ruby`) sont traitées (#277) et le triage documenté est fait (#276) ; l'écart se résorbe par lots : [#274](https://github.com/TheArabicMonster/mahoyo-web/issues/274) (chapeau), [#85](https://github.com/TheArabicMonster/mahoyo-web/issues/85)/[#86](https://github.com/TheArabicMonster/mahoyo-web/issues/86) et [#281](https://github.com/TheArabicMonster/mahoyo-web/issues/281)–[#287](https://github.com/TheArabicMonster/mahoyo-web/issues/287) (implémentations en cours). **La DoD n'est ni contournée ni modifiée, et aucun tag/release ne sera publié avant sa clôture.**
 
 Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 
@@ -32,7 +32,7 @@ Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 - **Tactile** : appui long = menu système, balayage vers le haut = historique, barre d'actions rapides (Q.Save, Q.Load, Auto, Skip, Historique, Plein écran) sur appareil tactile uniquement, cibles de 48 px réels ; la souris et le clavier ne changent pas.
 - **Traductions** : japonais d'origine et patch fan français Moon-Trad installable par script ; sélecteur de langue dans la configuration.
 - **Pipeline** : extraction `.xp3` automatisée par gabarit d'outil externe, manifeste d'assets, rapport d'exécution et codes de sortie, conversion `.tlg` → PNG/WebP, audio OGG, normalisation des `.ks`, audit classé du corpus (commandes KAG implémentée / ignorée volontairement / inconnue, registre et garde-fou CI, #275), table d'enchaînement et graphe de scénario.
-- **Qualité** : 1939 tests unitaires, `npm run lint` (ESLint 9, 0 erreur), suite e2e Playwright sur Chromium et Firefox en placeholders (147 tests, 15 fichiers, parcours complet inclus), lecture complète des 221 scripts en CI sur corpus de placeholders, CI à 3 jobs et contrôle anti-assets.
+- **Qualité** : 1986 tests unitaires, `npm run lint` (ESLint 9, 0 erreur), suite e2e Playwright sur Chromium et Firefox en placeholders (147 tests, 15 fichiers, parcours complet inclus), lecture complète des 221 scripts en CI sur corpus de placeholders, CI à 3 jobs et contrôle anti-assets.
 - **Design system** : palette, typographie, espacements et états mesurés sur le jeu d'origine, tokens CSS dans `src/ui/tokens.css`.
 
 ## Langues
@@ -335,10 +335,9 @@ Détail complet : [`docs/CONFIG_PLAN.md`](docs/CONFIG_PLAN.md).
 
 ## Limites connues
 
-## Limites connues
-
-État au 9 novembre 2026, après la clôture v1.0. Les écarts restants sont suivis en v1.1 ; aucun n'est un
-bloquant de la release v1.0 (voir la [DoD](docs/DEFINITION_OF_DONE.md) et [`docs/PROGRESS.md`](docs/PROGRESS.md)).
+État au 9 novembre 2026. La v1.0 n'est **pas** déclarée tant que l'écart DoD « Commandes KAG » (#274,
+#85/#86 et #281–#287) n'est pas résolu ; les écarts de fidélité et d'accessibilité ci-dessous restent
+suivis en v1.1.
 
 - **Ouverture** : rejouée par le lecteur de timeline (panoramiques, calques et audio, #125) et toujours
   sautable. Restent la fidélité de la pluie et des accélérations (#158) et le flash blanc/panoramique
