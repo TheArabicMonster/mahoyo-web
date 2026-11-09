@@ -180,6 +180,10 @@ cd mahoyo-web
 npm ci          # versions exactes du package-lock.json, comme la CI
 ```
 
+> Worktrees d'agents : lier les dépendances avec `ln -s <dépôt>/node_modules .` est
+> ignoré par git — la règle `.gitignore` `node_modules` (sans barre finale) couvre le
+> dossier **et** le lien symbolique (#265).
+
 ### 2. Extraire les assets, convertir et générer le manifeste
 
 Le pipeline fait tout en une commande : extraction `.xp3`, conversion des images et de l'audio,

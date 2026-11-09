@@ -1,5 +1,6 @@
-# Dépendances
-node_modules/
+# Dépendances — sans barre finale : ignore le dossier ET le lien symbolique
+# `node_modules` des worktrees d'agents (#265).
+node_modules
 
 # Build
 dist/
