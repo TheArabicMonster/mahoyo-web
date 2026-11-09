@@ -304,7 +304,7 @@ Premier composant à suivre ce principe : `src/ui/night.css` (importé par `src/
 `src/ui/flowchart-view.css` : CSS pur sur les tokens, fond `mh-ui-night`. Mesures @720 : titre en x 21, y 20-62 (`--mh-screen-title-size`) ;
 colonne latérale (compteurs, légende) 236 px ; carte défilante x 277-1265, y 78-650 ; « Retour » en bas à droite (x 1065-1161, `--mh-font-title`).
 Nœud 64 x 40 (unités de `layoutFlowchart`), arêtes 2 px `--mh-panel-border-light`, parcourues `--mh-cyan-rail`. Libellés de choix à 12 px (en dessous des
-16 px@720 recommandés : le graphe est dense, le zoom de #202 compensera). Détail des états et de l'anti-spoiler : `ENCHAINEMENT_SCRIPTS.md`.
+16 px@720 recommandés : le graphe est dense, le zoom de #202 compensera, voir 9.6). Détail des états et de l'anti-spoiler : `ENCHAINEMENT_SCRIPTS.md`.
 
 ### 9.5 Écrans de sauvegarde et de chargement (HUD-10 / #196)
 
@@ -387,6 +387,16 @@ Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le 
 - **Système → Flowchart** : interrupteur `flowchartRevealAll` (« tout révéler », désactive l'anti-spoiler), défaut désactivé, envoyé seul à `updateSettings`, remis à `false` par « Réglages par défaut ».
 - **Tactile** : `@media (pointer: coarse)` porte toutes les cibles à 44 px de haut au moins (les colonnes défilent si besoin).
 - **Test** : `tests/unit/ui/config-screen.test.ts`, `config-screen-css.test.ts`, `tests/e2e/config-screen.spec.ts` (mesures à 1280×720, clavier, bascule persistée, confirmation).
+### 9.11 Interactions du flowchart (FLOW-06 / #202)
+
+`src/ui/flowchart-viewport.ts` (pan, zoom, mémoire du zoom), `src/ui/flowchart-detail.ts` (volet de détails, relecture), styles dans `flowchart-view.css`. Description des gestes : `ENCHAINEMENT_SCRIPTS.md` (« Interactions »).
+
+- **Mesures @1280×720** (vérifiées au navigateur, `getBoundingClientRect`) : carte 988 × 572 px à (277, 78) (zone visible 984 × 568, bordure de 2 px) ; boutons ronds de zoom et de centrage 34 px (44 px en `pointer: coarse`), pourcentage de zoom entre les deux, colonne à 22 px du bord droit et 16 px du bas de la carte ; volet de détails 280 px de large à 12 px du haut et 22 px de la droite de la carte.
+- **Zoom** : 25 % à 300 %, cran ×1,25. Libellés de choix à 12 px à 100 % (sous les 16 px recommandés, voir 9.4) : 24 px à l'écran à 200 %, ce qui les rend lisibles ; le pincement et `Ctrl` + molette zooment sous le curseur.
+- **Tokens** : boutons et volet sur `--mh-panel-fill` / `--mh-panel-border(-light)`, survol `--mh-cyan-glint`, titre du volet `--mh-font-title` en `--mh-panel-label`, bouton « Relire depuis ici » en dégradé `--mh-teal-on-*`, nœud sélectionné en contour `--mh-text-title`. Aucune image, l'icône de centrage est dessinée en CSS.
+- **Curseurs** : `grab` / `grabbing` sur la carte, `pointer` seulement sur les nœuds ouverts ; silhouettes et nœuds révélés non visités gardent le curseur de la carte.
+- **Mouvement** : le zoom est instantané ; le centrage défile en douceur sauf sous `prefers-reduced-motion` (instantané) ; l'animation d'ouverture de l'écran est supprimée dans ce mode.
+- **Tactile** : `touch-action: none` sur la carte (le glissement et le pincement passent par les pointer events) ; cibles de 44 px.
 
 ## 10. Accessibilité minimale à conserver
 

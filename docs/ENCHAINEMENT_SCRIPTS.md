@@ -197,8 +197,8 @@ interlude partagé, cycle, sections, performance) et, sur les vrais assets locau
 L'écran (`src/ui/flowchart-view.ts` + `flowchart-view.css`, FLOW-05 / #197) dessine la mise en page de
 `layoutFlowchart` sans rien recalculer : groupes (DOM), arêtes (SVG), nœuds (DOM), libellés de choix (SVG au-dessus des
 nœuds). Fond `mh-ui-night`, tokens de `tokens.css`, aucune image du jeu. L'écran défile nativement (la colonne mesure
-environ 790 × 15 900 unités) et se positionne d'abord sur le nœud courant ; le pan, le zoom, le clic sur un nœud sont
-prévus en #202, le clavier et le lecteur d'écran en #206.
+environ 790 × 15 900 unités) et se positionne d'abord sur le nœud courant ; les interactions (pan, zoom, clic sur un nœud,
+« Relire depuis ici ») sont décrites plus bas (FLOW-06, #202) ; le clavier par nœud et le lecteur d'écran avancé restent à faire en #206.
 
 **Données** : `Player` charge `story-graph.json` (`AssetResolver.graph()`, `<assets>/story-graph.json`) à la première
 ouverture, la vue `flowchart` porte `graph`, `revealAll` (`flowchartRevealAll`), `thumbnail` (clé -> URL via
@@ -229,6 +229,37 @@ Une arête non-choix est dite parcourue quand ses deux extrémités ont été ou
 **Compteurs** : « Scènes lues x/N » (scripts ouverts / nœuds du graphe) et « Fins atteintes x/y » (`endingProgress` :
 seules les fins atteignables depuis le début comptent ; masqué quand y = 0). Pas de « x/4 ». Les isolés et pages annexes
 sont dans la section « Bonus ».
+
+### Interactions (`flowchart-viewport.ts`, `flowchart-detail.ts`, FLOW-06 / #202)
+
+La carte `.mh-flow-scroll` garde son **défilement natif** (barres, molette, `PageUp`/`PageDown`, région focalisable nommée) ; le zoom met à
+l'échelle un conteneur `.mh-flow-sizer` (taille `contenu × zoom`, centré) qui contient la scène (`transform: scale`). La vue est `{ scale, x, y }`
+(`x`/`y` = `scrollLeft`/`scrollTop`). Les calculs sont des fonctions pures (`zoomAround`, `centerOn`, `pinchView`, `panBy`, `keyAction`,
+`wheelZoomFactor`), testées sans DOM ; `attachViewport` les branche sur la région.
+
+| Geste | Effet |
+|---|---|
+| Glisser (souris, doigt, stylet) | Pan, après 5 px de déplacement (en deçà c'est un clic). Le clic qui suit un glissement est ignoré. Le clic droit et la barre de défilement ne déclenchent rien. |
+| Molette | Défilement natif (`Maj` + molette : horizontal). |
+| `Ctrl` + molette, pincement du pavé tactile | Zoom sous le curseur (un cran de souris = ×1,25). |
+| Pincement à deux doigts | Zoom ancré sur le milieu des doigts ; le glissement à deux doigts déplace aussi la carte. |
+| Boutons `+` / `−` (ronds, en bas à droite de la carte) | Zoom ×1,25 / ÷1,25 sur le centre, désactivés aux bornes (25 % à 300 %), pourcentage affiché entre les deux. |
+| Bouton « Centrer sur ma position » | Centre le nœud courant (défilement animé, instantané sous `prefers-reduced-motion`) ; inactif sans position courante (écran titre). |
+| Clavier (région focalisée, focus donné à l'ouverture) | Flèches (96 px, `Maj` ×3), `+` / `-` / `0` (zoom, retour à 100 %), `Début` / `Fin`. `Ctrl`/`Alt`/`Méta` + touche restent au navigateur. |
+
+Le zoom est **mémorisé** pour la session (variable du module) : l'écran rouvert reprend le zoom précédent, puis centre le nœud courant (ou reste en
+haut sans position). Les libellés de choix (12 px à 100 %) deviennent lisibles en zoomant : 24 px à l'écran à 200 %.
+
+**Clic sur un nœud** : seul un nœud **ouvert** (visité, terminé ou courant, `data-interactive="true"`) ouvre le **volet de détails** (en haut à
+droite de la carte, `Échap` ou × pour le fermer, l'écran ne se ferme qu'à l'`Échap` suivant). Il affiche l'arc, le chapitre, l'état et « Fins
+atteintes depuis ici » (x/y, seulement les fins atteignables depuis le début, comme le compteur global ; masqué si y = 0 ; jamais le nom
+d'une fin). Une silhouette, un nœud « révélé » non visité (mode « tout révéler ») et le fond n'ouvrent rien ; les silhouettes restent sans
+identifiant ni attribut ajouté.
+
+**« Relire depuis ici »** (bouton du volet, présent seulement si l'écran reçoit `confirm` et `replay`) : boîte de confirmation (`UIManager.confirm`,
+**Non** par défaut), puis `PlayerCommands.startScript(file)` du nœud. Comme tout démarrage de script, cela remet le chemin de partie à zéro
+(`operate` non repris, voir « Limites connues »), marque le script comme visité et **n'efface rien** de la progression globale. Sur Non, Échap
+ou entrées bloquées, rien ne démarre.
 
 ## Résultat sur le corpus de référence
 

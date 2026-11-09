@@ -495,6 +495,11 @@ export class DomUIManager implements UIManager {
         story: view.story,
         revealAll: view.revealAll ?? false,
         thumbnail: view.thumbnail,
+        // « Relire depuis ici » (#202) : confirmation puis `startScript` (même garde que le titre).
+        confirm: (message, options) => this.confirm(message, options),
+        replay: (node) => {
+          if (this.inputEnabled) this.commands?.startScript(node.file);
+        },
       },
       () => {
         if (this.inputEnabled) this.commands?.closeScreen();
