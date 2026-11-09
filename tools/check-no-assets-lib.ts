@@ -31,12 +31,24 @@ export const ASSET_EXTENSIONS = [
   ".woff2",
 ] as const;
 
+/** Dossier des assets locaux (dossier réel ou lien symbolique). */
+export const ASSETS_DIR = "public/assets";
+
+/** Mode git d'un lien symbolique (`git ls-files -s`). */
+export const SYMLINK_MODE = "120000";
+
+/** Entrée de l'index git : mode et chemin. */
+export interface TrackedEntry {
+  path: string;
+  mode: string;
+}
+
 export interface Violation {
   path: string;
-  /** Extension d'asset détectée (vide pour une violation d'empreinte ou de binaire). */
+  /** Extension d'asset détectée (vide pour un lien symbolique, une violation d'empreinte ou de binaire). */
   extension: string;
-  /** Motif : extension interdite (défaut), contenu modifié, ou gros binaire hors liste. */
-  reason?: "extension" | "hash" | "binary";
+  /** Motif : lien symbolique suivi, extension interdite (défaut), contenu modifié, ou gros binaire hors liste. */
+  reason?: "symlink" | "extension" | "hash" | "binary";
   /** Précision pour le message (ex. taille du binaire). */
   detail?: string;
 }
@@ -142,6 +154,25 @@ export function parseNulSeparated(raw: string): string[] {
   return raw.split("\0").filter((entry) => entry.length > 0);
 }
 
+const LS_FILES_STAGE = /^([0-7]{6}) [0-9a-f]+ \d\t([\s\S]+)$/;
+
+/**
+ * Parse la sortie de `git ls-files -s -z` : une entrée par enregistrement
+ * `<mode> <sha> <stage>\t<chemin>`, enregistrements séparés par NUL.
+ * Le mode `120000` identifie un lien symbolique. Les chemins non ASCII,
+ * avec espaces ou même avec des retours à la ligne sont préservés (`-z`).
+ */
+export function parseLsFilesStage(raw: string): TrackedEntry[] {
+  const entries: TrackedEntry[] = [];
+  for (const record of raw.split("\0")) {
+    if (record.length === 0) continue;
+    const m = LS_FILES_STAGE.exec(record);
+    if (!m) continue;
+    entries.push({ mode: m[1]!, path: m[2]! });
+  }
+  return entries;
+}
+
 /** Retourne l'extension interdite (minuscule) d'un chemin, ou null. */
 export function getAssetExtension(path: string): string | null {
   const lower = path.toLowerCase();
@@ -169,7 +200,23 @@ export function findAssetViolations(
     .filter((v): v is Violation => v !== null);
 }
 
+/**
+ * Liens symboliques suivis par git sous `public/assets` (le dossier lui-même ou
+ * un lien imbriqué). Un lien symbolique suivi ailleurs n'est pas un asset et
+ * n'est pas signalé. Un lien local NON suivi reste autorisé pour le dev.
+ */
+export function findTrackedAssetSymlinks(entries: readonly TrackedEntry[]): Violation[] {
+  return entries
+    .filter(
+      (entry) =>
+        entry.mode === SYMLINK_MODE &&
+        (entry.path === ASSETS_DIR || entry.path.startsWith(`${ASSETS_DIR}/`)),
+    )
+    .map((entry): Violation => ({ path: entry.path, extension: "", reason: "symlink" }));
+}
+
 function describe(v: Violation): string {
+  if (v.reason === "symlink") return "lien symbolique suivi par git";
   if (v.reason === "hash") return `contenu modifié : ${v.detail ?? ""}`.trim();
   if (v.reason === "binary") return `gros binaire hors liste, ${v.detail ?? ""}`.trim();
   return v.extension;
@@ -181,12 +228,32 @@ export function formatViolations(violations: readonly Violation[]): string {
     return "";
   }
 
+  const hasSymlink = violations.some((v) => v.reason === "symlink");
+  const hasOther = violations.some((v) => v.reason !== "symlink");
+
   const lines = [
     `Fichiers interdits détectés (${violations.length}) :`,
     ...violations.map((v) => `  - ${v.path} (${describe(v)})`),
-    "",
-    "Si un fichier est un placeholder original, ajoutez-le à tools/allowed-assets.txt avec son empreinte",
-    "(npm run check:assets -- --update). Sinon, il ne doit pas être commité (assets sous copyright).",
   ];
+
+  if (hasSymlink) {
+    lines.push(
+      "",
+      "Un lien symbolique public/assets est suivi par git : il ne doit pas être commité.",
+      "Retirer le lien de l'index (le lien local reste intact) :",
+      "  git rm --cached public/assets",
+      "Un lien local non suivi est autorisé pour le développement (ignoré par .gitignore),",
+      "mais ne lancez pas npm run build tant qu'il existe (copie plusieurs Go dans dist/).",
+    );
+  }
+
+  if (hasOther) {
+    lines.push(
+      "",
+      "Si un fichier est un placeholder original, ajoutez-le à tools/allowed-assets.txt avec son empreinte",
+      "(npm run check:assets -- --update). Sinon, il ne doit pas être commité (assets sous copyright).",
+    );
+  }
+
   return lines.join("\n");
 }

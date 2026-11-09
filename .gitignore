@@ -28,7 +28,8 @@ npm-debug.log*
 # ⚠️ Assets originaux du jeu — JAMAIS commités
 tools/input/
 playdata/
-public/assets/
+# Sans barre finale : ignore le dossier ET un lien symbolique public/assets (issue #239).
+public/assets
 *.tlg
 *.tft
 *.xp3
