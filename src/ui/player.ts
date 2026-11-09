@@ -21,6 +21,7 @@ import {
   type SaveStore,
 } from "@/player/save-store.js";
 import { ProgressTracker, reachableEndings, scriptIdOf } from "@/player/progress-tracker.js";
+import { overlayOfRoute, resolveRoute, viewRoute, type Route, type ScreenRouter } from "./router.js";
 import {
   DEFAULT_SETTINGS,
   createLocalSettingsStore,
@@ -107,6 +108,8 @@ export type PlayerDeps = {
   now: () => number;
   /** Cadence du mode skip entre deux points d'arrêt (ms). */
   skipDelay: number;
+  /** Routes d'URL des écrans (WEB-04, #204) ; null = pas de routage (tests unitaires, intégration). */
+  router: ScreenRouter | null;
 };
 
 const DEFAULT_SCRIPTS: ScriptSummary[] = [
@@ -265,6 +268,8 @@ export class Player implements PlayerCommands {
   private userHidden = false;
   private overlays: OverlayScreen[] = [];
   private stateBeforePause: PlayerState = "playing";
+  /** Détache le routeur d'URL (WEB-04) ; null tant qu'il n'est pas démarré. */
+  private stopRouter: (() => void) | null = null;
 
   private abort = new AbortController();
   private loop: Promise<void> = Promise.resolve();
@@ -348,6 +353,7 @@ export class Player implements PlayerCommands {
       settingsStore: deps.settingsStore ?? createLocalSettingsStore(),
       now: deps.now ?? Date.now,
       skipDelay: deps.skipDelay ?? 25,
+      router: deps.router ?? null,
     };
     this.settings = DEFAULT_SETTINGS;
     this.progress = new ProgressTracker(this.deps.settingsStore);
@@ -381,6 +387,7 @@ export class Player implements PlayerCommands {
     }
     this.applySettings();
     await this.showTitle();
+    this.startRouter();
   }
 
   private bindCommands(): PlayerCommands {
@@ -594,11 +601,13 @@ export class Player implements PlayerCommands {
     }
     this.overlays.push(screen);
     void this.showOverlay(screen);
+    this.syncRoute();
   }
 
   closeScreen(): void {
     if (this.overlays.length === 0) return;
     this.overlays.pop();
+    this.syncRoute();
     const top = this.overlays[this.overlays.length - 1];
     if (top) {
       void this.showOverlay(top);
@@ -775,6 +784,8 @@ export class Player implements PlayerCommands {
     document.removeEventListener("visibilitychange", this.onVisibility);
     window.removeEventListener("resize", this.onViewportChange);
     document.removeEventListener("fullscreenchange", this.onViewportChange);
+    this.stopRouter?.();
+    this.stopRouter = null;
     await this.endSession();
     this.stage.dispose();
     this.audio.dispose();
@@ -1311,6 +1322,7 @@ export class Player implements PlayerCommands {
     this.overlays = [];
     this.ui.show({ screen: "game" });
     this.pushStatus();
+    this.syncRoute(true);
   }
 
   private applySettings(): void {
@@ -1352,9 +1364,73 @@ export class Player implements PlayerCommands {
     });
   }
 
+  // ── Routes d'URL (WEB-04, #204) ──
+
+  /** Route décrivant la vue actuelle (écran du dessus de la pile, sinon partie ou titre). */
+  private currentRoute(inGame = this.state !== "title"): Route {
+    return viewRoute({ inGame, top: this.overlays[this.overlays.length - 1] });
+  }
+
+  /** Publie la vue actuelle au routeur (pendant un chargement, la vue n'est pas encore connue : rien). */
+  private syncRoute(inGame?: boolean): void {
+    if (!this.deps.router || (inGame === undefined && this.state === "loading")) return;
+    this.deps.router.publish(this.currentRoute(inGame));
+  }
+
+  /** Démarre le routage à la fin de l'initialisation : le lien d'arrivée ouvre l'écran demandé (sans partie : repli titre). */
+  private startRouter(): void {
+    const router = this.deps.router;
+    if (!router || this.stopRouter) return;
+    const started = router.start((route) => this.applyRoute(route), { inGame: false });
+    this.stopRouter = started.stop;
+    this.applyRoute(started.initial);
+  }
+
+  /**
+   * Navigation du navigateur (précédent, suivant, lien) : amène le player sur l'écran demandé.
+   * Une route inatteignable (exige une partie sans partie, inconnue) retombe sur le titre. Depuis la partie, la
+   * route `title` demande la même confirmation que « Title » du menu système (la progression non sauvegardée
+   * serait perdue) ; refusée, l'URL est réalignée sur la partie par le routeur.
+   */
+  applyRoute(target: Route | null): void {
+    if (this.state === "loading") return;
+    const inGame = this.state !== "title";
+    const route = resolveRoute(target, { inGame });
+    if (route === this.currentRoute()) return;
+
+    if (route === "title") {
+      if (inGame) {
+        void this.ui.confirm(t("confirm.returnToTitle")).then((ok) => {
+          if (ok) void this.returnToTitle();
+        });
+      } else {
+        void this.showTitle();
+      }
+      return;
+    }
+    if (route === "game") {
+      // Fermer les écrans ouverts par-dessus la partie ; le menu système (`pause`) fait partie de la route `game`.
+      while (this.overlays.length > 0 && this.overlays[this.overlays.length - 1] !== "pause") this.closeScreen();
+      return;
+    }
+    const screen = overlayOfRoute(route);
+    if (!screen) return;
+    const top = this.overlays[this.overlays.length - 1];
+    if (top && top !== "pause") {
+      // Un autre écran est ouvert : il est remplacé, la pile ne grandit pas.
+      if ((screen === "save" || screen === "load") && this.quickMenuRefused()) return;
+      this.overlays[this.overlays.length - 1] = screen;
+      void this.showOverlay(screen);
+      this.syncRoute();
+      return;
+    }
+    this.openScreen(screen);
+  }
+
   private async showTitle(): Promise<void> {
     this.overlays = [];
     this.setState("title");
+    this.syncRoute();
     const auto = await this.deps.saveStore.get("auto");
     this.ui.show({ screen: "title", scripts: this.deps.scripts, hasContinue: auto !== null });
   }
