@@ -128,7 +128,7 @@ inconnue hors baseline.
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
 | **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 28 commande(s) distincte(s), 106 occurrence(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 23 commande(s) distincte(s), 31 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
@@ -148,10 +148,8 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@ageage` | 1 |
 | `@ansz` | 1 |
 | `@beginfallnote` | 1 |
-| `@chgpartbg` | 22 |
 | `@cockrobin` | 1 |
 | `@current` | 1 |
-| `@dispclock` | 20 |
 | `@endcockrobin` | 1 |
 | `@endfallnote` | 1 |
 | `@eywz` | 1 |
@@ -163,15 +161,12 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@pauseploy` | 1 |
 | `@playtimeline` | 1 |
 | `@removeaction` | 3 |
-| `@resetdefaultmessageaction` | 11 |
 | `@resumeaction` | 1 |
 | `@resumeploy` | 1 |
-| `@setdefaultmessageaction` | 11 |
 | `@settracerreturn` | 2 |
 | `@startchart` | 1 |
 | `@store` | 1 |
 | `@swel` | 3 |
-| `@tickclock` | 11 |
 <!-- END AUTO: commandes-kag -->
 
 ## Critère de réussite
