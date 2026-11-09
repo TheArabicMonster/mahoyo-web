@@ -782,6 +782,10 @@ Traitement du lot #85 (75 occurrences) : `@chgpartbg`, `@dispclock`, `@tickclock
   convertis en **degrés CSS horaires** ; le miroir (`zoomx < 0`) inverse les angles. Le pivot
   `afx`/`afy` est désormais supporté par les calques (`transform-origin` du sprite) et conservé
   pendant les animations.
+- **`time=0` (#297, hors corpus)** : mise à jour **immédiate** sur la page affichée — le fond et les
+  4 aiguilles sont posés ensemble sur **fore**, sans transition (le bug #297 les posait sur back,
+  invisibles). `time>0` conserve le comportement moteur décrit ci-dessus (calques sur back puis
+  transition back→fore déclenchée par le `@bg`).
 - **Validation visuelle** (captures locales) : horloge centrée à 3:00, 6:55 et 9:15 — aiguilles
   dans les directions attendues ; `@tickclock` 3:00→6:55 donne bien 207,5° / 330°.
 - Écarts : l'heure est suivie dans le runtime (`clockHour`/`clockMinute`, sauvegardés) mais pas
