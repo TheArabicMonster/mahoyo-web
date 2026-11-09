@@ -587,7 +587,8 @@ visible/audible/de déroulement n'est classée no-op.
 **Suivi des lots** : #281 (effets d'écran plugin, §9 quater), #285 (audio/déroulement,
 §9 quinquies) et #286 (crédits de fin, §9 ter) sont traités : la baseline est passée à
 **34 commandes inconnues / 133 occurrences** (`npm run audit:baseline` ; `npm run audit:guard
--- --strict` OK). Les autres lots (#85, #86, #282-#287) restent ouverts.
+-- --strict` OK). #283 (calques image) est traité — voir §9 sexies ; la baseline passe à
+**30 commandes / 121 occurrences**. Les autres lots (#85, #86, #282, #284, #287) restent ouverts.
 
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
@@ -616,7 +617,7 @@ implémentées ici. Sémantique vérifiée dans `data/scenario/staffrollplugin.t
 
 Traitement du lot « effets d'écran plugin » du triage #276 (22 occurrences) : les 7 commandes
 sortent de la baseline des inconnues, qui passe de **46 commandes / 168 occurrences** (après
-#286) à **42 / 152** (`npm run audit:baseline` ; `npm run audit:guard -- --strict` OK). Sémantique lue
+#286) à **39 / 146** (`npm run audit:baseline` ; `npm run audit:guard -- --strict` OK). Sémantique lue
 dans les sources du moteur installé (`data/override/tagex.tjs`, `data/scenario/noiseplugin.tjs`,
 `data/scenario/focuslineplugin.tjs`) et args réels des scripts (`8.5.ks`, `1.5-4.ks`, `nz3.ks`,
 `wik_x-2.ks`, `wik_q-a.ks`, `call.ks`).
@@ -701,6 +702,48 @@ Sémantique vérifiée dans `data/system/bgm.tjs` (`exchange`, `waitBGMFade`),
 - État du player : `clickSkipEnabled` / `effectSkipEnabled`, remis à `true` au début de chaque
   session (comme le moteur, ces réglages ne sont pas sauvegardés) ; événements
   `{kind:"skipSetting"}` et `{kind:"cancelSkip"}` appliqués par le player, sans effet sur la scène.
+
+## 9 sexies. Calques image — implémentation (#283)
+
+Traitement du lot « calques image » du triage #276 (`@infg` 5, `@outfg` 3, `@layopt` 1,
+`@bindbg` 3 occurrences) : ces 4 commandes sortent de la baseline des inconnues, qui passe de
+**34 commandes / 133 occurrences** (après #285) à **30 / 121**. `@autocache` était déjà un no-op justifié du
+registre #275 (`effet: "aucun"`, issue #283) : un test unitaire vérifie qu'il reste classé ainsi.
+Sémantique vérifiée dans `data/scenario/fgplugin.tjs` (`kt.infg`/`fg_object.infg`, `kt.outfg`/
+`fg_object.outfg`), `data/override/tagex.tjs` (`.bindbg`, `.autocache`) et KAG3 (`mainwindow.tjs`,
+`.layopt`).
+
+| Commande | Statut | Rendu |
+|---|---|---|
+| `@infg` | implémenté (approximation page fore) | le calque est posé à (position finale − `mx`/`my`, opacité 0) puis animé vers sa position finale avec l'opacité demandée ; `time` défaut 300 ms, `accel` défaut 0, `mx` défaut 24, `my` défaut 0 ; `zoom`/`rotate`/`type`/`effect`/`blur`/`brightness`/`contrast`/`index` respectés |
+| `@outfg` | implémenté | le calque courant glisse de (`mx`, `my`) et son opacité tombe à 0 en `time` ms (défaut 300) ; calque introuvable : avertissement, aucun événement |
+| `@layopt` | implémenté (approximation) | `center`/`vcenter`, `opacity` (0–255) et `visible` sur un calque existant (`id=`/`storage=`) ; `left`/`top` approximés en `center`/`vcenter` |
+| `@bindbg` | approximé (écart documenté) | drapeau `SceneState.bindChildren` : pendant un panoramique du fond (`bgMove`), les sprites sont translatés du même delta (propriété CSS `translate`, animée en WAAPI si possible), sans modifier les positions logiques sauvegardées ; réinitialisé quand un nouveau fond rebase la scène |
+| `@autocache` | no-op justifié (#275) | préchargement seulement, aucun effet visible/audible/de déroulement — déjà déclaré au registre, testé |
+
+### Écarts documentés
+
+- **`@infg`/`@outfg`** : le moteur passe par la page `back` et un `@trans` ; le port pose et anime
+  directement la page affichée (`fore`), ce qui rend l'effet visible sans transition. Comme les
+  autres animations du port, elles ne bloquent pas le déroulement (`@wact`/`nowait` non requis).
+  Le calque `@outfg` n'est pas détruit (son opacité tombe à 0) : un `@clfg`/`@clall` le retire,
+  comme dans le moteur.
+- **`@layopt`** : `left`/`top` sont lus comme `center`/`vcenter` (le port ne modélise pas le coin
+  haut-gauche d'un calque). Les calques de **message** (`layer=message0`/`message1`, utilisés par
+  les macros système `macro.ks`) ne sont pas modélisés : la commande est un no-op pour eux, la
+  textbox restant pilotée par `@texton`/`@textoff`. L'unique occurrence du corpus narratif
+  (`wik_k.ks`, `page=back id=pb1 center=516`) est couverte.
+- **`@bindbg`** : le décalage est **visuel et transitoire** — les positions logiques d'une
+  sauvegarde ne changent pas, et le décalage n'est pas persisté (comme `@bgact`, dont le
+  panoramique n'est pas rejoué par le port : dans le corpus 6-6.ks, le suivi est donc latent tant
+  que le panoramique n'est pas rendu). `page=` n'est pas distingué : le drapeau s'applique aux deux
+  pages pour qu'un `enabled=0` ultérieur coupe bien le suivi.
+- **Tests** : `tests/unit/kag/layers-image.test.ts` (parse + runtime des 5 commandes, args réels,
+  animation `@infg`/`@outfg`, état `@layopt`, drapeau `@bindbg`, no-op `@autocache`),
+  `tests/unit/renderer/layers-image.test.ts` (suivi du fond, réinitialisation au changement de fond,
+  visibilité `@layopt`).
+- **Coordination #285** (audio/déroulement) : aucun chevauchement de fichiers hors `parser.ts`/
+  `runtime.ts` (ajouts localisés : instructions + `applyInfg`/`applyOutfg`/`applyLayopt`/`@bindbg`).
 
 ## 10. Commandes non implémentées à figer plus tard
 
