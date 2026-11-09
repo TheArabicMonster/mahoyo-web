@@ -592,7 +592,9 @@ visible/audible/de déroulement n'est classée no-op.
 passe à **23 commandes / 31 occurrences**. #295 (garde-fous de clôture DoD, §9 nonies) est traité
 **sans changement de baseline** (delta 0 commande / 0 occurrence : aucune commande implémentée par ce
 lot). #284 (texte et options message) est traité — voir §9 decies ; la baseline passe à
-**13 commandes / 17 occurrences**. Les autres lots (#282, #287) restent ouverts.
+**13 commandes / 17 occurrences**. #282 (actions/effets de scène) est traité — voir §9 undecies ;
+la baseline passe à **4 commandes / 5 occurrences**. Seul le lot #287 (tracer/timeline) reste
+ouvert.
 
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
@@ -957,6 +959,40 @@ OK, 221 scripts, 0 erreur, 0 maxSteps). `@deffont` reste un no-op justifié du r
 - **Un seul e2e** (`tests/e2e/text-emoji.spec.ts`) : `[heart]` rendu inline, `alt="(ハート)"`,
   source `heart26` chargée, texte encadrant lisible ; la page de test est insérée dans le prologue
   placeholders (asset `heart26` ajouté au manifeste, PNG original 26×26).
+
+## 9 undecies. Actions et effets de scène — #282
+
+Traitement du lot « actions/effets de scène » du triage #276 : les 9 commandes passent de la
+baseline des inconnues à **4 commandes / 5 occurrences** (13/17 → 4/5 ; seules les commandes #287
+restent). Sémantique lue dans `data/override/tagex.tjs` (`action`, `removeaction`, `pauseaction`,
+`resumeaction`, `pauseploy`, `resumeploy`), `data/override/action.tjs`
+(`LayerMoveModule`/`LayerNormalMoveModule`) et `data/scenario/fallnoteplugin.tjs`, plus les
+usages réels (`wik_k.ks`, `wik_z-3.ks`, `nz6.ks`, `system_window.ks`, `wik_g-a.ks`, `fallnote.ks`).
+
+| Commande | Statut | Implémentation / écart |
+|---|---|---|
+| `@action` (1, `wik_k.ks`) | **implémenté** | module `LayerNormalMoveModule` : translation `startx→x` / `starty→y` sur `time` (+ `delay`) via un événement `animate` (AnimationController) ; pour un partbg, les `left/top` moteur sont convertis en centre du wrapper (`+ width/2`, `+ height/2`). `nonstop=0` arrête d'abord l'action en cours. **Écarts** (registre #296 `action-modules-subset`) : les autres modules sont approximés en translation linéaire, `accel` n'est pas interpolé (keyframes port linéaires) et `needlayer` (création du calque manquant) n'est pas reproduit. |
+| `@removeaction` (3, `wik_z-3.ks`) | **implémenté** | annule les actions **en conservant l'état courant** (`stopAnimation` ciblé → `commitStyles` puis `cancel`), contrairement à `@stopaction` ; cible `id=`/`storage=`, sinon toutes. La coquille du corpus `pege=` est ignorée (comme le moteur : attribut inconnu). |
+| `@pauseaction` (1, `system_window.ks`) | **implémenté** | `{ kind: "pauseAnimation" }` → `pause()` WAAPI (toutes les animations, ou la cible ; `all=1` ignore les non-pausables). |
+| `@resumeaction` (1, `system_window.ks`) | **implémenté** | `{ kind: "resumeAnimation" }` → `play()` WAAPI. |
+| `@pauseploy` (1, `nz6.ks`) | **implémenté** | masque la bulle ploy (événement `ploy: null`), mémorise son état (champ **transitoire** `ployPaused`, allowlist #295) et réinitialise le style de texte. **Écart** (registre #296 `pauseploy-font`) : le moteur force MS PGothic puis la police utilisateur (`deffont`/`resetfont`), le port retombe sur le style du thème. |
+| `@resumeploy` (1, `nz6.ks`) | **implémenté** | restaure la bulle mémorisée (événement `ploy`) ; sans bulle mémorisée, no-op (le moteur relance `beginploy`, sans contenu à afficher). |
+| `@beginfallnote` / `@fallnoteopt` / `@endfallnote` (4, `wik_g-a.ks`) | **approximé (documenté)** | particules CSS génériques (`fallnote-particles`, registre #296, test figé) : activation, arrêt et taux `rate` (vitesse/vitesse de chute) seulement ; images de notes, options `sx`/`sy`/`patterns`/`pastTime` et seconde couche du plugin non reproduites. État transitoire `fallnote` (allowlist #295), retiré sur `restore`/`clear`. |
+
+### Tests
+
+- `tests/unit/kag/actions-parse.test.ts` : parse des 9 commandes (args réels, module par défaut,
+  coquille `pege=`, `all=`, `rate=`).
+- `tests/unit/kag/actions-runtime.test.ts` : `@action` (mapping partbg, événement `animate`),
+  `@removeaction`/`@pauseaction`/`@resumeaction` (cibles/all), `@pauseploy`/`@resumeploy`
+  (séquence `ploy`), fallnote (activation/rate/arrêt).
+- `tests/unit/renderer/actions-renderer.test.ts` : pause/play WAAPI des AnimationController,
+  particules `fallnote` (overlay, `data-rate`, retrait).
+- Gate #295 : `ployPaused`/`fallnote` ajoutés explicitement à l'allowlist `transient`
+  (`state-invariant.test.ts`) ; registre des approximations + baseline mis à jour
+  (`npm run approximations:check` OK).
+- Aucune nouvelle e2e (protocole « max 1 e2e par lot » ; animations/particules couvertes en unitaire,
+  la suite e2e existante reste verte en CI).
 
 ## 10. Commandes non implémentées à figer plus tard
 

@@ -128,7 +128,7 @@ inconnue hors baseline.
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
 | **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 13 commande(s) distincte(s), 17 occurrence(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 4 commande(s) distincte(s), 5 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
@@ -144,17 +144,8 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 
 | Commande | Occurrences |
 |---|---|
-| `@action` | 1 |
-| `@beginfallnote` | 1 |
-| `@endfallnote` | 1 |
-| `@fallnoteopt` | 2 |
 | `@loadtimeline` | 1 |
-| `@pauseaction` | 1 |
-| `@pauseploy` | 1 |
 | `@playtimeline` | 1 |
-| `@removeaction` | 3 |
-| `@resumeaction` | 1 |
-| `@resumeploy` | 1 |
 | `@settracerreturn` | 2 |
 | `@startchart` | 1 |
 <!-- END AUTO: commandes-kag -->
