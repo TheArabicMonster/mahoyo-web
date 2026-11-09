@@ -519,3 +519,77 @@ describe("parse — apparence des calques (#252)", () => {
     expect((ins as { contrast?: number }).contrast).toBeUndefined();
   });
 });
+
+describe("parse — commandes KAG standard (#277)", () => {
+  const first = (source: string) => parse(lex(source)).pages[0]!.instructions[0]!;
+  const textsOf = (source: string) => {
+    const ins = parse(lex(source)).pages[0]!.instructions;
+    return ins.flatMap((i) => (i.kind === "text" ? i.segments : []));
+  };
+
+  it("@image page=back layer=base = image de fond sans transition", () => {
+    const ins = first("@image page=back layer=base storage=white");
+    expect(ins).toMatchObject({ kind: "image", storage: "white", page: "back", layer: "base" });
+  });
+
+  it("@image accepte left/top, l'apparence et un numéro de couche", () => {
+    const ins = first("@image page=fore layer=2 storage=p1b left=100 top=200 opacity=128 type=16 effect=nega");
+    expect(ins).toMatchObject({
+      kind: "image",
+      layer: 2,
+      left: 100,
+      top: 200,
+      opacity: 128 / 255,
+      type: 16,
+      effect: "nega",
+    });
+    // Sans layer : la couche de base est le défaut du moteur.
+    expect(first("@image storage=white")).toMatchObject({ kind: "image", layer: "base" });
+  });
+
+  it("@s = arrêt du déroulement (attente de sélection)", () => {
+    expect(first("@s")).toEqual({ kind: "stop" });
+  });
+
+  it("@endif/@else/@elsif/@endignore orphelins : no-op explicite, pas commande brute", () => {
+    for (const command of ["endif", "else", "elsif", "endignore"]) {
+      const ins = first(`@${command}`);
+      expect(ins.kind).toBe("noop");
+      if (ins.kind === "noop") {
+        expect(ins.command).toBe(command);
+        expect(ins.reason).toContain("fermeture");
+      }
+    }
+  });
+
+  it("@ruby numérique : ruby appliqué aux N caractères suivants", () => {
+    const segments = textsOf('@ruby char=2 text=かんじ\n漢字です');
+    expect(segments).toEqual([
+      { text: "漢字", ruby: "かんじ" },
+      { text: "です" },
+    ]);
+  });
+
+  it("@ruby avec texte de base : le texte est affiché et le ruby réparti (extension TYPE-MOON)", () => {
+    const segments = textsOf('@ruby char="Ab" text="かんじ"\n次');
+    expect(segments).toEqual([
+      { text: "A", ruby: "かん" },
+      { text: "b", ruby: "じ" },
+      { text: "次" },
+    ]);
+  });
+
+  it("[ruby] avec texte de base : même extension en forme balise", () => {
+    const segments = textsOf('[ruby char="Ab" text="かんじ"]次');
+    expect(segments).toEqual([
+      { text: "A", ruby: "かん" },
+      { text: "b", ruby: "じ" },
+      { text: "次" },
+    ]);
+  });
+
+  it("[ruby char=N] conserve la sémantique existante (N caractères suivants)", () => {
+    const segments = textsOf("[ruby text=ふ char=1]触れた");
+    expect(segments).toEqual([{ text: "触", ruby: "ふ" }, { text: "れた" }]);
+  });
+});
