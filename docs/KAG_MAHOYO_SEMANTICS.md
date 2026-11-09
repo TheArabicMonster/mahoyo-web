@@ -76,8 +76,12 @@ Règles vérifiées dans les sources locales du moteur (`data/override/tagex.tjs
   → `grayscale(1)`, `sepia` → `sepia(1)` (approx.), `nega` → `invert(1)`, `red`/`green`/`blue`
   → filtre SVG `feColorMatrix` (approx.), `mono<rrggbb>` → **aplat de couleur conservant l'alpha**
   (`feFlood` + `feComposite in SourceAlpha`, exact). Les **effets d'ambiance** (`屋外深夜`,
-  `mh屋内曇り`, ~240 noms) sont définis dans `data/others/envcolor.ksc` (données du jeu, non
-  installées par le pipeline) : reconnus, non appliqués, un avertissement par nom.
+  `mh屋内曇り`, ~240 noms) sont définis dans `data/others/envcolor.ksc` (données du jeu) :
+  le pipeline installe ce fichier (`docs/PIPELINE.md` §4 bis) et le player l'applique (#260) —
+  niveaux de gris (`feColorMatrix saturate 0`), gamma par canal (`feComponentTransfer` type gamma,
+  `exp = 1/gamma`, bornes floor/ceil comme le moteur), puis calques de couleur translucides
+  (`feFlood` + `feBlend`, mode mappé depuis `layertype`, ordre du moteur). Sans fichier installé,
+  l'effet n'est pas appliqué et un avertissement unique par nom est émis.
 - `blur=`/`xblur=`/`yblur=` (double flou de boîte du moteur → gaussien CSS, sigma
   `sqrt(2r(r+1)/3)`), `brightness=` (décalage, filtre SVG linéaire) et `contrast=`
   (`(c+255)/255` en facteur CSS) sont appliqués comme filtres (#252). Un `@bg`/`@fg` sans ces
