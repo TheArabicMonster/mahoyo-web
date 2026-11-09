@@ -171,3 +171,96 @@ describe("Pipeline integration", () => {
     expect(missing.length).toBe(0);
   });
 });
+
+describe("Pipeline integration — E1 (extraction, erreurs, sorties)", () => {
+  it("extrait les .xp3 avec --xp3-cmd puis produit les assets et le manifest", async () => {
+    const base = join(TEST_DIR, "e1");
+    const inputDir = join(base, "input");
+    const outputDir = join(base, "output");
+    const workDir = join(base, "work");
+    mkdirSync(inputDir, { recursive: true });
+    writeFileSync(join(inputDir, "data.xp3"), "faux-xp3");
+
+    // Faux extracteur : écrit une arborescence d'assets depuis {out}.
+    const extractor = join(base, "extracteur.cjs");
+    writeFileSync(
+      extractor,
+      [
+        'const fs = require("fs"), path = require("path");',
+        "const [, , , out] = process.argv;",
+        'fs.mkdirSync(path.join(out, "bg"), { recursive: true });',
+        'fs.mkdirSync(path.join(out, "bgm"), { recursive: true });',
+        'fs.mkdirSync(path.join(out, "data", "scenario"), { recursive: true });',
+        'fs.writeFileSync(path.join(out, "bg", "night.png"), "png");',
+        'fs.writeFileSync(path.join(out, "bgm", "m01.ogg"), "ogg");',
+        'fs.writeFileSync(path.join(out, "data", "scenario", "1-0.ks"), "@bg storage=night\\n");',
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const report = await runPipeline({
+      inputDir,
+      outputDir,
+      workDir,
+      dryRun: false,
+      strict: false,
+      force: true,
+      xp3Command: `"${process.execPath}" "${extractor}" {in} {out}`,
+    } as any);
+
+    expect(report.inventoryCount).toBe(3);
+    expect(existsSync(join(workDir, "extracted", "data", "bg", "night.png"))).toBe(true);
+    expect(existsSync(join(workDir, "extracted", "data", "data", "scenario", "1-0.ks"))).toBe(true);
+
+    const manifest: AssetManifest = JSON.parse(
+      readFileSync(join(outputDir, "asset-manifest.json"), "utf-8"),
+    );
+    expect(manifest.images["night"]).toBeDefined();
+    expect(manifest.audio["m01"]).toBeDefined();
+    expect(manifest.scenarios["1-0"]).toBeDefined();
+  });
+
+  it("liste les fichiers non convertis et expose un code de sortie non nul", async () => {
+    const { inputDir, outputDir, workDir } = setupFixture();
+    // .tlg invalide : le décodeur intégré doit échouer proprement.
+    writeFileSync(join(inputDir, "bg", "broken.tlg"), Buffer.from("pas un TLG"));
+
+    const report = await runPipeline({
+      inputDir,
+      outputDir,
+      workDir,
+      dryRun: false,
+      strict: false,
+      force: true,
+    } as any);
+
+    expect(report.results.failed).toBe(1);
+    expect(report.failedTasks).toHaveLength(1);
+    expect(report.failedTasks[0]?.source).toContain("broken.tlg");
+    expect(report.exitCode).toBe(1);
+
+    const runReport = JSON.parse(readFileSync(report.runReportPath, "utf-8"));
+    expect(runReport.totals.failed).toBe(1);
+    expect(runReport.failures[0].source).toContain("broken.tlg");
+  });
+
+  it("refuse un dossier de sortie du dépôt non ignoré par git", async () => {
+    const { inputDir, workDir } = setupFixture();
+    const unsafeOutput = join(process.cwd(), "mh95-sortie-non-ignore");
+    try {
+      await expect(
+        runPipeline({
+          inputDir,
+          outputDir: unsafeOutput,
+          workDir,
+          dryRun: false,
+          strict: false,
+          force: true,
+        } as any),
+      ).rejects.toThrow(/ignoré par git/);
+      expect(existsSync(unsafeOutput)).toBe(false);
+    } finally {
+      rmSync(unsafeOutput, { recursive: true, force: true });
+    }
+  });
+});
