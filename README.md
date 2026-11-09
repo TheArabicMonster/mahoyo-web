@@ -275,7 +275,7 @@ npm run preview
 ls -l public/assets/asset-manifest.json   # présent après l'étape 2
 npm run check:assets                      # aucun asset sous copyright dans le dépôt
 npm run audit                             # audit du corpus KAG (via public/assets, ou MAHOYO_ASSETS_DIR)
-npm run audit:guard                       # garde-fou commandes KAG (registre, baseline, doc ; inconnues hors baseline)
+npm run audit:guard                       # garde-fou commandes KAG (zéro strict : registre des no-ops, baseline vide, doc ; échec sur toute inconnue)
 npm run audit:doc -- --check              # vérifie que la doc des commandes KAG est à jour
 ```
 

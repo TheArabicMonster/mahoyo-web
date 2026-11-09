@@ -6,11 +6,10 @@
  * entrée à effet non nul doit donc porter une justification explicite **et** la
  * référence de l'accord/issue qui l'a admise.
  *
- * Le triage des 55 commandes inconnues du corpus de référence est suivi par
- * #276/#274 : tant qu'il n'a pas statué, ce registre reste **vide** et les
- * commandes concernées figurent dans `tools/audit-commands-baseline.json` (la
- * baseline ne peut que décroître). Ne jamais y ajouter une commande à effet
- * visible sans accord explicite.
+ * Le triage #276 est clos (clôture v1.0, #302) : le corpus de référence ne
+ * contient plus aucune commande inconnue et la baseline est **figée vide** (mode
+ * zéro strict). Ce registre contient les seuls no-ops admis (5) ; ne jamais y
+ * ajouter une commande à effet visible sans accord explicite.
  */
 
 /** Effet que la commande produit dans le moteur d'origine (justifie le no-op). */

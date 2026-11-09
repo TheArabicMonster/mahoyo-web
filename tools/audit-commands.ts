@@ -1,12 +1,14 @@
 /**
- * Classification des commandes KAG et gestion de la baseline des inconnues (#275).
+ * Classification des commandes KAG et baseline vide du **mode zéro strict** (#275, #302).
  *
  * Trois catégories (voir `tools/audit-lib.ts`) :
  * - **implémentée** : reconnue par le parser/runtime (aucun warning) ;
  * - **ignorée volontairement** : no-op déclaré dans `tools/ignored-commands.ts` ;
- * - **inconnue** : ni implémentée ni déclarée no-op. Les inconnues du corpus de
- *   référence sont figées dans `tools/audit-commands-baseline.json` : le nombre ne
- *   peut que baisser, toute résolution exige une mise à jour explicite dans la PR.
+ * - **inconnue** : ni implémentée ni déclarée no-op.
+ *
+ * Depuis la clôture v1.0 (#302), le mode **zéro strict** interdit toute inconnue : la baseline
+ * `tools/audit-commands-baseline.json` est **figée vide** (métadonnées seules) et n'est plus
+ * mise à jour. Le garde-fou échoue dès qu'une commande inconnue est mesurée.
  */
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -20,9 +22,9 @@ export interface CommandBaseline {
   generatedAt: string;
   /** Corpus/commande ayant produit la mesure (pour l'humain). */
   source: string;
-  /** Rappel de la règle de décroissance. */
+  /** Rappel du mode zéro strict (la baseline doit rester vide). */
   note: string;
-  /** Issue de triage des inconnues restantes. */
+  /** Issue de clôture (mode zéro strict). */
   triageIssue: string;
   /** Inconnues mesurées, nom → occurrences. */
   commands: CommandCounts;
@@ -87,36 +89,6 @@ export function subtractCommandCounts(
   return out;
 }
 
-/** Problèmes détectés en comparant les inconnues mesurées à la baseline. */
-export interface BaselineComparison {
-  /** Inconnues absentes de la baseline : nouvelles commandes à trier. */
-  newCommands: string[];
-  /** Commandes dont le nombre d'occurrences a augmenté. */
-  increased: { name: string; measured: number; baseline: number }[];
-  /** Commandes de la baseline devenues silencieuses (implémentées ou déclarées no-op). */
-  resolved: string[];
-}
-
-/** Compare les inconnues mesurées à la baseline. */
-export function compareWithBaseline(
-  measured: CommandCounts,
-  baseline: CommandCounts,
-): BaselineComparison {
-  const current = normalizeCommandCounts(measured);
-  const expected = normalizeCommandCounts(baseline);
-  const newCommands = Object.keys(current)
-    .filter((name) => expected[name] === undefined)
-    .sort();
-  const increased = Object.entries(current)
-    .filter(([name, count]) => expected[name] !== undefined && count > expected[name]!)
-    .map(([name, count]) => ({ name, measured: count, baseline: expected[name]! }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const resolved = Object.keys(expected)
-    .filter((name) => current[name] === undefined)
-    .sort();
-  return { newCommands, increased, resolved };
-}
-
 /** Valide la structure d'une baseline lue (JSON non fiable). */
 export function parseBaseline(raw: unknown): CommandBaseline {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
@@ -155,23 +127,8 @@ export function loadBaseline(path: string = BASELINE_PATH): CommandBaseline {
     raw = JSON.parse(readFileSync(path, "utf-8"));
   } catch (err) {
     throw new Error(
-      `Baseline illisible (${path}) : ${err instanceof Error ? err.message : String(err)}. Lancer « npm run audit:baseline » avec les assets réels.`,
+      `Baseline illisible (${path}) : ${err instanceof Error ? err.message : String(err)}. En mode zéro strict la baseline doit rester vide (voir #302).`,
     );
   }
   return parseBaseline(raw);
-}
-
-/** Construit un contenu de baseline sérialisé et trié (écriture déterministe). */
-export function serializeBaseline(baseline: CommandBaseline): string {
-  const commands = Object.fromEntries(
-    Object.entries(normalizeCommandCounts(baseline.commands)).sort(([a], [b]) => a.localeCompare(b)),
-  );
-  const ordered: CommandBaseline = {
-    generatedAt: baseline.generatedAt,
-    source: baseline.source,
-    note: baseline.note,
-    triageIssue: baseline.triageIssue,
-    commands,
-  };
-  return `${JSON.stringify(ordered, null, 2)}\n`;
 }

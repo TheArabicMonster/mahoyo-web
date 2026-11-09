@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-11-09",
-  "source": "npm run audit sur 221 scripts narratifs (assets locaux, non commités)",
-  "note": "Inconnues constatées sur le corpus de référence, en attente de triage (#276). Ne peut que décroître ; mise à jour explicite dans la PR (npm run audit:baseline).",
-  "triageIssue": "#276",
+  "source": "audit final avant clôture v1.0 : 221 scripts narratifs (assets locaux, non commités)",
+  "note": "Mode zéro strict (#302) : aucune commande inconnue tolérée ; baseline figée vide, plus de mise à jour (npm run audit:baseline supprimé).",
+  "triageIssue": "#302",
   "commands": {}
 }
