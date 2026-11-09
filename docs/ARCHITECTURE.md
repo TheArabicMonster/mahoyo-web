@@ -204,7 +204,7 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
 
 ## Tests et fixtures
 
-- `tests/unit/` : **1939 tests unitaires** (112 fichiers) sur le moteur KAG, le rendu, les écrans, la
+- `tests/unit/` : **1986 tests unitaires** (116 fichiers) sur le moteur KAG, le rendu, les écrans, la
   persistance et les outils ; `tests/unit/mocks/` fournit les mocks partagés (`FakeAudioPlayer`,
   `FakeUIManager`, `FakeRuntime`) et `tests/fixtures/*.json` les séquences de `Step` générées à partir de samples.
 - `tests/integration/` : lecture complète du corpus (`full-read.test.ts`, 221 scripts, 0 erreur, 0 boucle),
