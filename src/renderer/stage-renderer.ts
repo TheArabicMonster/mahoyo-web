@@ -206,6 +206,10 @@ export class DomStageRenderer implements StageRenderer {
   private staffrollTimer: ReturnType<typeof setTimeout> | null = null;
   private staffrollResolve: (() => void) | null = null;
   /** Overlay des crédits (un seul à la fois) et son contenu défilant. */
+  /** Overlay des particules de notes (@beginfallnote, approximation #282). */
+  private fallnoteEl: HTMLElement | null = null;
+  /** Taux d'émission courant des particules (`@fallnoteopt rate=`). */
+  private fallnoteRate = 1;
   private staffrollEl: HTMLElement | null = null;
   private staffrollInner: HTMLElement | null = null;
   /** Vrai dès que l'animation de défilement a été lancée pour l'état courant. */
@@ -879,6 +883,31 @@ export class DomStageRenderer implements StageRenderer {
         object-fit: contain;
         margin: 0 0.04em;
       }
+      /* Particules @beginfallnote (#282) : notes de papier génériques qui tombent. */
+      .mh-stage-fallnote {
+        position: absolute;
+        inset: 0;
+        z-index: 100000;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .mh-stage-fallnote-note {
+        position: absolute;
+        top: -8%;
+        display: block;
+        background: rgba(255, 252, 235, 0.92);
+        border: 1px solid rgba(120, 100, 70, 0.55);
+        border-radius: 1px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+        animation: mh-fallnote-fall linear infinite;
+      }
+      @keyframes mh-fallnote-fall {
+        0% { transform: translateY(0) rotate(3deg); opacity: 0.9; }
+        100% { transform: translateY(115vh) rotate(210deg); opacity: 0.7; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .mh-stage-fallnote-note { animation: none; display: none; }
+      }
       .mh-stage-text-swing {
         display: inline-block;
         animation: mh-text-swing 2.2s ease-in-out infinite;
@@ -1066,6 +1095,20 @@ export class DomStageRenderer implements StageRenderer {
         else {
           for (const [id] of this.animations) this.stopAnimation(id);
         }
+        break;
+      }
+      case "pauseAnimation": {
+        if (event.target) this.animations.get(event.target)?.pause();
+        else for (const ctrl of this.animations.values()) ctrl.pause();
+        break;
+      }
+      case "resumeAnimation": {
+        if (event.target) this.animations.get(event.target)?.resume();
+        else for (const ctrl of this.animations.values()) ctrl.resume();
+        break;
+      }
+      case "fallnote": {
+        this.applyFallnote(event, opts);
         break;
       }
       case "stopTransition": {
@@ -1816,6 +1859,49 @@ export class DomStageRenderer implements StageRenderer {
     return this.container.querySelector(`[data-partbg-id="${def.partbgid}"]`) as HTMLElement | null;
   }
 
+  /**
+   * `@beginfallnote`/`@fallnoteopt`/`@endfallnote` (fallnoteplugin.tjs) : approximation de la
+   * pluie de notes par des particules CSS (`fallnote-particles`, registre #296). Le taux `rate`
+   * module la vitesse de chute ; l'overlay est retiré à `@endfallnote` (et sur restore/clear).
+   */
+  private applyFallnote(event: Extract<RenderEvent, { kind: "fallnote" }>, opts: RunOptions): void {
+    if (!event.active) {
+      this.stopFallnote();
+      return;
+    }
+    if (event.rate !== undefined) this.fallnoteRate = event.rate;
+    if (opts.instant) {
+      // Saut/chargement : l'effet continu reste visible mais sans animation.
+      this.fallnoteEl?.setAttribute("data-instant", "1");
+    }
+    if (!this.container) return;
+    if (!this.fallnoteEl) {
+      const overlay = document.createElement("div");
+      overlay.className = "mh-stage-fallnote";
+      // Particules déterministes (pas de Math.random : rendu reproductible et testable).
+      const count = 18;
+      for (let i = 0; i < count; i++) {
+        const note = document.createElement("span");
+        note.className = "mh-stage-fallnote-note";
+        const size = 7 + (i % 3) * 2;
+        note.style.left = `${(i * 61) % 100}%`;
+        note.style.width = `${size}px`;
+        note.style.height = `${size * 1.35}px`;
+        note.style.animationDelay = `${-((i * 0.37) % 4).toFixed(2)}s`;
+        note.style.animationDuration = `${(3.2 + (i % 5) * 0.65).toFixed(2)}s`;
+        overlay.appendChild(note);
+      }
+      this.container.appendChild(overlay);
+      this.fallnoteEl = overlay;
+    }
+    this.fallnoteEl.dataset.rate = String(this.fallnoteRate);
+  }
+
+  private stopFallnote(): void {
+    this.fallnoteEl?.remove();
+    this.fallnoteEl = null;
+  }
+
   private stopAnimation(target: string): void {
     const ctrl = this.animations.get(target);
     if (ctrl) {
@@ -2483,6 +2569,7 @@ export class DomStageRenderer implements StageRenderer {
     this.staffrollAnimation?.cancel();
     this.staffrollAnimation = null;
     if (staffrollResolve) staffrollResolve();
+    this.stopFallnote();
     for (const ctrl of this.animations.values()) ctrl.cancel();
     this.animations.clear();
   }
@@ -2694,7 +2781,22 @@ class AnimationController {
     }
   }
 
-  /** Cancel (@stopaction) : annule tout (loops y compris). */
+  /**
+   * Pause (@pauseaction) : suspend les animations WAAPI en cours. Le fallback `setTimeout`
+   * (jsdom sans `Element.animate`) ne peut pas être suspendu finement : aucun effet (documenté).
+   */
+  pause(): void {
+    this.animation?.pause();
+    this.innerAnimation?.pause();
+  }
+
+  /** Relance (@resumeaction) une animation suspendue par `pause()`. */
+  resume(): void {
+    this.animation?.play();
+    this.innerAnimation?.play();
+  }
+
+  /** Cancel (@stopaction/@removeaction) : annule tout (loops y compris), conserve l'état courant. */
   cancel(): void {
     this.clearTimers();
     this.finished = true;

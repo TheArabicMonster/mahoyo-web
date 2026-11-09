@@ -210,6 +210,16 @@ export type RuntimeState = {
   saveLoadEnabled?: boolean;
   /** `@current layer=message1` : couche de message courante (approximation mono-textbox). */
   messageLayer?: 0 | 1;
+  /**
+   * `@pauseploy` : dernière bulle ploy mémorisée le temps de la pause, restaurée par
+   * `@resumeploy`. **Transitoire** (non sauvegardé, allowlist #295).
+   */
+  ployPaused?: PloyState | null;
+  /**
+   * `@beginfallnote` : état transitoire des particules de notes (approximation `fallnoteplugin`) ;
+   * non sauvegardé (allowlist #295).
+   */
+  fallnote?: { active: boolean; rate: number } | null;
   /** Avance automatique suspendue (@pauseautomode) ; absent = non suspendue. */
   autoModePaused?: boolean;
   /** Saut au clic autorisé (@clickskip) ; absent = true (défaut moteur). */
@@ -307,6 +317,8 @@ export function createRuntimeState(): RuntimeState {
     quickMenuLocked: false,
     saveLoadEnabled: true,
     messageLayer: 0,
+    ployPaused: null,
+    fallnote: null,
     autoModePaused: false,
     clickSkipEnabled: true,
     effectSkipEnabled: true,
@@ -1603,6 +1615,128 @@ export class Runtime {
     return { kind: "textbox", state, time: 0 };
   }
 
+  /**
+   * Calque ciblé par une commande d'action (`@action`, `@removeaction`, `@pauseaction`,
+   * `@resumeaction`). `page` donnée → cette page ; sinon `fore` (défaut moteur de `@action`/
+   * `@pauseaction`) ou les deux pages pour `@removeaction`.
+   */
+  private findActionLayer(
+    page: PageLayer | undefined,
+    id: string | undefined,
+    storage: string | undefined,
+    defaultPage: "fore" | "both",
+  ): { layer: Layer; page: PageLayer } | null {
+    const pages: PageLayer[] = page ? [page] : defaultPage === "both" ? ["back", "fore"] : ["fore"];
+    const key = id ?? storage;
+    for (const target of pages) {
+      const layers = this.getPageState(target).layers;
+      const layer = key !== undefined ? layers.find((l) => l.id === key || l.storage === key) : undefined;
+      if (layer) return { layer, page: target };
+    }
+    return null;
+  }
+
+  /**
+   * `@action` (KAG3 + `override/action.tjs`) : action animée sur un calque.
+   *
+   * Seul `LayerNormalMoveModule` a une sémantique complète : translation `startx→x` / `starty→y`
+   * sur `time`, avec `delay`. Les autres modules sont approximés en translation linéaire (écart
+   * documenté, registre #296). Pour un partbg, les coordonnées moteur `left/top` sont converties
+   * en centre du wrapper (`+ width/2`, `+ height/2`). `nonstop=0` arrête l'action en cours.
+   */
+  private applyAction(
+    instruction: Extract<Instruction, { kind: "action" }>,
+  ): { events: RenderEvent[]; stop?: StopReason } {
+    const found = this.findActionLayer(instruction.page, instruction.id, instruction.storage, "fore");
+    if (!found) return { events: [] };
+    const { layer, page } = found;
+    const crop = layer.crop;
+    const dx = crop ? crop.width / 2 : 0;
+    const dy = crop ? crop.height / 2 : 0;
+    const startCenter = instruction.startx !== undefined ? instruction.startx + dx : layer.center;
+    const startVcenter = instruction.starty !== undefined ? instruction.starty + dy : layer.vcenter;
+    const endCenter = instruction.x !== undefined ? instruction.x + dx : startCenter;
+    const endVcenter = instruction.y !== undefined ? instruction.y + dy : startVcenter;
+    const time = Math.max(0, instruction.time);
+    const delay = Math.max(0, instruction.delay ?? 0);
+    const kf = (at: number, duration: number, center: number, vcenter: number): AnimKeyframe => ({
+      time: at,
+      duration,
+      interp: "l",
+      easing: "linear",
+      accel: 0,
+      center,
+      vcenter,
+    });
+    const keyframes: AnimKeyframe[] = [kf(0, 0, startCenter, startVcenter)];
+    if (delay > 0) keyframes.push(kf(delay, delay, startCenter, startVcenter));
+    keyframes.push(kf(delay + time, time, endCenter, endVcenter));
+    const def: AnimationDef = { storage: layer.storage, page, id: layer.id, keyframes };
+    const events: RenderEvent[] = [];
+    // Moteur : sans `nonstop`, l'action en cours sur la cible est d'abord arrêtée.
+    if (!instruction.nonstop) events.push({ kind: "stopAnimation", target: layer.id });
+    events.push(...this.applyAnimate({ kind: "animate", def }));
+    return { events };
+  }
+
+  /** `@removeaction` (tagex.tjs) : annule les actions en conservant l'état courant. */
+  private applyRemoveaction(instruction: Extract<Instruction, { kind: "removeaction" }>): RenderEvent[] {
+    const key = instruction.id ?? instruction.storage;
+    if (key === undefined) return [{ kind: "stopAnimation" }];
+    const found = this.findActionLayer(instruction.page, instruction.id, instruction.storage, "both");
+    return found ? [{ kind: "stopAnimation", target: found.layer.id }] : [];
+  }
+
+  /** `@pauseaction` / `@resumeaction` (tagex.tjs) : suspend ou relance les animations. */
+  private applyPauseAction(
+    instruction: Extract<Instruction, { kind: "pauseaction" | "resumeaction" }>,
+  ): RenderEvent[] {
+    const isPause = instruction.kind === "pauseaction";
+    const all = instruction.kind === "pauseaction" && instruction.all;
+    const key = instruction.id ?? instruction.storage;
+    if (!all && key !== undefined) {
+      const found = this.findActionLayer(instruction.page, instruction.id, instruction.storage, "fore");
+      if (!found) return [];
+      return [{ kind: isPause ? "pauseAnimation" : "resumeAnimation", target: found.layer.id }];
+    }
+    return [{ kind: isPause ? "pauseAnimation" : "resumeAnimation" }];
+  }
+
+  /**
+   * `@pauseploy` (tagex.tjs) : termine la bulle « ploy » en cours, mémorise son état pour
+   * `@resumeploy`, et retombe sur la police par défaut (`deffont ＭＳ Ｐゴシック` + `resetfont`
+   * dans le moteur ; approximation : style de texte réinitialisé, registre #296).
+   */
+  private applyPausePloys(instruction: Extract<Instruction, { kind: "pauseploy" | "resumeploy" }>): RenderEvent[] {
+    if (instruction.kind === "pauseploy") {
+      this.state.ployPaused = this.state.ploy ? { ...this.state.ploy } : null;
+      this.state.ploy = null;
+      this.state.textStyle = null;
+      return [{ kind: "ploy", ploy: null }];
+    }
+    const paused = this.state.ployPaused;
+    this.state.ployPaused = null;
+    if (!paused) return [];
+    this.state.ploy = { ...paused };
+    return [{ kind: "ploy", ploy: { ...paused } }];
+  }
+
+  /**
+   * `@beginfallnote`/`@fallnoteopt`/`@endfallnote` (fallnoteplugin.tjs) : approximation de la
+   * pluie de notes (particules CSS génériques ; seules `rate` et la durée du plugin sont
+   * reproduites — registre #296, `fallnote-particles`). État transitoire, non sauvegardé.
+   */
+  private applyFallnote(instruction: Extract<Instruction, { kind: "beginfallnote" | "fallnoteopt" | "endfallnote" }>): RenderEvent[] {
+    if (instruction.kind === "endfallnote") {
+      this.state.fallnote = null;
+      return [{ kind: "fallnote", active: false }];
+    }
+    const current = this.state.fallnote ?? { active: true, rate: 1 };
+    const rate = instruction.kind === "fallnoteopt" ? (instruction.rate ?? current.rate) : current.rate;
+    this.state.fallnote = { active: true, rate };
+    return [{ kind: "fallnote", active: true, rate }];
+  }
+
   private applyAnimate(instruction: Extract<Instruction, { kind: "animate" }>): RenderEvent[] {
     const def = instruction.def;
     const events: RenderEvent[] = [];
@@ -2567,6 +2701,28 @@ export class Runtime {
       case "stopaction":
         // Arrête toutes les animations de calques.
         events.push({ kind: "stopAnimation" });
+        break;
+      case "action": {
+        const res = this.applyAction(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
+        break;
+      }
+      case "removeaction":
+        events.push(...this.applyRemoveaction(instruction));
+        break;
+      case "pauseaction":
+      case "resumeaction":
+        events.push(...this.applyPauseAction(instruction));
+        break;
+      case "pauseploy":
+      case "resumeploy":
+        events.push(...this.applyPausePloys(instruction));
+        break;
+      case "beginfallnote":
+      case "fallnoteopt":
+      case "endfallnote":
+        events.push(...this.applyFallnote(instruction));
         break;
       case "stoptrans":
         // Termine immédiatement la transition en cours.

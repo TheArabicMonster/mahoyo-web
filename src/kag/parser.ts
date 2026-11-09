@@ -952,6 +952,68 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
     case "store":
       // @store (KAG3) : autorise/interdit la sauvegarde et le chargement (défaut : activé).
       return { kind: "store", enabled: args.enabled === undefined || (args.enabled !== "0" && args.enabled !== "false") };
+    case "action": {
+      // @action (tagex.tjs, override/action.tjs) : action animée d'un calque par module.
+      // Seul LayerNormalMoveModule a une sémantique complète (startx/x, starty/y, time).
+      const storage = args.storage !== undefined ? normStorage(args.storage) : undefined;
+      return {
+        kind: "action",
+        module: args.module?.trim() || "LayerNormalMoveModule",
+        page: parsePageLayer(args.page),
+        id: args.id !== undefined ? normStorage(args.id) : undefined,
+        storage: storage === "" ? undefined : storage,
+        startx: numArg(args.startx),
+        starty: numArg(args.starty),
+        x: numArg(args.x),
+        y: numArg(args.y),
+        time: parseIntArg(args.time, 0),
+        accel: numArg(args.accel),
+        delay: args.delay !== undefined ? parseIntArg(args.delay, 0) : undefined,
+        nonstop: args.nonstop !== undefined ? parseKagBool(args.nonstop) : false,
+      };
+    }
+    case "removeaction":
+      // @removeaction (tagex.tjs) : annule les actions en conservant l'état courant.
+      return {
+        kind: "removeaction",
+        page: parsePageLayer(args.page),
+        id: args.id !== undefined ? normStorage(args.id) : undefined,
+        storage: args.storage !== undefined ? normStorage(args.storage) : undefined,
+      };
+    case "pauseaction":
+      // @pauseaction (tagex.tjs) : pause de toutes les actions, ou de la cible indiquée.
+      return {
+        kind: "pauseaction",
+        all: args.all !== undefined && parseKagBool(args.all),
+        page: parsePageLayer(args.page),
+        id: args.id !== undefined ? normStorage(args.id) : undefined,
+        storage: args.storage !== undefined ? normStorage(args.storage) : undefined,
+      };
+    case "resumeaction":
+      // @resumeaction (tagex.tjs) : relance des actions en pause.
+      return {
+        kind: "resumeaction",
+        page: parsePageLayer(args.page),
+        id: args.id !== undefined ? normStorage(args.id) : undefined,
+        storage: args.storage !== undefined ? normStorage(args.storage) : undefined,
+      };
+    case "pauseploy":
+      // @pauseploy (tagex.tjs) : fin de la bulle « ploy » + police par défaut.
+      return { kind: "pauseploy" };
+    case "resumeploy":
+      // @resumeploy (tagex.tjs) : rétablit la bulle « ploy » masquée par @pauseploy.
+      return { kind: "resumeploy" };
+    case "beginfallnote":
+      // @beginfallnote (fallnoteplugin.tjs) : pluie de notes (approximation particules CSS).
+      return { kind: "beginfallnote", ...(numArg(args.index) === undefined ? {} : { index: numArg(args.index) }), page: parsePageLayer(args.page) };
+    case "fallnoteopt": {
+      // @fallnoteopt (fallnoteplugin.tjs) : options de la pluie de notes (seul `rate` approximé).
+      const rate = numArg(args.rate);
+      return { kind: "fallnoteopt", ...(rate === undefined ? {} : { rate }) };
+    }
+    case "endfallnote":
+      // @endfallnote (fallnoteplugin.tjs) : arrête l'émission de nouvelles notes.
+      return { kind: "endfallnote" };
     case "s":
       // @s : arrête le déroulement en attendant une sélection (bouton/lien).
       return { kind: "stop" };

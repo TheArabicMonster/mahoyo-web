@@ -285,6 +285,42 @@ export type Instruction =
     }
   /** `@store` (KAG3) : active/désactive la sauvegarde et le chargement (défaut : activé). */
   | { kind: "store"; enabled: boolean }
+  /**
+   * `@action` (KAG3 + `override/action.tjs`) : action animée sur un calque. Seul le module
+   * `LayerNormalMoveModule` a une sémantique complète (translation `startx/x`, `starty/y` sur
+   * `time`) ; les autres modules sont approximés en translation linéaire (écart documenté).
+   */
+  | {
+      kind: "action";
+      module: string;
+      page?: PageLayer;
+      id?: string;
+      storage?: string;
+      startx?: number;
+      starty?: number;
+      x?: number;
+      y?: number;
+      time: number;
+      accel?: number;
+      delay?: number;
+      nonstop?: boolean;
+    }
+  /** `@removeaction` (tagex.tjs) : annule les actions en conservant l'état courant (vs `@stopaction`). */
+  | { kind: "removeaction"; page?: PageLayer; id?: string; storage?: string }
+  /** `@pauseaction` (tagex.tjs) : met en pause les actions (`all=1` : même non-pausables). */
+  | { kind: "pauseaction"; all: boolean; page?: PageLayer; id?: string; storage?: string }
+  /** `@resumeaction` (tagex.tjs) : relance les actions en pause. */
+  | { kind: "resumeaction"; page?: PageLayer; id?: string; storage?: string }
+  /** `@pauseploy` : masque temporairement la bulle « ploy » (fin + police par défaut). */
+  | { kind: "pauseploy" }
+  /** `@resumeploy` : rétablit la bulle « ploy » masquée par `@pauseploy`. */
+  | { kind: "resumeploy" }
+  /** `@beginfallnote` (fallnoteplugin.tjs) : pluie de notes de papier — approximation particules. */
+  | { kind: "beginfallnote"; index?: number; page?: PageLayer }
+  /** `@fallnoteopt` : règle le taux d'émission des notes (autres options hors approximation). */
+  | { kind: "fallnoteopt"; rate?: number }
+  /** `@endfallnote` : arrête l'émission de nouvelles notes. */
+  | { kind: "endfallnote" }
   | { kind: "textoff"; time: number }
   | { kind: "texton" }
   | { kind: "position"; visible?: boolean; frame?: string }
