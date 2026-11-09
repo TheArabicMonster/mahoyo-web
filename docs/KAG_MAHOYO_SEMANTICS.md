@@ -485,6 +485,98 @@ sur la **page entière** avant la frappe, donc sans changement de taille en cour
   `@trans` bloquant sort trop tôt. À adresser avec les transitions non
   bloquantes.
 
+## 9 bis. Triage des commandes KAG restantes (#276)
+
+État au triage : `npm run audit` (vrais assets, 221 scripts narratifs) signale **51 commandes
+distinctes / 181 occurrences** ; les commandes standard `@s`, `@endif`, `@image`, `@ruby` ont été
+traitées par #277. Chaque commande ci-dessous a été vérifiée dans les **scripts, les macros et les
+TJS du moteur installé** (`data/scenario/*.tjs`, `data/override/*.tjs`) — l'origine et l'effet ne
+sont pas déduits du nom. Légende :
+
+- **Origine** : `KAG3` = standard KAG3 (documentation des tags), `plugin TJS` = tag de plugin
+  (`data/scenario/*.tjs`), `macro Mahoyo` = macro définie par `@macro` d'un script système,
+  `macro plugin` = macro enregistrée par un plugin TJS (`kag.conductor.macros`), `override` =
+  extension TYPE-MOON de `data/override/*.tjs`.
+- **Effet réel** : `aucun` | `déroulement` | `texte` | `image` | `audio` | `ui` | `effets`.
+- **Décision** : *implémenter* | *approximer* (écart documenté) | *no-op justifié* (aucun effet —
+  à déclarer dans le registre #275, accord requis si `effet ≠ "aucun"`).
+
+### Lots de suivi (issues créées depuis ce triage)
+
+| Lot | Issue | Commandes | Occ. |
+|---|---|---|---|
+| Commandes visuelles secondaires | #85 | `chgpartbg`, `dispclock`, `tickclock`, `setdefaultmessageaction`, `resetdefaultmessageaction` | 75 |
+| Commandes KAG restantes | #86 | `cm`, `cm4pg` (`@s` traité par #277) | 15 |
+| Effets d'écran plugin | #281 | `shake`, `swing`, `stopswing`, `noiseact`, `focusline`, `stopfocusline`, `clearfocusline` | 22 |
+| Actions et effets de scène plugin | #282 | `beginfallnote`, `fallnoteopt`, `endfallnote`, `action`, `removeaction`, `pauseaction`, `resumeaction`, `pauseploy`, `resumeploy` | 12 |
+| Calques image | #283 | `infg`, `outfg`, `layopt`, `bindbg`, `autocache` | 13 |
+| Texte et options message | #284 | `heart`, `ageage`, `ansz`, `ingz`, `eywz`, `swel`, `cockrobin`, `endcockrobin`, `current`, `deffont`, `store` | 16 |
+| Audio et déroulement | #285 | `xchgbgm`, `wb`, `clickskip`, `cancelskip`, `effectskip` | 13 |
+| Crédits de fin | #286 | `wstaffroll`, `staffrolluninit`, `staffrollsetting` | 6 |
+| Tracer et timeline | #287 | `settracerreturn`, `startchart`, `playtimeline`, `loadtimeline` | 5 |
+
+### Tableau de décision (51 commandes)
+
+| Commande | Occ. | Origine | Effet réel (vérifié) | Décision | Issue |
+|---|---|---|---|---|---|
+| `@chgpartbg` | 22 | plugin TJS (`partbgplugin.tjs`, `kt.chgpartbg`) | image : remplace l'image d'un partbg avec transition | implémenter | #85 |
+| `@dispclock` | 20 | plugin TJS (`macro.tjs`, `tagHandlers.dispclock`) | image : horloge (fond + aiguilles par calques) | implémenter | #85 |
+| `@tickclock` | 11 | plugin TJS (`macro.tjs`, `tagHandlers.tickclock`) | image : avance les aiguilles de l'horloge | implémenter | #85 |
+| `@setdefaultmessageaction` | 11 | override TYPE-MOON (`tagex.tjs`) | texte : action continue des messages suivants | implémenter | #85 |
+| `@resetdefaultmessageaction` | 11 | override TYPE-MOON (`tagex.tjs`) | texte : réinitialise cette action continue | implémenter | #85 |
+| `@cm` | 8 | KAG3 | texte : vide tous les calques de message | implémenter | #86 |
+| `@cm4pg` | 7 | override TYPE-MOON (`tagex.tjs`) | texte : `cm` au changement de page (+ copie d'état) | implémenter | #86 |
+| `@shake` | 4 | override TYPE-MOON (`tagex.tjs`, `.shake`) | effets : secousse d'écran | implémenter | #281 |
+| `@swing` | 1 | override TYPE-MOON (`tagex.tjs`, `.swing`) | effets : secousse aléatoire continue | implémenter | #281 |
+| `@stopswing` | 6 | override TYPE-MOON (`tagex.tjs`, `.stopswing`) | effets : arrêt de la secousse | implémenter | #281 |
+| `@noiseact` | 7 | plugin TJS (`noiseplugin.tjs`, `kt.noiseact`) | effets : animation des propriétés du bruit | implémenter | #281 |
+| `@focusline` | 1 | plugin TJS (`focuslineplugin.tjs`) | effets : lignes de concentration | approximer (rendu dédié) | #281 |
+| `@stopfocusline` | 2 | plugin TJS (`focuslineplugin.tjs`) | effets : arrêt des lignes de concentration | approximer | #281 |
+| `@clearfocusline` | 1 | plugin TJS (`focuslineplugin.tjs`) | effets : purge des couches de concentration | approximer | #281 |
+| `@beginfallnote` | 1 | plugin TJS (`fallnoteplugin.tjs`) | effets : chute d'objets | approximer (particules) | #282 |
+| `@fallnoteopt` | 2 | plugin TJS (`fallnoteplugin.tjs`) | effets : densité de la chute | approximer | #282 |
+| `@endfallnote` | 1 | plugin TJS (`fallnoteplugin.tjs`) | effets : fin de la chute | approximer | #282 |
+| `@action` | 1 | plugin TJS (`keyframeactionplugin.tjs` / `actionmanager.tjs`) | effets : action animée par module sur un calque | implémenter | #282 |
+| `@removeaction` | 3 | override TYPE-MOON (`tagex.tjs`) | effets : détruit les actions en gardant l'état courant | implémenter | #282 |
+| `@pauseaction` | 1 | override TYPE-MOON (`tagex.tjs`) | effets : met les actions en pause | implémenter | #282 |
+| `@resumeaction` | 1 | override TYPE-MOON (`tagex.tjs`) | effets : reprend les actions | implémenter | #282 |
+| `@pauseploy` | 1 | override TYPE-MOON (`tagex.tjs`) | texte : suspend l'affichage bulle/ploy | implémenter | #282 |
+| `@resumeploy` | 1 | override TYPE-MOON (`tagex.tjs`) | texte : rétablit l'affichage bulle/ploy | implémenter | #282 |
+| `@infg` | 5 | plugin TJS (`fgplugin.tjs`, `kt.infg`) | image : apparition animée d'un calque | implémenter | #283 |
+| `@outfg` | 3 | plugin TJS (`fgplugin.tjs`, `kt.outfg`) | image : disparition animée d'un calque | implémenter | #283 |
+| `@layopt` | 1 | KAG3 | image : options de calque (visible/opacité/position) | implémenter | #283 |
+| `@bindbg` | 3 | override TYPE-MOON (`tagex.tjs`, `.bindbg`) | image/effets : calques liés aux mouvements du fond | approximer | #283 |
+| `@autocache` | 1 | override TYPE-MOON (`tagex.tjs`, `.autocache`) | **aucun** (préchargement d'images avant attente) | no-op justifié (`effet: "aucun"`) | #283 |
+| `@heart` | 3 | macro plugin (`macro.tjs`, `exCharTags` → `[graph]`) | texte : image emoji dans le texte | implémenter (balise `[graph]`) | #284 |
+| `@ageage` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
+| `@ansz` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
+| `@ingz` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
+| `@eywz` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
+| `@swel` | 3 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
+| `@cockrobin` | 1 | macro plugin (`robinserifplugin.tjs`) | texte/ui : encadrement conditionnel d'une réplique | approximer | #284 |
+| `@endcockrobin` | 1 | macro plugin (`robinserifplugin.tjs`) | texte/ui : fin de cet encadrement | approximer | #284 |
+| `@current` | 1 | KAG3 | texte : sélection de la couche message (`message0`/`message1`) | implémenter | #284 |
+| `@deffont` | 6 | KAG3 | **aucun ici** : seul `face=user` est utilisé, le port n'expose pas de police utilisateur et `@resetfont` retombe sur la police du thème | no-op justifié (`effet: "aucun"`) | #284 |
+| `@store` | 1 | KAG3 | ui : active/désactive sauvegarde et chargement | implémenter | #284 |
+| `@xchgbgm` | 7 | KAG3 | audio : fondu croisé de BGM | implémenter | #285 |
+| `@wb` | 1 | KAG3 | audio/déroulement : attente de fin de fondu BGM | implémenter | #285 |
+| `@clickskip` | 2 | KAG3 | déroulement/ui : active/désactive le skip au clic | implémenter | #285 |
+| `@cancelskip` | 1 | KAG3 | déroulement : annule l'état de skip courant | implémenter | #285 |
+| `@effectskip` | 2 | override TYPE-MOON (`tagex.tjs`) | déroulement/ui : autorise/interdit le skip des effets | implémenter | #285 |
+| `@wstaffroll` | 2 | plugin TJS (`staffrollplugin.tjs`, `kt.wstaffroll`) | déroulement : attente de la fin du générique | implémenter | #286 |
+| `@staffrolluninit` | 3 | plugin TJS (`staffrollplugin.tjs`) | ui : termine/libère l'affichage des crédits | implémenter | #286 |
+| `@staffrollsetting` | 1 | plugin TJS (`staffrollplugin.tjs`) | ui : couleur de fond des crédits | implémenter | #286 |
+| `@settracerreturn` | 2 | macro Mahoyo (`tracerplugin.ks`) | ui : cible de retour du flowchart | approximer (flowchart #211/#212) | #287 |
+| `@startchart` | 1 | macro Mahoyo (`tracerplugin.ks`) | ui : démarre le flowchart | approximer | #287 |
+| `@playtimeline` | 1 | plugin TJS (`timelineplugin.tjs`, usage de test `frame=0` sans `scene`) | effets : timeline ; l'occurrence brute est malformée | tolérer sans warning (fallback documenté) | #287 |
+| `@loadtimeline` | 1 | macro plugin (`timelineplugin.tjs`) | effets : charge un `.tla` puis joue la timeline | implémenter | #287 |
+
+**Bilan des décisions** : 37 à implémenter, 11 à approximer (écart documenté), 1 variante
+malformée à tolérer (`@playtimeline` de test), 2 no-op justifiés sans effet
+(`@autocache`, `@deffont`). Aucune commande à effet visible/audible/de déroulement n'est classée
+no-op. Le mécanisme de registre/audit classé de #275 accueillera les deux no-ops ; les autres
+lignes restent des inconnues à résorber par leurs issues de suivi.
+
 ## 10. Commandes non implémentées à figer plus tard
 
 - ~~`@s`, `@image`, `@ruby`, `@endif` (commandes KAG standard)~~ : implémentées (#277) ; voir

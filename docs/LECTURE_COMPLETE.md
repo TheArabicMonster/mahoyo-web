@@ -90,7 +90,9 @@ La console affiche uniquement un résumé chiffré (pas de texte original).
   **ignorée volontairement** (no-op déclaré dans le registre, avec raison et issue)
   ou **inconnue** (ni l'un ni l'autre). Voir la section générée
   « Commandes KAG : registre et audit classé » plus bas ; le garde-fou CI est
-  `npm run audit:guard`.
+  `npm run audit:guard`. Le triage complet des commandes restantes (origine, effet
+  réel vérifié, décision, issue de suivi) est tenu dans
+  [`KAG_MAHOYO_SEMANTICS.md`](KAG_MAHOYO_SEMANTICS.md) §9 bis (#276).
 - **Assets de base absents** : références d'images/sons dont l'asset de base est
   absent du manifest. La résolution est la même que celle du player (`storageKey`
   puis recherche dans le manifest) : casse, dossier, extension et suffixe de
