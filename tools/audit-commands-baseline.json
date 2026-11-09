@@ -8,15 +8,12 @@
     "ageage": 1,
     "ansz": 1,
     "beginfallnote": 1,
-    "cancelskip": 1,
     "chgpartbg": 22,
-    "clickskip": 2,
     "cm": 8,
     "cm4pg": 7,
     "cockrobin": 1,
     "current": 1,
     "dispclock": 20,
-    "effectskip": 2,
     "endcockrobin": 1,
     "endfallnote": 1,
     "eywz": 1,
@@ -36,8 +33,6 @@
     "startchart": 1,
     "store": 1,
     "swel": 3,
-    "tickclock": 11,
-    "wb": 1,
-    "xchgbgm": 7
+    "tickclock": 11
   }
 }
