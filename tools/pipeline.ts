@@ -60,6 +60,7 @@ import {
   type PipelineRunReport,
   type RunFailure,
 } from "./pipeline-report.js";
+import { installEngineDataFiles, type EngineDataInstallReport } from "./data-files.js";
 
 function parseArgs(argv: string[]) {
   const args: Record<string, string | boolean> = {};
@@ -104,6 +105,8 @@ export type PipelineReport = {
   /** Code de sortie recommandé (0 ou 1 ; 1 aussi en --strict si storages manquants). */
   exitCode: 0 | 1;
   verification?: Awaited<ReturnType<typeof verifyReferences>>;
+  /** Fichiers de données du moteur installés (ex. `data/others/envcolor.ksc`, #260). */
+  dataFiles?: EngineDataInstallReport;
 };
 
 export async function runPipeline(opts: PipelineOptions): Promise<PipelineReport> {
@@ -230,6 +233,15 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineReport
   }
   console.log("[pipeline] Plan:", actionCounts);
 
+  // Fichiers de données du moteur (`envcolor.ksc`…) : copiés tels quels, hors manifeste.
+  const dataFiles = await installEngineDataFiles(sourceRoot, outputDir, { dryRun });
+  if (dataFiles.installed.length > 0) {
+    console.log(`[pipeline] Données du moteur : ${dataFiles.installed.join(", ")}`);
+  }
+  for (const missing of dataFiles.missing) {
+    console.warn(`[pipeline] Donnée du moteur absente de l'entrée (ignorée) : ${missing}`);
+  }
+
   if (dryRun) {
     console.log("[pipeline] Dry-run: aucune écriture.");
     const results = tasks.map((task) => ({
@@ -258,6 +270,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineReport
       runReportPath: join(workDir, "pipeline-report.json"),
       failedTasks: [],
       exitCode: 0,
+      dataFiles,
     };
   }
 
@@ -335,6 +348,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineReport
     failedTasks: failures,
     exitCode,
     verification,
+    dataFiles,
   };
 }
 
