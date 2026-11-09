@@ -63,6 +63,16 @@ src/renderer/ + src/ui/  ── rendu navigateur
   `syncSystemMenu` reflète `PlayerStatus` (verrou `quickMenuLocked`, `aria-pressed` d'auto et skip) ;
   `syncSystemMenuVeil` pose `mh-ui-night mh-ui-night-veil` sur le slot seulement quand il a du contenu.
   Voir [`DESIGN.md`](DESIGN.md) §9.2.
+- **`router.ts`** (WEB-04, #204) : routes d'URL des écrans (`#/title`, `#/game`, `#/load`, `#/save`, `#/config`,
+  `#/backlog`, `#/flowchart` ; voir [`DESIGN.md`](DESIGN.md) §9.6). Fonctions pures (`parseRoute`, `serializeRoute`,
+  `resolveRoute` = repli sur le titre, `viewRoute` = route de la vue du player) et `HistoryRouter`, adaptateur
+  `location`/`history` injectable (`RouterHost`), jamais en exception. Contrat `ScreenRouter` (`start`, `publish`) injecté
+  au `Player` par `main.ts` (`deps.router`, null dans les tests). Le player **publie** sa vue (`syncRoute` dans
+  `openScreen`, `closeScreen`, `showTitle`, `enterGame`) et **applique** les navigations du navigateur
+  (`Player.applyRoute`). Le routeur tient un miroir des entrées d'historique qu'il crée (`history.state = { mahoyo: profondeur }`) :
+  ouvrir un écran fait `pushState`, le fermer fait `history.back()` quand l'entrée du dessous est la bonne, sinon
+  `replaceState` ; il n'écrit jamais `location.hash` (pas de boucle) et ignore le `hashchange` qu'il provoque lui-même.
+  Seul le nom de l'écran est dans l'URL (pas de script, libellé ni progression).
 - **`chapter-list.ts`** : construction de la liste des chapitres/scripts.
 - **`i18n.ts`** et **`locales/`** : dictionnaire d'interface FR/JA/EN (`t(clé)`, repli sur le français). Voir [`I18N.md`](I18N.md).
 

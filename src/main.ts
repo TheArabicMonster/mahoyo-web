@@ -7,6 +7,7 @@ import { createDomStageRenderer } from "./renderer/stage-renderer.js";
 import { DomUIManager } from "./ui/ui-manager.js";
 import type { SaveTransferActions } from "./ui/save-load-screen.js";
 import { Player } from "./ui/player.js";
+import { HistoryRouter } from "./ui/router.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
 import { parseStoryChain, type StoryChain } from "@/core/story-chain.js";
 import { chaptersToScripts } from "./ui/chapter-list.js";
@@ -82,6 +83,8 @@ async function main() {
     loadChain: async () => chain,
     saveStore,
     settingsStore,
+    // Routes d'URL des écrans (#/title, #/load, #/config…) : lien direct, précédent = fermer l'écran (WEB-04, #204).
+    router: new HistoryRouter(),
   });
 }
 

@@ -320,6 +320,27 @@ Nœud 64 x 40 (unités de `layoutFlowchart`), arêtes 2 px `--mh-panel-border-li
 - **Lecture des emplacements** : le player lit les 120 positions avec **un seul** `SaveStore.list()` (un parcours IndexedDB) au lieu de 120 `get`, puis complète les vides.
 - **Écarts connus** : l'écran Save n'a pas été vu dans la vidéo (écart E10, gabarit de Load réutilisé) ; la colonne du menu système à droite (en jeu, desktop) n'est pas reprise (le menu plein cadre de HUD-06 se referme à l'ouverture de l'écran) ; le portrait (1 colonne, cibles de 44 px) relève de WEB-02 (#210) ; les vignettes restent des data-URL dans `localStorage` jusqu'à WEB-03 (#198).
 
+### 9.6 Routes d'URL des écrans (WEB-04 / #204)
+
+Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le partage et le bouton précédent. `src/ui/router.ts` (module pur et adaptateur d'historique), branché dans `player.ts`.
+
+| Route | Écran | Sans partie en cours |
+|---|---|---|
+| `#/title` | écran titre | oui |
+| `#/game` | partie (le menu système `pause` en fait partie : pas d'entrée d'historique de plus) | repli sur `#/title` |
+| `#/load` | chargement (titre ou partie) | oui |
+| `#/save` | sauvegarde | repli sur `#/title` |
+| `#/config` | configuration (écran `settings`) | oui |
+| `#/backlog` | historique | repli sur `#/title` |
+| `#/flowchart` | flowchart (l'écran de #197 ; FLOW-08 / #207 le complète) | oui |
+
+- **Hash, pas de chemin** : aucun `base` Vite n'est configuré et un hébergement statique ne réécrit pas `/load` vers `index.html` ; `#/load` marche partout sans configuration serveur, et le changement de hash ne recharge jamais la page.
+- **Aucun spoiler dans l'URL** : seulement le nom de l'écran. Jamais d'identifiant de script, de libellé, de chapitre ni de progression ; `parseRoute` refuse sous-chemins, paramètres et inconnus (repli sur le titre).
+- **Précédent ferme l'écran** : ouvrir un écran empile une entrée, le fermer (bouton, Échap ou précédent) revient à l'entrée d'en dessous, sans boucle. Un lien direct vers un écran (`#/config`) est précédé du titre dans l'historique : précédent le ferme et affiche le titre. Titre → partie, chargement d'une sauvegarde et retour au titre *remplacent* l'entrée au lieu d'en ajouter.
+- **Précédent depuis la partie vers `#/title`** (possible après un chargement depuis le titre) demande la même confirmation que « Title » du menu système (Non présélectionné) ; refusée, l'URL revient à `#/game`.
+- **Repli propre** : un écran qui exige une partie sans partie, une route inconnue, ou un écran refusé (menu rapide verrouillé) laissent l'URL alignée sur la vue réelle. Une partie n'est jamais reconstruite depuis l'URL : recharger sur `#/game` revient au titre.
+- Toute API d'historique est entourée d'un `try/catch` ; sans historique (iframe sandbox), les écrans restent utilisables sans URL.
+
 ## 10. Accessibilité minimale à conserver
 
 - **Contraste** : texte clair sur fond sombre ≥ 7:1 (ex. `#a9c8cc` sur `#132337` ≈ 9:1). Le texte lu à 40 % d'opacité
