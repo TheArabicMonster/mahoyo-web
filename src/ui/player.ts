@@ -23,6 +23,7 @@ import {
 } from "@/player/save-store.js";
 import { ProgressTracker, reachableEndings, scriptIdOf } from "@/player/progress-tracker.js";
 import { overlayOfRoute, resolveRoute, viewRoute, type Route, type ScreenRouter } from "./router.js";
+import { createScreenTransitions, type ScreenTransitions, type TransitionKind } from "./transitions.js";
 import {
   DEFAULT_SETTINGS,
   createLocalSettingsStore,
@@ -111,6 +112,11 @@ export type PlayerDeps = {
   skipDelay: number;
   /** Routes d'URL des écrans (WEB-04, #204) ; null = pas de routage (tests unitaires, intégration). */
   router: ScreenRouter | null;
+  /**
+   * Transitions plein écran (HUD-14, #205). Absent : rideau DOM créé sur la racine du player.
+   * Les tests unitaires injectent un double instantané pour ne pas dépendre d'une horloge réelle.
+   */
+  transitions?: ScreenTransitions;
 };
 
 const DEFAULT_SCRIPTS: ScriptSummary[] = [
@@ -251,6 +257,8 @@ export class Player implements PlayerCommands {
   private readonly stage: StageRenderer;
   private readonly audio: AudioPlayer;
   private readonly ui: UIManager;
+  /** Rideau de transition plein écran (HUD-14, #205) ; injecté en test. */
+  private readonly transitions: ScreenTransitions;
 
   private settings: GameSettings;
   private readSet = new Set<string>();
@@ -364,6 +372,8 @@ export class Player implements PlayerCommands {
     this.ui = this.deps.createUIManager();
     this.stage.mount(this.deps.root);
     this.ui.init(this.deps.root, this.bindCommands());
+    // Après `init` : l'overlay existe, le rideau se pose dedans pour rester sous `#ui-loading` (z-index 300).
+    this.transitions = deps.transitions ?? createScreenTransitions({ host: this.deps.root });
     document.addEventListener("visibilitychange", this.onVisibility);
     window.addEventListener("resize", this.onViewportChange);
     document.addEventListener("fullscreenchange", this.onViewportChange);
@@ -563,14 +573,23 @@ export class Player implements PlayerCommands {
 
   private async beginScript(file: string, label?: string): Promise<void> {
     if (this.state === "loading") return;
-    await this.endSession();
-    this.setState("loading");
-    this.ui.setInputEnabled(false);
+    // Le fondu au noir démarre avec le préchargement (HUD-14, #205) : de là vient l'absence de noir
+    // prolongé quand les assets sont prêts. Depuis le titre c'est « titre → jeu », sinon « chargement → scène ».
+    const kind: TransitionKind = this.state === "title" ? "title-to-game" : "loading-to-scene";
+    const transition = this.transitions.start(kind);
     try {
+      await this.endSession();
+      this.setState("loading");
+      this.ui.setInputEnabled(false);
+      // Préchargement pendant le fondu : seul le script est lu, rien n'est encore affiché.
       const script = await this.getScript(file);
       if (!script) {
+        // Erreur : on ne réaffiche le titre qu'une fois l'écran noirci, jamais pendant le fondu.
+        await transition.black;
         this.ui.toast(t("toast.scriptNotFound", { file }));
         await this.showTitle();
+        this.ui.setInputEnabled(true);
+        await transition.reveal();
         return;
       }
       const runtime = this.makeRuntime(script, file);
@@ -581,11 +600,19 @@ export class Player implements PlayerCommands {
       this.chainQueue = [];
       this.quickMenuLocked = false;
       this.autoPaused = false;
+      // Échange des écrans une fois le noir complet : le titre reste visible pendant tout le fondu.
+      await transition.black;
       this.resetStageState();
       this.stage.clear();
       this.audio.stopAll();
       this.enterGame();
       this.startLoop();
+      // L'écran de chargement cède la place au rideau avant l'apparition de la scène.
+      this.ui.setInputEnabled(true);
+      await transition.reveal();
+    } catch (err) {
+      transition.cancel();
+      throw err;
     } finally {
       this.ui.setInputEnabled(true);
     }
@@ -633,18 +660,29 @@ export class Player implements PlayerCommands {
   }
 
   async returnToTitle(): Promise<void> {
-    await this.endSession();
-    this.runtime = null;
-    this.history = [];
-    this.mode = "normal";
-    this.quickMenuLocked = false;
-    this.autoPaused = false;
-    this.userHidden = false;
-    this.stage.setUserHidden(false);
-    this.stage.clear();
-    this.audio.stopAll();
-    await this.deps.settingsStore.saveRead(this.readSet).catch(() => {});
-    await this.showTitle();
+    // « Jeu → titre » (HUD-14, #205) : fondu au noir 0,4 s, noir 0,1 s, apparition du titre 0,8 s.
+    // Depuis le titre (fermeture d'un écran par exemple), aucun fondu : rien ne change à l'écran.
+    const transition = this.state === "title" ? null : this.transitions.start("game-to-title");
+    try {
+      await this.endSession();
+      // La scène reste visible pendant le fondu ; on ne la démonte qu'une fois l'écran noirci.
+      await transition?.black;
+      this.runtime = null;
+      this.history = [];
+      this.mode = "normal";
+      this.quickMenuLocked = false;
+      this.autoPaused = false;
+      this.userHidden = false;
+      this.stage.setUserHidden(false);
+      this.stage.clear();
+      this.audio.stopAll();
+      await this.deps.settingsStore.saveRead(this.readSet).catch(() => {});
+      await this.showTitle();
+    } catch (err) {
+      transition?.cancel();
+      throw err;
+    }
+    await transition?.reveal();
   }
 
   // ── Commandes : sauvegardes ──
@@ -689,6 +727,9 @@ export class Player implements PlayerCommands {
       this.ui.toast(t("toast.saveEmpty"));
       return;
     }
+    // « Chargement → scène » (HUD-14, #205) : le noir couvre la restauration des assets, puis la scène
+    // apparaît en `--mh-dur-scene-in`. Le rollback (`restoreEntry` sans transition) n'est pas concerné.
+    const transition = this.transitions.start("loading-to-scene");
     this.scriptFile = record.scriptFile;
     this.history = [
       {
@@ -704,7 +745,15 @@ export class Player implements PlayerCommands {
     ];
     // Ajout seul : une sauvegarde ne retire ni n'écrase jamais la progression cumulée.
     this.progress.absorbChoices(this.history[0]!.choices);
-    if (await this.restoreEntry(this.history[0])) this.overlays = [];
+    try {
+      // Le noir couvre la restauration ; l'écran de chargement stylé n'apparaît qu'après le fondu.
+      await transition.black;
+      if (await this.restoreEntry(this.history[0])) this.overlays = [];
+    } catch (err) {
+      transition.cancel();
+      throw err;
+    }
+    await transition.reveal();
   }
 
   async deleteSave(slot: SlotId): Promise<void> {
@@ -797,6 +846,7 @@ export class Player implements PlayerCommands {
     this.stopRouter?.();
     this.stopRouter = null;
     await this.endSession();
+    this.transitions.dispose();
     this.stage.dispose();
     this.audio.dispose();
     this.ui.dispose();
