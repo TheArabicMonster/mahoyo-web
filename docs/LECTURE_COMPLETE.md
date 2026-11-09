@@ -86,8 +86,11 @@ La console affiche uniquement un résumé chiffré (pas de texte original).
 - **Scripts en erreur fatale** : scripts qui ont provoqué une exception runtime.
 - **Scripts ayant atteint maxSteps** : scripts qui n'ont pas atteint la fin avant
   le plafond de steps (boucle probable).
-- **Commandes inconnues** : commandes KAG actuellement traitées comme no-op,
-  avec leur effectif.
+- **Commandes KAG** : chaque commande rencontrée est classée en **implémentée**,
+  **ignorée volontairement** (no-op déclaré dans le registre, avec raison et issue)
+  ou **inconnue** (ni l'un ni l'autre). Voir la section générée
+  « Commandes KAG : registre et audit classé » plus bas ; le garde-fou CI est
+  `npm run audit:guard`.
 - **Assets de base absents** : références d'images/sons dont l'asset de base est
   absent du manifest. La résolution est la même que celle du player (`storageKey`
   puis recherche dans le manifest) : casse, dossier, extension et suffixe de
@@ -101,6 +104,93 @@ La console affiche uniquement un résumé chiffré (pas de texte original).
 - **Références d'asset de nom vide** : calques sans image (storage vide, voir
   « Références d'asset de nom vide » plus bas). Ce ne sont pas des fichiers à
   charger ; elles sont comptées à part.
+
+## Commandes KAG : registre et audit classé
+
+L'audit ne traite plus toute commande non gérée comme un no-op : il la classe en
+**implémentée**, **ignorée volontairement** (déclarée dans
+`tools/ignored-commands.ts`, avec raison, effet et issue) ou **inconnue** (ni
+implémentée ni déclarée). Les inconnues du corpus de référence sont figées dans
+`tools/audit-commands-baseline.json` : leur nombre ne peut que baisser, toute
+résolution impose une mise à jour explicite (PR). Le garde-fou `npm run
+audit:guard` vérifie registre, baseline, doc générée et décroissance de la
+baseline ; avec les assets locaux, il audite aussi le corpus et refuse toute
+inconnue hors baseline.
+
+<!-- BEGIN AUTO: commandes-kag -->
+### Commandes KAG : registre et classification (généré)
+
+> Bloc **généré** par `npm run audit:doc` depuis `tools/ignored-commands.ts` et `tools/audit-commands-baseline.json` (#275). Ne pas l'éditer à la main : modifier le registre ou la baseline, puis régénérer.
+
+| Catégorie | Définition | Mesure actuelle |
+|---|---|---|
+| **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
+| **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 0 commande(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 51 commande(s) distincte(s), 181 occurrence(s) |
+
+#### Commandes ignorées volontairement (no-op déclarés)
+
+Aucune commande n'est déclarée no-op à ce jour. Le triage des inconnues restantes est suivi par #276 : la DoD v1.0 interdit d'admettre un no-op à effet visible, audible ou de déroulement.
+
+#### Commandes inconnues restantes (baseline, à trier)
+
+Baseline générée le 2026-11-09 — npm run audit sur 221 scripts narratifs (assets locaux, non commités). Issue de triage : #276.
+Le nombre d'inconnues ne peut que baisser : toute commande résolue (implémentée ou déclarée no-op) doit être retirée de la baseline dans la PR correspondante (`npm run audit:baseline`).
+
+| Commande | Occurrences |
+|---|---|
+| `@action` | 1 |
+| `@ageage` | 1 |
+| `@ansz` | 1 |
+| `@autocache` | 1 |
+| `@beginfallnote` | 1 |
+| `@bindbg` | 3 |
+| `@cancelskip` | 1 |
+| `@chgpartbg` | 22 |
+| `@clearfocusline` | 1 |
+| `@clickskip` | 2 |
+| `@cm` | 8 |
+| `@cm4pg` | 7 |
+| `@cockrobin` | 1 |
+| `@current` | 1 |
+| `@deffont` | 6 |
+| `@dispclock` | 20 |
+| `@effectskip` | 2 |
+| `@endcockrobin` | 1 |
+| `@endfallnote` | 1 |
+| `@eywz` | 1 |
+| `@fallnoteopt` | 2 |
+| `@focusline` | 1 |
+| `@heart` | 3 |
+| `@infg` | 5 |
+| `@ingz` | 1 |
+| `@layopt` | 1 |
+| `@loadtimeline` | 1 |
+| `@noiseact` | 7 |
+| `@outfg` | 3 |
+| `@pauseaction` | 1 |
+| `@pauseploy` | 1 |
+| `@playtimeline` | 1 |
+| `@removeaction` | 3 |
+| `@resetdefaultmessageaction` | 11 |
+| `@resumeaction` | 1 |
+| `@resumeploy` | 1 |
+| `@setdefaultmessageaction` | 11 |
+| `@settracerreturn` | 2 |
+| `@shake` | 4 |
+| `@staffrollsetting` | 1 |
+| `@staffrolluninit` | 3 |
+| `@startchart` | 1 |
+| `@stopfocusline` | 2 |
+| `@stopswing` | 6 |
+| `@store` | 1 |
+| `@swel` | 3 |
+| `@swing` | 1 |
+| `@tickclock` | 11 |
+| `@wb` | 1 |
+| `@wstaffroll` | 2 |
+| `@xchgbgm` | 7 |
+<!-- END AUTO: commandes-kag -->
 
 ## Critère de réussite
 

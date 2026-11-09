@@ -79,8 +79,12 @@ function buildSummary(report: AuditReport): string {
   lines.push(`Scripts ayant atteint maxSteps : ${report.scriptsWithMaxSteps}`);
   lines.push(`Durée totale : ${(report.totalDurationMs / 1000).toFixed(1)}s`);
 
+  const implementedGlobal = report.implementedCommandsGlobal ?? {};
+  const ignoredGlobal = report.ignoredCommandsGlobal ?? {};
   const cmdCount = Object.values(report.unknownCommandsGlobal).reduce((a, b) => a + b, 0);
-  lines.push(`Commandes inconnues : ${cmdCount}`);
+  lines.push(
+    `Commandes KAG : ${Object.keys(implementedGlobal).length} implémentée(s), ${Object.keys(ignoredGlobal).length} ignorée(s) volontairement, ${Object.keys(report.unknownCommandsGlobal).length} inconnue(s) (${cmdCount} occurrences)`,
+  );
   const assetCount = Object.values(report.missingAssetsGlobal).reduce((a, b) => a + b, 0);
   lines.push(`Assets de base absents : ${assetCount}`);
   lines.push(`Variantes non résolues (base absente) : ${report.unresolvedVariantRefsGlobal ?? 0}`);
@@ -141,6 +145,8 @@ describe.skipIf(!hasAssets)("Lecture complète du corpus KAG", () => {
 
     const {
       unknownCommandsGlobal,
+      ignoredCommandsGlobal,
+      implementedCommandsGlobal,
       warningsGlobal,
       missingAssetsGlobal,
       resolvedVariantRefsGlobal,
@@ -164,6 +170,8 @@ describe.skipIf(!hasAssets)("Lecture complète du corpus KAG", () => {
       totalDurationMs,
       scripts: results,
       unknownCommandsGlobal,
+      ignoredCommandsGlobal,
+      implementedCommandsGlobal,
       warningsGlobal,
       missingAssetsGlobal,
       resolvedVariantRefsGlobal,
