@@ -1,5 +1,5 @@
 /* ── Commandes tactiles (WEB-01, #203) ───────────────────────────────────────
-   docs/ANALYSE_HUD_ORIGINAL.md §2.4, §2.5 (E24, E25) ; docs/DESIGN.md §9.6, §10, §12. CSS pur, aucun asset.
+   docs/ANALYSE_HUD_ORIGINAL.md §2.4, §2.5 (E24, E25) ; docs/DESIGN.md §9.8, §10, §12. CSS pur, aucun asset.
 
    Repère : tout vit dans #viewport, 1280x720 logiques, mis à l'échelle par `transform: scale()`. Sur un
    téléphone en paysage (844x390), l'échelle vaut ≈ 0,54 : 48 px logiques ne font plus que 26 px à l'écran.

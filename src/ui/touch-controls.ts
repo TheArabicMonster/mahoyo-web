@@ -5,7 +5,7 @@ import "./touch-controls.css";
 
 /**
  * Commandes tactiles (WEB-01, #203 ; docs/ANALYSE_HUD_ORIGINAL.md §2.4, §2.5, écarts E24 et E25 ;
- * docs/DESIGN.md §9.6).
+ * docs/DESIGN.md §9.8).
  *
  * L'original se joue à la souris (clic droit = menu). Sur écran tactile, ce module ajoute :
  * - un bouton de menu persistant et discret (coin haut-droit, plus visible juste après un toucher) ;
