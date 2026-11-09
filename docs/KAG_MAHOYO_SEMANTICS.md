@@ -151,8 +151,15 @@ height=576 type=13 effect=monocro noclear=1 srczoom=400 id=pb1`
   Un pivot au coin haut gauche repoussait l'image dans un coin de la fenêtre dès que
   `srcleft`/`srctop` sont négatifs (636 des 2 171 `@partbg` du corpus japonais) — correction #169
   conservée.
-- `bgstorage` : remplace le fond de la page cible.
-- `rule/time` : transition implicite (voir §2).
+- `bgstorage` : remplace le fond de la page cible (via `@bg`, donc avec ses défauts de position).
+- `rule/time` : transition implicite (voir §2) ; `noclear` ne contrôle que le **backlay**
+  effectué avant cette transition, pas l'effacement des calques.
+- **Les `@partbg` se cumulent** : chaque commande ajoute (ou remplace, même `id`) **son** calque et
+  n'efface **jamais** les autres — c'est le mécanisme des montages (ex. `1-1.ks` page 11 : cinq
+  fenêtres `id=pb1..pb5` de pièces différentes posées côte à côte avec `noclear=0`). La suppression
+  est explicite : `@clpartbg id=…`, `@clall` (macro `clpartbg`), ou `@bg` sans `noclear` (qui vide
+  aussi les calques des plugins, `forEachClearLayers`). Le port effaçait les calques de crop quand
+  `noclear` était absent : corrigé (#249), 208 `@partbg` du corpus étaient concernées.
 - `partbgid=pb1` (sur `@fg`) : clip le sprite **à l'intérieur** du partbg
   (à implémenter plus tard).
 - `@clpartbg id=pb1` : supprime le partbg par id.

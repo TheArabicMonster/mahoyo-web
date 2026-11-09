@@ -632,6 +632,35 @@ Deuxième ligne.
     expect(backLayers[0]?.crop).toBeDefined();
   });
 
+  it("les @partbg se cumulent (montage) ; seul @bg sans noclear / @clpartbg / @clall les retire (#249)", () => {
+    // Moteur (`PartBgPlugin`) : @partbg n'efface jamais les autres partbg ; noclear ne contrôle
+    // que le backlay avant transition. 1-1.ks page 11 accumule ainsi 5 fenêtres id=pb1..pb5.
+    const SRC = `
+*page0|
+@partbg storage=piece1 id=pb1 center=220 vcenter=288 index=1000 width=420 height=576
+@partbg storage=piece2 id=pb2 center=515 vcenter=288 index=2000 width=420 height=576
+@partbg storage=piece3 id=pb3 center=813 vcenter=288 index=3000 width=420 height=576
+@trans time=100 nowait=1
+@pg
+*page1|
+@clpartbg id=pb2
+@pg
+*page2|
+@bg page=back storage=black noclear=0
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.step();
+    // Après le @trans : les trois fenêtres sont visibles ensemble (montage).
+    expect(runtime.getSaveData().state.fore.layers.filter((l) => l.crop).map((l) => l.id)).toEqual(["pb1", "pb2", "pb3"]);
+    runtime.step(); // page 1
+    // @clpartbg ne retire que la fenêtre ciblée.
+    expect(runtime.getSaveData().state.back.layers.filter((l) => l.crop).map((l) => l.id)).toEqual(["pb1", "pb3"]);
+    runtime.step(); // page 2
+    // @bg sans noclear vide les calques de la page cible, partbg compris.
+    expect(runtime.getSaveData().state.back.layers).toEqual([]);
+  });
+
   it("animate : keyframe 0 complétée depuis le calque existant", () => {
     // @fg center=512 vcenter=288 → @trans → @movefg sans center : kf0 = existing.
     // La keyframe 0 doit avoir les valeurs de DÉPART (calque existant), pas d'arrivée.

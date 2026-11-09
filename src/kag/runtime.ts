@@ -1006,10 +1006,11 @@ export class Runtime {
     const page = this.resolvePage("partbg", instruction.page);
     const target = this.getPageState(page);
     const id = instruction.id ?? instruction.storage;
-    // noclear=0 (défaut) : vide les partbg existants (calques avec crop) avant de poser le nouveau.
-    if (!instruction.noclear) {
-      target.layers = target.layers.filter((l) => !l.crop);
-    }
+    // Le moteur n'efface jamais les autres partbg : chaque `@partbg` ajoute (ou remplace, même id)
+    // SON calque ; la suppression passe explicitement par `@clpartbg` ou `@clall`. L'ancien
+    // effacement des calques « crop » quand `noclear` était absent faisait disparaître les fenêtres
+    // d'un montage (ex. `1-1.ks` page 11 : 5 fenêtres de pièces posées en `id=pb1..pb5` avec
+    // `noclear=0`, qui doivent se cumuler) — issue #249.
     const crop = instruction.crop;
     const layer: Layer = {
       id,
