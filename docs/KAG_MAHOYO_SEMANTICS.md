@@ -555,17 +555,17 @@ inconnues. La baseline est passée à **29 commandes inconnues / 58 occurrences*
 | `@layopt` | 1 | KAG3 | image : options de calque (visible/opacité/position) | implémenter | #283 |
 | `@bindbg` | 3 | override TYPE-MOON (`tagex.tjs`, `.bindbg`) | image/effets : calques liés aux mouvements du fond | approximer | #283 |
 | `@autocache` | 1 | override TYPE-MOON (`tagex.tjs`, `.autocache`) | **aucun** (préchargement d'images avant attente) | no-op justifié — **déclaré au registre #275** (`effet: "aucun"`) | #283 |
-| `@heart` | 3 | macro plugin (`macro.tjs`, `exCharTags` → `[graph]`) | texte : image emoji dans le texte | implémenter (balise `[graph]`) | #284 |
-| `@ageage` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
-| `@ansz` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
-| `@ingz` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
-| `@eywz` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
-| `@swel` | 3 | macro plugin (`macro.tjs`) | texte : emoji | implémenter | #284 |
-| `@cockrobin` | 1 | macro plugin (`robinserifplugin.tjs`) | texte/ui : encadrement conditionnel d'une réplique | approximer | #284 |
-| `@endcockrobin` | 1 | macro plugin (`robinserifplugin.tjs`) | texte/ui : fin de cet encadrement | approximer | #284 |
-| `@current` | 1 | KAG3 | texte : sélection de la couche message (`message0`/`message1`) | implémenter | #284 |
+| `@heart` | 3 | macro plugin (`macro.tjs`, `exCharTags` → `[graph]`) | texte : image emoji dans le texte | implémenté (`[graph]`, voir §9 decies) | #284 |
+| `@ageage` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenté (`[graph]`, §9 decies) | #284 |
+| `@ansz` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenté (`[graph]`, §9 decies) | #284 |
+| `@ingz` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenté (`[graph]`, §9 decies) | #284 |
+| `@eywz` | 1 | macro plugin (`macro.tjs`) | texte : emoji | implémenté (`[graph]`, §9 decies) | #284 |
+| `@swel` | 3 | macro plugin (`macro.tjs`) | texte : emoji | implémenté (`[graph]`, §9 decies) | #284 |
+| `@cockrobin` | 1 | macro plugin (`robinserifplugin.tjs`) | texte/ui : encadrement conditionnel d'une réplique | approximé (bloc masqué par défaut, §9 decies) | #284 |
+| `@endcockrobin` | 1 | macro plugin (`robinserifplugin.tjs`) | texte/ui : fin de cet encadrement | approximé (bloc masqué par défaut, §9 decies) | #284 |
+| `@current` | 1 | KAG3 | texte : sélection de la couche message (`message0`/`message1`) | implémenté (état `messageLayer`, §9 decies) | #284 |
 | `@deffont` | 6 | KAG3 | **aucun ici** : seul `face=user` est utilisé, le port n'expose pas de police utilisateur et `@resetfont` retombe sur la police du thème | no-op justifié — **déclaré au registre #275** (`effet: "aucun"`) | #284 |
-| `@store` | 1 | KAG3 | ui : active/désactive sauvegarde et chargement | implémenter | #284 |
+| `@store` | 1 | KAG3 | ui : active/désactive sauvegarde et chargement | implémenté (`saveLoadEnabled` + HUD, §9 decies) | #284 |
 | `@xchgbgm` | 7 | KAG3 | audio : fondu croisé de BGM | implémenter | #285 |
 | `@wb` | 1 | KAG3 | audio/déroulement : attente de fin de fondu BGM | implémenter | #285 |
 | `@clickskip` | 2 | KAG3 | déroulement/ui : active/désactive le skip au clic | implémenter | #285 |
@@ -591,7 +591,8 @@ visible/audible/de déroulement n'est classée no-op.
 -- --strict` OK). #86 (commandes de texte restantes) est traité — voir §9 octies ; la baseline
 passe à **23 commandes / 31 occurrences**. #295 (garde-fous de clôture DoD, §9 nonies) est traité
 **sans changement de baseline** (delta 0 commande / 0 occurrence : aucune commande implémentée par ce
-lot). Les autres lots (#282, #284, #287) restent ouverts — #284 prendra §9 decies.
+lot). #284 (texte et options message) est traité — voir §9 decies ; la baseline passe à
+**13 commandes / 17 occurrences**. Les autres lots (#282, #287) restent ouverts.
 
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
@@ -923,6 +924,39 @@ l'écart en v1.1** (registre `clock-runtime-vars`, test figé `tests/unit/kag/cl
 issue [#296]) plutôt que dupliquer l'état dans les variables de jeu, ce qui imposerait une
 migration de sauvegarde sans bénéfice joueur. Le bug `@dispclock time=0` (aiguilles sur back) est
 suivi séparément en v1.1 (#297, 0 occurrence dans le corpus).
+
+## 9 decies. Texte et options message — `[graph]`/emoji, `@cockrobin`, `@current`, `@store` (#284)
+
+Traitement du lot « texte et options message » du triage #276 : les tags emoji (`@heart` 3,
+`@swel` 3, `@ageage`/`@ansz`/`@ingz`/`@eywz` 1 chacun = 10 occurrences) et les commandes
+`@cockrobin` 1, `@endcockrobin` 1, `@current` 1, `@store` 1 sortent des inconnues. Baseline :
+**23 commandes / 31 occurrences → 13 / 17** (`npm run audit:baseline` ; `audit:guard -- --strict`
+OK, 221 scripts, 0 erreur, 0 maxSteps). `@deffont` reste un no-op justifié du registre #275.
+
+| Élément | Statut | Implémentation |
+|---|---|---|
+| `[graph storage=… alt=…]` | **implémenté** | segment de texte `{ graph: { storage, alt? } }` dans l'ordre du flux, rendu inline `<img class="mh-stage-graph">` (une unité de frappe), `src` résolu par l'`AssetResolver`, `alt` pour l'accessibilité et si l'image manque. Persisté dans les sauvegardes/`reduceStage`. |
+| Emoji `@heart`, `@ageage`, `@ansz`, `@ingz`, `@eywz`, `@swel` | **implémenté** | macros `macro.tjs` (`exCharTags`) expansées en `[graph storage=<base>+fontSize alt="…"]` : `heart`/`(ハート)`, `アゲアゲ`/`↑`, `アンサズ`/`ANSZ`, `イングズ`/`INGZ`, `エイワズ`/`EYWZ`, `ソウェル`/`SWEL`. `fontSize` = style de texte courant (`@font size=`) sinon défaut moteur 26 (`config.tjs`), conforme aux assets réels (`heart24`, `heart26`, `アゲアゲ26`…). |
+| `@cockrobin` / `@endcockrobin` | **approximé (documenté)** | macros `robinserifplugin.tjs` : le bloc est conditionné par `cf.visibileRobinSerifButton && cf.dispRobinSerif`, **tous deux `false` par défaut** → au comportement par défaut du moteur le bloc est **masqué**, et le port l'ignore jusqu'à `[endcockrobin]` (le `[endif]` orphelin de la macro reste toléré). Écart : pas de 2ᵉ couche de message (`message1`) ni de sprite `id=robin` ; si une configuration `cf.*` est ajoutée un jour, le bloc deviendra affichable. |
+| `@current` | **implémenté (approximation)** | `layer=message0/1` → état `messageLayer: 0|1` persisté, `withback` mémorisé ; le port n'a qu'une textbox : aucun effet visuel propre. |
+| `@store` | **implémenté** | `enabled` (défaut `true`) → état `saveLoadEnabled` persisté + événement `store` ; le HUD **désactive Sauvegarder/Charger** (menu système + boutons tactiles `qsave`/`qload`) avec libellé/toast dédiés (fr/ja/en), et `save()`/`load()`/ouverture des écrans sont refusés tant que `false`. Le verrou `@lockquickmenu` reste indépendant. |
+| `@deffont` | **no-op justifié (inchangé)** | Seul `face=user` dans le corpus ; aucun réglage de police utilisateur (`@resetfont` retombe sur le thème) → registre #275 (`effet: "aucun"`, issue #284), toujours classé « ignorée volontairement » par l'audit. |
+
+### Tests et e2e
+
+- `tests/unit/kag/text-graph-emoji.test.ts` : `[graph]` inline, macros emoji (storage = base+taille,
+  `alt`, taille 24/26), ordre du flux, absence de warning.
+- `tests/unit/renderer/text-graph.test.ts` : image inline `<img.mh-stage-graph>`, `alt`, source,
+  unité de frappe unique.
+- `tests/unit/kag/text-cockrobin.test.ts` : bloc masqué par défaut, `[endif]` orphelin toléré,
+  zéro inconnue.
+- `tests/unit/kag/text-current-store.test.ts` : parse/état `@current` (messageLayer),
+  `@store` (`saveLoadEnabled`), `@deffont` no-op.
+- `tests/unit/ui/system-menu.test.ts` et `tests/unit/ui/player.test.ts` : Save/Load désactivés quand
+  `@store enabled=false` (libellé dédié, toast, pause toujours accessible, réactivation).
+- **Un seul e2e** (`tests/e2e/text-emoji.spec.ts`) : `[heart]` rendu inline, `alt="(ハート)"`,
+  source `heart26` chargée, texte encadrant lisible ; la page de test est insérée dans le prologue
+  placeholders (asset `heart26` ajouté au manifeste, PNG original 26×26).
 
 ## 10. Commandes non implémentées à figer plus tard
 
