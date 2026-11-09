@@ -4,14 +4,14 @@
 
 Ce dépôt contient le **projet réel** : un player web moderne et maintenable pour lire Mahoyo dans un navigateur, en partant des fichiers du jeu original possédés par l'utilisateur.
 
-## Statut (8 novembre 2026)
+## Statut (9 novembre 2026)
 
-- **v1.0** : 74 issues fermées sur 82 (**90 %**), 8 restantes.
-- **v1.1** : 13 issues fermées sur 52 (**25 %**).
+- **v1.0** : 75 issues fermées sur 82 (**91 %**), 7 restantes.
+- **v1.1** : 32 issues fermées sur 54 (**59 %**).
 - Phases actives : **E7 — Projet réel**, **E5 — UI/UX** (refonte HUD) et **E6 — QA**.
 - Le player lit le corpus narratif, gère les choix, l'historique, les sauvegardes et un écran de configuration complet.
-- Dernières livraisons : fenêtre de message sans boîte (#173), indicateur de page aligné (#175), configuration à quatre onglets (#177), sauvegardes enrichies côté modèle (#183), progression par scène et option flowchart (#186), graphe de scénario (#185), design system HUD et tokens CSS (#179, #181).
-- Vérification locale : `npm run test:unit` (**1014 tests**), `npm run test:integration` (**20 tests**) et `npm run build` passent. `npm run lint` attend la migration ESLint 9 (#220).
+- Dernières livraisons (vague 4, 9 novembre) : routes d'URL des écrans (#204), historique plein cadre avec toast « historique vide » (#201), gestes tactiles et barre d'actions rapides (#203), sous-menu Extra et Archive (#199), configuration au design d'origine (#200), interactions du flowchart — pan, zoom, volet de détails (#202).
+- Vérification locale : `npm run test:unit` (**1662 tests**), `npm run test:integration` (**27 tests**) et `npm run build` passent. `npm run lint` attend la migration ESLint 9 (#220).
 
 Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 
@@ -21,8 +21,9 @@ Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 - **Lecture** : enchaînement des chapitres, autosave, skip du texte lu, avance rapide, mode automatique avec délais page/ligne réglables.
 - **Fenêtre de message** : texte posé sur le cadre du jeu (sans boîte), texte déjà lu atténué, indicateurs de ligne/page animés.
 - **Configuration** : quatre onglets (Système, Message, Son/Effet, Raccourcis), 14 raccourcis clavier modifiables, plein écran fit/fill/1:1, volumes et mutes BGM/SE/système.
-- **Sauvegardes** : emplacements numérotés, rapide et auto dans `localStorage` ; le modèle stocke désormais le titre de scène, le commentaire et le verrou (écran de sauvegarde HUD à venir, #196).
-- **Interface** : écran titre, menu système, historique, chargement/sauvegarde, flowchart par chapitres, toasts et confirmations.
+- **Sauvegardes** : 15 pages de 8 emplacements, rapide et auto dans IndexedDB, migration depuis `localStorage`, export/import JSON, titre de scène, commentaire et verrou par emplacement.
+- **Interface** : écran titre avec sous-menu Extra et Archive, menu système, historique, chargement/sauvegarde, configuration au design d'origine, flowchart interactif (pan, zoom, volet de détails), routes d'URL, toasts et confirmations.
+- **Tactile** : appui long = menu système, balayage vers le haut = historique, barre d'actions rapides (Q.Save, Q.Load, Auto, Skip, Historique, Plein écran) sur appareil tactile uniquement, cibles de 48 px réels ; la souris et le clavier ne changent pas.
 - **Traductions** : japonais d'origine et patch fan français Moon-Trad installable par script ; sélecteur de langue dans la configuration.
 - **Pipeline** : extraction `.xp3`, conversion `.tlg` → WebP, audio OGG, normalisation des `.ks`, audit du corpus, table d'enchaînement et graphe de scénario.
 - **Design system** : palette, typographie, espacements et états mesurés sur le jeu d'origine, tokens CSS dans `src/ui/tokens.css`.

@@ -44,7 +44,8 @@ src/renderer/ + src/ui/  ── rendu navigateur
 
 - **`types.ts`** : interfaces `UIManager`, `PlayerCommands`, `UIView`, `GameSettings` et progression.
 - **`player.ts`** : orchestrateur Runtime ↔ StageRenderer ↔ AudioPlayer ↔ UIManager, boucle de lecture, modes auto/skip, sauvegardes et viewport.
-- **`ui-manager.ts`** : écrans DOM (titre, menu système, historique, flowchart, configuration) et gestion des entrées.
+- **`ui-manager.ts`** : écrans DOM (titre et Extra/Archive, menu système, historique, sauvegarde/chargement, flowchart, configuration) et gestion des entrées ; il délègue aux composants ci-dessous et branche les commandes tactiles.
+- **`ui-assets.ts`** : résolveur d'images d'interface avec repli (`createUiAssets`, `UI_ASSET_KEYS`, variables `--mh-asset-*`) ; aucune requête quand la clé manque (HUD-03, #189).
 - **`save-load-screen.ts`** / **`save-pages.ts`** : écrans de sauvegarde et de chargement (grille 2×4, 15 pages, fiches, verrou, commentaire) et leur modèle pur ; voir `docs/DESIGN.md` §9.5.
 - **`ui-manager.css`**, **`tokens.css`** : styles des écrans et tokens du design system (palette, typo, durées, états).
 - **`toast.ts`**, **`toast.css`** : composant `ToastStack` des messages éphémères (cadre sarcelle bas droite, 3 au plus, `aria-live="polite"`) ; `DomUIManager.toast()` y délègue.
@@ -73,7 +74,12 @@ src/renderer/ + src/ui/  ── rendu navigateur
   ouvrir un écran fait `pushState`, le fermer fait `history.back()` quand l'entrée du dessous est la bonne, sinon
   `replaceState` ; il n'écrit jamais `location.hash` (pas de boucle) et ignore le `hashchange` qu'il provoque lui-même.
   Seul le nom de l'écran est dans l'URL (pas de script, libellé ni progression).
-- **`chapter-list.ts`** : construction de la liste des chapitres/scripts.
+- **`night.ts`** / **`night.css`** : fond « nuit bleue » en CSS pur (HUD-02, #188) ; `NIGHT_FIXED_SCREENS` (sauvegarde, chargement, historique, configuration) et démonstration `?night` via `syncNightDemo`. Voir [`DESIGN.md`](DESIGN.md) §9.1.
+- **`title-screen.ts`** / **`title-screen.css`** (HUD-07 #195) : écran titre au design d'origine et sous-menu Extra ; **`archive-view.ts`** / **`archive-view.css`** (HUD-08, #199) : liste de chapitres anti-spoiler ouverte depuis Extra. Voir [`DESIGN.md`](DESIGN.md) §9.9.
+- **`config-screen.ts`** / **`config-screen.css`** (HUD-09, #200) : configuration au design d'origine (onglets Système, Message, Son/Effet, Raccourcis ; contrôles, aperçu du fondu) et option « tout révéler » du flowchart ; le modèle de réglages et `updateSettings` ne changent pas. Voir [`DESIGN.md`](DESIGN.md) §9.10.
+- **`backlog-screen.ts`** / **`backlog-screen.css`** (HUD-12, #201) : historique plein cadre, ascenseur natif stylé, navigation clavier, ouverture à vide remplacée par le toast `toast.historyEmpty`. Voir [`DESIGN.md`](DESIGN.md) §9.7.
+- **`gestures.ts`** : reconnaissance de gestes **pure** (appui, appui long, balayages, abandon sur pincement), horloge injectée ; **`touch-controls.ts`** / **`touch-controls.css`** (WEB-01, #203) : bouton de menu persistant et barre d'actions rapides, créés **seulement** sur appareil tactile (`pointer: coarse` ou toucher observé), cibles de 48 px réels via `--mh-ui-scale`. Voir [`DESIGN.md`](DESIGN.md) §9.8.
+- **`chapter-list.ts`** : construction de la liste des chapitres/scripts et règle de déverrouillage de l'Archive.
 - **`i18n.ts`** et **`locales/`** : dictionnaire d'interface FR/JA/EN (`t(clé)`, repli sur le français). Voir [`I18N.md`](I18N.md).
 
 ### `src/player/` — persistance

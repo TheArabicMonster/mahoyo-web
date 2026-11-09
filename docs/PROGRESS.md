@@ -6,17 +6,17 @@
 ## Progression globale (v1.0)
 
 ```
-[██████████████████░░] 90 %
+[██████████████████░░] 91 %
 ```
 
-74 issue(s) fermée(s) sur 82.
+75 issue(s) fermée(s) sur 82.
 
 ## Détail par milestone
 
 | Milestone | Fermées | Ouvertes | Total | Progression | État |
 |---|---|---|---|---|---|
-| v1.0 | 74 | 8 | 82 | [█████████░] 90 % | 🟡 En cours |
-| v1.1 | 13 | 39 | 52 | [███░░░░░░░] 25 % | 🟡 En cours |
+| v1.0 | 75 | 7 | 82 | [█████████░] 91 % | 🟡 En cours |
+| v1.1 | 32 | 22 | 54 | [██████░░░░] 59 % | 🟡 En cours |
 
 ## Légende
 
@@ -24,4 +24,4 @@
 - 🟡 En cours : travail actif.
 - ⚪ Non commencé : aucune issue fermée ou milestone vide.
 
-_Généré le 2026-11-08._
+_Généré le 2026-11-09._
