@@ -231,6 +231,11 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
 - `tests/e2e/full-playthrough.spec.ts` : **parcours complet** (#94) en placeholders — titre → Start,
   lecture de plusieurs pages, **choix** validé, **sauvegarde puis chargement** (aller-retour après
   rechargement) et **changement de chapitre** par enchaînement, jusqu'au retour au titre.
+- `tests/e2e/flowchart-journey.spec.ts` : **parcours du flowchart** (FLOW-09, #212) — le spec **joue**
+  le prologue des placeholders jusqu'au choix et le valide, puis vérifie dans le flowchart ouvert
+  depuis le menu système : nœud courant mis en évidence, nœud terminé, silhouettes anti-spoiler sans
+  titre, « tout révéler » activé via la configuration, « Relire depuis ici » avec confirmation
+  (« Non » par défaut) et accès depuis l'écran titre. Le graphe est une fixture originale routée.
 - `tests/e2e/prepare-assets.ts` : prépare le `publicDir` de Vite **avant** son démarrage. En mode
   placeholders (défaut, CI incluse), `tests/e2e/placeholders.ts` génère un jeu d'assets synthétique
   déterministe sous `$MAHOYO_E2E_ASSETS/assets/` : manifeste minimal, PNG générés, quatre scripts KAG
