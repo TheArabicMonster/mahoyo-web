@@ -27,10 +27,21 @@ function parseBoolArg(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
-/** `0xRRGGBB` ou `#rrggbb` → `#rrggbb` ; toute autre valeur → undefined. */
+/**
+ * `0xRRGGBB` / `#rrggbb` → `#rrggbb` ; `0xAARRGGBB` → `#rrggbbaa` si l'alpha n'est pas opaque
+ * (utilisé par `@staffrollsetting bgcolor=0xFF000000`). Toute autre valeur → undefined.
+ */
 function parseColorArg(value: string | undefined): string | undefined {
-  const m = value?.trim().match(/^(?:0x|#)([0-9a-f]{6})$/i);
-  return m ? `#${m[1].toLowerCase()}` : undefined;
+  const raw = value?.trim();
+  const rgb = raw?.match(/^(?:0x|#)([0-9a-f]{6})$/i);
+  if (rgb) return `#${rgb[1].toLowerCase()}`;
+  const argb = raw?.match(/^(?:0x|#)([0-9a-f]{2})([0-9a-f]{6})$/i);
+  if (argb) {
+    const alpha = parseInt(argb[1], 16);
+    const color = `#${argb[2].toLowerCase()}`;
+    return alpha === 0xff ? color : `${color}${argb[1].toLowerCase()}`;
+  }
+  return undefined;
 }
 
 /** Construit le style d'un @font : seuls les attributs valides sont retenus. */
@@ -585,6 +596,15 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         height: parseIntArg(args.height, 10000),
         time: parseIntArg(args.time, 60000),
       };
+    case "staffrolluninit":
+      // Termine/libère l'affichage des crédits (data/scenario/staffrollplugin.tjs).
+      return { kind: "staffrolluninit" };
+    case "staffrollsetting":
+      // Couleur de fond demandée : stockée, jamais peinte par le plugin d'origine (cf. events.ts).
+      return { kind: "staffrollsetting", bgcolor: parseColorArg(args.bgcolor) };
+    case "wstaffroll":
+      // Attend la fin du défilement (staffrollplugin.tjs : canskip forcé à false).
+      return { kind: "waitfor", what: "staffroll", skippable: false };
     case "iscript":
       return { kind: "iscript" };
     case "endscript":

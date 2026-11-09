@@ -494,9 +494,10 @@ TJS du moteur installé** (`data/scenario/*.tjs`, `data/override/*.tjs`) — l'o
 sont pas déduits du nom.
 
 **Après intégration du registre #275** : les 2 no-ops justifiés ci-dessous (`@autocache`,
-`@deffont`) sont **déclarés dans `tools/ignored-commands.ts`** et la baseline versionnée est passée
-à **49 commandes inconnues / 174 occurrences** (`npm run audit:baseline` ; `npm run audit:guard
--- --strict` OK). Légende :
+`@deffont`) sont **déclarés dans `tools/ignored-commands.ts`**. Le lot **#286 (crédits de fin)** est
+implémenté : `@wstaffroll`, `@staffrolluninit`, `@staffrollsetting` ne sont plus des inconnues, la
+baseline est passée à **46 commandes inconnues / 168 occurrences** (`npm run audit:baseline` ;
+`npm run audit:guard -- --strict` OK). Légende :
 
 - **Origine** : `KAG3` = standard KAG3 (documentation des tags), `plugin TJS` = tag de plugin
   (`data/scenario/*.tjs`), `macro Mahoyo` = macro définie par `@macro` d'un script système,
@@ -580,8 +581,32 @@ sont pas déduits du nom.
 **Bilan des décisions** : 37 à implémenter, 11 à approximer (écart documenté), 1 variante
 malformée à tolérer (`@playtimeline` de test), **2 no-op justifiés sans effet désormais intégrés au
 registre #275** (`@autocache` → #283, `@deffont` → #284). Aucune commande à effet
-visible/audible/de déroulement n'est classée no-op. Les 49 autres lignes restent des inconnues de
-la baseline, à résorber par leurs issues de suivi.
+visible/audible/de déroulement n'est classée no-op. Le lot #286 (crédits) est livré
+(`@wstaffroll`, `@staffrolluninit`, `@staffrollsetting`) : la baseline restante est de
+**46 commandes / 168 occurrences**, à résorber par leurs issues de suivi.
+
+## 9 ter. Crédits de fin (`@staffroll*`) — #286
+
+Le générique de fin (`staffroll.ks`, fin de `wik_fin.ks`, `d-8.ks`) utilise six commandes ; quatre
+étaient déjà lues (`@staffrollinit`, `@staffrolltext`, `@staffrollstart`), les trois autres sont
+implémentées ici. Sémantique vérifiée dans `data/scenario/staffrollplugin.tjs` :
+
+| Commande | Sémantique moteur | Implémentation port |
+|---|---|---|
+| `@staffrollinit` | initialise le générique (police par défaut) | état `staffroll` réinitialisé, overlay retiré |
+| `@staffrolltext … y=…` | ajoute une ligne à `currentPos += y` (position cumulée) | lignes positionnées à la somme cumulée des `y` ; couleur = style `@font` courant |
+| `@staffrollstart height time` | défilement linéaire de `height` px en `time` ms | animation WAAPI de `translateY(0 → -height)` sur `time` ms |
+| `@wstaffroll` | attend la fin du défilement (`waittrig`, **canskip forcé à false**) | point d'arrêt `waitFor: "staffroll"` **non skippable** ; la durée du générique (≈ 160 s) est donc respectée |
+| `@staffrolluninit` | termine/libère l'affichage | overlay retiré, attente en cours résolue, état effacé |
+| `@staffrollsetting bgcolor=…` | le plugin **stocke** la couleur mais ne la peint jamais (aucun `fillRect` avec `bgcolor`) | valeur conservée dans l'état de sauvegarde, **aucun effet visuel** (fidèle au moteur ; `d-8.ks` passe `0xFF000000`) |
+
+- Le fond du générique est celui de la scène (les scripts posent `@bg`/`@image` avant) ; l'overlay
+  est au-dessus des calques et de la boîte de texte (`z-index: 2000000`, comme
+  `absolute=2000000-5` du plugin).
+- Un seul overlay à la fois : les ~800 `@staffrolltext` du corpus arrivent avant `@staffrollstart`
+  et ne créent pas d'élément supplémentaire (avant #286, un overlay était créé par événement).
+- `@staffrollappearimage` (images apparaissant pendant le défilement) n'est utilisé par aucun
+  script du corpus.
 
 ## 10. Commandes non implémentées à figer plus tard
 
@@ -595,7 +620,7 @@ la baseline, à résorber par leurs issues de suivi.
   extraire via le pipeline, ou les mesurer sur captures).
 - `partbgid=` : clip de sprite dans un partbg.
 - Transition `universal` + image de règle : WebGL dédié (P2/P3).
-- `staffroll` : défilement crédits (B14).
+- ~~`staffroll` : défilement crédits~~ — implémenté (#286, §9 ter).
 
 ## 11. Hypothèses à valider contre une capture vidéo du jeu original
 

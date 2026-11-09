@@ -128,7 +128,7 @@ inconnue hors baseline.
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
 | **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 49 commande(s) distincte(s), 174 occurrence(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 46 commande(s) distincte(s), 168 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
@@ -181,8 +181,6 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@setdefaultmessageaction` | 11 |
 | `@settracerreturn` | 2 |
 | `@shake` | 4 |
-| `@staffrollsetting` | 1 |
-| `@staffrolluninit` | 3 |
 | `@startchart` | 1 |
 | `@stopfocusline` | 2 |
 | `@stopswing` | 6 |
@@ -191,7 +189,6 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@swing` | 1 |
 | `@tickclock` | 11 |
 | `@wb` | 1 |
-| `@wstaffroll` | 2 |
 | `@xchgbgm` | 7 |
 <!-- END AUTO: commandes-kag -->
 

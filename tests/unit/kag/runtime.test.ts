@@ -1018,3 +1018,79 @@ describe("Runtime — commandes KAG standard (#277)", () => {
     ]);
   });
 });
+
+describe("Runtime — crédits de fin (#286)", () => {
+  const run = (src: string) => {
+    const runtime = new Runtime(parse(lex(src)));
+    return runtime;
+  };
+
+  it("@staffrollinit / @staffrolltext / @staffrollstart : défilement en cours, couleur de ligne", () => {
+    const runtime = run(`
+*page0|
+@font color=0xFF000000
+@staffrollinit face=serif
+@staffrolltext size=19 y=100 text=Ligne1
+@staffrolltext size=19 y=36 text=Ligne2
+@staffrollstart height=5000 time=10000
+@pg
+`);
+    const step = runtime.step();
+    const state = runtime.getSaveData().state.staffroll;
+    expect(state).toBeDefined();
+    expect(state?.running).toBe(true);
+    expect(state?.height).toBe(5000);
+    expect(state?.time).toBe(10000);
+    expect(state?.face).toBe("serif");
+    expect(state?.lines.map((l) => l.text)).toEqual(["Ligne1", "Ligne2"]);
+    expect(state?.lines[0]?.color).toBe("#000000");
+    expect(step.events.some((e) => e.kind === "staffroll")).toBe(true);
+  });
+
+  it("@wstaffroll = point d'arrêt waitFor staffroll non skippable", () => {
+    const runtime = run(`
+*page0|
+@staffrollinit
+@staffrollstart height=100 time=50
+@wstaffroll
+@pg
+`);
+    let waitStop: { what?: string; skippable?: boolean } | null = null;
+    for (let i = 0; i < 5 && !waitStop; i++) {
+      const step = runtime.step();
+      if (step.stop.kind === "waitFor" && step.stop.what === "staffroll") waitStop = step.stop;
+      if (step.stop.kind === "end" || step.stop.kind === "click") break;
+    }
+    expect(waitStop).toMatchObject({ kind: "waitFor", what: "staffroll", skippable: false });
+  });
+
+  it("@staffrolluninit libère l'état et émet un événement null", () => {
+    const runtime = run(`
+*page0|
+@staffrollinit
+@staffrolltext text=Ligne y=10
+@staffrollstart height=100 time=10
+@staffrolluninit
+@pg
+`);
+    let uninitEvent = false;
+    for (let i = 0; i < 8; i++) {
+      const step = runtime.step();
+      if (step.events.some((e) => e.kind === "staffroll" && e.state === null)) uninitEvent = true;
+      if (step.stop.kind === "end" || step.stop.kind === "click") break;
+    }
+    expect(uninitEvent).toBe(true);
+    expect(runtime.getSaveData().state.staffroll).toBeUndefined();
+  });
+
+  it("@staffrollsetting conserve bgcolor dans l'état (sans effet de rendu)", () => {
+    const runtime = run(`
+*page0|
+@staffrollinit
+@staffrollsetting bgcolor=0xFF000000
+@pg
+`);
+    runtime.step();
+    expect(runtime.getSaveData().state.staffroll?.bgcolor).toBe("#000000");
+  });
+});
