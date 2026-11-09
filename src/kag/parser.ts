@@ -214,6 +214,46 @@ function parsePageLayer(value: string | undefined): "fore" | "back" | undefined 
 }
 
 
+/**
+ * Macros emoji de `data/scenario/macro.tjs` (`exCharTags`) : tags de texte qui s'expansent en
+ * `[graph storage=<base><fontSize> alt="…"]`. La taille est ajoutée par le runtime (style courant).
+ */
+const EMOJI_TAGS: ReadonlyMap<string, { base: string; alt: string }> = new Map([
+  ["heart", { base: "heart", alt: "(ハート)" }],
+  ["ageage", { base: "アゲアゲ", alt: "↑" }],
+  ["ansz", { base: "アンサズ", alt: "ANSZ" }],
+  ["ingz", { base: "イングズ", alt: "INGZ" }],
+  ["eywz", { base: "エイワズ", alt: "EYWZ" }],
+  ["swel", { base: "ソウェル", alt: "SWEL" }],
+]);
+
+/** `[graph storage=… alt=…]` : image inline dans le flux de texte (null si storage vide). */
+function graphSegment(args: Record<string, string>): TextSegment | null {
+  const storage = normStorage(args.storage);
+  if (!storage) return null;
+  return args.alt === undefined ? { graph: { storage } } : { graph: { storage, alt: args.alt } };
+}
+
+/** Tag emoji (`[heart]`…) → marqueur interne, converti en graph par le runtime. */
+function emojiSegment(name: string): TextSegment | null {
+  const emoji = EMOJI_TAGS.get(name.toLowerCase());
+  return emoji ? { emoji: { base: emoji.base, alt: emoji.alt } } : null;
+}
+
+/**
+ * `[cockrobin]…[endcockrobin]` : bloc conditionnel « robin » du plugin (`robinserifplugin.tjs`).
+ * Les deux drapeaux de configuration valent `false` par défaut dans le TJS : le bloc est donc
+ * ignoré (comportement moteur par défaut, approximation documentée). Retourne l'index du token
+ * après `[endcockrobin]` (fin du tableau si le tag manque).
+ */
+function skipCockrobinBlock(tokens: Token[], start: number): number {
+  for (let i = start; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token.type === "tag" && token.name.toLowerCase() === "endcockrobin") return i + 1;
+  }
+  return tokens.length;
+}
+
 export function parseCommand(token: Extract<Token, { type: "command" }>): Instruction {
   const { name, args } = token;
 
@@ -902,6 +942,16 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       return { kind: "setdefaultmessageaction", type: args.type?.trim() ?? "" };
     case "resetdefaultmessageaction":
       return { kind: "resetdefaultmessageaction" };
+    case "current": {
+      // @current (KAG3) : couche de message courante (message0/message1) ; le port n'a qu'une
+      // textbox, la couche est mémorisée dans l'état (approximation documentée).
+      const layer = args.layer === "message0" || args.layer === "message1" ? args.layer : undefined;
+      const withBack = args.withback !== undefined && args.withback !== "0" && args.withback !== "false";
+      return { kind: "current", ...(layer === undefined ? {} : { layer }), ...(withBack ? { withBack } : {}) };
+    }
+    case "store":
+      // @store (KAG3) : autorise/interdit la sauvegarde et le chargement (défaut : activé).
+      return { kind: "store", enabled: args.enabled === undefined || (args.enabled !== "0" && args.enabled !== "false") };
     case "s":
       // @s : arrête le déroulement en attendant une sélection (bouton/lien).
       return { kind: "stop" };
@@ -1058,6 +1108,22 @@ export function parse(tokens: Token[]): ParsedScript {
               blockRuby = rubyArgs.ruby;
               blockRubyCharCount = rubyArgs.charCount;
             }
+          } else if (token.name === "graph") {
+            const segment = graphSegment(token.args);
+            if (segment) blockPending.push(segment);
+            i++;
+          } else if (EMOJI_TAGS.has(token.name.toLowerCase())) {
+            const segment = emojiSegment(token.name);
+            if (segment) blockPending.push(segment);
+            i++;
+          } else if (token.name === "cockrobin") {
+            // Bloc conditionnel robin masqué par défaut (flags cf.* = false dans le TJS).
+            flushBlockText();
+            i = skipCockrobinBlock(tokens, i + 1);
+            break;
+          } else if (token.name.toLowerCase() === "endcockrobin") {
+            // Fin de bloc orpheline (bloc déjà ignoré) : sans effet.
+            i++;
           } else if (token.name === "p") {
             // [p] = page break inside a block: flush pending text and emit a pause.
             flushBlockText();
@@ -1219,6 +1285,19 @@ export function parse(tokens: Token[]): ParsedScript {
             pendingRuby = rubyArgs.ruby;
             pendingRubyCharCount = rubyArgs.charCount;
           }
+        } else if (token.name === "graph") {
+          // [graph] : image inline dans le flux de texte (ne vide pas le tampon).
+          const segment = graphSegment(token.args);
+          if (segment) pendingSegments.push(segment);
+        } else if (EMOJI_TAGS.has(token.name.toLowerCase())) {
+          const segment = emojiSegment(token.name);
+          if (segment) pendingSegments.push(segment);
+        } else if (token.name === "cockrobin") {
+          // Bloc conditionnel robin masqué par défaut (flags cf.* = false dans le TJS).
+          flushText();
+          tokenIndex = skipCockrobinBlock(tokens, tokenIndex + 1) - 1;
+        } else if (token.name.toLowerCase() === "endcockrobin") {
+          // Fin de bloc orpheline : sans effet.
         } else {
           // Inline tags like [chgfg ...], [fg ...], [se ...] are semantically
           // identical to their @command forms. Route through parseCommand.

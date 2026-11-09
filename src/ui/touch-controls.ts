@@ -236,8 +236,12 @@ export function createTouchControls(
       if (!btn) continue;
       btn.textContent = t(action.labelKey); // suit la langue de l'interface
       if (action.lockedByQuickMenu) {
-        btn.disabled = status.quickMenuLocked;
-        btn.title = status.quickMenuLocked ? t("systemMenu.quickMenuLocked") : "";
+        btn.disabled = status.quickMenuLocked || !status.saveLoadEnabled;
+        btn.title = !status.saveLoadEnabled
+          ? t("systemMenu.saveLoadDisabled")
+          : status.quickMenuLocked
+            ? t("systemMenu.quickMenuLocked")
+            : "";
       }
       if (action.pressed) {
         const on = action.pressed(status);

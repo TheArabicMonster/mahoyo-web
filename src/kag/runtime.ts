@@ -206,6 +206,10 @@ export type RuntimeState = {
   ploy?: PloyState | null;
   /** Menu rapide verrouillé (@lockquickmenu) ; absent = déverrouillé. */
   quickMenuLocked?: boolean;
+  /** `@store enabled=…` : sauvegarde/chargement autorisés (défaut true). */
+  saveLoadEnabled?: boolean;
+  /** `@current layer=message1` : couche de message courante (approximation mono-textbox). */
+  messageLayer?: 0 | 1;
   /** Avance automatique suspendue (@pauseautomode) ; absent = non suspendue. */
   autoModePaused?: boolean;
   /** Saut au clic autorisé (@clickskip) ; absent = true (défaut moteur). */
@@ -269,6 +273,7 @@ function isVisibleEvent(event: RenderEvent): boolean {
     event.kind !== "audio" &&
     event.kind !== "stopAnimation" &&
     event.kind !== "quickMenu" &&
+    event.kind !== "store" &&
     event.kind !== "autoMode"
   );
 }
@@ -278,6 +283,13 @@ const TIMELINE_FADE_MS = 1500;
 
 /** Durée du fondu qui réaffiche la textbox quand un texte arrive (ms, #159). */
 const TEXTBOX_REVEAL_MS = 300;
+
+/**
+ * Taille de police par défaut du message pour les macro-emoji (`macro.tjs` : `<base>+fontSize`).
+ * `override/config.tjs` fixe `defaultFontSize = 26` ; les assets du corpus sont `heart24`/`heart26`
+ * et `アゲアゲ26`… — le style courant (`@font size=`) reste prioritaire quand il est défini.
+ */
+const DEFAULT_EMOJI_FONT_SIZE = 26;
 
 export function createRuntimeState(): RuntimeState {
   return {
@@ -293,6 +305,8 @@ export function createRuntimeState(): RuntimeState {
     textStyle: null,
     ploy: null,
     quickMenuLocked: false,
+    saveLoadEnabled: true,
+    messageLayer: 0,
     autoModePaused: false,
     clickSkipEnabled: true,
     effectSkipEnabled: true,
@@ -747,6 +761,21 @@ export class Runtime {
   }
 
   /** Applique le style courant (@font) aux segments de texte ; les pauses sont inchangées. */
+  /**
+   * Convertit les marqueurs emoji (`[heart]`…) en segments `graph` avec le storage du moteur :
+   * `<base><fontSize courant>`. La taille vient du style de texte (`@font size=`), sinon du défaut
+   * moteur (`defaultFontSize = 26`).
+   */
+  private expandEmojiSegments(segments: TextSegment[]): TextSegment[] {
+    if (!segments.some((segment) => "emoji" in segment)) return segments;
+    const size = this.state.textStyle?.size ?? DEFAULT_EMOJI_FONT_SIZE;
+    return segments.map((segment) =>
+      "emoji" in segment
+        ? { graph: { storage: `${segment.emoji.base}${size}`, alt: segment.emoji.alt } }
+        : segment,
+    );
+  }
+
   private withTextStyle(segments: TextSegment[]): TextSegment[] {
     const style = this.state.textStyle;
     if (!style || Object.keys(style).length === 0) return segments;
@@ -758,7 +787,7 @@ export class Runtime {
     instruction: Extract<Instruction, { kind: "text" }>,
   ): { events: RenderEvent[]; stop?: StopReason } {
     const events: RenderEvent[] = [];
-    const segments = instruction.segments;
+    const segments = this.expandEmojiSegments(instruction.segments);
     const startIdx = frame.segmentIndex;
 
     let pauseIndex = -1;
@@ -2492,6 +2521,17 @@ export class Runtime {
         events.push({ kind: "quickMenu", locked });
         break;
       }
+      case "current":
+        // @current : couche de message courante (approximation mono-textbox, aucun rendu dédié).
+        if (instruction.layer !== undefined) {
+          this.state.messageLayer = instruction.layer === "message1" ? 1 : 0;
+        }
+        break;
+      case "store":
+        // @store : état persisté + événement pour que le HUD désactive Sauvegarder/Charger.
+        this.state.saveLoadEnabled = instruction.enabled;
+        events.push({ kind: "store", enabled: instruction.enabled });
+        break;
       case "pauseautomode":
       case "resumeautomode": {
         const paused = instruction.kind === "pauseautomode";
@@ -2685,7 +2725,10 @@ export class Runtime {
    */
   private revealTextboxForText(segments: readonly TextSegment[], events: RenderEvent[]): void {
     if (this.buildTextboxState().visible) return;
-    const readable = segments.some((seg) => "text" in seg && seg.text.trim().length > 0);
+    const readable = segments.some(
+      (seg) =>
+        ("text" in seg && seg.text.trim().length > 0) || "graph" in seg || "emoji" in seg,
+    );
     if (!readable) return;
     const state = { ...this.buildTextboxState(), visible: true };
     this.state.textbox = state;
@@ -2694,7 +2737,7 @@ export class Runtime {
 
   private processText(instruction: Extract<Instruction, { kind: "text" }>): { events: RenderEvent[]; stop?: StopReason } {
     const events: RenderEvent[] = [];
-    const segments = instruction.segments;
+    const segments = this.expandEmojiSegments(instruction.segments);
     const startIdx = this.context.segmentIndex;
     this.revealTextboxForText(segments.slice(startIdx), events);
 
@@ -2945,6 +2988,8 @@ export class Runtime {
         textStyle: this.state.textStyle ? { ...this.state.textStyle } : null,
         ploy: this.state.ploy ? { ...this.state.ploy } : null,
         quickMenuLocked: this.state.quickMenuLocked ?? false,
+        saveLoadEnabled: this.state.saveLoadEnabled ?? true,
+        messageLayer: this.state.messageLayer ?? 0,
         autoModePaused: this.state.autoModePaused ?? false,
         clockHour: this.state.clockHour,
         clockMinute: this.state.clockMinute,
@@ -2990,6 +3035,8 @@ export class Runtime {
       textStyle: data.state.textStyle ? { ...data.state.textStyle } : null,
       ploy: data.state.ploy ? { ...data.state.ploy } : null,
       quickMenuLocked: data.state.quickMenuLocked ?? false,
+      saveLoadEnabled: data.state.saveLoadEnabled ?? true,
+      messageLayer: data.state.messageLayer ?? 0,
       autoModePaused: data.state.autoModePaused ?? false,
       staffroll: data.state.staffroll
         ? structuredClone(data.state.staffroll)

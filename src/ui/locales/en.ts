@@ -78,6 +78,7 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "systemMenu.entry.graphic": "Hide",
   "systemMenu.entry.title": "Title",
   "systemMenu.quickMenuLocked": "Unavailable during this sequence",
+  "systemMenu.saveLoadDisabled": "Saving and loading are disabled by the script",
 
   // ── Commandes tactiles (WEB-01, #203) ──
   "touch.menuButton": "Menu",
@@ -300,6 +301,7 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   // ── Toasts ──
   "toast.historyEmpty": "The history does not exist yet.",
   "toast.quickMenuLocked": "Saving and loading are unavailable during this sequence.",
+  "toast.saveLoadDisabled": "Saving and loading are disabled by the script during this sequence.",
   "toast.scriptNotFound": "Script not found: {file}",
   "toast.saveUnavailable": "Cannot save right now.",
   "toast.saveFailed": "Save failed.",

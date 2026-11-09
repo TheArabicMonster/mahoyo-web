@@ -40,6 +40,7 @@ const DEFAULT_STATUS: PlayerStatus = {
   userHidden: false,
   canRollback: false,
   quickMenuLocked: false,
+  saveLoadEnabled: true,
   autoPaused: false,
   mouseMode: "menu",
   autoHideCursor: false,

@@ -145,8 +145,13 @@ export function syncSystemMenu(root: ParentNode, status: Readonly<PlayerStatus>)
     const btn = root.querySelector<HTMLButtonElement>(`.mh-sysmenu-entry[data-entry="${entry.id}"]`);
     if (!btn) continue;
     if (entry.lockedByQuickMenu) {
-      btn.disabled = status.quickMenuLocked;
-      btn.title = status.quickMenuLocked ? t("systemMenu.quickMenuLocked") : "";
+      // Verrou du menu rapide (@lockquickmenu) ou sauvegarde/chargement coupés (@store).
+      btn.disabled = status.quickMenuLocked || !status.saveLoadEnabled;
+      btn.title = !status.saveLoadEnabled
+        ? t("systemMenu.saveLoadDisabled")
+        : status.quickMenuLocked
+          ? t("systemMenu.quickMenuLocked")
+          : "";
     }
     if (entry.pressed) {
       const on = entry.pressed(status);

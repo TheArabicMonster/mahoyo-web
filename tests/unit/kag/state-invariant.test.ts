@@ -36,6 +36,8 @@ const PERSISTED_STATE_KEYS = [
   "textStyle",
   "ploy",
   "quickMenuLocked",
+  "saveLoadEnabled",
+  "messageLayer",
   "autoModePaused",
   "clockHour",
   "clockMinute",

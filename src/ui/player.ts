@@ -271,6 +271,8 @@ export class Player implements PlayerCommands {
   private mode: PlayMode = "normal";
   /** Menu rapide verrouillé par le script (@lockquickmenu). */
   private quickMenuLocked = false;
+  /** `@store enabled=false` : sauvegarde/chargement désactivés par le script. */
+  private saveLoadEnabled = true;
   /** Avance automatique suspendue par le script (@pauseautomode) ; `mode` n'est pas touché. */
   private autoPaused = false;
   private userHidden = false;
@@ -527,6 +529,13 @@ export class Player implements PlayerCommands {
     this.pushStatus();
   }
 
+  /** `@store enabled=…` : coupe ou rétablit la sauvegarde/le chargement dans le HUD. */
+  private applyStore(event: Extract<RenderEvent, { kind: "store" }>): void {
+    if (this.saveLoadEnabled === event.enabled) return;
+    this.saveLoadEnabled = event.enabled;
+    this.pushStatus();
+  }
+
   /**
    * @pauseautomode / @resumeautomode : suspend le déclenchement automatique sans toucher à
    * `mode` (le joueur garde « auto » et le retrouve à la reprise).
@@ -562,6 +571,19 @@ export class Player implements PlayerCommands {
     if (!this.quickMenuLocked || this.state === "title") return false;
     this.ui.toast(t("toast.quickMenuLocked"));
     return true;
+  }
+
+  /**
+   * Vrai (avec un message) si la sauvegarde/le chargement est interdit : `@store enabled=false`
+   * y compris hors « menu rapide verrouillé », puis verrou du menu rapide.
+   */
+  private saveLoadRefused(): boolean {
+    if (this.state === "title") return false;
+    if (!this.saveLoadEnabled) {
+      this.ui.toast(t("toast.saveLoadDisabled"));
+      return true;
+    }
+    return this.quickMenuRefused();
   }
 
   toggleUserHide(): void {
@@ -622,6 +644,7 @@ export class Player implements PlayerCommands {
       this.progress.enter(scriptIdOf(file));
       this.chainQueue = [];
       this.quickMenuLocked = false;
+      this.saveLoadEnabled = true;
       this.autoPaused = false;
       // Échange des écrans une fois le noir complet : le titre reste visible pendant tout le fondu.
       await transition.black;
@@ -645,7 +668,7 @@ export class Player implements PlayerCommands {
     if (this.state === "loading") return;
     const inGame = this.state !== "title";
     if (!inGame && (screen === "pause" || screen === "save" || screen === "backlog")) return;
-    if ((screen === "save" || screen === "load") && this.quickMenuRefused()) return;
+    if ((screen === "save" || screen === "load") && this.saveLoadRefused()) return;
     if (screen === "backlog") {
       // Déjà ouvert (raccourci pressé deux fois) : rien à empiler.
       if (this.overlays[this.overlays.length - 1] === "backlog") return;
@@ -694,6 +717,7 @@ export class Player implements PlayerCommands {
       this.history = [];
       this.mode = "normal";
       this.quickMenuLocked = false;
+      this.saveLoadEnabled = true;
       this.autoPaused = false;
       this.userHidden = false;
       this.stage.setUserHidden(false);
@@ -711,7 +735,7 @@ export class Player implements PlayerCommands {
   // ── Commandes : sauvegardes ──
 
   async save(slot: SlotId): Promise<void> {
-    if (this.quickMenuRefused()) return;
+    if (this.saveLoadRefused()) return;
     const entry = this.history[this.history.length - 1];
     if (!entry || !this.runtime) {
       this.ui.toast(t("toast.saveUnavailable"));
@@ -744,7 +768,7 @@ export class Player implements PlayerCommands {
     // Synchrone, avant le premier await : politique autoplay.
     void this.audio.unlock().catch(() => {});
     if (this.state === "loading") return;
-    if (this.quickMenuRefused()) return;
+    if (this.saveLoadRefused()) return;
     const record = await this.deps.saveStore.get(slot);
     if (!record) {
       this.ui.toast(t("toast.saveEmpty"));
@@ -939,6 +963,7 @@ export class Player implements PlayerCommands {
     for (const event of step.events) {
       if (event.kind === "audio") this.audio.apply(event.event, { instant });
       else if (event.kind === "quickMenu") this.setQuickMenuLocked(event.locked);
+      else if (event.kind === "store") this.applyStore(event);
       else if (event.kind === "autoMode") this.setAutoPaused(event.paused);
       else if (event.kind === "skipSetting") this.applySkipSetting(event);
       else if (event.kind === "cancelSkip") this.cancelSkip();
@@ -1342,6 +1367,7 @@ export class Player implements PlayerCommands {
       this.progress.enter(scriptIdOf(data.scriptName));
       this.choicePath = entry.choices;
       this.quickMenuLocked = data.state.quickMenuLocked ?? false;
+      this.saveLoadEnabled = data.state.saveLoadEnabled ?? true;
       this.autoPaused = data.state.autoModePaused ?? false;
       this.chainQueue = [...entry.chainQueue];
       this.stageSnap = entry.stage;
@@ -1451,6 +1477,7 @@ export class Player implements PlayerCommands {
       userHidden: this.userHidden,
       canRollback: this.canRollback(),
       quickMenuLocked: this.quickMenuLocked,
+      saveLoadEnabled: this.saveLoadEnabled,
       autoPaused: this.autoPaused,
       mouseMode: this.settings.display.mouseMode,
       autoHideCursor: this.settings.display.autoHideCursor,
@@ -1513,7 +1540,7 @@ export class Player implements PlayerCommands {
     const top = this.overlays[this.overlays.length - 1];
     if (top && top !== "pause") {
       // Un autre écran est ouvert : il est remplacé, la pile ne grandit pas.
-      if ((screen === "save" || screen === "load") && this.quickMenuRefused()) return;
+      if ((screen === "save" || screen === "load") && this.saveLoadRefused()) return;
       this.overlays[this.overlays.length - 1] = screen;
       void this.showOverlay(screen);
       this.syncRoute();

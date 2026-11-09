@@ -78,6 +78,7 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   "systemMenu.entry.graphic": "非表示",
   "systemMenu.entry.title": "タイトル",
   "systemMenu.quickMenuLocked": "この場面では使用できません",
+  "systemMenu.saveLoadDisabled": "スクリプトによりセーブ・ロードが無効です",
 
   // ── Commandes tactiles (WEB-01, #203) ──
   "touch.menuButton": "メニュー",
@@ -300,6 +301,7 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   // ── 通知 ──
   "toast.historyEmpty": "履歴はまだありません。",
   "toast.quickMenuLocked": "この場面ではセーブとロードは使用できません。",
+  "toast.saveLoadDisabled": "この場面ではスクリプトによりセーブとロードが無効です。",
   "toast.scriptNotFound": "スクリプトが見つかりません：{file}",
   "toast.saveUnavailable": "今はセーブできません。",
   "toast.saveFailed": "セーブに失敗しました。",
