@@ -34,3 +34,44 @@ jobs:
 
       - name: Check formatting (optional)
         run: npx prettier --check "src/**/*.ts" "tests/**/*.ts" "tools/**/*.ts" || true
+
+  # Tests end-to-end en mode placeholders (#243) : aucun asset du jeu n'est requis, le scénario et
+  # les images sont générés par `tests/e2e/prepare-assets.ts` avant le démarrage de Vite.
+  # Chromium est obligatoire ; le projet Firefox existe dans `playwright.config.ts` et se vérifie en
+  # local (`npx playwright install firefox && npm run test:e2e -- --project=firefox`) — il sera
+  # ajouté à ce job quand la couverture Firefox et #94 seront stabilisées (budget CI).
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate e2e placeholders and run the suite
+        run: npm run test:e2e -- --project=chromium
+        env:
+          MAHOYO_E2E_ASSETS: ${{ runner.temp }}/mahoyo-e2e-assets
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
