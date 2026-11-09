@@ -9,9 +9,10 @@ La v1.0 est **close** : le critère « 0 commande KAG inconnue à effet visible 
 [DoD v1.0](DEFINITION_OF_DONE.md) est satisfait et l'écart suivi par #274 est résolu (#302).
 
 - **Date de clôture** : 2026-11-09.
-- **Commit de référence** : `03b98f7` (main au moment de la préparation ; SHA actualisé au rebase final
-  après la PR « zéro strict »). **Aucun tag ni release n'est publié** : la publication interviendra après
-  le test manuel du propriétaire.
+- **Commit de référence de l'audit final** : `2b30586` (main après le merge de la PR code « zéro strict »
+  #304). **Merge de clôture** : PR #305 ; le SHA du merge sera reporté dans la PR de régénération PROGRESS
+  qui suit. **Aucun tag ni release n'est publié** : la publication interviendra après le test manuel du
+  propriétaire.
 - **Audit final** (`npm run audit` sur les vrais assets, 221 scripts narratifs) : **125 commandes
   implémentées**, **5 commandes ignorées volontairement** (`@autocache`, `@deffont`, `@settracerreturn`,
   `@startchart`, `@loadtimeline` — justifiées dans `tools/ignored-commands.ts`), **0 commande inconnue**

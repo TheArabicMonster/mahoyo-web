@@ -6,7 +6,7 @@
 
 - **Version visée** : `v1.0.0` (tag et release **non publiés**)
 - **Date de clôture de la DoD** : 2026-11-09
-- **Commit de référence** : `03b98f7` (main de préparation ; SHA final actualisé au merge de clôture)
+- **Commit de référence** : `2b30586` (main après le merge de la PR code « zéro strict » #304 ; le merge de clôture est la PR #305, SHA final reporté dans la PR de régénération PROGRESS)
 - **Milestone** : v1.0, 101/101 issues fermées
 - **DoD** : [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md), section « DoD — v1.0 » ; écart de l'issue chapeau #274 résolu, clôture #302.
 
@@ -65,7 +65,7 @@ extraits et convertis restent locaux et ignorés par git.
 | Scripts narratifs lus | **221/221** (0 erreur, 0 maxSteps) |
 | Commandes KAG | **125 implémentées**, **5 ignorées volontairement**, **0 inconnue** (baseline vide) |
 | Approximations documentées | **14** (registre #296) |
-| Tests unitaires | **2166 tests** / 140 fichiers |
+| Tests unitaires | **2162 tests** / 140 fichiers |
 | Tests e2e | **151 tests** / 17 fichiers, Chromium + Firefox |
 | CI | **3 jobs** : `build-and-test` + matrice `e2e (chromium)` / `e2e (firefox)` |
 

@@ -19,7 +19,7 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
   CG mode (#208), HUD-16 Sound mode (#209), FLOW-07 accessibilité du flowchart (#206) et FLOW-08 intégration
   au titre/menu/route (#207). Restent v1.1 : HUD-17/18, WEB-02/06, FLOW-09, accessibilité WCAG AA, mobile et
   responsive, PWA et thème complet.
-- **E6** : en cours (v1.1) — **2166 tests unitaires** (140 fichiers), `npm run lint` (ESLint 9), build et
+- **E6** : en cours (v1.1) — **2162 tests unitaires** (140 fichiers), `npm run lint` (ESLint 9), build et
   `check:assets` verts ; e2e Playwright sur **Chromium et Firefox** en placeholders (17 fichiers de spec) ;
   CI à **3 jobs** (`build-and-test` avec lint, anti-assets, build, tests unitaires, tests d'intégration en
   skip sur checkout nu et lecture complète des 221 scripts sur placeholders ; matrice e2e). Audit KAG
@@ -102,7 +102,7 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
 
 ## E6 — QA & optimisation 🔄
 
-- Tests de non-régression : **2166 tests unitaires** (140 fichiers) et suite e2e Playwright sur Chromium et
+- Tests de non-régression : **2162 tests unitaires** (140 fichiers) et suite e2e Playwright sur Chromium et
   Firefox en placeholders (17 fichiers de spec, dont le parcours complet #94 et l'accessibilité du flowchart).
 - CI à **3 jobs** : `build-and-test` (lint, contrôle anti-assets, build, tests unitaires, tests d'intégration
   en skip propre sur checkout nu puis lecture complète des 221 scripts sur corpus de placeholders) et matrice
