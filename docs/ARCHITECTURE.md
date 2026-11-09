@@ -117,6 +117,7 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - Réglage `flowchartRevealAll` (défaut `false`) : anti-spoiler du flowchart actif tant qu'il est faux.
 - **`flowchart-view.ts`** / **`flowchart-view.css`** : rendu statique de l'écran Flowchart (FLOW-05, #197) ; voir
   `ENCHAINEMENT_SCRIPTS.md` (« Rendu du flowchart »). `DomUIManager` n'y délègue que `renderFlowchartScreen`.
+- **`flowchart-viewport.ts`** : pan et zoom de la carte (FLOW-06, #202) : fonctions pures (`zoomAround`, `centerOn`, `pinchView`, `keyAction`…) et `attachViewport` (pointeur, molette, pincement, clavier), zoom mémorisé pour la session. **`flowchart-detail.ts`** : volet de détails d'un nœud visité (`describeNode`) et « Relire depuis ici » (`requestReplay` : confirmation Non par défaut puis `startScript`). `DomUIManager` ne branche que `confirm` et `replay`.
   `Player` charge `story-graph.json` (`AssetResolver.graph()`) à la première ouverture de l'écran, puis le fournit à
   la vue `flowchart` avec `revealAll` (réglage) et `thumbnail` (clé du manifeste -> URL, `AssetResolver.uiImage`).
 
