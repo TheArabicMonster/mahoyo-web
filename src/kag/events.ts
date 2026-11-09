@@ -300,8 +300,17 @@ export type RenderEvent =
   | { kind: "timelineLayerClear" }
   /** Lance une animation sur un sprite. */
   | { kind: "animate"; target: string; def: AnimationDef }
-  /** Arrête une animation. */
+  /** Arrête une animation (annule en conservant l'état courant ; @stopaction/@removeaction). */
   | { kind: "stopAnimation"; target?: string }
+  /** Met en pause une animation (target) ou toutes (@pauseaction). */
+  | { kind: "pauseAnimation"; target?: string }
+  /** Relance une animation en pause (target) ou toutes (@resumeaction). */
+  | { kind: "resumeAnimation"; target?: string }
+  /**
+   * Particules de notes (`@beginfallnote`/`@fallnoteopt`/`@endfallnote`), approximation du plugin
+   * `fallnoteplugin.tjs` : taux d'émission `rate` (défaut 1) ; `active=false` retire les particules.
+   */
+  | { kind: "fallnote"; active: boolean; rate?: number }
   /** Termine immédiatement la transition en cours. */
   | { kind: "stopTransition" }
   /** Démarre ou arrête un tremblement d'écran. */

@@ -4,17 +4,8 @@
   "note": "Inconnues constatées sur le corpus de référence, en attente de triage (#276). Ne peut que décroître ; mise à jour explicite dans la PR (npm run audit:baseline).",
   "triageIssue": "#276",
   "commands": {
-    "action": 1,
-    "beginfallnote": 1,
-    "endfallnote": 1,
-    "fallnoteopt": 2,
     "loadtimeline": 1,
-    "pauseaction": 1,
-    "pauseploy": 1,
     "playtimeline": 1,
-    "removeaction": 3,
-    "resumeaction": 1,
-    "resumeploy": 1,
     "settracerreturn": 2,
     "startchart": 1
   }

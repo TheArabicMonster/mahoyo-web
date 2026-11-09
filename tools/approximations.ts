@@ -137,6 +137,36 @@ export const APPROXIMATIONS: readonly Approximation[] = [
     compteur: 1,
   },
   {
+    id: "action-modules-subset",
+    ecart:
+      "Seul le module d'action réellement utilisé (LayerNormalMoveModule) est complet : les autres modules " +
+      "sont approximés en translation linéaire et l'accélération `accel` n'est pas interpolée (les keyframes " +
+      "du port sont linéaires) ; `needlayer` (création du calque manquant) n'est pas reproduit.",
+    issue: APPROXIMATIONS_ISSUE,
+    test: "tests/unit/kag/actions-runtime.test.ts",
+    compteur: 1,
+  },
+  {
+    id: "fallnote-particles",
+    ecart:
+      "@beginfallnote/@fallnoteopt/@endfallnote sont approximés par des particules CSS génériques : les images " +
+      "de notes, les options sx/sy/patterns/pastTime et la seconde couche du plugin ne sont pas reproduites ; " +
+      "seuls l'activation, l'arrêt et le taux `rate` (vitesse des particules) sont rendus.",
+    issue: APPROXIMATIONS_ISSUE,
+    test: "tests/unit/renderer/actions-renderer.test.ts",
+    compteur: 1,
+  },
+  {
+    id: "pauseploy-font",
+    ecart:
+      "@pauseploy/@resumeploy masquent et restaurent la bulle ploy, mais la police n'est pas reproduite à " +
+      "l'identique : le moteur force MS PGothic puis la police utilisateur (`deffont`/`resetfont`), le port " +
+      "réinitialise le style de texte sur celui du thème.",
+    issue: APPROXIMATIONS_ISSUE,
+    test: "tests/unit/kag/actions-runtime.test.ts",
+    compteur: 1,
+  },
+  {
     id: "clock-runtime-vars",
     ecart:
       "L'horloge mémorise l'heure dans l'état runtime (clockHour/clockMinute, sauvegardés) et non dans les " +
