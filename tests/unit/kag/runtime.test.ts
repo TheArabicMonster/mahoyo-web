@@ -540,11 +540,11 @@ Deuxième ligne.
   });
 
   it("raw : warning bruyant + rawCount incrémenté", () => {
-    // Une commande inconnue (@cm4pg) doit prévenir via onWarning et incrémenter
+    // Une commande inconnue (@madeupcmd) doit prévenir via onWarning et incrémenter
     // rawCount. Sans warning silencieux (AGENTS.md §6).
     const SRC = `
 *page0|
-@cm4pg
+@madeupcmd
 @pg
 `;
     const runtime = new Runtime(parse(lex(SRC)));
@@ -552,13 +552,13 @@ Deuxième ligne.
     runtime.onWarning = (msg: string) => warnings.push(msg);
     runtime.step();
     expect(runtime.rawCount).toBe(1);
-    expect(warnings).toEqual(["commande non gérée: @cm4pg"]);
+    expect(warnings).toEqual(["commande non gérée: @madeupcmd"]);
   });
 
   it("raw : plusieurs commandes inconnues cumulent rawCount", () => {
     const SRC = `
 *page0|
-@cm4pg
+@madeupcmd
 @unknownCmd
 @anotherUnknown
 @pg
@@ -569,7 +569,7 @@ Deuxième ligne.
     runtime.step();
     expect(runtime.rawCount).toBe(3);
     expect(warnings.length).toBe(3);
-    expect(warnings[0]).toContain("@cm4pg");
+    expect(warnings[0]).toContain("@madeupcmd");
     expect(warnings[1]).toContain("@unknownCmd");
     expect(warnings[2]).toContain("@anotherUnknown");
   });

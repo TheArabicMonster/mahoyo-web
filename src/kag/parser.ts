@@ -320,6 +320,13 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
       // @bindbg (tagex.tjs) : les calques suivent les mouvements du fond. Approximation : le
       // décalage est visuel au moment des panoramiques (`bgMove`), non persisté.
       return { kind: "bindbg", enabled: args.enabled !== undefined ? args.enabled !== "0" && args.enabled !== "false" : true, page: parsePageLayer(args.page) };
+    case "cm":
+      // @cm (KAG3) : vide les calques de message. Le port émet un clearText explicite (force).
+      return { kind: "cm" };
+    case "cm4pg":
+      // @cm4pg (tagex.tjs) : appelle cm puis originalStoreFlags() (copie des drapeaux de cache
+      // moteur, sans effet visible). Rendu identique à @cm dans le port.
+      return { kind: "cm4pg" };
     case "clall":
       return { kind: "clall", page: parsePageLayer(args.page) };
     case "clfg":
