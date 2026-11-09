@@ -16,6 +16,22 @@ async function startGame(page: Page, tap: boolean): Promise<void> {
   await expect(page.locator("#text")).toContainText(/\S{5}/, { timeout: 15000 });
 }
 
+/** Lit quelques pages (appuis tactiles) pour que l'historique ne soit plus vide (#201 : historique vide = toast, pas d'écran). */
+async function readPages(page: Page, n: number): Promise<void> {
+  for (let i = 0; i < n; i++) {
+    await page.touchscreen.tap(PHONE.width / 2, PHONE.height / 2);
+    await page.waitForTimeout(250);
+  }
+}
+
+const SWIPE_UP = [
+  { type: "start", x: 420, y: 300, wait: 60 },
+  { type: "move", x: 420, y: 250, wait: 30 },
+  { type: "move", x: 420, y: 200, wait: 30 },
+  { type: "move", x: 420, y: 150, wait: 30 },
+  { type: "end", x: 420, y: 150 },
+] as const;
+
 const touchRoot = (page: Page) => page.locator("#ui-touch");
 const menu = (page: Page) => page.locator(".mh-sysmenu");
 
@@ -135,16 +151,18 @@ test.describe("Tactile (émulation téléphone en paysage)", () => {
     await expect(menu(page)).toBeVisible(); // pas refermé par un contextmenu ou un click résiduel
   });
 
-  test("balayage vers le haut = historique", async ({ page }) => {
+  test("balayage vers le haut = historique ; à vide, un toast et aucun écran (#201)", async ({ page }) => {
     await startGame(page, true);
-    await touchSequence(page, [
-      { type: "start", x: 420, y: 300, wait: 60 },
-      { type: "move", x: 420, y: 250, wait: 30 },
-      { type: "move", x: 420, y: 200, wait: 30 },
-      { type: "move", x: 420, y: 150, wait: 30 },
-      { type: "end", x: 420, y: 150 },
-    ]);
-    await expect(page.locator(".mh-ui-backlog-screen")).toBeVisible();
+    await touchSequence(page, [...SWIPE_UP]);
+    // Selon l'avancement du premier point de clic l'historique peut déjà contenir une page : on ne vérifie le
+    // toast que s'il est vide (le cas déterministe est couvert par les tests unitaires du player).
+    if ((await page.locator(".mh-bl").count()) === 0) {
+      await expect(page.locator(".mh-toast")).toHaveCount(1);
+      await expect(page.locator("#ui-overlay")).toHaveAttribute("data-screen", "game");
+    }
+    await readPages(page, 6);
+    await touchSequence(page, [...SWIPE_UP]);
+    await expect(page.locator(".mh-bl")).toBeVisible();
   });
 
   test("la barre : Auto bascule le mode, Q.Load ouvre le chargement, Historique l'écran d'historique", async ({ page }) => {
@@ -161,8 +179,9 @@ test.describe("Tactile (émulation téléphone en paysage)", () => {
     await expect(page.locator("#ui-overlay")).toHaveAttribute("data-screen", "load");
     await page.keyboard.press("Escape");
 
+    await readPages(page, 6);
     await page.locator('[data-touch="backlog"]').tap();
-    await expect(page.locator(".mh-ui-backlog-screen")).toBeVisible();
+    await expect(page.locator(".mh-bl")).toBeVisible();
   });
 
   test("le focus clavier est visible sur les boutons tactiles", async ({ page }) => {
