@@ -17,6 +17,169 @@ export type AudioElementFactory = (url: string) => AudioElementLike;
 
 const defaultFactory: AudioElementFactory = (url) => new Audio(url);
 
+/**
+ * Sous-ensemble de `HTMLAudioElement` utilisé par la galerie sonore (HUD-16, #209) : position et
+ * durée en plus, pour la barre de progression. Permet de simuler l'élément en test.
+ */
+export type SoundElementLike = {
+  src: string;
+  volume: number;
+  currentTime: number;
+  readonly duration: number;
+  play(): Promise<void>;
+  pause(): void;
+  addEventListener(type: "ended" | "timeupdate" | "loadedmetadata", listener: () => void): void;
+  removeEventListener(type: "ended" | "timeupdate" | "loadedmetadata", listener: () => void): void;
+};
+
+export type SoundElementFactory = (url: string) => SoundElementLike;
+
+const defaultSoundFactory: SoundElementFactory = (url) => new Audio(url) as unknown as SoundElementLike;
+
+/** Position d'une piste, en secondes (durée `0` tant que les métadonnées ne sont pas chargées). */
+export type SoundPosition = { current: number; duration: number };
+
+/**
+ * Lecteur de la galerie sonore (Sound mode, HUD-16 / #209), indépendant des canaux BGM/SE du jeu :
+ * lecture, pause, arrêt, recherche, volume et notification de position. Implémenté avec un seul
+ * `HTMLAudioElement` recyclé, comme `WebAudioPlayer` (mais hors chaîne de canaux et de fondus).
+ */
+export type SoundEngine = {
+  play(url: string): Promise<void> | void;
+  pause(): void;
+  stop(): void;
+  seek(seconds: number): void;
+  setVolume(volume: number): void;
+  position(): SoundPosition;
+  /** Abonnement aux positions (timeupdate + cadence de 250 ms pendant la lecture). */
+  subscribe(listener: (position: SoundPosition) => void): () => void;
+  /** Abonnement à la fin d'une piste (lecture naturelle ou erreur). */
+  onEnded(listener: () => void): () => void;
+  dispose(): void;
+};
+
+/** Cadence de rafraîchissement de la position pendant la lecture (ms). */
+const SOUND_TICK_MS = 250;
+
+/**
+ * Crée le lecteur de la galerie sonore. `createElement` est injectable pour les tests (aucun
+ * `HTMLAudioElement` réel) ; en production, `new Audio(url)`.
+ */
+export function createSoundEngine(createElement: SoundElementFactory = defaultSoundFactory): SoundEngine {
+  let element: SoundElementLike | null = null;
+  let volume = 1;
+  let disposed = false;
+  let ticker: ReturnType<typeof setInterval> | undefined;
+  const positionListeners = new Set<(position: SoundPosition) => void>();
+  const endedListeners = new Set<() => void>();
+
+  const clamp01 = (value: number): number => (Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0);
+
+  const readPosition = (): SoundPosition => {
+    if (!element) return { current: 0, duration: 0 };
+    const duration = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : 0;
+    const current = Number.isFinite(element.currentTime) && element.currentTime > 0 ? element.currentTime : 0;
+    return { current: duration > 0 ? Math.min(current, duration) : current, duration };
+  };
+
+  const emitPosition = (): void => {
+    if (disposed) return;
+    const position = readPosition();
+    for (const listener of [...positionListeners]) listener(position);
+  };
+
+  const stopTicker = (): void => {
+    if (ticker !== undefined) {
+      clearInterval(ticker);
+      ticker = undefined;
+    }
+  };
+
+  const startTicker = (): void => {
+    if (ticker !== undefined || disposed) return;
+    ticker = setInterval(emitPosition, SOUND_TICK_MS);
+  };
+
+  const ensureElement = (url: string): SoundElementLike => {
+    if (!element) {
+      element = createElement(url);
+      element.addEventListener("timeupdate", emitPosition);
+      element.addEventListener("loadedmetadata", emitPosition);
+      element.addEventListener("ended", () => {
+        stopTicker();
+        emitPosition();
+        for (const listener of [...endedListeners]) listener();
+      });
+    }
+    return element;
+  };
+
+  return {
+    play(url: string): Promise<void> | void {
+      if (disposed) return;
+      const audio = ensureElement(url);
+      if (audio.src !== url) {
+        audio.src = url;
+        audio.currentTime = 0;
+      }
+      audio.volume = clamp01(volume);
+      const started = audio.play();
+      startTicker();
+      emitPosition();
+      if (started && typeof started.catch === "function") {
+        // Autoplay refusé ou piste illisible : on ne casse pas l'écran, la position reste à 0.
+        return started.catch(() => undefined);
+      }
+      return started;
+    },
+    pause(): void {
+      element?.pause();
+      stopTicker();
+      emitPosition();
+    },
+    stop(): void {
+      if (element) {
+        element.pause();
+        element.currentTime = 0;
+      }
+      stopTicker();
+      emitPosition();
+    },
+    seek(seconds: number): void {
+      if (!element) return;
+      const { duration } = readPosition();
+      const target = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+      element.currentTime = duration > 0 ? Math.min(target, duration) : target;
+      emitPosition();
+    },
+    setVolume(next: number): void {
+      volume = clamp01(next);
+      if (element) element.volume = volume;
+    },
+    position(): SoundPosition {
+      return readPosition();
+    },
+    subscribe(listener: (position: SoundPosition) => void): () => void {
+      positionListeners.add(listener);
+      return () => void positionListeners.delete(listener);
+    },
+    onEnded(listener: () => void): () => void {
+      endedListeners.add(listener);
+      return () => void endedListeners.delete(listener);
+    },
+    dispose(): void {
+      disposed = true;
+      stopTicker();
+      positionListeners.clear();
+      endedListeners.clear();
+      if (element) {
+        element.pause();
+        element = null;
+      }
+    },
+  };
+}
+
 const FADE_STEP_MS = 16;
 
 /** État d'un canal actif. */

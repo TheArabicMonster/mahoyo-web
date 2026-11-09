@@ -20,6 +20,8 @@ import type {
 } from "@/ui/types.js";
 import { createBacklogScreen } from "@/ui/backlog-screen.js";
 import { buildCgCatalog, cgCatalogSize, createCgMode, type CgCatalog, type CgImage, type CgMode } from "@/ui/cg-mode.js";
+import { createSoundMode, type SoundMode, type SoundTrack } from "@/ui/sound-mode.js";
+import type { SoundEngine } from "@/renderer/audio-manager.js";
 import { createConfigScreen, type ConfigScreen, type SettingsTab } from "@/ui/config-screen.js";
 import { openConfirmDialog, type ConfirmDialog } from "@/ui/confirm-dialog.js";
 import { getUiLanguage, onUiLanguageChange, t } from "@/ui/i18n.js";
@@ -67,6 +69,14 @@ export type CgGallerySource = {
   seen(): ReadonlySet<string>;
 };
 
+/** Galerie sonore (HUD-16, #209) : pistes du manifeste utilisateur et lecteur indépendant. */
+export type SoundGallerySource = {
+  /** Morceaux (BGM) du manifeste de l'utilisateur, métadonnées facultatives comprises. */
+  tracks(): readonly SoundTrack[];
+  /** Lecteur de la galerie (`createSoundEngine`), indépendant des canaux du jeu. */
+  audio: SoundEngine;
+};
+
 export type DomUIManagerOptions = {
   /** Source des images d'interface (le résolveur d'assets) ; absente = repli CSS partout (HUD-03, #189). */
   resolver?: UiImageSource;
@@ -76,6 +86,10 @@ export type DomUIManagerOptions = {
    * Galerie CG (HUD-15, #208) ; absente ou vide = l'entrée Cgmode du sous-menu Extra reste grisée.
    */
   cgGallery?: CgGallerySource;
+  /**
+   * Galerie sonore (HUD-16, #209) ; absente ou vide = l'entrée Soundmode du sous-menu Extra reste grisée.
+   */
+  soundGallery?: SoundGallerySource;
 };
 
 /**
@@ -93,6 +107,7 @@ export class DomUIManager implements UIManager {
   private flowchart!: El;
   private pause!: El;
   private cgEl!: El;
+  private soundEl!: El;
   private choicesEl!: El;
   private toasts: ToastStack | null = null;
   private loading!: El;
@@ -119,17 +134,23 @@ export class DomUIManager implements UIManager {
   private cgMode: CgMode | null = null;
   /** Catalogue CG calculé une fois depuis le manifeste (immuable pendant la session). */
   private cgCatalog: CgCatalog | null = null;
+  /** Écran Sound mode ouvert (HUD-16, #209) ; null = fermé. */
+  private soundMode: SoundMode | null = null;
+  /** Pistes de la galerie sonore, lues une fois depuis le manifeste. */
+  private soundTracks: readonly SoundTrack[] | null = null;
   private touch: TouchControls | null = null;
   private cleanups: (() => void)[] = [];
   private previousDocumentLang: string | null = null;
   private readonly uiAssets: UiAssets;
   private readonly saveTransfer: SaveTransferActions | undefined;
   private readonly cgGallery: CgGallerySource | undefined;
+  private readonly soundGallery: SoundGallerySource | undefined;
 
   constructor(options: DomUIManagerOptions = {}) {
     this.uiAssets = createUiAssets(options.resolver);
     this.saveTransfer = options.saveTransfer;
     this.cgGallery = options.cgGallery;
+    this.soundGallery = options.soundGallery;
   }
 
   // ── Cycle de vie ──
@@ -151,6 +172,7 @@ export class DomUIManager implements UIManager {
     this.flowchart = this.slot("ui-flowchart", "mh-ui-flowchart");
     this.pause = this.slot("ui-pause", "mh-ui-pause");
     this.cgEl = this.slot("ui-cg", "mh-ui-cg");
+    this.soundEl = this.slot("ui-sound", "mh-ui-sound");
     this.choicesEl = this.slot("ui-choices", "mh-ui-choices");
     this.toasts = new ToastStack(this.slot("ui-toast", "mh-ui-toast"));
     this.loading = this.slot("ui-loading", "mh-ui-loading");
@@ -187,6 +209,8 @@ export class DomUIManager implements UIManager {
 
   dispose(): void {
     this.closeCgMode(false);
+    this.closeSoundMode(false);
+    this.soundGallery?.audio.dispose();
     this.touch?.dispose();
     this.touch = null;
     for (const off of this.cleanups) off();
@@ -216,8 +240,9 @@ export class DomUIManager implements UIManager {
   show(view: UIView): void {
     this.view = view;
     if (!this.root) return;
-    // Un changement d'écran referme la galerie CG (elle recouvre le titre, pas la vue).
+    // Un changement d'écran referme les galeries CG et sonore (elles recouvrent le titre, pas la vue).
     this.closeCgMode(false);
+    this.closeSoundMode(false);
     if (this.refreshSaveLoad(view)) return;
     this.saveLoad = null;
     this.menu.replaceChildren();
@@ -453,6 +478,44 @@ export class DomUIManager implements UIManager {
     }
   }
 
+  // ── Galerie sonore (HUD-16, #209) ──
+
+  /** Pistes de la galerie (calculées une fois) : vide sans manifeste ou sans BGM. */
+  private soundTracksFor(): readonly SoundTrack[] {
+    if (this.soundTracks === null) {
+      this.soundTracks = this.soundGallery
+        ? this.soundGallery.tracks().filter((track) => track.url !== "")
+        : [];
+    }
+    return this.soundTracks;
+  }
+
+  /** Ouvre la galerie sonore dans son slot, au-dessus de l'écran titre (qui reste monté). */
+  private openSoundMode(): void {
+    if (!this.root || !this.soundGallery || !this.inputEnabled) return;
+    this.closeSoundMode(false);
+    const view = createSoundMode({
+      tracks: this.soundTracksFor(),
+      audio: this.soundGallery.audio,
+      onClose: () => this.closeSoundMode(),
+    });
+    this.soundEl.appendChild(view.element);
+    this.soundMode = view;
+    view.focusFirst();
+  }
+
+  /** Ferme la galerie sonore, coupe la lecture et rend le focus à l'entrée Soundmode. */
+  private closeSoundMode(restoreFocus = true): void {
+    const view = this.soundMode;
+    if (!view) return;
+    this.soundMode = null;
+    view.destroy();
+    this.soundEl.replaceChildren();
+    if (restoreFocus) {
+      this.menu.querySelector<HTMLElement>('[data-entry="soundmode"]')?.focus();
+    }
+  }
+
   // ── Écrans ──
 
   private renderTitle(scripts: readonly ScriptSummary[], hasContinue: boolean, unlockedChapters?: readonly string[]): void {
@@ -474,6 +537,8 @@ export class DomUIManager implements UIManager {
         config: () => run((c) => c.openScreen("settings")),
         // HUD-15 (#208) : la galerie n'est proposée que si le manifeste contient des CG.
         ...(cgCatalogSize(this.cgCatalogFor()) > 0 ? { cgMode: () => run(() => this.openCgMode()) } : {}),
+        // HUD-16 (#209) : Sound mode n'est proposé que si le manifeste contient des BGM.
+        ...(this.soundTracksFor().length > 0 ? { soundMode: () => run(() => this.openSoundMode()) } : {}),
       },
     });
     this.menu.appendChild(screen.el);
@@ -581,14 +646,14 @@ export class DomUIManager implements UIManager {
   }
 
   private onClick(e: MouseEvent): void {
-    if (this.cgMode || !this.playing || this.choiceCount > 0 || this.onInteractive(e.target)) return;
+    if (this.cgMode || this.soundMode || !this.playing || this.choiceCount > 0 || this.onInteractive(e.target)) return;
     if (e.button !== 0) return;
     this.commands?.advance();
   }
 
   private onContextMenu(e: MouseEvent): void {
     e.preventDefault();
-    if (this.cgMode) return;
+    if (this.cgMode || this.soundMode) return;
     // Menu système ouvert : un nouveau clic droit le referme (comme l'original).
     if (this.view.screen === "pause" && this.inputEnabled && this.confirmEl === null) {
       this.commands?.closeScreen();
@@ -604,7 +669,7 @@ export class DomUIManager implements UIManager {
   }
 
   private onWheel(e: WheelEvent): void {
-    if (this.cgMode || !this.playing || this.choiceCount > 0 || e.deltaY === 0) return;
+    if (this.cgMode || this.soundMode || !this.playing || this.choiceCount > 0 || e.deltaY === 0) return;
     if (this.onInteractive(e.target)) return;
     if (e.deltaY < 0) this.commands?.rollback();
     else this.commands?.advance();
@@ -612,8 +677,9 @@ export class DomUIManager implements UIManager {
 
   private onKeyDown(e: KeyboardEvent): void {
     if (!this.commands) return;
-    // La galerie CG gère elle-même son clavier (Échap, flèches, zoom) et le stoppe en phase capture.
-    if (this.cgMode) return;
+    // Les galeries CG et sonore gèrent elles-mêmes leur clavier (Échap, flèches, zoom, Espace)
+    // et le stoppent en phase capture.
+    if (this.cgMode || this.soundMode) return;
     if (this.capturing) {
       this.handleCapture(e);
       return;

@@ -44,6 +44,27 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   "cg.viewer.zoomOut": "縮小",
   "cg.viewer.zoomReset": "等倍",
 
+  // ── Sound mode (HUD-16, #209) ──
+  // 曲名・作曲者は利用者のマニフェストから取得（このファイルには書かない）。
+  "sound.title": "Sound mode",
+  "sound.title.deco": "サウンドモード",
+  "sound.list": "曲一覧",
+  "sound.empty": "再生できる曲がありません。",
+  "sound.controls": "プレイヤー操作",
+  "sound.play": "再生",
+  "sound.pause": "一時停止",
+  "sound.stop": "停止",
+  "sound.previous": "前の曲",
+  "sound.next": "次の曲",
+  "sound.repeatOne": "1曲リピート",
+  "sound.repeatAll": "全曲リピート",
+  "sound.shuffle": "シャッフル",
+  "sound.progress": "再生位置",
+  "sound.volume": "音量",
+  "sound.volumeValue": "{n}%",
+  "sound.track": "曲 {n}",
+  "sound.noMetadata": "メタデータがありません。",
+
   // ── システムメニュー（右クリック） ──
   "systemMenu.title": "システム",
   "systemMenu.title.deco": "システム",

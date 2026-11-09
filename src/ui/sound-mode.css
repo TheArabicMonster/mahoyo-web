@@ -1,0 +1,585 @@
+/* ── Sound mode (HUD-16, #209) ────────────────────────────────────────────────────────────────────────
+   Galerie sonore plein cadre sur la « nuit bleue » (`mh-ui-night`, night.css). CSS pur : aucun asset,
+   aucune URL, aucune priorité forcée. Le fond dégradé vient de night.css ; cette feuille ne le redéfinit
+   pas et ne pose qu'une couleur de repli opaque.
+
+   Références : docs/ANALYSE_HUD_ORIGINAL.md §2.10 (liste de morceaux sarcelle glossy 385×≈58 px, lecture /
+   pause / stop / précédent / suivant, trois bascules rondes, volume à 10 pastilles, barre de progression
+   `#088888` encadrée des temps `m:ss`, ligne d'information compositeur / titre en cyan `#69c8c9` avec filet
+   pleine largeur, morceau en lecture en cyan clair `#08a8b8`) ; docs/DESIGN.md §2.3 (accents sarcelle, ligne
+   d'information `#69c8c9` / filet `#5fafb1`), §2.4 (curseur argent sur piste noire), §8 (états des composants),
+   §9.16 (repli sans asset de Sound mode), §10 (focus visible, cibles tactiles, mouvement réduit).
+
+   Repères : les mesures de l'analyse sont en 1920×1080 ; le HUD vit dans #viewport, en 1280×720 logique
+   (facteur ×2/3, PAS le repère 1024×576 de la scène, agrandi de 1,25). Conversions utilisées ici :
+     titre          x 31–37, y 40–95 @1080        -> x 21, y 27–63 @720 (comme l'historique, la config et CG)
+     « Retour »     x 1640–1745, y 999–1035 @1080  -> x ~1093–1161, y ~666–687 @720 (bord droit à 9 %)
+     grille         3 colonnes de ~405 px à 1280×720 (l'original : 385 px), plafonnée à 1240 px.
+   Le slot `#ui-sound` est un enfant direct de `#ui-overlay` : `.mh-ui-overlay > div { pointer-events: none }`
+   s'y applique, l'écran réactive donc les entrées. `.mh-ui-night` peint le dégradé et les ornements.
+
+   Aucun titre du jeu n'est écrit ici : les libellés (titre d'écran, sous-titre japonais, « Lecture », volume,
+   libellés de morceaux, message vide, « Retour ») viennent de `src/ui/i18n.ts` et du manifeste audio de
+   l'utilisateur (`AssetResolver.audioEntries()`). Les marqueurs `▶` / `❚❚` / `■` / `|◀` / `▶|` / `1` / `∞` / `⤨`
+   sont posés par `sound-mode.ts` dans des `<button>` natifs : la feuille ne contient que le préfixe décoratif
+   du bouton Retour. */
+
+.mh-sound-screen {
+  /* Teintes propres à l'écran (les couleurs de base restent les tokens --mh-*). */
+  --mh-sound-info: #69c8c9; /* ligne d'information compositeur / titre (mesure DESIGN §2.3, ANALYSE §2.10) */
+  --mh-sound-info-rule: #5fafb1; /* filet cyan plein cadre de la ligne d'information (DESIGN §2.3) */
+  --mh-back-size: 1.8rem; /* « Retour » : corps ≈ 29 px @720 (DESIGN §3) */
+
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+  /* Le slot #ui-sound est un enfant de #ui-overlay : sans cela, le `pointer-events: none` du slot
+     hérité par les descendants rendrait l'écran inerte. */
+  pointer-events: auto;
+  /* Repli opaque sur un token de nuit : si night.css n'était pas chargé (ou pendant l'empilement), le
+     titre de l'écran dessous ne doit jamais transparaître. Le dégradé nuit, lui, reste peint par
+     `mh-ui-night` (night.css) : on ne le redéfinit pas ici. */
+  background-color: var(--mh-bg-night-mid, #132337);
+  color: var(--mh-text-ui, #eef4f5);
+  font-family: var(--mh-font-ui, system-ui, sans-serif);
+  font-size: 1rem;
+  user-select: none;
+}
+
+/* ── En-tête : titre et sous-titre japonais décoratif, à gauche ───────────────────────────────────────
+   Le retrait haut de 1,5 rem place l'encre du titre vers y = 27 @720, comme les autres écrans système. */
+.mh-sound-header {
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 1.5rem 1.64% 0.5rem; /* 24 px en haut, 21 px à gauche ; 8 px sous le sous-titre */
+}
+
+.mh-sound-title {
+  margin: 0;
+  font-family: var(--mh-font-title, Georgia, serif);
+  font-weight: 400;
+  font-size: var(--mh-screen-title-size, 2.4rem);
+  line-height: 1.1;
+  color: var(--mh-text-title, #f2fbff);
+  /* Lueur cyan discrète, commune aux titres d'écran système (DESIGN §2.2, §8). */
+  text-shadow: 0 0 12px rgba(0, 192, 192, 0.45);
+}
+
+/* Sous-titre japonais : décoratif (`aria-hidden` posé par le TS), lettrage espacé.
+   `--mh-screen-subtitle-size` est documenté dans DESIGN §3 mais absent de tokens.css : repli 0,8 rem. */
+.mh-sound-subtitle {
+  margin: 0;
+  font-family: var(--mh-font-ja, sans-serif);
+  font-size: var(--mh-screen-subtitle-size, 0.8rem);
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0.15em;
+  color: var(--mh-panel-label, #c0d6d6);
+  text-shadow: 0 0 8px rgba(95, 207, 197, 0.25);
+}
+
+/* ── Zone défilante : conteneur de requête de la grille responsive ─────────────────────────────────── */
+.mh-sound-scroll {
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 0 15px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  container-type: inline-size;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--mh-cyan-rail, #3f889c) transparent;
+}
+
+/* ── Grille de morceaux : 3 colonnes par défaut, plafonnée à 1240 px (3 × ~405 px @720) ───────────── */
+.mh-sound-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 1240px;
+  margin: 1rem auto;
+  padding: 0;
+  list-style: none;
+}
+
+/* Cellule : aucune puce de liste, aucune marge (reset local autorisé sous `.mh-sound-screen`).
+   `display: flex` laisse le bouton occuper toute la hauteur de la rangée, même quand le compositeur
+   est absent d'une piste voisine. */
+.mh-sound-cell {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ── Morceau : bouton pleine largeur, sarcelle glossy en CSS pur (ANALYSE §2.10 ; DESIGN §2.3) ───────
+   L'original mesure 385 × ≈58 px ; en grille de 3 colonnes à 1280×720, une cellule fait ~405 px et la
+   hauteur minimale reste 58 px. `position: relative` ancre le marqueur de lecture à droite. */
+.mh-sound-track {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  min-height: 58px;
+  margin: 0;
+  padding: 8px 14px;
+  /* Réserve le marqueur `▶` (right: 10px) : le titre ne passe jamais dessous. */
+  padding-right: 2.25rem;
+  border: 2px solid var(--mh-panel-border-light, #59616b);
+  border-radius: 3px;
+  background: linear-gradient(
+    to bottom,
+    var(--mh-teal-on-top, #3d746f),
+    var(--mh-teal-on-bottom, #133c39)
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  color: var(--mh-text-ui, #eef4f5);
+  font-family: inherit;
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1.25;
+  text-align: left;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+/* Titre du morceau : corps des libellés d'interface (DESIGN §3). */
+.mh-sound-track-title {
+  max-width: 100%;
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* Compositeur : métadonnée utilisateur facultative, plus petite et plus discrète ; `hidden` la retire. */
+.mh-sound-track-composer {
+  max-width: 100%;
+  color: var(--mh-text-menu, #a9c8cc);
+  font-size: 0.85em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.mh-sound-track-composer[hidden] {
+  display: none;
+}
+
+/* Marqueur de lecture : à droite, centré verticalement, ombré pour rester lisible sur le dégradé.
+   Il n'est visible que pour le morceau courant / en lecture, jamais pour les autres. */
+.mh-sound-track-marker {
+  display: none;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--mh-cyan-glint, #5fcfc5);
+  font-size: 1rem;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow:
+    0 1px 3px #000,
+    0 0 4px #000;
+}
+
+.mh-sound-track.is-current .mh-sound-track-marker,
+.mh-sound-track.is-playing .mh-sound-track-marker {
+  display: inline;
+}
+
+/* Morceau courant (état du lecteur) : fond plus clair, sarcelle cyan translucide `#08a8b8`
+   (`--mh-cyan-control`, DESIGN §2.3 / §8) ET bord épais — deux indices, pas la couleur seule. */
+.mh-sound-track.is-current {
+  border-width: 3px;
+  border-style: solid;
+  border-color: var(--mh-cyan-control, #08a8b8);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--mh-cyan-control, #08a8b8) 55%, var(--mh-teal-on-top, #3d746f)),
+    color-mix(in srgb, var(--mh-cyan-control, #08a8b8) 28%, var(--mh-teal-on-bottom, #133c39))
+  );
+  color: var(--mh-text-title, #f2fbff);
+}
+
+/* Sélection = focus dans la grille (classe `is-selected`, aussi `aria-current`) : bord 3 px
+   `--mh-cyan-glint` ET contour 2 px décalé, pour ne jamais reposer sur la seule couleur (DESIGN §10).
+   Déclarée après `is-current` : quand les deux classes cohabitent (le morceau courant est sélectionné),
+   c'est le contour de sélection qui porte la couleur, le marqueur signale la lecture. */
+.mh-sound-track.is-selected {
+  border: 3px solid var(--mh-cyan-glint, #5fcfc5);
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+
+/* Focus clavier visible sur tous les contrôles de l'écran (DESIGN §10). */
+.mh-sound-screen button:focus-visible,
+.mh-sound-screen input:focus-visible,
+.mh-sound-screen [tabindex]:focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+
+/* ── Ligne d'information : compositeur / titre, en cyan, filet plein cadre sur toute la largeur ──────
+   `min-height` évite que la barre de transport ne saute quand le texte passe sur deux lignes ou est vide. */
+.mh-sound-info {
+  flex: none;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.4rem 15px;
+  min-height: 1.9rem;
+  border-top: 1px solid var(--mh-sound-info-rule, #5fafb1);
+  color: var(--mh-sound-info, #69c8c9);
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Barre de transport : en bas, fond de panneau translucide et filet supérieur ──────────────────── */
+.mh-sound-transport {
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 15px;
+  /* Repli opaque puis version translucide (DESIGN §9) : la barre reste lisible sur le fond nuit. */
+  background: var(--mh-panel-fill, #151f2b);
+  background: color-mix(in srgb, var(--mh-panel-fill, #151f2b) 82%, transparent);
+  border-top: 1px solid var(--mh-panel-border, #444c56);
+}
+
+/* Boutons de transport : carrés de 44 px, dégradé sarcelle maison (DESIGN §2.3, §10). */
+.mh-sound-button,
+.mh-sound-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--mh-teal-on-border, #447671);
+  border-radius: 3px;
+  background: linear-gradient(
+    to bottom,
+    var(--mh-teal-on-top, #3d746f),
+    var(--mh-teal-on-bottom, #133c39)
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: var(--mh-text-ui, #eef4f5);
+  font-family: inherit;
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+}
+
+.mh-sound-button {
+  width: 44px;
+  height: 44px;
+}
+
+/* Bascule ronde (répétition d'un morceau, répétition de tous, aléatoire) : gris au repos. */
+.mh-sound-toggle {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border-color: #5a5f5e;
+  background: linear-gradient(
+    to bottom,
+    var(--mh-grey-off-top, #404342),
+    var(--mh-grey-off-bottom, #171717)
+  );
+  color: #d3dad8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Survol : simple éclaircissement, jamais le seul indice d'un état. */
+.mh-sound-button:hover:not(:disabled),
+.mh-sound-toggle:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+/* Bascule active (`aria-pressed="true"`) : fond sarcelle clair ET bord épaissi à 2 px `--mh-cyan-glint`.
+   L'épaisseur du bord est le second indice, non chromatique (DESIGN §10). */
+.mh-sound-toggle[aria-pressed="true"] {
+  border: 2px solid var(--mh-cyan-glint, #5fcfc5);
+  background: linear-gradient(
+    to bottom,
+    var(--mh-teal-on-top, #3d746f),
+    var(--mh-teal-on-bottom, #133c39)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 8px rgba(95, 207, 197, 0.3);
+  color: var(--mh-text-title, #f2fbff);
+}
+
+/* Aucune piste ou aucune durée connue : le contrôle reste présent mais inerte. */
+.mh-sound-button:disabled,
+.mh-sound-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Progression : piste, temps courant et temps total ───────────────────────────────────────────────
+   Le remplissage mesuré est `#088888` (`--mh-cyan-progress`, ANALYSE §2.10). `accent-color` porte
+   l'intention ; les pseudo-éléments donnent la piste noire et le curseur argent de l'original (DESIGN
+   §2.4). WebKit n'expose pas de pseudo-élément de remplissage : on y garde `accent-color` et la piste
+   noire, tandis que Firefox peint `::-moz-range-progress`. Aucune ressource, aucun script. */
+.mh-sound-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 320px;
+  min-width: 220px;
+  box-sizing: border-box;
+}
+
+input[type="range"].mh-sound-progress-range,
+input[type="range"].mh-sound-volume-range {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"].mh-sound-progress-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  accent-color: var(--mh-cyan-progress, #088888);
+}
+
+/* Piste noire (`--mh-bg-night-bottom`) et curseur sphérique argent (DESIGN §2.4). */
+input[type="range"].mh-sound-progress-range::-webkit-slider-runnable-track,
+input[type="range"].mh-sound-volume-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border: 1px solid var(--mh-panel-border, #444c56);
+  border-radius: 3px;
+  background: var(--mh-bg-night-bottom, #07111b);
+}
+
+input[type="range"].mh-sound-progress-range::-moz-range-track,
+input[type="range"].mh-sound-volume-range::-moz-range-track {
+  height: 6px;
+  border: 1px solid var(--mh-panel-border, #444c56);
+  border-radius: 3px;
+  background: var(--mh-bg-night-bottom, #07111b);
+}
+
+/* Firefox : remplissage réel de la barre de progression en `#088888`. */
+input[type="range"].mh-sound-progress-range::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--mh-cyan-progress, #088888);
+}
+
+input[type="range"].mh-sound-progress-range::-webkit-slider-thumb,
+input[type="range"].mh-sound-volume-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 1px solid #6d7477;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f4f4f4, #cbcbcb 55%, #7d8083);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+input[type="range"].mh-sound-progress-range::-moz-range-thumb,
+input[type="range"].mh-sound-volume-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #6d7477;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f4f4f4, #cbcbcb 55%, #7d8083);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+input[type="range"].mh-sound-progress-range:disabled,
+input[type="range"].mh-sound-volume-range:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Temps `m:ss` : chasse fixe pour que la barre ne bouge pas quand les chiffres défilent. */
+.mh-sound-time {
+  flex: none;
+  min-width: 3.2ch;
+  color: var(--mh-text-menu, #a9c8cc);
+  font-size: 0.95rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.mh-sound-time-current {
+  color: var(--mh-text-ui, #eef4f5);
+}
+
+/* ── Volume : libellé visible et curseur de ≈ 140 px ──────────────────────────────────────────────── */
+.mh-sound-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.mh-sound-volume-label {
+  flex: none;
+  color: var(--mh-text-menu, #a9c8cc);
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+input[type="range"].mh-sound-volume-range {
+  flex: none;
+  width: 140px;
+  max-width: 45vw;
+  accent-color: var(--mh-cyan-rail, #3f889c);
+}
+
+/* ── Message de liste vide : centré, discret ; `hidden` doit gagner sur le `display` du paragraphe ── */
+.mh-sound-empty {
+  max-width: 40ch;
+  margin: 1.5rem auto;
+  padding: 0 1rem;
+  color: var(--mh-text-menu, #a9c8cc);
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.mh-sound-empty[hidden] {
+  display: none;
+}
+
+/* ── Pied : « Retour » en bas à droite, encre jusqu'à x ≈ 1161 et y ≈ 666–687 @720 ────────────────── */
+.mh-sound-footer {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0 9% 1.75rem; /* 28 px sous le bouton (les pourcentages verticaux se résolvent sur la largeur) */
+}
+
+.mh-sound-back {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0.125rem 0.25rem;
+  border: 0;
+  background: none;
+  color: #c7dfe1;
+  font-family: var(--mh-font-title, Georgia, serif);
+  font-size: var(--mh-back-size, 1.8rem);
+  line-height: 1.1;
+  white-space: nowrap;
+  cursor: pointer;
+  text-shadow: 0 1px 2px #000;
+}
+
+/* Préfixe décoratif du bouton maison, comme sur l'historique et CG mode (jamais un libellé : le texte
+   « Retour » vient de l'i18n). */
+.mh-sound-back::before {
+  content: "‹‹";
+  margin-right: 0.45rem;
+  color: var(--mh-cyan-glint, #5fcfc5);
+  letter-spacing: -0.12em;
+}
+
+.mh-sound-back:hover {
+  color: #fff;
+  text-shadow: 0 0 14px rgba(95, 207, 197, 0.55);
+}
+
+.mh-sound-back:focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+
+/* ── Grille responsive : le conteneur est `.mh-sound-scroll` (inline-size) ───────────────────────────
+   3 colonnes par défaut ; 2 sous 1000 px de conteneur ; 1 sous 640 px (petit écran ou fenêtre étroite). */
+@container (max-width: 1000px) {
+  .mh-sound-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 640px) {
+  .mh-sound-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Tactile : cibles de 44 px au moins (DESIGN §10) ; la grille reste lisible, sans survol ─────────── */
+@media (pointer: coarse) {
+  .mh-sound-button,
+  .mh-sound-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mh-sound-toggle {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mh-sound-back {
+    min-height: 44px;
+  }
+
+  input[type="range"].mh-sound-progress-range,
+  input[type="range"].mh-sound-volume-range {
+    height: 44px;
+  }
+}
+
+/* ── Mouvement réduit : cette feuille ne déclare ni transition ni animation ; on l'affirme quand même
+   pour que tout ajout futur respecte le réglage système (DESIGN §10). ─────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .mh-sound-screen,
+  .mh-sound-track,
+  .mh-sound-button,
+  .mh-sound-toggle,
+  .mh-sound-back {
+    transition: none;
+    animation: none;
+  }
+}
