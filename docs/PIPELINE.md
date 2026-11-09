@@ -10,24 +10,69 @@ Le pipeline convertit les assets du jeu original (PC 2012, KiriKiri/KAG3) en fic
 |---|---|---|
 | Node.js ≥ 18 | Exécution du pipeline | ✅ Oui |
 | `tsx` (installé via npm) | Exécution des scripts TypeScript | ✅ Oui (devDep) |
-| Extracteur XP3 (`xp3extract`, `krkrExtract`, etc.) | Extraction des archives `.xp3` | ⬚ Optionnel |
-| Convertisseur TLG externe (`tlg2png`, etc.) | Conversion `.tlg` → `.webp` | ⬚ Optionnel (un décodeur `TLG0.0`/`TLG5` est intégré) |
-| `ffmpeg` (ou autre encodeur) | Re-encodage audio | ⬚ Optionnel |
+| Extracteur XP3 (`xp3extract`, `krkrExtract`, GARbro CLI, script Python…) | Extraction des archives `.xp3` | ✅ Si `--input` contient des `.xp3` (prérequis externe, non fourni) |
+| Convertisseur TLG (`tlg2png` + `cwebp`, ou convertisseur TLG→WebP) | Conversion `.tlg` → `.webp` | ⬚ Recommandé pour WebP ; sans lui, décodeur intégré → `.png` (`TLG0.0`/`TLG5` seulement) |
+| `ffmpeg` (ou autre encodeur) | Re-encodage audio `.wav` → `.ogg` | ⬚ Optionnel (sans lui, les `.wav`/`.ogg` sont copiés tels quels) |
 
-> Les outils optionnels sont des **wrappers** : le pipeline les appelle s'ils sont fournis, sinon il ignore l'étape correspondante avec un avertissement.
+> Les outils externes sont appelés par des **gabarits de commande** (`{in}` et
+> `{out}` remplacés argument par argument, sans shell) : adaptez-les à votre
+> extracteur/convertisseur. Un extracteur en GUI (krkrExtract) se lance une fois
+> à la main ; passez ensuite le dossier extrait à `--input` (sans `--xp3-cmd`).
+>
+> Les outils optionnels sont des **wrappers** : le pipeline les appelle s'ils sont
+> fournis, sinon il se rabat sur la copie/décodage intégré et le signale.
 
-## Utilisation
+## Parcours complet E1 (de l'archive au jouable)
+
+Il faut posséder une copie du jeu PC 2012 ; le dépôt ne contient aucun asset.
+
+1. **Extraire et convertir les assets** (`.xp3` → fichiers bruts → assets web +
+   manifest) en une commande :
+
+   ```bash
+   npm run pipeline -- \
+     --input ./jeu \
+     --output ./public/assets \
+     --work .pipeline-work \
+     --xp3-cmd "<extracteur> {in} {out}" \
+     --tlg-cmd "<convertisseur TLG→WebP> {in} {out}" \
+     --audio-cmd "ffmpeg -y -i {in} -c:a libvorbis -q:a 4 {out}"
+   ```
+
+   - `./jeu` contient les archives (`data.xp3`, `bg.xp3`, …) **ou** les fichiers
+     déjà extraits (dans ce cas, omettre `--xp3-cmd`).
+   - L'extraction va dans `<work>/extracted/<archive>/`, puis le pipeline
+     inventorie, convertit et écrit `public/assets/asset-manifest.json`.
+   - Sans `--tlg-cmd`, les `.tlg` sont décodés en `.png` par le décodeur intégré
+     (voir « Étapes ») ; sans `--audio-cmd`, les audio sont copiés.
+   - Le résumé final liste les fichiers non convertis et le rapport
+     `<work>/pipeline-report.json` (code de sortie 1 en cas d'échec).
+
+2. **Générer les tables** (non couvertes par `npm run pipeline`) :
+
+   ```bash
+   # main.gc se trouve dans data.xp3 (dossier others/) une fois l'archive extraite
+   npm run chain -- <chemin/main.gc> public/assets
+   npm run timelines -- public/assets
+   ```
+
+3. **Lancer** : `npm run dev`, puis ouvrir l'adresse affichée.
+
+Voir `npm run pipeline -- --help` pour toutes les options.
 
 ### Pipeline complet
 
 ```bash
+npm run pipeline -- --help
+# ou :
 npm run pipeline -- \
   --input <dossier_jeu> \
   --output <dossier_web> \
-  [--dry-run] \
-  [--xp3-extractor <chemin>] \
-  [--tlg-converter <chemin>] \
-  [--audio-encoder <chemin>]
+  [--work .pipeline-work] \
+  [--dry-run] [--strict] [--force] [--no-translation] \
+  [--xp3-cmd "<extracteur> {in} {out}"] \
+  [--tlg-cmd "<convertisseur TLG→WebP> {in} {out}"] \
+  [--audio-cmd "<encodeur> {in} {out}"]
 ```
 
 **Exemple :**
@@ -36,9 +81,14 @@ npm run pipeline -- \
 npm run pipeline -- \
   --input ./raw-assets \
   --output ./public/assets \
-  --xp3-extractor /usr/local/bin/xp3extract \
-  --tlg-converter /usr/local/bin/tlg2png
+  --xp3-cmd "/usr/local/bin/xp3extract {in} {out}" \
+  --tlg-cmd "/usr/local/bin/tlg2webp {in} {out}" \
+  --audio-cmd "ffmpeg -y -i {in} -c:a libvorbis -q:a 4 {out}"
 ```
+
+Les gabarits sont exécutés **sans shell** (`execFile`), avec `{in}` et `{out}`
+substitués argument par argument : les noms d'assets japonais ou avec espaces ne
+posent pas de problème de quoting.
 
 ### Mode dry-run
 
@@ -66,9 +116,16 @@ npm run normalize-ks -- <input.ks>
 
 ### 1. extract-xp3
 
-- **Entrée** : fichiers `.xp3` dans le dossier d'input
-- **Sortie** : contenu extrait dans le dossier d'output (sous-dossier par archive)
-- **Sans extracteur** : liste les archives trouvées et passe
+- **Entrée** : archives `.xp3` dans le dossier d'input (recherche récursive)
+- **Déclenchement** : `--xp3-cmd "<extracteur> {in} {out}"` ; sans cette option,
+  le pipeline attend un `--input` déjà extrait (sinon message explicite).
+- **Sortie** : `<work>/extracted/<arborescence>/<archive>/` (un sous-dossier par
+  archive), puis l'inventaire repart de là.
+- **Échecs** : chaque archive est tentée ; si une extraction échoue, le pipeline
+  s'arrête avec la liste des archives en échec (code de sortie 1). Aucune archive
+  trouvée alors que `--xp3-cmd` est fourni = erreur explicite.
+- Un extracteur en **GUI** (krkrExtract) ne convient pas comme gabarit : lancez-le
+  à la main et passez le dossier extrait à `--input` sans `--xp3-cmd`.
 
 ### 2. convert-tlg
 
@@ -84,6 +141,23 @@ npm run normalize-ks -- <input.ks>
 - **Corpus de référence** : les 32 `TLG0.0` + `TLG5.0` de l'archive (dont 15 jamais convertis, #155) sont décodés ; pour les 17 qui avaient déjà un PNG, le décodeur le reproduit au pixel près.
 - **Réparer une installation existante** (assets déjà générés par l'ancien POC) : `npm run convert-tlg -- <dossier des .tlg restants> <dossier temporaire>`, copier les `.png` manquants dans `assets/image/`, puis ajouter au manifest, pour chacun, `"<nom en minuscules>": { "url": "image/<nom>.png", "source": "fg/<nom>.png", "kind": "image" }`. Sans ajout au manifest, le resolver ne les voit pas.
 - Le manifest généré ne prédit plus d'échec : un `.tlg` sans outil externe devient une tâche interne (`convert-image`, sortie `.png`).
+- **Obtenir du WebP** : le décodeur intégré ne produit que du PNG. Pour du WebP,
+  fournissez un gabarit `--tlg-cmd` qui écrit directement le `.webp`. Un
+  convertisseur TLG natif vers WebP est rare : le plus simple est un petit script
+  qui décode puis encode, par exemple avec ImageMagick ou `cwebp` :
+
+  ```bash
+  # /usr/local/bin/tlg2webp (chmod +x)
+  #!/usr/bin/env bash
+  set -euo pipefail
+  tlg2png "$1" "/tmp/tlg-$$.png"      # décodeur TLG (externe)
+  cwebp -quiet "/tmp/tlg-$$.png" -o "$2"
+  rm -f "/tmp/tlg-$$.png"
+  ```
+
+  Puis `--tlg-cmd "/usr/local/bin/tlg2webp {in} {out}"`. Si votre décodeur a
+  besoin d'un autre format intermédiaire, adaptez le script : le pipeline ne fait
+  que substituer `{in}`/`{out}` dans les arguments.
 
 ### 3. convert-audio
 
@@ -133,6 +207,47 @@ clé à espace final n'est donc pas signalée à tort. Le manifest **généré**
 des clés normalisées (`storageKey` dans `tools/inventory.ts`) : le repli ne sert
 qu'aux installations antérieures, sans régénération obligatoire. `--strict` échoue
 s'il reste des `missingStorages`.
+
+## Rapport d'exécution, erreurs et code de sortie
+
+En fin d'exécution, le pipeline écrit trois fichiers (tous hors du dépôt) :
+
+| Fichier | Contenu |
+|---|---|
+| `<output>/asset-manifest.json` | Assets produits (clé normalisée → URL web), scénarios et encodages |
+| `<work>/report.json` | Vérification des références des scripts (`missingStorages`, `emptyStorageRefs`, `macroStorageRefs`, erreurs `@eval`) |
+| `<work>/pipeline-report.json` | Rapport d'exécution complet : plan, totaux, **fichiers non convertis** (source, action, erreur), compteurs de vérification |
+
+Le résumé final (console) affiche le plan, les totaux, les 20 premiers fichiers
+non convertis et le chemin du rapport complet.
+
+**Codes de sortie** :
+
+- `0` : tous les fichiers planifiés sont produits (et, en `--strict`, aucun
+  storage manquant) ;
+- `1` : au moins un fichier n'a pas été converti/copié/transcodé (liste dans le
+  résumé et `pipeline-report.json`), ou `--strict` avec des storages manquants,
+  ou une erreur bloquante (archive `.xp3` non extraite, gabarit invalide, dossier
+  de sortie non ignoré par git).
+
+**Diagnostic** : un `.tlg` « TLG6 non pris en charge » ou « signature TLG
+inconnue » apparaît comme fichier non converti ; utilisez `--tlg-cmd` avec un
+convertisseur externe pour ces fichiers.
+
+## Sorties et dossiers ignorés par git
+
+Aucun asset du jeu ne doit être commité. Les dossiers recommandés sont déjà dans
+`.gitignore` :
+
+- `public/assets` (sortie recommandée, aussi en lien symbolique) ;
+- `.pipeline-work/` (travail par défaut : extraction brute, rapports) ;
+- `decrypted/`, `tmp-*/` (anciens dossiers du POC).
+
+Le pipeline **refuse de démarrer** si le dossier de sortie ou de travail est dans
+le dépôt sans être ignoré par git : l'extraction écrirait des fichiers du jeu
+committables. Utilisez `public/assets`, `.pipeline-work/` (ou un autre dossier
+ignoré), ou travaillez hors du dépôt (`/tmp/…`). `--dry-run` ne fait
+qu'avertir, puisqu'il n'écrit rien.
 
 ## Structure des dossiers
 
@@ -196,12 +311,13 @@ type PipelineContext = {
 
 Les fonctions pures de normalisation sont testées dans `tests/unit/tools/normalize-ks.test.ts` (17 tests).
 Le décodeur TLG est testé dans `tests/unit/tools/tlg-decode.test.ts` sur des `TLG5` **inventés** par un encodeur écrit dans le test (LZSS, RGB/RGBA, bandes partielles, composantes brutes, conteneur `TLG0.0`, TLG6/fichiers tronqués, PNG) : aucun asset du jeu n'est versionné.
-L'outil d'audit headless est testé dans `tests/unit/tools/audit-scenario.test.ts` (21 tests, dont 11 pour la détection de scripts chiffrés).
+L'outil d'audit headless est testé dans `tests/unit/tools/audit-scenario.test.ts` et `tests/unit/tools/audit-binary.test.ts` (dont la détection des fichiers binaires/médias).
 Le contrôle anti-assets est testé dans `tests/unit/tools/check-no-assets.test.ts` et `tests/unit/tools/check-assets-symlink.test.ts` (lien symbolique `public/assets` ignoré par git ; lien suivi par git détecté).
+L'extraction `.xp3` et le rapport d'exécution du pipeline sont testés dans `tests/unit/tools/extraction.test.ts`, `tests/unit/tools/pipeline-report.test.ts` et `tests/unit/tools/pipeline-integration.test.ts` (faux extracteur, échec de conversion, sortie non ignorée).
 Le parser KAG est testé dans `tests/unit/kag/parser.test.ts` (27 tests, dont 5 pour les inline tags).
 
 ```bash
-npm test           # Lance tous les tests (388 au total)
+npm test           # Lance tous les tests unitaires et d'intégration
 npm run audit      # Audit headless du corpus KAG complet
 ```
 
@@ -211,9 +327,11 @@ L'outil `tools/audit-scenario.ts` parcourt tous les scripts `.ks` narratifs
 via le moteur KAG et produit un rapport JSON + Markdown dans `reports/`.
 
 - Les scripts système (menus, config, plugins, teatime, tracerplugin) sont ignorés.
-- Les scripts chiffrés/binaires sont détectés automatiquement (`isEncrypted()`) :
-  signatures magiques (PNG, RIFF), caractères de contrôle et katakana demi-chasse.
-  Ils sont exclus du cache de scripts pour empêcher le chargement via `@call`/`@jump`.
+- Les fichiers `.ks` en réalité binaires (médias de `data/scenario/`) sont détectés
+  automatiquement (`detectBinaryAsset()`) : signatures PNG/TLG/RIFF (décodées en
+  Shift-JIS ou UTF-16), caractères de contrôle et katakana demi-chasse. Ils sont
+  exclus du cache de scripts pour empêcher le chargement via `@call`/`@jump`, et
+  listés avec leur nature (image/son) dans le rapport. Voir `docs/LECTURE_COMPLETE.md`.
 - Chaque script est exécuté jusqu'à `@end` ou 10 000 steps maximum.
 - Les commandes inconnues, warnings et assets manquants sont collectés et agrégés.
 - Les rapports sont dans `.gitignore` (ils citent des noms d'assets du jeu).

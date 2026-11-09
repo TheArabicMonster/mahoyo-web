@@ -117,7 +117,16 @@ de deux runners — choix documenté dans `.github/workflows/ci.yml`.
 
 Le dépôt ne contient aucun asset du jeu : il faut posséder une copie du jeu et générer les fichiers web.
 
-1. **Convertir les assets** (images, sons, scripts) vers `public/assets/` : voir [`docs/PIPELINE.md`](docs/PIPELINE.md) (`npm run pipeline`). Ce dossier est ignoré par git.
+1. **Extraire et convertir les assets** (`.xp3` → fichiers bruts → images WebP, sons OGG, scripts UTF-8 + manifest) vers `public/assets/`, en une commande. Les outils externes (extracteur `.xp3`, convertisseur TLG) sont requis :
+
+   ```bash
+   npm run pipeline -- --input ./jeu --output ./public/assets \
+     --xp3-cmd "<extracteur> {in} {out}" \
+     --tlg-cmd "<convertisseur TLG→WebP> {in} {out}" \
+     --audio-cmd "ffmpeg -y -i {in} -c:a libvorbis -q:a 4 {out}"
+   ```
+
+   Sans `--tlg-cmd`, le décodeur intégré produit des `.png` (TLG0.0/TLG5) ; `npm run pipeline -- --help` liste toutes les options. Ce dossier est ignoré par git. Parcours complet (prérequis, rapport des fichiers non convertis, code de sortie, dossiers ignorés) : [`docs/PIPELINE.md`](docs/PIPELINE.md#parcours-complet-e1-de-larchive-au-jouable).
 2. **Générer les tables** à partir des fichiers du jeu. Elles ne sont pas produites par `npm run pipeline` :
 
    ```bash
