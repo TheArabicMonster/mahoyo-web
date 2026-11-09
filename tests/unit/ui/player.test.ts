@@ -462,6 +462,85 @@ describe("Player", () => {
     await until(() => ctx.player.currentState === "title");
   });
 
+  describe("historique (HUD-12, #201)", () => {
+    const silent = (n: number): Step[] =>
+      Array.from({ length: n }, (_v, i) => ({
+        position: { scriptName: "t.ks", page: i, instruction: 0 },
+        events: [],
+        stop: { kind: "click", style: "line" },
+      })) as Step[];
+
+    it("ouvert à vide : aucun écran, un toast, le jeu continue", async () => {
+      const ctx = setup(silent(2));
+      await start(ctx);
+      const views = ctx.ui.views.length;
+      ctx.player.openScreen("backlog");
+      expect(ctx.ui.toasts.at(-1)?.message).toBe(translate("fr", "toast.historyEmpty"));
+      expect(ctx.ui.views.length).toBe(views);
+      expect(ctx.player.currentState).toBe("waiting-click");
+      // Aucun écran empilé : closeScreen n'a rien à fermer.
+      ctx.player.closeScreen();
+      expect(ctx.ui.views.length).toBe(views);
+    });
+
+    it("le toast suit la langue de l'interface", async () => {
+      const ctx = setup(silent(1));
+      await start(ctx);
+      setUiLanguage("en");
+      ctx.player.openScreen("backlog");
+      expect(ctx.ui.toasts.at(-1)?.message).toBe("The history does not exist yet.");
+    });
+
+    it("avec du texte lu : l'écran s'ouvre avec les pages, sans toast", async () => {
+      const ctx = setup();
+      await start(ctx);
+      ctx.player.openScreen("backlog");
+      await until(() => ctx.ui.views.at(-1)?.screen === "backlog", "vue historique");
+      const view = ctx.ui.views.at(-1) as unknown as { entries: { text: string }[] };
+      expect(view.entries.length).toBeGreaterThan(0);
+      expect(view.entries.every((e) => e.text.length > 0)).toBe(true);
+      expect(ctx.ui.toasts).toHaveLength(0);
+      ctx.player.closeScreen();
+      expect(ctx.player.currentState).toBe("waiting-click");
+    });
+
+    it("rouvrir l'historique déjà ouvert (raccourci) n'empile rien : une seule fermeture suffit", async () => {
+      const ctx = setup();
+      await start(ctx);
+      ctx.player.openScreen("backlog");
+      await until(() => ctx.ui.views.at(-1)?.screen === "backlog", "vue historique");
+      ctx.player.openScreen("backlog");
+      ctx.player.closeScreen();
+      expect(ctx.ui.views.at(-1)).toMatchObject({ screen: "game" });
+    });
+
+    it("depuis le menu système, l'historique vide laisse le menu ouvert", async () => {
+      const ctx = setup(silent(1));
+      await start(ctx);
+      ctx.player.openScreen("pause");
+      ctx.player.openScreen("backlog");
+      expect(ctx.ui.toasts.at(-1)?.message).toBe(translate("fr", "toast.historyEmpty"));
+      ctx.player.closeScreen();
+      expect(ctx.player.currentState).toBe("waiting-click");
+    });
+
+    it("le retour arrière garde sa sémantique : un point en arrière, une page de moins dans l'historique", async () => {
+      const ctx = setup();
+      await start(ctx);
+      ctx.player.advance();
+      await until(() => ctx.ui.statuses.at(-1)?.canRollback === true, "canRollback");
+      ctx.player.openScreen("backlog");
+      await until(() => ctx.ui.views.at(-1)?.screen === "backlog", "vue historique");
+      const before = (ctx.ui.views.at(-1) as unknown as { entries: unknown[] }).entries.length;
+      ctx.player.closeScreen();
+      await ctx.player.rollback();
+      await until(() => ctx.player.currentState === "waiting-click");
+      ctx.player.openScreen("backlog");
+      await until(() => ctx.ui.views.at(-1)?.screen === "backlog", "vue historique");
+      expect((ctx.ui.views.at(-1) as unknown as { entries: unknown[] }).entries.length).toBe(before - 1);
+    });
+  });
+
   it("pause : openScreen suspend l'avancement, closeScreen reprend", async () => {
     const ctx = setup();
     await start(ctx);

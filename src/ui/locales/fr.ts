@@ -72,7 +72,12 @@ export const fr = {
   "slot.confirmLoad": "Charger « {name} » ?",
 
   // ── Historique et flowchart ──
-  "history.title": "Historique",
+  "history.title": "Back Log",
+  "history.title.deco": "履歴",
+  "history.listLabel": "Historique",
+  "history.scrollDown": "Défiler vers le bas",
+  "history.scrollUp": "Défiler vers le haut",
+  "history.close": "Fermer l'historique",
   "flowchart.title": "Flowchart",
   "flowchart.title.deco": "フローチャート",
   "flowchart.region": "Carte du scénario",
@@ -213,6 +218,7 @@ export const fr = {
   "shortcut.quit": "Quitter le jeu",
 
   // ── Messages éphémères (toasts) ──
+  "toast.historyEmpty": "L'historique n'existe pas encore.",
   "toast.quickMenuLocked": "Sauvegarde et chargement indisponibles pendant cette séquence.",
   "toast.scriptNotFound": "Script introuvable : {file}",
   "toast.saveUnavailable": "Impossible de sauvegarder à cet instant.",

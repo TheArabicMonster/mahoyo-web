@@ -18,17 +18,17 @@ describe("isNightDemoRequested", () => {
 });
 
 describe("syncNightDemo", () => {
-  it("pose la classe sur les écrans système quand la démonstration est demandée", () => {
+  it("aucun écran ne dépend plus de ?night (l'historique porte la classe en permanence, HUD-12)", () => {
     const el = document.createElement("div");
-    for (const screen of ["backlog"] as const) {
+    for (const screen of ["game", "title", "settings", "pause", "flowchart"] as const) {
       syncNightDemo(el, screen, "?night");
-      expect(el.classList.contains(NIGHT_CLASS), screen).toBe(true);
+      expect(el.classList.contains(NIGHT_CLASS), screen).toBe(false);
     }
   });
 
-  it("sauvegarde et chargement portent toujours la nuit bleue, sans ?night (HUD-10)", () => {
+  it("sauvegarde, chargement et historique portent toujours la nuit bleue, sans ?night (HUD-10, HUD-12)", () => {
     const el = document.createElement("div");
-    for (const screen of ["save", "load"] as const) {
+    for (const screen of ["save", "load", "backlog"] as const) {
       syncNightDemo(el, screen, "");
       expect(el.classList.contains(NIGHT_CLASS), screen).toBe(true);
       syncNightDemo(el, screen, "?night=0");
@@ -46,9 +46,6 @@ describe("syncNightDemo", () => {
     syncNightDemo(el, "settings", "?night");
     expect(el.classList.contains(NIGHT_CLASS)).toBe(false);
     syncNightDemo(el, "title", "?night"); // l'écran titre est clair : il ne prend jamais le fond nuit (HUD-07, #195)
-    expect(el.classList.contains(NIGHT_CLASS)).toBe(false);
-    el.classList.add(NIGHT_CLASS);
-    syncNightDemo(el, "backlog", "");
     expect(el.classList.contains(NIGHT_CLASS)).toBe(false);
   });
 });

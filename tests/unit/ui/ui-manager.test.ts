@@ -197,13 +197,14 @@ describe("DomUIManager", () => {
       ui.show(v);
       expect(q("#ui-overlay")!.dataset.screen).toBe(v.screen);
       // Menu système plein cadre (HUD-06, #194), écran titre plein cadre (HUD-07, #195) et flowchart (FLOW-05, #197) : pas de panneau centré.
-      const full: Record<string, string> = { pause: ".mh-sysmenu", title: ".mh-ui-title-screen", flowchart: ".mh-flow-screen" };
+      const full: Record<string, string> = { pause: ".mh-sysmenu", title: ".mh-ui-title-screen", flowchart: ".mh-flow-screen", backlog: ".mh-bl" };
       expect(q(full[v.screen] ?? ".mh-ui-panel, .mh-sl")).not.toBeNull();
       ui.show({ screen: "game" });
       expect(q(".mh-ui-panel, .mh-sl")).toBeNull();
       expect(q(".mh-sysmenu")).toBeNull();
       expect(q(".mh-ui-title-screen")).toBeNull();
       expect(q(".mh-flow-screen")).toBeNull();
+      expect(q(".mh-bl")).toBeNull();
     });
 
     it("title : la grille de chapitres n'est plus au titre, Extra l'ouvre (provisoire)", () => {

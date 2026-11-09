@@ -9,10 +9,10 @@ export const NIGHT_VEIL_CLASS = "mh-ui-night-veil";
 export const NIGHT_DEMO_PARAM = "night";
 
 /** Écrans du slot `menu` sur lesquels la démonstration pose le fond (les autres gardent leur habillage). */
-const NIGHT_DEMO_SCREENS: ReadonlySet<UIView["screen"]> = new Set(["backlog"]);
+const NIGHT_DEMO_SCREENS: ReadonlySet<UIView["screen"]> = new Set([]);
 
-/** Écrans qui portent toujours la nuit bleue, sans `?night` (HUD-10 / #196 : sauvegarde et chargement). */
-const NIGHT_FIXED_SCREENS: ReadonlySet<UIView["screen"]> = new Set(["save", "load"]);
+/** Écrans qui portent toujours la nuit bleue, sans `?night` (HUD-10 / #196 : sauvegarde et chargement ; HUD-12 / #201 : historique). */
+const NIGHT_FIXED_SCREENS: ReadonlySet<UIView["screen"]> = new Set(["save", "load", "backlog"]);
 
 /** Vrai si la chaîne de requête active la démonstration (`?night`, `?night=1`, pas `?night=0`/`false`). */
 export function isNightDemoRequested(search: string): boolean {

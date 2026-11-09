@@ -22,6 +22,7 @@ import type {
   UIManager,
   UIView,
 } from "@/ui/types.js";
+import { createBacklogScreen } from "@/ui/backlog-screen.js";
 import { openConfirmDialog, type ConfirmDialog } from "@/ui/confirm-dialog.js";
 import { getUiLanguage, LANGUAGE_NAMES, onUiLanguageChange, t } from "@/ui/i18n.js";
 import { createSaveLoadScreen, type SaveLoadScreen, type SaveTransferActions } from "@/ui/save-load-screen.js";
@@ -214,7 +215,7 @@ export class DomUIManager implements UIManager {
         this.menu.appendChild(this.renderSettings(view.settings, view.availableLanguages));
         break;
       case "backlog":
-        this.menu.appendChild(this.renderBacklog(view.entries));
+        this.renderBacklog(view.entries);
         break;
       case "flowchart":
         this.flowchart.appendChild(this.renderFlowchart(view));
@@ -882,20 +883,11 @@ export class DomUIManager implements UIManager {
     return p;
   }
 
-  private renderBacklog(entries: readonly BacklogEntry[]): El {
-    const p = this.panel(t("history.title"), "mh-ui-backlog-screen");
-    const list = h("ol", "mh-ui-backlog");
-    for (const e of entries) {
-      const li = h("li", "mh-ui-backlog-entry", e.text);
-      if (e.voice) li.dataset.voice = e.voice;
-      list.appendChild(li);
-    }
-    p.append(list, this.backButton());
-    // Dernier texte lu en bas, visible par défaut.
-    queueMicrotask(() => {
-      list.scrollTop = list.scrollHeight;
-    });
-    return p;
+  /** Écran refait en HUD-12 (#201) : voir `backlog-screen.ts`. */
+  private renderBacklog(entries: readonly BacklogEntry[]): void {
+    const screen = createBacklogScreen({ entries, commands: this.commands! });
+    this.menu.appendChild(screen.element);
+    screen.mount();
   }
 
   /** Écran refait en FLOW-05 (#197) : voir `flowchart-view.ts`. */
