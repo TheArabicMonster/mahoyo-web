@@ -348,6 +348,12 @@ export class Runtime {
    */
   public onTrace: ((sample: RuntimeTraceSample) => void) | null = null;
 
+  /**
+   * Callback léger (nom de commande exécuté), utilisé par l'audit pour compter les commandes
+   * réellement rencontrées sans le coût de `onTrace` (pas de clone d'état).
+   */
+  public onCommand: ((command: string) => void) | null = null;
+
   /** Macros définies par @macro/@endmacro. */
   private macros: Map<string, Token[]> = new Map();
 
@@ -2478,6 +2484,12 @@ export class Runtime {
    * Page visée par une commande (même règle que `resolvePage`, appliquée aux commandes
    * visuelles) ; null pour les commandes qui ne touchent aucune page.
    */
+  /** Nom de commande d'origine d'une instruction (pour l'audit/diagnostic). */
+  private commandNameOf(instruction: Instruction): string {
+    if (instruction.kind === "raw" || instruction.kind === "noop") return instruction.command;
+    return instruction.kind;
+  }
+
   private resolvedPageOf(instruction: Instruction): PageLayer | null {
     switch (instruction.kind) {
       case "bg":
@@ -2987,6 +2999,7 @@ export class Runtime {
           continue;
         }
 
+        if (this.onCommand) this.onCommand(this.commandNameOf(instruction));
         const tracePosition = this.onTrace ? this.buildPosition() : null;
         const result = this.applyInstruction(instruction);
         if (this.onTrace && tracePosition) {
