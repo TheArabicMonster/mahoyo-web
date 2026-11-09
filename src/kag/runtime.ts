@@ -971,6 +971,55 @@ export class Runtime {
   }
 
   /**
+   * `@image` (KAG3 standard) : charge une image dans une couche d'une page, **sans transition**.
+   * Tous les usages du corpus ciblent `layer=base` (fond de page, y compris dans les macros
+   * système `first.ks`/`macro.ks` et les crédits `staffroll.ks`/`wik_fin.ks`) : on pose alors le
+   * fond de la page cible sans vider les calques ni changer de page, exactement comme le moteur.
+   * Un `layer=<numéro>` pose un sprite centré (approximation ; aucune occurrence dans le corpus).
+   */
+  private applyImage(instruction: Extract<Instruction, { kind: "image" }>): { events: RenderEvent[]; stop?: StopReason } {
+    const page = this.resolvePage("image", instruction.page);
+    const target = this.getPageState(page);
+    if (instruction.layer === "base") {
+      target.background = instruction.storage;
+      target.bgLeft = instruction.left;
+      target.bgTop = instruction.top;
+      delete target.bgZoomX;
+      delete target.bgZoomY;
+      delete target.bgRotate;
+      delete target.bgType;
+      delete target.bgEffect;
+      delete target.bgBrightness;
+      delete target.bgContrast;
+      delete target.bgBlurX;
+      delete target.bgBlurY;
+      if (instruction.type !== undefined) target.bgType = instruction.type;
+      if (instruction.effect !== undefined) target.bgEffect = instruction.effect;
+      if (instruction.brightness !== undefined) target.bgBrightness = instruction.brightness;
+      if (instruction.contrast !== undefined) target.bgContrast = instruction.contrast;
+      if (instruction.blurx !== undefined) target.bgBlurX = instruction.blurx;
+      if (instruction.blury !== undefined) target.bgBlurY = instruction.blury;
+      if (page === "back") return { events: [] };
+      return { events: [this.emitScene({ method: "none" })] };
+    }
+    const id = `image:${instruction.layer}`;
+    const layer: Layer = {
+      id,
+      storage: instruction.storage,
+      center: instruction.left ?? 512,
+      vcenter: instruction.top ?? 288,
+      index: instruction.layer,
+      opacity: instruction.opacity ?? 1,
+    };
+    clearAppearance(layer);
+    patchAppearance(layer, instruction);
+    target.layers = target.layers.filter((l) => l.id !== id);
+    target.layers.push(layer);
+    if (page === "back") return { events: [] };
+    return { events: [this.emitScene({ method: "none" })] };
+  }
+
+  /**
    * Trans implicite back→fore (cas @bg/@partbg sans page + time>0).
    * fore = clone(back) ; back **conservé** (sémantique KAG exchange=false).
    * Bloque jusqu'à la fin du trans sauf si nowait.
@@ -1922,6 +1971,19 @@ export class Runtime {
       }
       case "return":
         this.applyReturn();
+        break;
+      case "image": {
+        const res = this.applyImage(instruction);
+        events.push(...res.events);
+        if (res.stop) return { events, stop: res.stop };
+        break;
+      }
+      case "stop":
+        // @s : le moteur attend une sélection (bouton/lien) ; le port n'implémente pas encore
+        // les boutons de choice-map, on attend un clic (approximation documentée).
+        return { events, stop: { kind: "click", style: "line" } };
+      case "noop":
+        // Commande KAG standard volontairement sans effet (fermeture de bloc orpheline).
         break;
       case "wait":
         return { events, stop: { kind: "wait", time: instruction.time, skippable: instruction.skippable ?? true } };

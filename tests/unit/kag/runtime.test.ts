@@ -944,3 +944,77 @@ describe("Runtime — apparence des calques (#252)", () => {
     expect(layer.effect).toBe("monocro");
   });
 });
+
+describe("Runtime — commandes KAG standard (#277)", () => {
+  it("@image layer=base pose le fond de la page demandée, sans transition", () => {
+    const SRC = `
+*page0|
+@bg page=fore storage=black
+@image page=fore layer=base storage=white
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    // La scène émise par @image (fond blanc) suit celle de @bg dans le même pas.
+    expect(step.events.filter((e) => e.kind === "scene").length).toBeGreaterThanOrEqual(2);
+    expect(runtime.getSaveData().state.fore.background).toBe("white");
+  });
+
+  it("@image page=back prépare le fond sans toucher à la page affichée", () => {
+    const SRC = `
+*page0|
+@bg page=fore storage=black
+@image page=back layer=base storage=white
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.step();
+    runtime.step();
+    expect(runtime.getSaveData().state.fore.background).toBe("black");
+    expect(runtime.getSaveData().state.back.background).toBe("white");
+  });
+
+  it("@s arrête le déroulement en attendant un clic", () => {
+    const SRC = `
+*page0|
+@s
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.stop).toEqual({ kind: "click", style: "line" });
+  });
+
+  it("@endif orphelin (4-3.ks) n'est plus signalé comme commande inconnue", () => {
+    const SRC = `
+*page0|
+@endif
+[ruby text=こえ char=1]言なき鳥が鳴く。
+@pg
+`;
+    const warnings: string[] = [];
+    const runtime = new Runtime(parse(lex(SRC)));
+    runtime.onWarning = (message) => warnings.push(message);
+    const step = runtime.step();
+    expect(warnings.filter((w) => w.includes("commande non gérée"))).toEqual([]);
+    // Le texte qui suit est bien produit (le no-op ne coupe pas la page).
+    const segments = step.events.flatMap((e) => (e.kind === "text" ? e.segments : []));
+    expect(segments).toContainEqual({ text: "言", ruby: "こえ" });
+  });
+
+  it("@ruby commande (5a-11.ks) affiche le texte de base avec le ruby réparti", () => {
+    const SRC = `
+*page0|
+@ruby char="Abc" text="かんじです"
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    const texts = step.events.flatMap((e) => (e.kind === "text" ? e.segments : []));
+    expect(texts).toEqual([
+      { text: "A", ruby: "かん" },
+      { text: "b", ruby: "じ" },
+      { text: "c", ruby: "です" },
+    ]);
+  });
+});
