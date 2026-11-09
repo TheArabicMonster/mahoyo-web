@@ -62,9 +62,32 @@ npm run preview
 | Commande | Portée |
 |---|---|
 | `npm run test:unit` | Vitest, code et composants |
-| `npm run test:integration` | fixtures de scénario (lecture complète, traduction) |
+| `npm run test:integration` | tests d'intégration (se skippent proprement sans assets) |
+| `npm run test:full-read` | lecture complète du corpus KAG (vrais assets ou placeholders, voir ci-dessous) |
+| `npm run corpus:full-read` | génère un corpus de placeholders pour la lecture complète (CI) |
 | `npm run test:e2e` | Playwright, player dans un vrai navigateur (voir ci-dessous) |
 | `npm run lint` | ESLint 9 (flat config) sur `src/`, `tools/`, `tests/` et les configs (voir [`docs/LINT.md`](docs/LINT.md)) |
+
+### Lecture complète (placeholders en CI)
+
+La DoD v1.0 exige que la CI exécute la logique de lecture complète avec des **placeholders
+originaux**. Le corpus est généré sans aucun asset du jeu et réutilise l'infrastructure e2e
+(`tests/e2e/placeholders.ts`) :
+
+```bash
+MAHOYO_E2E_ASSETS=/tmp/mahoyo-full-read npm run corpus:full-read
+MAHOYO_ASSETS_DIR=/tmp/mahoyo-full-read/assets npm run test:full-read
+```
+
+| Variable | Effet |
+|---|---|
+| `MAHOYO_E2E_ASSETS` | dossier de sortie du corpus (défaut : `<tmp>/mahoyo-full-read`) ; le corpus est écrit sous `assets/` |
+| `MAHOYO_FULL_READ_SCRIPTS` | nombre de scripts narratifs générés (défaut `221`, taille du corpus de référence) |
+| `MAHOYO_ASSETS_DIR` | dossier d'assets lu par `test:full-read` / `test:integration` (vrais assets locaux ou corpus de placeholders) |
+
+Sans `MAHOYO_ASSETS_DIR` ni `public/assets`, les tests d'intégration sont **skippés proprement**
+(exit 0). La CI exécute les deux : skip sur checkout nu, puis lecture complète du corpus de
+placeholders (221 scripts, marqueur `placeholder-corpus.json`).
 
 ### Tests end-to-end (Playwright)
 

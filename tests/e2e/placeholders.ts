@@ -265,3 +265,93 @@ export function generatePlaceholderAssets(publicDir: string): number {
   // 7 PNG + partbg + 5 scripts/manifest = 13 fichiers (utile aux diagnostics).
   return 11 + Object.keys(scripts).length + 1;
 }
+
+// ── Corpus de placeholders pour la lecture complète (#269) ─────────────────────────────────────
+//
+// La DoD v1.0 exige que la CI exécute « la même logique de lecture » que la lecture complète avec
+// des placeholders originaux. On réutilise le jeu de placeholders e2e (manifeste, PNG, scripts du
+// parcours complet) et on le complète jusqu'à `size` scripts narratifs, chacun exerçant des
+// commandes visuelles différentes. Un marqueur permet au test `full-read` de connaître la taille
+// attendue du corpus (au lieu du seuil de 221 scripts des vrais assets).
+
+/** Marqueur écrit à la racine du corpus : sa présence active le mode « placeholders » de full-read. */
+export const PLACEHOLDER_CORPUS_MARKER = "placeholder-corpus.json";
+
+/** Taille du corpus de référence de la DoD v1.0 (221 scripts narratifs, voir docs/LECTURE_COMPLETE.md). */
+export const FULL_READ_CORPUS_SIZE = 221;
+
+/** Contenu du marqueur `placeholder-corpus.json`. */
+export type PlaceholderCorpusMarker = {
+  kind: "mahoyo-placeholder-corpus";
+  version: 1;
+  /** Nombre de scripts narratifs du corpus généré (tous audités par `full-read`). */
+  scripts: number;
+};
+
+/**
+ * Corps d'un script de corpus : commandes visuelles variées (rotation sur 4 variantes), texte
+ * original de test, points de clic et fin de script. Aucun asset du jeu n'est référencé.
+ */
+function corpusScriptBody(index: number): string {
+  const n = String(index).padStart(3, "0");
+  const variants = [
+    // 0 : fond + cadre de message + pages
+    `@bg page=fore time=0 rule=crossfade storage=black
+@invisibleframe
+@position frame=txtwindow02
+Corpus e2e ${n} — ouverture de scène.[p]
+Corpus e2e ${n} — deuxième page lue.[p]
+@visibleframe
+@return
+`,
+    // 1 : sprite + mouvement + nettoyage
+    `@bg page=fore time=0 rule=crossfade storage=white
+@fg storage=placeholder center=512 vcenter=288 index=1000
+Corpus e2e ${n} — sprite affiché.[p]
+@clfg
+@return
+`,
+    // 2 : partbg (crop) + zone de texte
+    `@bg page=fore time=0 rule=crossfade storage=black
+@partbg page=fore rule=crossfade time=0 storage=partbg srcleft=542 index=1000 width=522 height=576 center=748 id=pb1 bgstorage=black
+Corpus e2e ${n} — calque partbg.[p]
+@clpartbg id=pb1
+@return
+`,
+    // 3 : backlay/trans + tremblement + attente
+    `@bg page=fore time=0 rule=crossfade storage=black
+@backlay
+@bg page=back time=0 storage=white
+@trans time=0 rule=crossfade
+@quake time=0 hmax=0 vmax=0
+@wait time=0
+Corpus e2e ${n} — transition et attente.[p]
+@return
+`,
+  ];
+  return variants[index % variants.length]!;
+}
+
+/**
+ * Génère un corpus de lecture complète en placeholders sous `<publicDir>/assets/` :
+ * manifeste, images, scripts du parcours complet, puis `size - 4` scripts `corpus-NNN.ks` et le
+ * marqueur `placeholder-corpus.json`. Renvoie le marqueur écrit (taille attendue par full-read).
+ */
+export function generateFullReadCorpus(publicDir: string, size = FULL_READ_CORPUS_SIZE): PlaceholderCorpusMarker {
+  if (!Number.isInteger(size) || size < 1) {
+    throw new Error(`Taille de corpus invalide : ${size}`);
+  }
+  generatePlaceholderAssets(publicDir);
+  const assets = join(publicDir, "assets");
+  const scenarioDir = join(assets, "scenario");
+  // Les scripts du parcours complet (1-0, 1-1a, 1-1b, 2-0) sont tous narratifs et audités.
+  const baseCount = Object.keys(placeholderScripts()).length;
+  const expected = Math.max(size, baseCount);
+  for (let i = baseCount; i < expected; i++) {
+    const n = String(i - baseCount + 1).padStart(3, "0");
+    writeFileSync(join(scenarioDir, `corpus-${n}.ks`), corpusScriptBody(i));
+  }
+  const marker: PlaceholderCorpusMarker = { kind: "mahoyo-placeholder-corpus", version: 1, scripts: expected };
+  writeFileSync(join(assets, PLACEHOLDER_CORPUS_MARKER), JSON.stringify(marker, null, 2));
+  return marker;
+}

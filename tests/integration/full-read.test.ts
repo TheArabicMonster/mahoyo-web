@@ -1,11 +1,19 @@
 /**
- * Test d'intégration e2e : lecture complète du corpus KAG avec vrais assets locaux.
+ * Test d'intégration e2e : lecture complète du corpus KAG.
  *
  * Ce test parcourt tous les scripts narratifs de scenario/ (hors système et
  * chiffrés) du début à la fin, via le vrai moteur KAG en mode headless.
  *
  * Il nécessite la variable d'environnement MAHOYO_ASSETS_DIR ou un dossier
  * public/assets généré. Sans cela, le test est ignoré.
+ *
+ * Deux modes (#269) :
+ * - **vrais assets** : on vérifie au moins 221 scripts narratifs (corpus de référence,
+ *   voir docs/LECTURE_COMPLETE.md) ;
+ * - **placeholders (CI)** : le corpus généré par
+ *   `tests/integration/prepare-full-read-corpus.ts` écrit un marqueur
+ *   `placeholder-corpus.json` ; la taille attendue vient alors de ce marqueur (même logique :
+ *   traverser N scripts sans erreur), pour ne pas exiger les 221 scripts du jeu réel.
  *
  * Il produit un rapport dans reports/ (JSON + Markdown) et affiche seulement
  * un résumé chiffré. Aucun texte original du jeu n'est imprimé.
@@ -23,9 +31,31 @@ import {
 } from "../../tools/audit-lib.js";
 import type { AuditReport, ScriptAuditResult } from "../../tools/audit-lib.js";
 import { hasAssets, assetsDir, manifestPath, scenarioDir } from "./skip-if-no-assets.js";
+import { PLACEHOLDER_CORPUS_MARKER, type PlaceholderCorpusMarker } from "../e2e/placeholders.js";
 
 /** Nombre de scripts narratifs lus sur le corpus de référence (voir docs/LECTURE_COMPLETE.md). */
 const EXPECTED_MIN_NARRATIVE_SCRIPTS = 221;
+
+/**
+ * Lit le marqueur d'un corpus de placeholders (généré pour la CI) ; null si le corpus vient des
+ * vrais assets. Le marqueur donne la taille attendue, sans chemin absolu ni asset du jeu.
+ */
+function readPlaceholderCorpus(): PlaceholderCorpusMarker | null {
+  if (!hasAssets) return null;
+  const path = join(assetsDir!, PLACEHOLDER_CORPUS_MARKER);
+  if (!existsSync(path)) return null;
+  try {
+    const marker = JSON.parse(readFileSync(path, "utf-8")) as Partial<PlaceholderCorpusMarker>;
+    if (marker.kind === "mahoyo-placeholder-corpus" && typeof marker.scripts === "number" && marker.scripts > 0) {
+      return { kind: "mahoyo-placeholder-corpus", version: 1, scripts: marker.scripts };
+    }
+  } catch {
+    // Marqueur illisible : traité comme absence de corpus de placeholders.
+  }
+  return null;
+}
+
+const placeholderCorpus = readPlaceholderCorpus();
 
 // Le rapport est écrit dans reports/ (ignoré par git).
 const REPORTS_DIR = join(import.meta.dirname, "../../reports");
@@ -150,10 +180,21 @@ describe.skipIf(!hasAssets)("Lecture complète du corpus KAG", () => {
     // Afficher seulement le résumé chiffré, jamais le texte original.
     const summary = buildSummary(report);
     console.log(`\n${summary}\n`);
+    console.log(
+      placeholderCorpus
+        ? `Corpus : placeholders (${placeholderCorpus.scripts} scripts attendus, #269)`
+        : `Corpus : assets réels (seuil ${EXPECTED_MIN_NARRATIVE_SCRIPTS} scripts)`,
+    );
 
-    // Garde-fou contre une classification qui écarterait des scripts à tort
-    // (système/chiffrés) : 251 trouvés - 17 système - 13 binaires = 221.
-    expect(auditableScripts.length).toBeGreaterThanOrEqual(EXPECTED_MIN_NARRATIVE_SCRIPTS);
+    if (placeholderCorpus) {
+      // CI (#269) : le corpus de placeholders est entièrement narratif et sa taille attendue vient
+      // du marqueur généré. La logique reste « traverser N scripts sans erreur bloquante ».
+      expect(auditableScripts.length).toBe(placeholderCorpus.scripts);
+    } else {
+      // Garde-fou contre une classification qui écarterait des scripts à tort
+      // (système/chiffrés) : 251 trouvés - 17 système - 13 binaires = 221.
+      expect(auditableScripts.length).toBeGreaterThanOrEqual(EXPECTED_MIN_NARRATIVE_SCRIPTS);
+    }
 
     // Aucune erreur bloquante et aucune boucle sans progression.
     expect(scriptsWithErrors).toBe(0);
