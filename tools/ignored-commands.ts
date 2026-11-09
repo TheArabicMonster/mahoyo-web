@@ -52,10 +52,29 @@ export const IGNORED_COMMAND_EFFECTS: readonly IgnoredCommandEffect[] = [
 ];
 
 /**
- * Registre effectif. Vide à dessein (#275) : le triage #276 doit statuer sur les
- * commandes inconnues avant qu'aucune ne soit déclarée no-op.
+ * Registre effectif.
+ *
+ * Les deux premières entrées sont issues du triage #276 : commandes sans aucun
+ * effet visible, audible ou de déroulement dans le port. Toutes les autres
+ * commandes inconnues restent à implémenter ou approximer (lots #85, #86,
+ * #281-#287) et ne doivent pas être déclarées no-op.
  */
-export const IGNORED_COMMANDS: readonly IgnoredCommand[] = [];
+export const IGNORED_COMMANDS: readonly IgnoredCommand[] = [
+  {
+    name: "autocache",
+    raison:
+      "Préchargement d'images avant une attente : uniquement de la performance, aucun effet visible, audible ou de déroulement (triage #276).",
+    effet: "aucun",
+    issue: "#283",
+  },
+  {
+    name: "deffont",
+    raison:
+      "Seul usage du corpus : face=user. Le port web n'expose aucun réglage de police utilisateur et @resetfont retombe sur la police du thème : aucun effet visible (triage #276).",
+    effet: "aucun",
+    issue: "#284",
+  },
+];
 
 /** Index nom → entrée, pour la classification de l'audit. */
 export const IGNORED_COMMANDS_BY_NAME: ReadonlyMap<string, IgnoredCommand> = new Map(

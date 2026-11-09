@@ -32,9 +32,18 @@ describe("IGNORED_COMMANDS (registre livré)", () => {
     }
   });
 
-  it("reste vide tant que le triage #276 n'a pas statué", () => {
-    // Garde-fou : aucun no-op ne doit être admis par défaut (DoD v1.0).
-    expect(IGNORED_COMMANDS).toEqual([]);
+  it("ne contient que des no-ops sans effet justifiés par le triage #276", () => {
+    // Garde-fou (DoD v1.0) : aucun no-op à effet visible/audible/de déroulement.
+    // Les seules entrées admises sont celles dont le triage #276 prouve l'absence d'effet.
+    expect(IGNORED_COMMANDS.length).toBeGreaterThan(0);
+    for (const command of IGNORED_COMMANDS) {
+      expect(command.effet).toBe("aucun");
+      expect(command.raison.length).toBeGreaterThanOrEqual(MIN_REASON_LENGTH);
+      expect(command.issue).toMatch(/^#\d+$/);
+    }
+    const names = IGNORED_COMMANDS.map((command) => command.name);
+    expect(names).toContain("autocache");
+    expect(names).toContain("deffont");
   });
 
   it("liste les catégories d'effet autorisées", () => {

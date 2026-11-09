@@ -90,7 +90,9 @@ La console affiche uniquement un résumé chiffré (pas de texte original).
   **ignorée volontairement** (no-op déclaré dans le registre, avec raison et issue)
   ou **inconnue** (ni l'un ni l'autre). Voir la section générée
   « Commandes KAG : registre et audit classé » plus bas ; le garde-fou CI est
-  `npm run audit:guard`.
+  `npm run audit:guard`. Le triage complet des commandes restantes (origine, effet
+  réel vérifié, décision, issue de suivi) est tenu dans
+  [`KAG_MAHOYO_SEMANTICS.md`](KAG_MAHOYO_SEMANTICS.md) §9 bis (#276).
 - **Assets de base absents** : références d'images/sons dont l'asset de base est
   absent du manifest. La résolution est la même que celle du player (`storageKey`
   puis recherche dans le manifest) : casse, dossier, extension et suffixe de
@@ -125,12 +127,15 @@ inconnue hors baseline.
 | Catégorie | Définition | Mesure actuelle |
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
-| **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 0 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 51 commande(s) distincte(s), 181 occurrence(s) |
+| **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 49 commande(s) distincte(s), 174 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
-Aucune commande n'est déclarée no-op à ce jour. Le triage des inconnues restantes est suivi par #276 : la DoD v1.0 interdit d'admettre un no-op à effet visible, audible ou de déroulement.
+| Commande | Effet | Raison | Issue |
+|---|---|---|---|
+| `@autocache` | aucun | Préchargement d'images avant une attente : uniquement de la performance, aucun effet visible, audible ou de déroulement (triage #276). | #283 |
+| `@deffont` | aucun | Seul usage du corpus : face=user. Le port web n'expose aucun réglage de police utilisateur et @resetfont retombe sur la police du thème : aucun effet visible (triage #276). | #284 |
 
 #### Commandes inconnues restantes (baseline, à trier)
 
@@ -142,7 +147,6 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@action` | 1 |
 | `@ageage` | 1 |
 | `@ansz` | 1 |
-| `@autocache` | 1 |
 | `@beginfallnote` | 1 |
 | `@bindbg` | 3 |
 | `@cancelskip` | 1 |
@@ -153,7 +157,6 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@cm4pg` | 7 |
 | `@cockrobin` | 1 |
 | `@current` | 1 |
-| `@deffont` | 6 |
 | `@dispclock` | 20 |
 | `@effectskip` | 2 |
 | `@endcockrobin` | 1 |
