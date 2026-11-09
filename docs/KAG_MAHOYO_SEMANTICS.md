@@ -494,10 +494,11 @@ TJS du moteur installé** (`data/scenario/*.tjs`, `data/override/*.tjs`) — l'o
 sont pas déduits du nom.
 
 **Après intégration du registre #275** : les 2 no-ops justifiés ci-dessous (`@autocache`,
-`@deffont`) sont **déclarés dans `tools/ignored-commands.ts`**. Le lot **#286 (crédits de fin)** est
-implémenté : `@wstaffroll`, `@staffrolluninit`, `@staffrollsetting` ne sont plus des inconnues, la
-baseline est passée à **46 commandes inconnues / 168 occurrences** (`npm run audit:baseline` ;
-`npm run audit:guard -- --strict` OK). Légende :
+`@deffont`) sont **déclarés dans `tools/ignored-commands.ts`**. Les lots **#286 (crédits de fin)** et
+**#285 (audio et déroulement)** sont implémentés : `@wstaffroll`, `@staffrolluninit`,
+`@staffrollsetting`, `@xchgbgm`, `@wb`, `@clickskip`, `@cancelskip`, `@effectskip` ne sont plus des
+inconnues. La baseline est passée à **34 commandes inconnues / 133 occurrences**
+(`npm run audit:baseline` ; `npm run audit:guard -- --strict` OK). Légende :
 
 - **Origine** : `KAG3` = standard KAG3 (documentation des tags), `plugin TJS` = tag de plugin
   (`data/scenario/*.tjs`), `macro Mahoyo` = macro définie par `@macro` d'un script système,
@@ -581,13 +582,12 @@ baseline est passée à **46 commandes inconnues / 168 occurrences** (`npm run a
 **Bilan des décisions** : 37 à implémenter, 11 à approximer (écart documenté), 1 variante
 malformée à tolérer (`@playtimeline` de test), **2 no-op justifiés sans effet désormais intégrés au
 registre #275** (`@autocache` → #283, `@deffont` → #284). Aucune commande à effet
-visible/audible/de déroulement n'est classée no-op. Le lot #286 (crédits) est livré
-(`@wstaffroll`, `@staffrolluninit`, `@staffrollsetting`) : la baseline restante est de
-**46 commandes / 168 occurrences**, à résorber par leurs issues de suivi.
+visible/audible/de déroulement n'est classée no-op.
 
-**Suivi des lots** : #281 (effets d'écran plugin) est traité — voir §9 quater ; la baseline, déjà
-réduite à 46 commandes / 168 occurrences par #286, passe à **42 / 152**. Les autres lots (#85,
-#86, #282-#287) restent ouverts.
+**Suivi des lots** : #281 (effets d'écran plugin, §9 quater), #285 (audio/déroulement,
+§9 quinquies) et #286 (crédits de fin, §9 ter) sont traités : la baseline est passée à
+**34 commandes inconnues / 133 occurrences** (`npm run audit:baseline` ; `npm run audit:guard
+-- --strict` OK). Les autres lots (#85, #86, #282-#287) restent ouverts.
 
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
@@ -662,6 +662,45 @@ dans les sources du moteur installé (`data/override/tagex.tjs`, `data/scenario/
   `tests/unit/kag/stage-state.test.ts` (persistance du bruit animé).
 - **Conflit #286** : les crédits (`wstaffroll`, `staffrolluninit`, `staffrollsetting`) restent hors
   de ce lot ; aucun refactor de `runtime.ts` au-delà des nouveaux cas de commandes.
+## 9 quinquies. Audio et déroulement (`@xchgbgm`, `@wb`, skips) — #285
+
+Sémantique vérifiée dans `data/system/bgm.tjs` (`exchange`, `waitBGMFade`),
+`data/system/mainwindow.tjs` (`clickskip`, `cancelskip`) et `data/override/tagex.tjs`
+(`effectskip`, `enableEffectSkip`).
+
+### `@xchgbgm` — échange de BGM avec fondu croisé
+
+- Moteur : l'ancienne piste est fondue sur `outtime` ; la nouvelle démarre immédiatement à
+  volume 0 puis monte sur `intime`, le fondu entrant commençant après `outtime - overlap` ms
+  (`overlap > 0` = vrai fondu croisé). `time` fixe `intime = outtime` ; `volume` règle le volume
+  global BGM ; même `storage` que la piste en cours = aucun effet.
+- Port : événements audio `stop` de l'ancienne (fondu `outtime`) puis `play` de la nouvelle
+  (fondu `intime`, retard `outtime - overlap`). **Approximation documentée** : `volume` est
+  appliqué comme volume de piste (le port n'a pas de volume global BGM scriptable distinct des
+  réglages utilisateur). Le fondu entrant est donc audiblement proche du moteur.
+
+### `@wb` — attente de fin de fondu BGM
+
+- Moteur : si aucun fondu en cours, retour immédiat ; sinon attente de l'événement de fin de
+  fondu. `canskip` permet au clic d'arrêter le fondu ; par défaut l'attente n'est pas skippable.
+- Port : point d'arrêt `waitFor: "bgmFade"` → `AudioPlayer.waitForFade("bgm")`, qui résout à la
+  fin du fondu de sortie (`fadeOut`) ou de volume (`fade`). Implémentation dans
+  `src/renderer/audio-manager.ts` (attentes de fondu par voix). **Approximation** : quand
+  l'attente est skippable et que le joueur clique, seule l'attente est abandonnée (le fondu
+  poursuit en arrière-plan) au lieu d'être stoppé net comme `bgm.stopFade()`.
+
+### `@clickskip` / `@cancelskip` / `@effectskip`
+
+- `@clickskip enabled=` (KAG3) : autorise/interdit le **saut au clic** (terminer la frappe,
+  interrompre transitions/animations/timelines). `false` désactive ces coupures et neutralise le
+  réglage « affichage instantané » pendant la portion concernée.
+- `@cancelskip` (KAG3) : annule l'état de skip courant → le player repasse en lecture normale.
+- `@effectskip enabled=` (override TYPE-MOON, `enableEffectSkip`) : autorise/interdit le saut des
+  effets par réglage utilisateur (scènes de démonstration, OP). `false` neutralise
+  « arrêt des animations en cours » et « affichage final des pages » pendant la portion.
+- État du player : `clickSkipEnabled` / `effectSkipEnabled`, remis à `true` au début de chaque
+  session (comme le moteur, ces réglages ne sont pas sauvegardés) ; événements
+  `{kind:"skipSetting"}` et `{kind:"cancelSkip"}` appliqués par le player, sans effet sur la scène.
 
 ## 10. Commandes non implémentées à figer plus tard
 
