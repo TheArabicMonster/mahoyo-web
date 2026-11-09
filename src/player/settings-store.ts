@@ -30,6 +30,25 @@ export interface SettingsStore {
   /** Progression par scène (flowchart) ; vide si absente, partielle ou corrompue. */
   loadStoryProgress(): Promise<StoryProgress>;
   saveStoryProgress(progress: Readonly<StoryProgress>): Promise<void>;
+  /**
+   * Clés des CG déjà vues (galerie, HUD-15 / #208) ; vide si absente, partielle ou corrompue.
+   * Donnée de progression de l'utilisateur, jamais un asset : seules des clés du manifeste.
+   */
+  loadSeenCg(): Promise<Set<string>>;
+  saveSeenCg(seen: ReadonlySet<string>): Promise<void>;
+}
+
+/**
+ * Normalise une valeur stockée en ensemble de clés de CG : seules les chaînes non vides sont
+ * gardées (donnée locale éventuellement corrompue ou d'une ancienne version).
+ */
+export function normalizeSeenCg(value: unknown): Set<string> {
+  if (!Array.isArray(value)) return new Set();
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item === "string" && item.trim() !== "") seen.add(item);
+  }
+  return seen;
 }
 
 type LegacyDisplay = Partial<GameSettings["display"]> & {
@@ -136,6 +155,12 @@ export function createLocalSettingsStore(storage: Storage = localStorage, prefix
       // Normalisation à l'écriture : seuls des identifiants de scripts sont persistés.
       storage.setItem(`${prefix}story-progress`, JSON.stringify(normalizeStoryProgress(progress)));
     },
+    async loadSeenCg() {
+      return normalizeSeenCg(readJson<unknown>(storage, `${prefix}cg`));
+    },
+    async saveSeenCg(seen) {
+      storage.setItem(`${prefix}cg`, JSON.stringify([...seen]));
+    },
   };
 }
 
@@ -145,6 +170,7 @@ export function createMemorySettingsStore(): SettingsStore {
   let read = new Set<string>();
   let progress: { completed: string[] } = { completed: [] };
   let story = emptyStoryProgress();
+  let seenCg = new Set<string>();
   return {
     async loadSettings() {
       return settings;
@@ -169,6 +195,12 @@ export function createMemorySettingsStore(): SettingsStore {
     },
     async saveStoryProgress(p) {
       story = normalizeStoryProgress(p);
+    },
+    async loadSeenCg() {
+      return new Set(seenCg);
+    },
+    async saveSeenCg(seen) {
+      seenCg = new Set(seen);
     },
   };
 }

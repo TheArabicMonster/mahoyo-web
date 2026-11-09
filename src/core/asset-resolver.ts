@@ -16,16 +16,23 @@
 
 import { isSolidColor, storageKey } from "./storage-key.js";
 import type {
+  AssetKind,
   AssetManifest,
-  lookupImage,
-  lookupAudio,
-  lookupScenario,
 } from "./asset-manifest.js";
 import {
+  listImages,
   lookupImage as lookupImg,
   lookupAudio as lookupAud,
   lookupScenario as lookupScn,
 } from "./asset-manifest.js";
+
+/** Entrée d'image résolue : clé du manifeste, URL complète (baseUrl comprise), kind et source. */
+export type ResolvedImageEntry = {
+  key: string;
+  url: string;
+  kind: AssetKind;
+  source: string;
+};
 
 export type AssetResolver = {
   /** Résout une image de background. */
@@ -41,6 +48,11 @@ export type AssetResolver = {
    * ni avertissement ni requête (#189).
    */
   uiImage(key: string): string | null;
+  /**
+   * Toutes les images du manifeste, avec leur URL résolue (galerie CG, HUD-15 / #208).
+   * Sans manifeste : liste vide (le repli par convention ne permet pas de lister les fichiers).
+   */
+  imageEntries(): readonly ResolvedImageEntry[];
   /** Résout un fichier BGM. */
   bgm(storage: string): string;
   /** Résout un fichier SE. */
@@ -145,6 +157,10 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
     uiImage(key: string): string | null {
       const url = lookupImg(manifest, storageKey(key));
       return url ? `${baseUrl}/${url}` : null;
+    },
+    imageEntries(): ResolvedImageEntry[] {
+      // Aucune URL sans manifeste : on ne peut pas lister les fichiers par convention.
+      return listImages(manifest).map((entry) => ({ ...entry, url: `${baseUrl}/${entry.url}` }));
     },
     scenario(storage: string): string {
       const key = storageKey(storage);

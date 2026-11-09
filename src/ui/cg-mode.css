@@ -1,0 +1,478 @@
+/* ── CG mode (HUD-15, #208) ───────────────────────────────────────────────────────────────────────────
+   Galerie plein cadre sur la « nuit bleue » (`mh-ui-night`, night.css). CSS pur : aucun asset, aucune
+   URL, aucune priorité forcée. Références : docs/ANALYSE_HUD_ORIGINAL.md §2.11 (grille 4×4, libellé
+   « image non affichée », sélection bord vert-jaune 3 px) et docs/DESIGN.md §2.4 (sélection `#c0f790` /
+   `#ace377`), §4 (grille et mesures), §8 (états) et §9.13 (CG mode : repli sans asset, aucun spoiler).
+
+   Repères : les mesures de l'analyse sont en 1920×1080 ; le HUD vit dans #viewport, en 1280×720 logique
+   (facteur ×2/3, PAS le repère 1024×576 de la scène, agrandi de 1,25). Conversions utilisées ici :
+     titre    x 31–37, y 40–95 @1080     -> x 21, y 27–63 @720      (comme l'historique et la config)
+     grille   x 357–1630 × y 148–910     -> x 238–1087 × y 99–607
+     tuile    300×165, pas 324×199       -> 200×110, pas 216×133 (DESIGN §4)
+     « Back » 1643–1741 × 999–1031       -> 1095–1161 × 666–687    (bord droit à 90,7 %)
+   La colonne « chapitre » de l'original n'existe pas dans le port : la grille est centrée et plafonnée
+   à 848 px (4 × 200 px + 3 × 16 px), ce qui redonne exactement des tuiles de 200×110 px à 1280×720. */
+
+.mh-cg-screen {
+  /* Teintes propres à l'écran (les couleurs de base restent les tokens --mh-*). */
+  --mh-cg-select: #c0f790; /* sélection mesurée, bord 3 px (ANALYSE §2.11, DESIGN §2.4) */
+  --mh-cg-select-hover: #ace377; /* sélection survolée (DESIGN §2.4) */
+  --mh-back-size: 1.8rem; /* « Back »/« Retour » : corps ≈ 29 px @720 (DESIGN §3) */
+
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Le slot #ui-cg est un enfant de #ui-overlay : `.mh-ui-overlay > div { pointer-events: none }`
+     se propage aux descendants, l'écran doit donc réactiver les entrées. */
+  pointer-events: auto;
+  color: var(--mh-text-ui, #eef4f5);
+  font-family: var(--mh-font-ui, system-ui, sans-serif);
+  font-size: 1rem;
+  user-select: none;
+  /* Le dégradé nuit est peint par `mh-ui-night` (night.css) : on ne le redéfinit pas. Cette couleur de
+     repli garde l'écran opaque afin que le titre, dessous, ne transparaisse jamais. */
+  background-color: var(--mh-bg-night-mid, #132337);
+}
+
+/* ── En-tête : titre à gauche, bascule Évènement / Arrière-plan à droite ── */
+.mh-cg-header {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center; /* en-tête de 74 px : la grille commence vers y = 98 @720 (cible 99) */
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+  padding: 1.5rem 1.64% 0.5rem; /* encre du titre en x = 21, y ≈ 27 @720 (DESIGN §4) */
+}
+
+.mh-cg-title {
+  margin: 0;
+  font-family: var(--mh-font-title, Georgia, serif);
+  font-weight: 400;
+  font-size: var(--mh-screen-title-size, 2.4rem);
+  line-height: 1.1;
+  color: var(--mh-text-title, #f2fbff);
+  text-shadow: 0 0 12px rgba(0, 192, 192, 0.45);
+}
+
+.mh-cg-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 1.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+/* Onglet : libellé sans-serif `--mh-control-size`, filet sarcelle quand il est actif. La sélection ne
+   repose jamais sur la couleur seule (DESIGN §10) : le filet passe de 2 à 3 px en plus de la couleur. */
+.mh-cg-tab {
+  appearance: none;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.15rem 0.4rem 0.25rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--mh-text-menu, #a9c8cc);
+  font-family: var(--mh-font-ui, system-ui, sans-serif);
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  transition:
+    color var(--mh-dur-fast, 150ms) var(--mh-ease, linear),
+    border-color var(--mh-dur-fast, 150ms) var(--mh-ease, linear),
+    text-shadow var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+
+.mh-cg-tab:hover {
+  color: var(--mh-text-menu-hover, #b1d6da);
+  text-shadow: 0 0 10px rgba(95, 207, 197, 0.5);
+}
+
+.mh-cg-tab[aria-selected="true"] {
+  color: #cfeff0;
+  border-bottom: 3px solid var(--mh-cyan-glint, #5fcfc5);
+  text-shadow: 0 0 10px rgba(95, 207, 197, 0.65);
+}
+
+.mh-cg-tab:focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+
+/* ── Zone défilante : conteneur de requête pour la grille responsive (DESIGN §9.13) ── */
+.mh-cg-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 15px;
+  container-type: inline-size;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--mh-cyan-rail, #3f889c) transparent;
+}
+
+/* ── Grille : 4 colonnes par défaut, 3 puis 2 selon la largeur du conteneur ──
+   4 × 200 px + 3 × 16 px = 848 px : tuiles de 200×110 px à 1280×720 (DESIGN §4). */
+.mh-cg-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+  max-width: 848px;
+  margin: 1.5rem auto 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+/* Cellule : aucune puce de liste, aucune marge (reset local, autorisé sous `.mh-cg-screen`). */
+.mh-cg-cell {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Tuile : bouton pleine largeur au ratio 20:11 (200×110 @720). Le dégradé nuit est le repli pendant
+   le chargement de la vignette ; l'image le recouvre entièrement une fois disponible. */
+.mh-cg-tile {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  aspect-ratio: 20 / 11;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid var(--mh-panel-border-light, #59616b);
+  border-radius: 2px;
+  background-color: var(--mh-bg-night-bottom, #07111b);
+  background-image: linear-gradient(
+    140deg,
+    var(--mh-bg-night-mid-right, #17273c) 0%,
+    var(--mh-bg-night-mid, #132337) 48%,
+    var(--mh-bg-night-bottom, #07111b) 100%
+  );
+  color: var(--mh-text-menu, #a9c8cc);
+  font-family: var(--mh-font-ui, system-ui, sans-serif);
+  font-size: var(--mh-control-size, 1.2rem);
+  cursor: pointer;
+  appearance: none;
+  transition:
+    border-color var(--mh-dur-fast, 150ms) var(--mh-ease, linear),
+    box-shadow var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+
+/* Survol : bord cyan + lueur (DESIGN §8), jamais sur une tuile verrouillée ni sur la sélection. */
+.mh-cg-tile:hover:not(.is-selected):not(.is-locked):not([data-locked="true"]) {
+  border-color: var(--mh-cyan-rail, #3f889c);
+  box-shadow: 0 0 10px rgba(95, 207, 197, 0.35);
+}
+
+/* Sélection = focus (aria-current) : bord 3 px `#c0f790` (ANALYSE §2.11, DESIGN §2.4) ET marqueur
+   « ◆ » en haut à droite, pour ne pas dépendre de la seule couleur (DESIGN §10). */
+.mh-cg-tile.is-selected {
+  border: 3px solid var(--mh-cg-select);
+}
+
+.mh-cg-tile.is-selected:hover {
+  border-color: var(--mh-cg-select-hover);
+  box-shadow: 0 0 10px rgba(192, 247, 144, 0.4);
+}
+
+.mh-cg-tile.is-selected::after {
+  content: "◆";
+  position: absolute;
+  top: 2px;
+  right: 5px;
+  color: var(--mh-cg-select);
+  font-size: 0.9rem;
+  line-height: 1;
+  pointer-events: none;
+  /* Ombre portée : le marqueur reste lisible sur une image claire. */
+  text-shadow:
+    0 1px 3px #000,
+    0 0 4px #000;
+}
+
+/* Focus clavier visible (DESIGN §10) ; le bord épais de sélection est conservé en plus. */
+.mh-cg-tile:focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+
+.mh-cg-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── Tuile verrouillée : fond nuit + hachures diagonales, libellé « image non affichée » ──
+   Le bouton reste focusable (les flèches le traversent) : on ne touche pas à `pointer-events` et le
+   curseur seul indique qu'il n'y a pas d'action. */
+.mh-cg-tile.is-locked,
+.mh-cg-tile[data-locked="true"] {
+  cursor: default;
+  background-color: var(--mh-bg-night-bottom, #07111b);
+  background-image:
+    repeating-linear-gradient(
+      135deg,
+      rgba(169, 200, 204, 0.1) 0 2px,
+      transparent 2px 10px
+    ),
+    linear-gradient(140deg, var(--mh-bg-night-mid, #132337), var(--mh-bg-night-bottom, #07111b));
+}
+
+.mh-cg-tile-locked {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 8px;
+  color: var(--mh-text-menu, #a9c8cc);
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1.25;
+  text-align: center;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.mh-cg-tile-lock-marker {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  color: var(--mh-text-menu, #a9c8cc);
+  font-family: var(--mh-font-ui, system-ui, sans-serif);
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ── Message de grille vide ── */
+.mh-cg-empty {
+  margin: 1.5rem auto;
+  padding: 0 1rem;
+  max-width: 40ch;
+  color: var(--mh-text-menu, #a9c8cc);
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.mh-cg-empty[hidden] {
+  display: none;
+}
+
+/* ── Pied : « Retour » en bas à droite (bord droit à 90,7 % -> encre jusqu'à x = 1161 @720) ── */
+.mh-cg-footer {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0 9% 1.75rem; /* 28 px : les pourcentages verticaux se résolvent sur la largeur, pas la hauteur */
+}
+
+.mh-cg-back {
+  appearance: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0.125rem 0.25rem;
+  border: 0;
+  background: none;
+  color: #c7dfe1;
+  font-family: var(--mh-font-title, Georgia, serif);
+  font-size: var(--mh-back-size);
+  line-height: 1.1;
+  white-space: nowrap;
+  cursor: pointer;
+  text-shadow: 0 1px 2px #000;
+  transition:
+    color var(--mh-dur-fast, 150ms) var(--mh-ease, linear),
+    text-shadow var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+
+.mh-cg-back::before {
+  content: "‹‹";
+  margin-right: 0.45rem;
+  color: var(--mh-cyan-glint, #5fcfc5);
+  letter-spacing: -0.12em;
+}
+
+.mh-cg-back:hover {
+  color: #fff;
+  text-shadow: 0 0 14px rgba(95, 207, 197, 0.55);
+}
+
+.mh-cg-back:focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+
+/* ── Visionneuse plein écran : image au-dessus, barre d'actions en bas ── */
+.mh-cg-viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-width: 0;
+  min-height: 0;
+  background: rgba(0, 0, 0, 0.94);
+}
+
+/* L'attribut `hidden` doit gagner sur `display: grid`. */
+.mh-cg-viewer[hidden] {
+  display: none;
+}
+
+.mh-cg-viewer-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 24px;
+  overflow: hidden;
+}
+
+/* Zoom : `--mh-cg-zoom` est posé par cg-mode.ts sur le cadre (1 à 4, pas de 0,5). */
+.mh-cg-viewer-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform: scale(var(--mh-cg-zoom, 1));
+  transform-origin: center;
+  transition: transform var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+
+.mh-cg-viewer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  /* Repli opaque puis version translucide (DESIGN §9) ; la visionneuse doit rester lisible. */
+  background: var(--mh-panel-fill, #151f2b);
+  background: color-mix(in srgb, var(--mh-panel-fill, #151f2b) 88%, transparent);
+  border-top: 1px solid var(--mh-panel-border, #444c56);
+}
+
+/* Boutons de la visionneuse : cible ≥ 44 px, dégradé sarcelle maison (DESIGN §2.3, §10). */
+.mh-cg-viewer-button {
+  appearance: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.35rem 0.9rem;
+  border: 2px solid var(--mh-cyan-rail, #3f889c);
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--mh-teal-on-top, #3d746f), var(--mh-teal-on-bottom, #133c39));
+  color: var(--mh-text-ui, #eef4f5);
+  font-family: var(--mh-font-ui, system-ui, sans-serif);
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  transition:
+    color var(--mh-dur-fast, 150ms) var(--mh-ease, linear),
+    border-color var(--mh-dur-fast, 150ms) var(--mh-ease, linear),
+    box-shadow var(--mh-dur-fast, 150ms) var(--mh-ease, linear);
+}
+
+.mh-cg-viewer-button:hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--mh-cyan-glint, #5fcfc5);
+  box-shadow: 0 0 10px rgba(95, 207, 197, 0.5);
+}
+
+.mh-cg-viewer-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mh-cg-viewer-button:focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}
+
+.mh-cg-viewer-prev,
+.mh-cg-viewer-next {
+  padding: 0;
+  font-size: 1.5rem;
+}
+
+.mh-cg-viewer-close {
+  padding: 0.35rem 1rem;
+}
+
+/* Compteur « 3 / 12 » : chasse fixe pour que la barre ne bouge pas d'une image à l'autre. */
+.mh-cg-viewer-caption {
+  min-width: 5ch;
+  margin: 0;
+  color: var(--mh-text-menu, #a9c8cc);
+  font-size: var(--mh-control-size, 1.2rem);
+  line-height: 1.2;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Grille responsive : le conteneur est `.mh-cg-scroll` (inline-size) ── */
+@container (max-width: 1000px) {
+  .mh-cg-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 760px) {
+  .mh-cg-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ── Tactile : cibles de 44 px au moins (DESIGN §10 ; les tuiles dépassent déjà largement) ── */
+@media (pointer: coarse) {
+  .mh-cg-tab,
+  .mh-cg-back,
+  .mh-cg-viewer-button {
+    min-height: 44px;
+  }
+
+  .mh-cg-tab {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* ── Mouvement réduit : aucune transition dans cette feuille (DESIGN §7, §10) ── */
+@media (prefers-reduced-motion: reduce) {
+  .mh-cg-tab,
+  .mh-cg-tile,
+  .mh-cg-back,
+  .mh-cg-viewer-button,
+  .mh-cg-viewer-image {
+    transition: none;
+  }
+}

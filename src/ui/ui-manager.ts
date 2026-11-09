@@ -19,6 +19,7 @@ import type {
   UIView,
 } from "@/ui/types.js";
 import { createBacklogScreen } from "@/ui/backlog-screen.js";
+import { buildCgCatalog, cgCatalogSize, createCgMode, type CgCatalog, type CgImage, type CgMode } from "@/ui/cg-mode.js";
 import { createConfigScreen, type ConfigScreen, type SettingsTab } from "@/ui/config-screen.js";
 import { openConfirmDialog, type ConfirmDialog } from "@/ui/confirm-dialog.js";
 import { getUiLanguage, onUiLanguageChange, t } from "@/ui/i18n.js";
@@ -58,11 +59,23 @@ function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
+/** Galerie CG (HUD-15, #208) : catalogue calculé à l'exécution et progression des CG vues. */
+export type CgGallerySource = {
+  /** Images du manifeste de l'utilisateur (`AssetResolver.imageEntries`), aucune n'est versionnée. */
+  images(): readonly CgImage[];
+  /** Clés des CG déjà vues (progression persistée, `src/player/cg-seen.ts`). */
+  seen(): ReadonlySet<string>;
+};
+
 export type DomUIManagerOptions = {
   /** Source des images d'interface (le résolveur d'assets) ; absente = repli CSS partout (HUD-03, #189). */
   resolver?: UiImageSource;
   /** Export et import JSON des sauvegardes, proposés dans l'écran de sauvegarde/chargement (WEB-03, #198). */
   saveTransfer?: SaveTransferActions;
+  /**
+   * Galerie CG (HUD-15, #208) ; absente ou vide = l'entrée Cgmode du sous-menu Extra reste grisée.
+   */
+  cgGallery?: CgGallerySource;
 };
 
 /**
@@ -79,6 +92,7 @@ export class DomUIManager implements UIManager {
   private menu!: El;
   private flowchart!: El;
   private pause!: El;
+  private cgEl!: El;
   private choicesEl!: El;
   private toasts: ToastStack | null = null;
   private loading!: El;
@@ -101,15 +115,21 @@ export class DomUIManager implements UIManager {
 
   private confirmDialog: ConfirmDialog | null = null;
   private saveLoad: SaveLoadScreen | null = null;
+  /** Écran CG ouvert (HUD-15, #208) ; null = fermé. */
+  private cgMode: CgMode | null = null;
+  /** Catalogue CG calculé une fois depuis le manifeste (immuable pendant la session). */
+  private cgCatalog: CgCatalog | null = null;
   private touch: TouchControls | null = null;
   private cleanups: (() => void)[] = [];
   private previousDocumentLang: string | null = null;
   private readonly uiAssets: UiAssets;
   private readonly saveTransfer: SaveTransferActions | undefined;
+  private readonly cgGallery: CgGallerySource | undefined;
 
   constructor(options: DomUIManagerOptions = {}) {
     this.uiAssets = createUiAssets(options.resolver);
     this.saveTransfer = options.saveTransfer;
+    this.cgGallery = options.cgGallery;
   }
 
   // ── Cycle de vie ──
@@ -130,6 +150,7 @@ export class DomUIManager implements UIManager {
     this.menu = this.slot("ui-menu", "mh-ui-menu");
     this.flowchart = this.slot("ui-flowchart", "mh-ui-flowchart");
     this.pause = this.slot("ui-pause", "mh-ui-pause");
+    this.cgEl = this.slot("ui-cg", "mh-ui-cg");
     this.choicesEl = this.slot("ui-choices", "mh-ui-choices");
     this.toasts = new ToastStack(this.slot("ui-toast", "mh-ui-toast"));
     this.loading = this.slot("ui-loading", "mh-ui-loading");
@@ -165,6 +186,7 @@ export class DomUIManager implements UIManager {
   }
 
   dispose(): void {
+    this.closeCgMode(false);
     this.touch?.dispose();
     this.touch = null;
     for (const off of this.cleanups) off();
@@ -194,6 +216,8 @@ export class DomUIManager implements UIManager {
   show(view: UIView): void {
     this.view = view;
     if (!this.root) return;
+    // Un changement d'écran referme la galerie CG (elle recouvre le titre, pas la vue).
+    this.closeCgMode(false);
     if (this.refreshSaveLoad(view)) return;
     this.saveLoad = null;
     this.menu.replaceChildren();
@@ -393,6 +417,42 @@ export class DomUIManager implements UIManager {
     }
   }
 
+  // ── Galerie CG (HUD-15, #208) ──
+
+  /** Catalogue CG (calculé une fois) : vide sans manifeste ou sans image de CG. */
+  private cgCatalogFor(): CgCatalog {
+    if (this.cgCatalog === null) {
+      this.cgCatalog = this.cgGallery ? buildCgCatalog(this.cgGallery.images()) : { event: [], background: [] };
+    }
+    return this.cgCatalog;
+  }
+
+  /** Ouvre la galerie dans son slot, au-dessus de l'écran titre (qui reste monté). */
+  private openCgMode(): void {
+    if (!this.root || !this.cgGallery || !this.inputEnabled) return;
+    this.closeCgMode(false);
+    const view = createCgMode({
+      catalog: this.cgCatalogFor(),
+      seen: this.cgGallery.seen(),
+      onClose: () => this.closeCgMode(),
+    });
+    this.cgEl.appendChild(view.element);
+    this.cgMode = view;
+    view.focusFirst();
+  }
+
+  /** Ferme la galerie et rend le focus à l'entrée Cgmode du sous-menu Extra. */
+  private closeCgMode(restoreFocus = true): void {
+    const view = this.cgMode;
+    if (!view) return;
+    this.cgMode = null;
+    view.destroy();
+    this.cgEl.replaceChildren();
+    if (restoreFocus) {
+      this.menu.querySelector<HTMLElement>('[data-entry="cgmode"]')?.focus();
+    }
+  }
+
   // ── Écrans ──
 
   private renderTitle(scripts: readonly ScriptSummary[], hasContinue: boolean, unlockedChapters?: readonly string[]): void {
@@ -412,6 +472,8 @@ export class DomUIManager implements UIManager {
         load: () => run((c) => c.openScreen("load")),
         flowchart: () => run((c) => c.openScreen("flowchart")),
         config: () => run((c) => c.openScreen("settings")),
+        // HUD-15 (#208) : la galerie n'est proposée que si le manifeste contient des CG.
+        ...(cgCatalogSize(this.cgCatalogFor()) > 0 ? { cgMode: () => run(() => this.openCgMode()) } : {}),
       },
     });
     this.menu.appendChild(screen.el);
@@ -519,13 +581,14 @@ export class DomUIManager implements UIManager {
   }
 
   private onClick(e: MouseEvent): void {
-    if (!this.playing || this.choiceCount > 0 || this.onInteractive(e.target)) return;
+    if (this.cgMode || !this.playing || this.choiceCount > 0 || this.onInteractive(e.target)) return;
     if (e.button !== 0) return;
     this.commands?.advance();
   }
 
   private onContextMenu(e: MouseEvent): void {
     e.preventDefault();
+    if (this.cgMode) return;
     // Menu système ouvert : un nouveau clic droit le referme (comme l'original).
     if (this.view.screen === "pause" && this.inputEnabled && this.confirmEl === null) {
       this.commands?.closeScreen();
@@ -541,7 +604,7 @@ export class DomUIManager implements UIManager {
   }
 
   private onWheel(e: WheelEvent): void {
-    if (!this.playing || this.choiceCount > 0 || e.deltaY === 0) return;
+    if (this.cgMode || !this.playing || this.choiceCount > 0 || e.deltaY === 0) return;
     if (this.onInteractive(e.target)) return;
     if (e.deltaY < 0) this.commands?.rollback();
     else this.commands?.advance();
@@ -549,6 +612,8 @@ export class DomUIManager implements UIManager {
 
   private onKeyDown(e: KeyboardEvent): void {
     if (!this.commands) return;
+    // La galerie CG gère elle-même son clavier (Échap, flèches, zoom) et le stoppe en phase capture.
+    if (this.cgMode) return;
     if (this.capturing) {
       this.handleCapture(e);
       return;

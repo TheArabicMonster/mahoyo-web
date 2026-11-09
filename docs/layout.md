@@ -34,6 +34,7 @@ Le scaling vers la fenêtre réelle est géré **exclusivement** par le conteneu
         <div id="ui-menu"></div>
         <div id="ui-flowchart"></div>
         <div id="ui-pause"></div>
+        <div id="ui-cg"></div>
         <div id="ui-choices"></div>
         <div id="ui-toast"></div>
         <div id="ui-loading"></div>
@@ -50,7 +51,7 @@ Le scaling vers la fenêtre réelle est géré **exclusivement** par le conteneu
 | `#viewport` | `Player` | Scaling, plein écran, taille de police de base. |
 | `#stage` | `StageRenderer` | Images, sprites, transitions, effets, quake. |
 | `#textbox` | `StageRenderer` | Typewriter, indicateur de clic, visibilité. |
-| `#ui-overlay` | `UIManager` | Menus, flowchart, pause, choix, toasts, loading. |
+| `#ui-overlay` | `UIManager` | Menus, flowchart, pause, galerie CG, choix, toasts, loading. |
 
 ## z-index
 

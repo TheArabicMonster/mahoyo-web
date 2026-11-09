@@ -59,7 +59,7 @@ describe("DomUIManager", () => {
   });
 
   it("crée le layout #ui-overlay", () => {
-    for (const id of ["ui-menu", "ui-flowchart", "ui-pause", "ui-choices", "ui-toast", "ui-loading"]) {
+    for (const id of ["ui-menu", "ui-flowchart", "ui-pause", "ui-cg", "ui-choices", "ui-toast", "ui-loading"]) {
       expect(q(`#ui-overlay #${id}`)).not.toBeNull();
     }
   });
@@ -554,5 +554,99 @@ describe("DomUIManager", () => {
       ui.dispose();
       expect(() => setUiLanguage("en")).not.toThrow();
     });
+  });
+});
+
+describe("DomUIManager — galerie CG (HUD-15, #208)", () => {
+  let root: HTMLElement;
+  let cmd: ReturnType<typeof makeCommands>;
+  let ui: DomUIManager;
+  const cgImages = [
+    { key: "cg01", url: "/assets/image/cg01.webp", kind: "image", source: "image/cg01.tlg" },
+    { key: "cg02", url: "/assets/image/cg02.webp", kind: "image", source: "image/cg02.tlg" },
+  ];
+  const title = (): UIView => ({ screen: "title", scripts, hasContinue: false });
+
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="viewport"></div>';
+    root = document.getElementById("viewport")!;
+    cmd = makeCommands();
+  });
+  afterEach(() => {
+    ui?.dispose();
+    document.body.innerHTML = "";
+  });
+
+  const mount = (options: ConstructorParameters<typeof DomUIManager>[0] = {}): DomUIManager => {
+    ui = new DomUIManager(options);
+    ui.init(root, cmd);
+    ui.show(title());
+    return ui;
+  };
+  const q = (sel: string) => root.querySelector<HTMLElement>(sel);
+  const escape = () =>
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+  it("sans galerie (aucun asset) : l'entrée Cgmode reste grisée, pas d'écran fantôme", () => {
+    mount();
+    q('[data-entry="extra"]')!.click();
+    const entry = q('[data-entry="cgmode"]')!;
+    expect(entry.getAttribute("aria-disabled")).toBe("true");
+    entry.click();
+    expect(q("#ui-cg")!.childElementCount).toBe(0);
+  });
+
+  it("manifeste sans image de CG : entrée grisée (pas de galerie vide)", () => {
+    mount({
+      cgGallery: {
+        images: () => [{ key: "aoko", url: "/i/a.webp", kind: "image", source: "fg/aoko.tlg" }],
+        seen: () => new Set(),
+      },
+    });
+    q('[data-entry="extra"]')!.click();
+    expect(q('[data-entry="cgmode"]')!.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("avec des CG : l'entrée ouvre la galerie au-dessus du titre, dans #ui-cg", () => {
+    mount({ cgGallery: { images: () => cgImages, seen: () => new Set(["cg01"]) } });
+    q('[data-entry="extra"]')!.click();
+    const entry = q('[data-entry="cgmode"]')!;
+    expect(entry.getAttribute("aria-disabled")).toBeNull();
+    entry.click();
+    const screen = q("#ui-cg .mh-cg-screen");
+    expect(screen).not.toBeNull();
+    expect(screen!.querySelectorAll(".mh-cg-tile")).toHaveLength(2);
+    // Focus initial : première tuile (cg01 est déverrouillée).
+    expect(document.activeElement?.getAttribute("data-key")).toBe("cg01");
+    expect(q(".mh-ui-title-screen")).not.toBeNull(); // le titre reste monté dessous
+  });
+
+  it("Échap ferme la galerie et rend le focus à l'entrée Cgmode", () => {
+    mount({ cgGallery: { images: () => cgImages, seen: () => new Set() } });
+    q('[data-entry="extra"]')!.click();
+    q('[data-entry="cgmode"]')!.click();
+    expect(q("#ui-cg .mh-cg-screen")).not.toBeNull();
+    escape();
+    expect(q("#ui-cg")!.childElementCount).toBe(0);
+    expect(document.activeElement).toBe(q('[data-entry="cgmode"]'));
+  });
+
+  it("un changement d'écran referme la galerie", () => {
+    mount({ cgGallery: { images: () => cgImages, seen: () => new Set() } });
+    q('[data-entry="extra"]')!.click();
+    q('[data-entry="cgmode"]')!.click();
+    ui.show({ screen: "game" });
+    expect(q("#ui-cg")!.childElementCount).toBe(0);
+  });
+
+  it("les entrées de jeu sont neutralisées tant que la galerie est ouverte", () => {
+    mount({ cgGallery: { images: () => cgImages, seen: () => new Set(["cg01"]) } });
+    q('[data-entry="extra"]')!.click();
+    q('[data-entry="cgmode"]')!.click();
+    q("#ui-overlay")!.click();
+    expect(cmd.advance).not.toHaveBeenCalled();
+    // Le clic droit ne doit pas ouvrir le menu système sous la galerie.
+    q("#ui-overlay")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    expect(cmd.openScreen).not.toHaveBeenCalled();
   });
 });
