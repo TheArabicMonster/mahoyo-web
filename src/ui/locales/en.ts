@@ -33,6 +33,13 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "systemMenu.entry.title": "Title",
   "systemMenu.quickMenuLocked": "Unavailable during this sequence",
 
+  // ── Commandes tactiles (WEB-01, #203) ──
+  "touch.menuButton": "Menu",
+  "touch.barLabel": "Quick actions",
+  "touch.qsave": "Q.Save",
+  "touch.qload": "Q.Load",
+  "touch.fullscreen": "Fullscreen",
+
   // ── Confirmations ──
   "confirm.returnToTitle": "Return to the title screen? Unsaved progress will be lost.",
   "confirm.overwriteSave": "Overwrite this save?",

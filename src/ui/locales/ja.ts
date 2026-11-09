@@ -33,6 +33,13 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   "systemMenu.entry.title": "タイトル",
   "systemMenu.quickMenuLocked": "この場面では使用できません",
 
+  // ── Commandes tactiles (WEB-01, #203) ──
+  "touch.menuButton": "メニュー",
+  "touch.barLabel": "クイック操作",
+  "touch.qsave": "Qセーブ",
+  "touch.qload": "Qロード",
+  "touch.fullscreen": "全画面",
+
   // ── 確認 ──
   "confirm.returnToTitle": "タイトルに戻りますか？ セーブしていない進行状況は失われます。",
   "confirm.overwriteSave": "このセーブデータを上書きしますか？",
