@@ -219,6 +219,22 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
   une matrice `e2e (chromium)` / `e2e (firefox)` (`fail-fast: false`), et téléverse `test-results/`
   par navigateur en cas d'échec.
 
+### Tests d'intégration et lecture complète (#269)
+
+- `tests/integration/*.test.ts` : tests sur le corpus KAG (prologue, lecture complète, traduction,
+  enchaînement, flowchart, timelines). Sans `MAHOYO_ASSETS_DIR` ni `public/assets`, ils se
+  **skippent proprement** (exit 0) au lieu d'échouer au chargement.
+- `tests/integration/full-read.test.ts` : traverse tous les scripts narratifs du corpus via le vrai
+  moteur. Deux modes : vrais assets (seuil de référence 221 scripts) ou **corpus de placeholders**
+  (marqueur `placeholder-corpus.json` : la taille attendue vient du corpus généré).
+- `tests/integration/prepare-full-read-corpus.ts` (`npm run corpus:full-read`) : génère ce corpus
+  original sous `$MAHOYO_E2E_ASSETS/assets/` (manifeste, images, scripts `corpus-NNN.ks` couvrant les
+  commandes visuelles), à partir du générateur e2e `tests/e2e/placeholders.ts`. Variables :
+  `MAHOYO_E2E_ASSETS`, `MAHOYO_FULL_READ_SCRIPTS` (défaut 221), puis `MAHOYO_ASSETS_DIR` pour le test.
+- CI : le job `build-and-test` exécute `npm run test:integration` (checkout nu → skips) puis
+  `npm run corpus:full-read` + `npm run test:full-read` (corpus de placeholders, 221 scripts). Ces
+  étapes coûtent quelques secondes : elles restent dans le job existant plutôt que dans un job dédié.
+
 ### Lint (ESLint 9, #220)
 
 - `eslint.config.js` (flat config) couvre `src/`, `tools/`, `tests/` et les fichiers de configuration ;

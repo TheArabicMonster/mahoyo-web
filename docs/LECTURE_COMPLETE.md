@@ -20,6 +20,48 @@ npm run test:full-read
 
 Si `MAHOYO_ASSETS_DIR` n'est pas définie et que `public/assets` ne contient
 pas `asset-manifest.json`, le test est ignoré proprement (skip) et reste vert.
+Tous les tests d'intégration suivent la même règle : `npm run test:integration`
+sur un checkout nu se termine par **exit 0, que des skips** (aucune exception
+au chargement des modules, #269).
+
+## Corpus de placeholders (CI, #269)
+
+La DoD v1.0 exige que la CI exécute « la même logique de lecture » avec des
+**placeholders originaux**, sans aucun asset du jeu. Le corpus est généré à
+partir de l'infrastructure e2e (`tests/e2e/placeholders.ts`) :
+
+```bash
+# 1. Générer un corpus de 221 scripts narratifs originaux (paramétrable)
+MAHOYO_E2E_ASSETS=/tmp/mahoyo-full-read npm run corpus:full-read
+
+# 2. Lancer la lecture complète sur ce corpus
+MAHOYO_ASSETS_DIR=/tmp/mahoyo-full-read/assets npm run test:full-read
+```
+
+| Variable | Effet |
+|---|---|
+| `MAHOYO_E2E_ASSETS` | dossier de sortie du corpus (défaut `<tmp>/mahoyo-full-read`) ; écrit sous `assets/` |
+| `MAHOYO_FULL_READ_SCRIPTS` | nombre de scripts générés (défaut **221**, taille du corpus de référence) |
+| `MAHOYO_ASSETS_DIR` | dossier d'assets lu par le test (`assets/` du corpus ou vrais assets locaux) |
+
+Le corpus contient un manifeste, les images/scripts du parcours e2e, puis des
+scripts `corpus-NNN.ks` qui exercent les commandes visuelles (fond, sprite,
+`partbg`, cadre de message, `backlay`/`trans`, `quake`, attente, pages, clic).
+Un marqueur `placeholder-corpus.json` indique au test le nombre de scripts
+attendus : en mode placeholders, la logique reste « traverser **N** scripts sans
+erreur bloquante », N venant du corpus généré (le seuil de 221 scripts ne
+s'applique qu'aux vrais assets).
+
+## CI
+
+Le job `build-and-test` (`.github/workflows/ci.yml`) exécute, après les tests
+unitaires :
+
+1. `npm run test:integration` sur le checkout nu — **non-régression** : les tests
+   se skippent proprement (exit 0) ;
+2. `npm run corpus:full-read` puis `npm run test:full-read` avec
+   `MAHOYO_ASSETS_DIR` pointant vers le corpus de placeholders généré — la même
+   logique de lecture que le corpus réel, sur 221 scripts, verte en CI.
 
 ## Sortie du test
 
