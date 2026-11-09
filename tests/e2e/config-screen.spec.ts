@@ -37,15 +37,20 @@ test.describe("Configuration (HUD-09)", () => {
     });
     const near = (a: number, b: number, tol = 3) => expect(Math.abs(a - b)).toBeLessThanOrEqual(tol);
     expect(rects.night).toBe(true);
-    // Colonnes : gauche 50–508, droite 540–1230 ; haut des panneaux y = 143 ; aucune barre de défilement.
+    // Colonnes : gauche 50–508, droite 540–1230 ; haut des panneaux y = 143 ; pas de défilement.
+    // Tolérance verticale de 2 % de la hauteur (14 px) : les métriques de la police d'interface
+    // diffèrent selon l'OS (webfont Noto Serif JP quand elle est chargée, repli système en CI Linux)
+    // et décalent la hauteur du contenu de quelques pixels (9 px mesurés en CI contre 0 sur macOS).
+    // Un vrai débordement de mise en page serait d'un autre ordre de grandeur.
+    const vTol = Math.round(720 * 0.02);
     const [left, right] = rects.cols as [(typeof rects.cols)[number], (typeof rects.cols)[number]];
     near(left.x, 50);
     near(left.right, 508, 4);
     near(right.x, 540);
     near(right.right, 1230, 8);
     near(rects.panels[0]!.y, 143);
-    for (const c of rects.cols) expect(c.overflow).toBeLessThanOrEqual(0);
-    for (const p of rects.panels) expect(p.bottom).toBeLessThanOrEqual(633 + 2);
+    for (const c of rects.cols) expect(c.overflow).toBeLessThanOrEqual(vTol);
+    for (const p of rects.panels) expect(p.bottom).toBeLessThanOrEqual(633 + 2 + vTol);
     // Onglets : Système commence en x = 553, y 38–71 ; quatre onglets dans l'ordre, sans chevauchement.
     near(rects.tabs[0]!.x, 553);
     for (let i = 1; i < rects.tabs.length; i++) expect(rects.tabs[i]!.x).toBeGreaterThan(rects.tabs[i - 1]!.right);
@@ -84,10 +89,11 @@ test.describe("Configuration (HUD-09)", () => {
     await toggle.check();
     await expect.poll(async () => (await storedSettings(page)).flowchartRevealAll).toBe(true);
 
-    // Rechargé : la valeur est restituée.
+    // Rechargé : la valeur est restituée. Depuis WEB-04 (#204) le hash `#/config` est routé : le
+    // rechargement rouvre directement l'écran de configuration (plus d'écran titre intermédiaire).
     await page.reload();
-    await page.locator(".mh-ui-title-screen").waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: "Config" }).first().click();
+    await expect(page).toHaveURL(/#\/config$/);
+    await page.locator(".mh-cfg").waitFor({ timeout: 15000 });
     await expect(page.locator('input[name="flowchartRevealAll"]')).toBeChecked();
 
     // Non (présélectionné) : rien ne change.

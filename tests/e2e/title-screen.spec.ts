@@ -100,12 +100,14 @@ test.describe("Écran titre", () => {
     expect(await duration(".mh-ui-title-menu")).toBe("0s");
   });
 
-  test("sans progression : Archive grisée (≈ 30 %), sans effet, Cgmode et Soundmode grisés, aucun écran fantôme", async ({ page }) => {
+  test("sans progression : Archive et Soundmode grisés, inertes ; Cgmode ouvre la galerie ; aucun écran fantôme", async ({ page }) => {
     await page.locator('[data-entry="extra"]').click();
     // Chromium sérialise le mélange en `color(srgb r g b / a)` : on lit la transparence.
     const alpha = (sel: string) =>
       page.locator(sel).evaluate((n) => Number(getComputedStyle(n).color.match(/\/\s*([\d.]+)\)$/)?.[1] ?? 1));
-    for (const id of ["archive", "cgmode", "soundmode"]) {
+    // Archive (aucune progression) et Soundmode restent grisés et inertes : le manifeste de test du
+    // mode placeholders ne contient aucun BGM, donc le catalogue Sound mode (HUD-16, #209) est vide.
+    for (const id of ["archive", "soundmode"]) {
       const entry = page.locator(`[data-entry="${id}"]`);
       await expect(entry).toHaveAttribute("aria-disabled", "true");
       expect(await alpha(`[data-entry="${id}"]`)).toBeCloseTo(0.3, 2);
@@ -115,6 +117,16 @@ test.describe("Écran titre", () => {
     }
     await expect(page.locator(".mh-ui-title-extra")).toHaveCount(0);
     await expect(page.locator(".mh-ui-title-extra-menu")).toBeVisible();
+    // Cgmode (HUD-15, #208) n'est plus une entrée « bientôt » : la galerie est calculée depuis le
+    // manifeste (ici les images de test), donc l'entrée est active et ouvre l'écran sans fantôme.
+    const cgmode = page.locator('[data-entry="cgmode"]');
+    await expect(cgmode).not.toHaveAttribute("aria-disabled", "true");
+    expect(await alpha('[data-entry="cgmode"]')).toBe(1);
+    await cgmode.click();
+    await expect(page.locator("#ui-cg .mh-cg-screen")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#ui-cg .mh-cg-screen")).toHaveCount(0);
+    await expect(cgmode).toBeFocused();
     // Back reste actif (couleur pleine) et ramène au menu principal.
     expect(await alpha('[data-entry="back"]')).toBe(1);
     await page.keyboard.press("Escape");

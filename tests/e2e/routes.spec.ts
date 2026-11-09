@@ -147,10 +147,8 @@ test.describe("Routes d'URL (WEB-04)", () => {
     expect(await noReload(page)).toBe(true);
   });
 
-  // Avec les placeholders de la CI, `Player.returnToTitle` ne rend pas la main (voir system-menu.spec.ts) :
-  // ce parcours se vérifie avec les vrais assets locaux, `MAHOYO_E2E_REAL_ASSETS=1`.
-  test("en partie : #/title confirmé ramène au titre (assets réels)", async ({ page }) => {
-    test.skip(!process.env.MAHOYO_E2E_REAL_ASSETS, "nécessite les vrais assets locaux");
+  // #231 : `returnToTitle` rend la main même pendant la frappe ; plus besoin des vrais assets.
+  test("en partie : #/title confirmé ramène au titre", async ({ page }) => {
     await boot(page, "/");
     await startGame(page);
     await page.evaluate(() => (location.hash = "#/title"));
