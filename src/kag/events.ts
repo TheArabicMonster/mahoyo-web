@@ -317,12 +317,25 @@ export type RenderEvent =
    * par le joueur ne change pas : seul le déclenchement automatique est suspendu.
    */
   | { kind: "autoMode"; paused: boolean }
+  /**
+   * Réglages de skip (`@clickskip`, `@effectskip`) : comportements du player (clic, effets).
+   * Absent = inchangé ; `true` = autorisé, `false` = interdit (sémantique KAG3).
+   */
+  | { kind: "skipSetting"; clickSkip?: boolean; effectSkip?: boolean }
+  /** `@cancelskip` : sort du mode skip en cours (le player repasse en lecture normale). */
+  | { kind: "cancelSkip" }
   /** Événement audio. */
   | { kind: "audio"; event: AudioEvent };
 
 // ── Points d'arrêt ──
 
-export type Awaitable = "transition" | "animation" | "quake" | "audio" | "staffroll";
+export type Awaitable =
+  | "transition"
+  | "animation"
+  | "quake"
+  | "audio"
+  | "bgmFade"
+  | "staffroll";
 
 /** Événements à appliquer à un instant donné d'une séquence minutée. */
 export type TimelineEntry = { at: Ms; events: readonly RenderEvent[] };

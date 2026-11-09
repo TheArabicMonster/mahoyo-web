@@ -184,6 +184,10 @@ export type RuntimeState = {
   quickMenuLocked?: boolean;
   /** Avance automatique suspendue (@pauseautomode) ; absent = non suspendue. */
   autoModePaused?: boolean;
+  /** Saut au clic autorisé (@clickskip) ; absent = true (défaut moteur). */
+  clickSkipEnabled?: boolean;
+  /** Saut des effets autorisé (@effectskip) ; absent = true (défaut moteur). */
+  effectSkipEnabled?: boolean;
 };
 
 /**
@@ -263,6 +267,8 @@ export function createRuntimeState(): RuntimeState {
     ploy: null,
     quickMenuLocked: false,
     autoModePaused: false,
+    clickSkipEnabled: true,
+    effectSkipEnabled: true,
   };
 }
 
@@ -1487,9 +1493,57 @@ export class Runtime {
     };
   }
 
+  /**
+   * `@xchgbgm` : échange de BGM avec fondu croisé (KAG3, `data/system/bgm.tjs`, `exchange`).
+   *
+   * Moteur : l'ancienne piste est fondue sur `outtime`, la nouvelle est jouée immédiatement à
+   * volume 0 puis monte sur `intime` en démarrant après `outtime - overlap` ms (overlap > 0 =
+   * vrai fondu croisé). `volume` règle le volume global BGM.
+   *
+   * Approximation du port : on émet un arrêt de l'ancienne piste (fondu `outtime`) puis un
+   * `play` de la nouvelle (fondu `intime`, retard `outtime - overlap`) ; `volume` est appliqué
+   * comme volume de piste (le port n'a pas de volume global scriptable distinct des réglages
+   * utilisateur). Documenté dans `docs/KAG_MAHOYO_SEMANTICS.md`.
+   */
+  private applyXchgbgm(instruction: Extract<Instruction, { kind: "xchgbgm" }>): RenderEvent[] {
+    const events: RenderEvent[] = [];
+    const time = instruction.time;
+    const intime = instruction.time ?? instruction.intime ?? 5000;
+    const outtime = instruction.time ?? instruction.outtime ?? 5000;
+    const overlap = Math.max(0, instruction.overlap ?? 0);
+    const volume = (instruction.volume ?? 100) / 100;
+    const loop = instruction.loop ?? true;
+
+    if (this.state.bgm === instruction.storage) return events; // même piste : rien à faire
+
+    if (this.state.bgm !== null) {
+      events.push({ kind: "audio", event: { kind: "stop", channel: "bgm", fadeOut: time !== undefined ? outtime : Math.max(0, outtime) } });
+    }
+    this.state.bgm = instruction.storage;
+    this.state.bgmPaused = false;
+    events.push({
+      kind: "audio",
+      event: {
+        kind: "play",
+        channel: "bgm",
+        storage: instruction.storage,
+        loop,
+        volume,
+        fadeIn: intime,
+        // Le fondu entrant démarre après la sortie, moins le chevauchement demandé.
+        delay: Math.max(0, outtime - overlap),
+      },
+    });
+    return events;
+  }
+
   private applyAudio(instruction: Instruction): RenderEvent | null {
     let event: AudioEvent | null = null;
     switch (instruction.kind) {
+      case "xchgbgm": {
+        // Traité par applyXchgbgm (plusieurs événements audio) ; ce cas ne devrait pas arriver.
+        break;
+      }
       case "play": {
         this.state.bgm = instruction.storage;
         this.state.bgmPaused = false;
@@ -1992,6 +2046,20 @@ export class Runtime {
         if (res.stop) return { events, stop: res.stop };
         break;
       }
+      case "xchgbgm":
+        events.push(...this.applyXchgbgm(instruction));
+        break;
+      case "clickskip":
+        this.state.clickSkipEnabled = instruction.enabled;
+        events.push({ kind: "skipSetting", clickSkip: instruction.enabled });
+        break;
+      case "effectskip":
+        this.state.effectSkipEnabled = instruction.enabled;
+        events.push({ kind: "skipSetting", effectSkip: instruction.enabled });
+        break;
+      case "cancelskip":
+        events.push({ kind: "cancelSkip" });
+        break;
       case "quake":
         events.push(this.applyQuake(instruction));
         break;
