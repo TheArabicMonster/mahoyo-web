@@ -42,12 +42,31 @@ describe("DomStageRenderer — zoom et rotation des fonds et des sprites", () =>
       expect(bgEl().style.backgroundColor).not.toBe("rgb(0, 0, 0)");
     });
 
-    it("zoomé sans position : centré sur l'écran", async () => {
+    it("zoomé sans position : X centré, bas de l'image 48 px sous l'écran (défauts du moteur, #249)", async () => {
       await show({ bg: "fond", bgZoomX: 120, bgZoomY: 120 });
       const img = bgImg()!;
       expect(img.style.left).toBe("50%");
-      expect(img.style.top).toBe("50%");
-      expect(img.style.transform).toBe("translate(-50%, -50%) rotate(0deg) scale(1.2, 1.2)");
+      expect(img.style.top).toBe("");
+      expect(img.style.bottom).toBe("-48px");
+      expect(img.style.transform).toBe("translateX(-50%) rotate(0deg) scale(1.2, 1.2)");
+    });
+
+    it("zoomé avec top seul : X centré et top explicite (#249)", async () => {
+      await show({ bg: "fond", bgTop: -100, bgZoomX: 200, bgZoomY: 200 });
+      const img = bgImg()!;
+      expect(img.style.left).toBe("50%");
+      expect(img.style.top).toBe("-100px");
+      expect(img.style.bottom).toBe("");
+      expect(img.style.transform).toBe("translateX(-50%) rotate(0deg) scale(2, 2)");
+    });
+
+    it("zoomé avec left seul : left explicite et bas par défaut (#249)", async () => {
+      await show({ bg: "fond", bgLeft: 20, bgZoomX: 200, bgZoomY: 200 });
+      const img = bgImg()!;
+      expect(img.style.left).toBe("20px");
+      expect(img.style.top).toBe("");
+      expect(img.style.bottom).toBe("-48px");
+      expect(img.style.transform).toBe("rotate(0deg) scale(2, 2)");
     });
 
     it("miroir : un zoom négatif devient une échelle négative", async () => {

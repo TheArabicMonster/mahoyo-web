@@ -25,7 +25,8 @@
     "progress": "tsx tools/progress.ts",
     "check:assets": "tsx tools/check-no-assets.ts",
     "chain": "tsx tools/story-chain.ts",
-    "timelines": "tsx tools/timelines.ts"
+    "timelines": "tsx tools/timelines.ts",
+    "trace:visual": "tsx tools/trace-visual.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

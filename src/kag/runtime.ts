@@ -149,6 +149,24 @@ export type RuntimeState = {
   autoModePaused?: boolean;
 };
 
+/**
+ * Échantillon de trace d'une commande, pour l'outil de diagnostic visuel
+ * (`tools/trace-visual.ts`). Émis seulement si `Runtime.onTrace` est défini.
+ */
+export type RuntimeTraceSample = {
+  /** Commande appliquée (telle que lue par le parser ; macros déjà dépliées). */
+  instruction: Instruction;
+  /** Position (page/instruction) de la commande au moment de son exécution. */
+  position: Position;
+  /** Page visée par la commande (`back` par défaut, `fore` pour les animations de premier plan). */
+  page: PageLayer | null;
+  /** Événements émis par cette commande. */
+  events: readonly RenderEvent[];
+  /** État des pages après application de la commande (copie). */
+  fore: PageState;
+  back: PageState;
+};
+
 export type ScriptContext = {
   script: ParsedScript;
   pc: number;
@@ -227,6 +245,13 @@ export class Runtime {
    */
   public rawCount = 0;
 
+  /**
+   * Callback de diagnostic (outil de trace visuelle) : reçoit chaque commande
+   * non textuelle aussitôt appliquée, avec la page visée et l'état des pages.
+   * Null (défaut) = aucun surcoût.
+   */
+  public onTrace: ((sample: RuntimeTraceSample) => void) | null = null;
+
   /** Macros définies par @macro/@endmacro. */
   private macros: Map<string, Token[]> = new Map();
 
@@ -304,6 +329,14 @@ export class Runtime {
 
   get currentScriptName(): string {
     return this.context.scriptName;
+  }
+
+  /**
+   * Copie de l'état des pages fore/back (diagnostic : outil de trace visuelle,
+   * `tools/trace-visual.ts`). Ne modifie rien.
+   */
+  debugPages(): { fore: PageState; back: PageState } {
+    return { fore: structuredClone(this.state.fore), back: structuredClone(this.state.back) };
   }
 
   private buildPosition(segment?: number): Position {
@@ -973,10 +1006,11 @@ export class Runtime {
     const page = this.resolvePage("partbg", instruction.page);
     const target = this.getPageState(page);
     const id = instruction.id ?? instruction.storage;
-    // noclear=0 (défaut) : vide les partbg existants (calques avec crop) avant de poser le nouveau.
-    if (!instruction.noclear) {
-      target.layers = target.layers.filter((l) => !l.crop);
-    }
+    // Le moteur n'efface jamais les autres partbg : chaque `@partbg` ajoute (ou remplace, même id)
+    // SON calque ; la suppression passe explicitement par `@clpartbg` ou `@clall`. L'ancien
+    // effacement des calques « crop » quand `noclear` était absent faisait disparaître les fenêtres
+    // d'un montage (ex. `1-1.ks` page 11 : 5 fenêtres de pièces posées en `id=pb1..pb5` avec
+    // `noclear=0`, qui doivent se cumuler) — issue #249.
     const crop = instruction.crop;
     const layer: Layer = {
       id,
@@ -1597,6 +1631,41 @@ export class Runtime {
     this.pendingContextChange = true;
   }
 
+  /**
+   * Page visée par une commande (même règle que `resolvePage`, appliquée aux commandes
+   * visuelles) ; null pour les commandes qui ne touchent aucune page.
+   */
+  private resolvedPageOf(instruction: Instruction): PageLayer | null {
+    switch (instruction.kind) {
+      case "bg":
+        return this.resolvePage("bg", instruction.page);
+      case "fg":
+        return this.resolvePage("fg", instruction.page);
+      case "chgfg":
+        return this.resolvePage("chgfg", instruction.page);
+      case "partbg":
+        return this.resolvePage("partbg", instruction.page);
+      case "clall":
+        return this.resolvePage("clall", instruction.page);
+      case "clfg":
+        return this.resolvePage("clfg", instruction.page);
+      case "bgact":
+        return this.resolvePage("bgact", instruction.page);
+      case "animate":
+        return this.resolvePage(
+          instruction.def.isMove ? "movefg" : instruction.def.isPartbg ? "partbgact" : "fgact",
+          instruction.def.page,
+        );
+      case "trans":
+        return "fore";
+      case "backlay":
+        // Copie fore → back (doc §2) : la page modifiée est back.
+        return "back";
+      default:
+        return null;
+    }
+  }
+
   private applyInstruction(instruction: Instruction): { events: RenderEvent[]; stop?: StopReason } {
     const events: RenderEvent[] = [];
 
@@ -1942,7 +2011,18 @@ export class Runtime {
           continue;
         }
 
+        const tracePosition = this.onTrace ? this.buildPosition() : null;
         const result = this.applyInstruction(instruction);
+        if (this.onTrace && tracePosition) {
+          this.onTrace({
+            instruction,
+            position: tracePosition,
+            page: this.resolvedPageOf(instruction),
+            events: result.events,
+            fore: structuredClone(this.state.fore),
+            back: structuredClone(this.state.back),
+          });
+        }
         events.push(...result.events);
         if (result.stop) {
           this.context.instructionIndex += 1;

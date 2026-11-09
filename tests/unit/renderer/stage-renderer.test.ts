@@ -77,6 +77,35 @@ describe("DomStageRenderer", () => {
     expect(bg.style.backgroundImage).toContain("black.webp");
   });
 
+  it("@bg sans left/top : position par défaut du moteur, X centré et bas + 48 px (#249)", async () => {
+    const events: RenderEvent[] = [
+      { kind: "scene", scene: { bg: "black", sprites: [], effect: null }, transition: { method: "none" } },
+    ];
+    await renderer.apply(events, { instant: true, signal: new AbortController().signal });
+    const bg = root.querySelector(".mh-stage-bg") as HTMLElement;
+    // `@bg` (tagex.tjs) pose top = 576 - hauteurImage + 48 ; en CSS sans connaître la taille :
+    // «100% + 48px» place le bas de l'image 48 px sous le bas de l'écran.
+    expect(bg.style.backgroundPosition).toBe("50% calc(100% + 48px)");
+  });
+
+  it("@bg avec left seul : X explicite, Y par défaut du moteur (#249)", async () => {
+    const events: RenderEvent[] = [
+      { kind: "scene", scene: { bg: "black", bgLeft: 10, sprites: [], effect: null }, transition: { method: "none" } },
+    ];
+    await renderer.apply(events, { instant: true, signal: new AbortController().signal });
+    const bg = root.querySelector(".mh-stage-bg") as HTMLElement;
+    expect(bg.style.backgroundPosition).toBe("10px calc(100% + 48px)");
+  });
+
+  it("@bg avec top seul : Y explicite, X centré (#249)", async () => {
+    const events: RenderEvent[] = [
+      { kind: "scene", scene: { bg: "black", bgTop: 20, sprites: [], effect: null }, transition: { method: "none" } },
+    ];
+    await renderer.apply(events, { instant: true, signal: new AbortController().signal });
+    const bg = root.querySelector(".mh-stage-bg") as HTMLElement;
+    expect(bg.style.backgroundPosition).toBe("50% 20px");
+  });
+
   it("affiche du texte en mode instant", async () => {
     const events: RenderEvent[] = [
       { kind: "clearText" },

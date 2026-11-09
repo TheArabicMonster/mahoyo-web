@@ -25,21 +25,31 @@ KiriKiri utilise deux pages :
 - **fore** : ce qui est affiché.
 - **back** : où l'on prépare la modification avant un `@trans`.
 
-Règles observées dans le prologue :
-- `@bg page=back storage=… noclear=0` prépare le fond dans **back** sans toucher fore.
-- `@fgact page=back …` attache une animation à un calque de la page **back**.
-- `@trans rule=crossfade time=1200 nowait=?` copie **back → fore** avec un fondu.
-- Après `@trans`, la page **back doit être vidée** (sinon les calques s'empilent).
-- `noclear=0` : la page cible est vidée avant d'écrire le nouveau fond/calques.
-  `noclear=1` : on conserve les calques existants (ex. `@bg … noclear=1` garde
-  les sprites par-dessus le nouveau fond).
-- **Trans implicite** : une commande avec `time>0` et `rule=` mais sans
-  `page=back` (ex. `@bg time=1200 rule=crossfade storage=white`) équivaut à
-  backlay → modification du back → trans. `nowait=1` → non bloquant.
-  S'applique à `@bg`, `@partbg`, `@fg` et `@chgfg` (#166) : `@fg rule=crossfade time=300 …`
-  montre le personnage tout de suite (fondu de 300 ms, bloquant sauf `nowait=1`). Sans `time`
-  ou avec `page=back`, le calque reste sur back jusqu'au `@trans` ou au `@bg` suivant (le
-  corpus empile ainsi plusieurs `@fg` avant un `@bg … time=…`).
+Règles vérifiées dans les sources locales du moteur (`data/override/tagex.tjs` — chargé par
+`Override.tjs` → `TagEx.tjs` — et `data/override/initialize.tjs`) :
+- Sans `page=`, **toutes** les commandes visuelles (`bg`, `fg`, `partbg`, `clfg`, `clpartbg`,
+  `fgact`, `partbgact`, `chgfg`) écrivent sur **back** : `@bg` et `@fg` le forcent explicitement
+  (`if(.page == void) .page = "back"`).
+- `@bg` sans `noclear` **vide les calques** de la page cible (`freeimage` sur chaque calque et
+  sur les plugins) ; `noclear=1` les conserve. `@fg`/`@partbg` ne vident pas les autres calques.
+- `@trans` (transaction native `BeginTransition`) utilise **`exchange=true` par défaut** : à la fin
+  du fondu, fore et back sont **échangés** (fore = contenu préparé, back = ancien fore).
+  L'attente `@wt` insère ensuite un **backlay** (copie fore → back), sauf `noback=1` : après une
+  transition *bloquante*, back redevient identique à fore ; après une transition `nowait=1`,
+  **back contient l'ancien affichage**.
+- **Écart connu du port** : `src/kag/runtime.ts` implémente `fore = clone(back)` avec back conservé
+  (exchange=false, pas de backlay). Le fore affiché est identique dans les cas simples, mais l'état
+  de back après un `@trans nowait=1` diffère : suivi dans une issue dédiée (voir §11).
+- **Trans implicite** : une commande avec `time>0` et `rule=` mais sans `page=` (ex.
+  `@bg time=1200 rule=crossfade storage=white`) passe par `dotrans` : la commande est appliquée sur
+  back puis une transition est lancée. `nowait=1` → non bloquant. S'applique à `@bg`, `@partbg`,
+  `@fg` et `@chgfg`, conformément à `@fg`/`@bg` de `tagex.tjs` et #166.
+- **Placement par défaut d'un fond** (vérifié dans `tagex.tjs`, handler `bg`) : quand `left`/`top`
+  sont omis, chaque axe est indépendant et vaut `left = (scWidth - imageWidth) / 2` (centré en X) et
+  `top = scHeight - imageHeight + 48` (bas de l'image 48 px **sous** le bas de l'écran, `scHeight`
+  = 576). Ce n'est donc **pas** un centrage vertical : pour un fond de 1050 px de haut, l'écart est
+  de 189 px, pour 960 px de 144 px. Le port applique ces défauts depuis #249 (auparavant centrage
+  vertical, faux dès que l'image ne fait pas 672 px de haut).
 
 ## 3. Calques (layers)
 
@@ -124,17 +134,32 @@ height=576 type=13 effect=monocro noclear=1 srczoom=400 id=pb1`
   positionné à `center/vcenter` (défaut 512/288), `translate(-50%,-50%)`.
 - À l'intérieur, une `<img>` en taille **native**, décalée de
   `translate(-srcleft px, -srctop px) scale(srczoom/100)`. `srczoom=400` = ×4.
-  **Pivot du zoom : le centre de l'image** (`transform-origin: 50% 50%`, #169), comme pour `@bg` :
-  l'image est d'abord posée en (`-srcleft`, `-srctop`) à sa taille d'origine, puis zoomée autour de
-  son propre centre. Un pivot au coin haut gauche repoussait l'image dans un coin de la fenêtre dès
-  que `srcleft`/`srctop` sont négatifs (636 des 2 171 `@partbg` du corpus japonais, ex. `srcleft=-150
-  srctop=-174 srczoom=140` : fond de la salle des professeurs coupé en bas à droite, bande noire
-  en haut et à gauche). **Déduit du corpus, pas mesuré sur le jeu** : sur les 1 793 `@partbg` dont
-  l'image zoomée est assez grande pour couvrir la fenêtre, le pivot au centre la couvre dans 1 716 cas
-  (95,7 %), le pivot au coin dans 1 257 (70 %), un zoom en unités de l'image source dans 1 169 et un
-  pivot au centre de la fenêtre dans 1 219. Sans zoom (`srczoom=100`) les modèles sont identiques.
-- `bgstorage` : remplace le fond de la page cible.
-- `rule/time` : transition implicite (voir §2).
+  **Pivot du zoom : le centre de l'image** (`transform-origin: 50% 50%`, #169), comme pour `@bg`.
+  Vérifié dans les sources du plugin local (`data/scenario/partbgplugin.tjs`) : `@partbg` anime
+  l'image source par une transformation affine construite autour de `srcafx`/`srcafy`, dont la
+  valeur par défaut est **`AFFINEOFFSET_CENTER`**, c'est-à-dire le centre de l'image ; l'image
+  transformée est ensuite décalée de `-srcleft`/`-srctop` (`extraAffineFrame` : `offx = srcleft`,
+  `offy = srctop`). Sans zoom ni rotation le plugin prend un chemin de copie de région
+  (`extraCopyFrame`) qui, après simplification, donne la même origine de rect :
+  `srcafx + srcleft - (largeur source)/2` = `srcleft`. Le modèle du renderer
+  (`srcleft`/`srctop` = coin haut-gauche du rect source, zoom autour du centre de l'image) est donc
+  conforme au moteur.
+  Contrôle corpus (8 900 `@bg`/2 171 `@partbg` avec dimensions d'image connues, issue #249) : pour
+  les 855 `@partbg` sans zoom, le rect déclaré est **entièrement dans l'image dans 809 cas (94,6 %)**
+  avec ce modèle, contre 319 (37,3 %) si le rect était centré sur `srcafx + srcleft`. Les deux
+  chemins du plugin (copie de région à 100 %, affine sinon) concordent.
+  Un pivot au coin haut gauche repoussait l'image dans un coin de la fenêtre dès que
+  `srcleft`/`srctop` sont négatifs (636 des 2 171 `@partbg` du corpus japonais) — correction #169
+  conservée.
+- `bgstorage` : remplace le fond de la page cible (via `@bg`, donc avec ses défauts de position).
+- `rule/time` : transition implicite (voir §2) ; `noclear` ne contrôle que le **backlay**
+  effectué avant cette transition, pas l'effacement des calques.
+- **Les `@partbg` se cumulent** : chaque commande ajoute (ou remplace, même `id`) **son** calque et
+  n'efface **jamais** les autres — c'est le mécanisme des montages (ex. `1-1.ks` page 11 : cinq
+  fenêtres `id=pb1..pb5` de pièces différentes posées côte à côte avec `noclear=0`). La suppression
+  est explicite : `@clpartbg id=…`, `@clall` (macro `clpartbg`), ou `@bg` sans `noclear` (qui vide
+  aussi les calques des plugins, `forEachClearLayers`). Le port effaçait les calques de crop quand
+  `noclear` était absent : corrigé (#249), 208 `@partbg` du corpus étaient concernées.
 - `partbgid=pb1` (sur `@fg`) : clip le sprite **à l'intérieur** du partbg
   (à implémenter plus tard).
 - `@clpartbg id=pb1` : supprime le partbg par id.
@@ -407,10 +432,17 @@ sur la **page entière** avant la frappe, donc sans changement de taille en cour
 
 ## 11. Hypothèses à valider contre une capture vidéo du jeu original
 
-- `page=` par défaut des macros Mahoyo `@fg` (fore ou back ?). Le prologue
-  suggère que les macros système écrivent sur **back**, mais il faut lire les
-  vraies définitions de macros (scripts système du `data.xp3`, en local) pour
-  trancher.
+- ~~`page=` par défaut des macros Mahoyo `@fg` (fore ou back ?)~~ — **tranché (#249)** en lisant
+  les sources du moteur : `@bg`, `@fg`, `@partbg`, `@clfg`, `@clpartbg`, `@fgact`, `@partbgact`,
+  `@chgfg` écrivent sur **back** par défaut ; `@movefg`/`@movepartbg` ciblent fore. Voir §2.
+- `@trans` (`exchange=true` + backlay après `@wt`, voir §2) : le port garde `exchange=false` ; l'état
+  de back après un `@trans nowait=1` diffère donc du moteur. Suivi séparément (issue de suivi #249).
+- Variantes `storage=nom|partie` : dans le moteur, le suffixe est résolu par la couche native
+  (composition de « parts ») ; les archives installées ne contiennent **aucun** fichier de parts
+  (vérifié : 5 422 images = bg/fg/image/rule/data uniquement, aucun `.parts`, aucune clé `|` dans le
+  manifeste), et le code TJS de composition (`Layer.override.tjs`) est commenté. Le port ignore le
+  suffixe (`storageKey`), sans écart observable possible sur les assets installés ; reste à confirmer
+  si une version du jeu fournit des parts.
 - Valeur par défaut de `textoff=` (probablement : masquer la textbox pendant la
   commande, puis la réafficher ; **non validée**). Le corpus écrit `textoff=0` sur
   environ 4 000 commandes (`@bg`, `@chgfg`, `@fgact`, `@partbg`, `@movefg`, `@trans`…) et
