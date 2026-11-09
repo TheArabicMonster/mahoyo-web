@@ -128,7 +128,7 @@ inconnue hors baseline.
 |---|---|---|
 | **Implémentée** | commande reconnue par le parser/runtime (aucun warning) | toutes les autres commandes du corpus |
 | **Ignorée volontairement** | no-op déclaré dans le registre, avec raison et issue | 2 commande(s) |
-| **Inconnue** | ni implémentée ni déclarée no-op | 34 commande(s) distincte(s), 133 occurrence(s) |
+| **Inconnue** | ni implémentée ni déclarée no-op | 30 commande(s) distincte(s), 121 occurrence(s) |
 
 #### Commandes ignorées volontairement (no-op déclarés)
 
@@ -148,7 +148,6 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@ageage` | 1 |
 | `@ansz` | 1 |
 | `@beginfallnote` | 1 |
-| `@bindbg` | 3 |
 | `@chgpartbg` | 22 |
 | `@cm` | 8 |
 | `@cm4pg` | 7 |
@@ -160,11 +159,8 @@ Le nombre d'inconnues ne peut que baisser : toute commande résolue (implément�
 | `@eywz` | 1 |
 | `@fallnoteopt` | 2 |
 | `@heart` | 3 |
-| `@infg` | 5 |
 | `@ingz` | 1 |
-| `@layopt` | 1 |
 | `@loadtimeline` | 1 |
-| `@outfg` | 3 |
 | `@pauseaction` | 1 |
 | `@pauseploy` | 1 |
 | `@playtimeline` | 1 |

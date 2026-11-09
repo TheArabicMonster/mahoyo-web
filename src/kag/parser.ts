@@ -260,6 +260,60 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         ...parseTransformArgs(args),
         ...parseAppearanceArgs(args),
       };
+    case "infg": {
+      // @infg (fgplugin.tjs) : apparition animée d'un calque depuis (final - mx, final - my).
+      // Le port pose le calque directement sur la page affichée (fore) et anime vers la position
+      // finale (pas de @trans implicite : approximation documentée).
+      const opacity = args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : 1;
+      return {
+        kind: "infg",
+        storage: normStorage(args.storage),
+        id: args.id,
+        index: args.index !== undefined ? parseIntArg(args.index) : undefined,
+        center: parseIntArg(args.center, SCREEN_CENTER_X),
+        vcenter: parseIntArg(args.vcenter, SCREEN_CENTER_Y),
+        opacity,
+        time: parseIntArg(args.time, 300),
+        accel: parseIntArg(args.accel, 0),
+        mx: parseIntArg(args.mx, 24),
+        my: parseIntArg(args.my, 0),
+        ...parseTransformArgs(args),
+        ...parseAppearanceArgs(args),
+      };
+    }
+    case "outfg": {
+      // @outfg (fgplugin.tjs) : le calque courant glisse de (mx, my) et disparaît en `time` ms.
+      return {
+        kind: "outfg",
+        page: parsePageLayer(args.page),
+        id: args.id,
+        storage: normStorageOpt(args.storage ?? args.target),
+        time: parseIntArg(args.time, 300),
+        accel: parseIntArg(args.accel, 0),
+        mx: parseIntArg(args.mx, 24),
+        my: parseIntArg(args.my, 0),
+      };
+    }
+    case "layopt": {
+      // @layopt (KAG3, mainwindow.tjs `.layopt`) : options d'un calque existant.
+      // left/top sont approximés en center/vcenter (le port ne modélise pas le coin haut-gauche).
+      const opacity = args.opacity !== undefined ? parseIntArg(args.opacity) / 255 : undefined;
+      return {
+        kind: "layopt",
+        page: parsePageLayer(args.page),
+        id: args.id,
+        storage: normStorageOpt(args.storage),
+        layer: args.layer,
+        center: args.center !== undefined ? parseIntArg(args.center) : args.left !== undefined ? parseIntArg(args.left) : undefined,
+        vcenter: args.vcenter !== undefined ? parseIntArg(args.vcenter) : args.top !== undefined ? parseIntArg(args.top) : undefined,
+        opacity,
+        visible: parseBoolArg(args.visible),
+      };
+    }
+    case "bindbg":
+      // @bindbg (tagex.tjs) : les calques suivent les mouvements du fond. Approximation : le
+      // décalage est visuel au moment des panoramiques (`bgMove`), non persisté.
+      return { kind: "bindbg", enabled: args.enabled !== undefined ? args.enabled !== "0" && args.enabled !== "false" : true, page: parsePageLayer(args.page) };
     case "clall":
       return { kind: "clall", page: parsePageLayer(args.page) };
     case "clfg":

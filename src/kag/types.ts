@@ -57,6 +57,8 @@ export type Layer = {
   /** z-index (= index= / absolute=). */
   index: number;
   opacity: number;
+  /** `@layopt visible=0` : calque masqué sans être détruit. Absent = visible. */
+  visible?: boolean;
   /** Si défini, ce calque est un partbg (crop viewport @partbg). */
   crop?: CropSpec;
   /** Pour @fg/@fgact partbgid= : id du partbg parent (clipage). */
@@ -185,6 +187,46 @@ export type Instruction =
   | ({ kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs & AppearanceArgs)
   | ({ kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean; crop: CropSpec } & AppearanceArgs)
   | { kind: "animate"; def: AnimationDef }
+  | {
+      kind: "infg";
+      storage: string;
+      id?: string;
+      page?: PageLayer;
+      index?: number;
+      center: number;
+      vcenter: number;
+      opacity: number;
+      time: number;
+      accel: number;
+      /** Décalage horizontal/vertical du point de départ de l'apparition (défauts : 24 / 0). */
+      mx: number;
+      my: number;
+      zoomx?: number;
+      zoomy?: number;
+      rotate?: number;
+      type?: number;
+      effect?: string;
+      brightness?: number;
+      contrast?: number;
+      blurx?: number;
+      blury?: number;
+    }
+  | { kind: "outfg"; page?: PageLayer; id?: string; storage?: string; time: number; accel: number; mx: number; my: number }
+  | {
+      kind: "layopt";
+      page?: PageLayer;
+      id?: string;
+      storage?: string;
+      /** Nom de calque KAG (`layer=message0`…) — les calques de message ne sont pas modélisés. */
+      layer?: string;
+      center?: number;
+      vcenter?: number;
+      left?: number;
+      top?: number;
+      opacity?: number;
+      visible?: boolean;
+    }
+  | { kind: "bindbg"; enabled: boolean; page?: PageLayer }
   | { kind: "clall"; page?: PageLayer }
   | { kind: "clfg"; storage?: string; index?: number; id?: string; page?: PageLayer }
   | { kind: "backlay"; storage?: string }
