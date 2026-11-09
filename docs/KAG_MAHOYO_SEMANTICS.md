@@ -808,6 +808,30 @@ narratif ; elles sortent de la baseline, qui passe de **25 commandes / 46 occurr
 | `@waittrig` | **hors corpus narratif** | uniquement dans des scripts système exclus de l'audit (`call.ks`, `first.ks`, `teatime.ks`, `tracerplugin.ks`) : attente d'un signal de trigger. Non implémenté ; sans impact sur la DoD (corpus narratif). |
 | `@history` | **hors corpus narratif** | idem (`call.ks`, `first.ks`, `teatime.ks`) : active/désactive l'ajout au backlog système. Non implémenté ; le backlog du port est indépendant de cette commande. |
 
+### Cohérence `textoff`/`texton` avec `@cm`/`@cm4pg`
+
+- `@cm`/`@cm4pg` vident le texte **sans toucher à la visibilité de la boîte** : si `@textoff` l'a
+  masquée, elle reste masquée (`textbox.visible=false` conservé dans l'état de sauvegarde) ;
+  `@cm` n'émet aucun événement `textbox` de réaffichage. La règle « le prochain texte ré-affiche la
+  boîte » reste celle de `revealTextboxForText` (#159) : un `textbox visible=true` (fondu 300 ms)
+  précède le texte suivant, donc l'état `textoff` est bien consommé par le texte qui doit
+  s'afficher. `@texton` explicite fonctionne aussi (boîte ré-affichée, texte vide).
+- Cas couverts par les tests : `@textoff` + `@cm` (aucun réaffichage, état sauvegardé invisible),
+  texte suivant (réapparition avant le texte, fondu 300 ms), `@cm4pg` + `@texton`, rendu DOM
+  (opacité 0 conservée après le vidage, puis 1 avec le texte suivant).
+- **Aucun écart résiduel** : la cohérence était déjà assurée par la séparation
+  `clearText` (contenu) / `textbox` (visibilité) ; ce lot l'a rendue explicite par des tests et
+  par le drapeau `force` (le réglage #177 ne s'applique pas à `@cm`).
+
+### E2e (1 seul, protocole Lead)
+
+`tests/e2e/text-clear.spec.ts` : la première page de test du prologue placeholders affiche un
+marqueur, `@cm` vide la page, `@s` marque un point d'arrêt ; le test vérifie que le texte de la
+page devient vide, que la boîte reste visible (opacité 1, pas d'état `textoff`), puis qu'un clic
+passe à la page suivante. Le prologue placeholders insère cette page après les deux premières
+pages « normales » (`pageBodies`/`pagesFor`, numérotation conservée) ; suite e2e Chromium
+complète rejouée localement (75/75).
+
 ### Notes d'implémentation et tests
 
 - `src/kag/parser.ts` : cas `cm`/`cm4pg` (aucun argument) ; `src/kag/types.ts` : instructions
