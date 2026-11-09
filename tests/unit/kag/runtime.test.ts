@@ -1094,3 +1094,80 @@ describe("Runtime — crédits de fin (#286)", () => {
     expect(runtime.getSaveData().state.staffroll?.bgcolor).toBe("#000000");
   });
 });
+
+describe("Runtime — audio et déroulement (#285)", () => {
+  const run = (src: string) => new Runtime(parse(lex(src)));
+
+  it("@xchgbgm : arrêt fondu de l'ancienne BGM puis fondu entrant de la nouvelle", () => {
+    const runtime = run(`
+*page0|
+@play storage=m01
+@xchgbgm storage=m38 time=8000 overlap=7000 volume=80
+@pg
+`);
+    const step = runtime.step();
+    const audio = step.events.filter((e) => e.kind === "audio").map((e) => (e as { event: unknown }).event);
+    expect(audio).toEqual([
+      { kind: "play", channel: "bgm", storage: "m01", loop: true, volume: 1 },
+      { kind: "stop", channel: "bgm", fadeOut: 8000 },
+      { kind: "play", channel: "bgm", storage: "m38", loop: true, volume: 0.8, fadeIn: 8000, delay: 1000 },
+    ]);
+    expect(runtime.getSaveData().state.bgm).toBe("m38");
+  });
+
+  it("@xchgbgm sans BGM en cours : simple fondu entrant", () => {
+    const runtime = run(`
+*page0|
+@xchgbgm storage=m38 time=4000 overlap=3000
+@pg
+`);
+    const step = runtime.step();
+    const audio = step.events.filter((e) => e.kind === "audio").map((e) => (e as { event: unknown }).event);
+    expect(audio).toEqual([
+      { kind: "play", channel: "bgm", storage: "m38", loop: true, volume: 1, fadeIn: 4000, delay: 1000 },
+    ]);
+  });
+
+  it("@xchgbgm vers la BGM déjà en cours : aucun événement (moteur)", () => {
+    const runtime = run(`
+*page0|
+@play storage=m38
+@xchgbgm storage=m38 time=4000
+@pg
+`);
+    const step = runtime.step();
+    const audio = step.events.filter((e) => e.kind === "audio");
+    expect(audio).toHaveLength(1); // seulement le @play initial
+  });
+
+  it("@wb : point d'arrêt waitFor bgmFade (non skippable par défaut)", () => {
+    const runtime = run(`
+*page0|
+@play storage=m01
+@playstop time=8000 nowait=1
+@wb
+@pg
+`);
+    let waitStop: { what?: string; skippable?: boolean } | null = null;
+    for (let i = 0; i < 6 && !waitStop; i++) {
+      const step = runtime.step();
+      if (step.stop.kind === "waitFor") waitStop = step.stop;
+      if (step.stop.kind === "end" || step.stop.kind === "click") break;
+    }
+    expect(waitStop).toMatchObject({ kind: "waitFor", what: "bgmFade", skippable: false });
+  });
+
+  it("@clickskip/@effectskip émettent les réglages ; @cancelskip émet cancelSkip", () => {
+    const runtime = run(`
+*page0|
+@clickskip enabled=0
+@effectskip enabled=false
+@cancelskip
+@pg
+`);
+    const step = runtime.step();
+    expect(step.events).toContainEqual({ kind: "skipSetting", clickSkip: false });
+    expect(step.events).toContainEqual({ kind: "skipSetting", effectSkip: false });
+    expect(step.events).toContainEqual({ kind: "cancelSkip" });
+  });
+});

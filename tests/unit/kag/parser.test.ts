@@ -626,3 +626,46 @@ describe("parse — crédits de fin (#286)", () => {
     expect(ins[2]).toMatchObject({ kind: "staffrollstart", height: 11252, time: 160000 });
   });
 });
+
+describe("parse — audio et déroulement (#285)", () => {
+  const first = (source: string) => parse(lex(source)).pages[0]!.instructions[0]!;
+
+  it("@xchgbgm : fondu croisé (time, overlap, volume, storage)", () => {
+    expect(first("@xchgbgm storage=m38 time=8000 overlap=7000 volume=80")).toEqual({
+      kind: "xchgbgm",
+      storage: "m38",
+      time: 8000,
+      intime: undefined,
+      outtime: undefined,
+      overlap: 7000,
+      volume: 80,
+      loop: undefined,
+    });
+  });
+
+  it("@xchgbgm : intime/outtime/loop", () => {
+    expect(first("@xchgbgm storage=m10 intime=3000 outtime=4000 loop=0")).toMatchObject({
+      kind: "xchgbgm",
+      intime: 3000,
+      outtime: 4000,
+      loop: false,
+    });
+  });
+
+  it("@wb : attente de fin de fondu BGM, non skippable par défaut", () => {
+    expect(first("@wb")).toEqual({ kind: "waitfor", what: "bgmFade", skippable: false });
+    expect(first("@wb canskip=1")).toEqual({ kind: "waitfor", what: "bgmFade", skippable: true });
+  });
+
+  it("@clickskip/@effectskip : enabled (défaut true, 0/false = false)", () => {
+    expect(first("@clickskip enabled=0")).toEqual({ kind: "clickskip", enabled: false });
+    expect(first("@clickskip enabled=false")).toEqual({ kind: "clickskip", enabled: false });
+    expect(first("@clickskip")).toEqual({ kind: "clickskip", enabled: true });
+    expect(first("@effectskip enabled=false")).toEqual({ kind: "effectskip", enabled: false });
+    expect(first("@effectskip enabled=1")).toEqual({ kind: "effectskip", enabled: true });
+  });
+
+  it("@cancelskip", () => {
+    expect(first("@cancelskip")).toEqual({ kind: "cancelskip" });
+  });
+});
