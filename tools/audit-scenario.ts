@@ -102,6 +102,8 @@ async function main(): Promise<void> {
   // Agréger
   const {
     unknownCommandsGlobal,
+    ignoredCommandsGlobal,
+    implementedCommandsGlobal,
     warningsGlobal,
     missingAssetsGlobal,
     resolvedVariantRefsGlobal,
@@ -126,6 +128,8 @@ async function main(): Promise<void> {
     totalDurationMs,
     scripts: results,
     unknownCommandsGlobal,
+    ignoredCommandsGlobal,
+    implementedCommandsGlobal,
     warningsGlobal,
     missingAssetsGlobal,
     resolvedVariantRefsGlobal,
@@ -150,8 +154,22 @@ async function main(): Promise<void> {
   console.log(`Scripts audités : ${report.totalScripts} | Erreurs : ${scriptsWithErrors} | MaxSteps : ${scriptsWithMaxSteps} | Durée : ${(totalDurationMs / 1000).toFixed(1)}s`);
 
   const sortedCmds = Object.entries(unknownCommandsGlobal).sort((a, b) => b[1] - a[1]);
+  const ignoredEntries = Object.entries(ignoredCommandsGlobal).sort((a, b) => b[1] - a[1]);
+  const implementedEntries = Object.entries(implementedCommandsGlobal).sort((a, b) => b[1] - a[1]);
+  const occ = (entries: [string, number][]): number => entries.reduce((sum, [, n]) => sum + n, 0);
+  console.log(
+    `\nCommandes KAG : ${implementedEntries.length} implémentée(s) (${occ(implementedEntries)} occurrences), ` +
+      `${ignoredEntries.length} ignorée(s) volontairement (${occ(ignoredEntries)} occurrences), ` +
+      `${sortedCmds.length} inconnue(s) (${occ(sortedCmds)} occurrences)`,
+  );
+  if (ignoredEntries.length > 0) {
+    console.log("Ignorées volontairement (no-op déclarés) :");
+    for (const [cmd, count] of ignoredEntries) {
+      console.log(`  @${cmd} : ${count}`);
+    }
+  }
   if (sortedCmds.length > 0) {
-    console.log("\nCommandes inconnues (top 15) :");
+    console.log("Inconnues restantes (top 15, à trier #276) :");
     for (const [cmd, count] of sortedCmds.slice(0, 15)) {
       console.log(`  @${cmd} : ${count}`);
     }

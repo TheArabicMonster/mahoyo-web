@@ -12,6 +12,8 @@ import { Runtime } from "@/kag/runtime.js";
 import { lookupAudio, lookupImage } from "@/core/asset-manifest.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
 import { isSolidColor, storageKey } from "@/core/storage-key.js";
+import { IGNORED_COMMANDS_BY_NAME } from "./ignored-commands.js";
+import { normalizeCommandName, subtractCommandCounts } from "./audit-commands.js";
 import type { RenderEvent } from "@/kag/events.js";
 
 /** Maximum de steps par script pour éviter les boucles infinies. */
@@ -154,8 +156,12 @@ export interface ScriptAuditResult {
   file: string;
   /** Nombre de steps exécutés. */
   steps: number;
-  /** Commandes inconnues rencontrées. */
+  /** Commandes inconnues rencontrées (ni implémentées ni déclarées no-op). */
   unknownCommands: Record<string, number>;
+  /** Commandes ignorées volontairement (no-op déclarés dans le registre). */
+  ignoredCommands?: Record<string, number>;
+  /** Commandes reconnues par le parser/runtime (comptées dans le script). */
+  implementedCommands?: Record<string, number>;
   /** Warnings collectés (groupés). */
   warnings: Record<string, number>;
   /**
@@ -204,6 +210,10 @@ export interface AuditReport {
   scripts: ScriptAuditResult[];
   /** Synthèse : commandes inconnues triées par fréquence (tout corpus). */
   unknownCommandsGlobal: Record<string, number>;
+  /** Synthèse : commandes ignorées volontairement (no-op déclarés). */
+  ignoredCommandsGlobal?: Record<string, number>;
+  /** Synthèse : commandes reconnues par le parser/runtime (occurrences). */
+  implementedCommandsGlobal?: Record<string, number>;
   /** Synthèse : warnings triés par fréquence (tout corpus). */
   warningsGlobal: Record<string, number>;
   /** Synthèse : assets manquants triés par fréquence. */
@@ -233,7 +243,19 @@ export async function auditScript(
   maxSteps: number = DEFAULT_MAX_STEPS,
 ): Promise<ScriptAuditResult> {
   const text = scriptTexts.get(fileName) ?? readFileSync(ksPath, "utf-8");
-  const script = parse(lex(text));
+  const tokens = lex(text);
+  const script = parse(tokens);
+
+  // Toutes les commandes rencontrées (commandes @ et tags inline), pour la
+  // catégorie « implémentée » : les seules qui produisent un warning sont les
+  // inconnues et les no-ops déclarés (voir plus bas).
+  const totalCommands: Record<string, number> = {};
+  for (const token of tokens) {
+    if (token.type === "command" || token.type === "tag") {
+      const name = normalizeCommandName(token.name);
+      if (name !== "") totalCommands[name] = (totalCommands[name] ?? 0) + 1;
+    }
+  }
 
   const runtime = new Runtime(script, fileName);
 
@@ -294,14 +316,22 @@ export async function auditScript(
 
   const durationMs = Math.round(performance.now() - start);
 
-  // Grouper les commandes inconnues
+  // Classer les commandes non gérées : no-op déclaré (registre) ou inconnue.
   const unknownCommands: Record<string, number> = {};
+  const ignoredCommands: Record<string, number> = {};
   for (const w of warnings) {
     const match = w.match(/commande non gérée: @(\S+)/);
-    if (match) {
-      unknownCommands[match[1]] = (unknownCommands[match[1]] ?? 0) + 1;
+    if (!match) continue;
+    const name = normalizeCommandName(match[1]);
+    if (IGNORED_COMMANDS_BY_NAME.has(name)) {
+      ignoredCommands[name] = (ignoredCommands[name] ?? 0) + 1;
+    } else {
+      unknownCommands[name] = (unknownCommands[name] ?? 0) + 1;
     }
   }
+  // « Implémentée » = rencontrée et sans warning (le total inclut les compteurs
+  // inconnus/ignorés, donc on les retranche par occurrence).
+  const implementedCommands = subtractCommandCounts(totalCommands, unknownCommands, ignoredCommands);
 
   // Grouper les autres warnings (hors commandes inconnues)
   const otherWarnings: Record<string, number> = {};
@@ -320,6 +350,8 @@ export async function auditScript(
     file: fileName,
     steps,
     unknownCommands,
+    ignoredCommands,
+    implementedCommands,
     warnings: otherWarnings,
     missingAssets: Array.from(assets.missing).sort(),
     resolvedVariantRefs: assets.variantRefs,
@@ -418,6 +450,8 @@ function checkAsset(
 
 export function aggregateGlobal(results: ScriptAuditResult[]): {
   unknownCommandsGlobal: Record<string, number>;
+  ignoredCommandsGlobal: Record<string, number>;
+  implementedCommandsGlobal: Record<string, number>;
   warningsGlobal: Record<string, number>;
   missingAssetsGlobal: Record<string, number>;
   resolvedVariantRefsGlobal: number;
@@ -426,6 +460,8 @@ export function aggregateGlobal(results: ScriptAuditResult[]): {
   unresolvedVariantsGlobal: Record<string, number>;
 } {
   const unknownCommandsGlobal: Record<string, number> = {};
+  const ignoredCommandsGlobal: Record<string, number> = {};
+  const implementedCommandsGlobal: Record<string, number> = {};
   const warningsGlobal: Record<string, number> = {};
   const missingAssetsGlobal: Record<string, number> = {};
   const unresolvedVariantsGlobal: Record<string, number> = {};
@@ -443,6 +479,12 @@ export function aggregateGlobal(results: ScriptAuditResult[]): {
     for (const [cmd, count] of Object.entries(r.unknownCommands)) {
       unknownCommandsGlobal[cmd] = (unknownCommandsGlobal[cmd] ?? 0) + count;
     }
+    for (const [cmd, count] of Object.entries(r.ignoredCommands ?? {})) {
+      ignoredCommandsGlobal[cmd] = (ignoredCommandsGlobal[cmd] ?? 0) + count;
+    }
+    for (const [cmd, count] of Object.entries(r.implementedCommands ?? {})) {
+      implementedCommandsGlobal[cmd] = (implementedCommandsGlobal[cmd] ?? 0) + count;
+    }
     for (const [w, count] of Object.entries(r.warnings)) {
       warningsGlobal[w] = (warningsGlobal[w] ?? 0) + count;
     }
@@ -453,6 +495,8 @@ export function aggregateGlobal(results: ScriptAuditResult[]): {
 
   return {
     unknownCommandsGlobal,
+    ignoredCommandsGlobal,
+    implementedCommandsGlobal,
     warningsGlobal,
     missingAssetsGlobal,
     resolvedVariantRefsGlobal,
@@ -504,10 +548,59 @@ export function formatMarkdownReport(report: AuditReport): string {
     lines.push("");
   }
 
-  // Commandes inconnues
-  lines.push("## Commandes inconnues (triées par fréquence)");
+  // Commandes KAG : classification implémentée / ignorée volontairement / inconnue (#275)
+  lines.push("## Commandes KAG (classification)");
   lines.push("");
+  const sortedImplemented = Object.entries(report.implementedCommandsGlobal ?? {}).sort(
+    (a, b) => b[1] - a[1],
+  );
+  const ignoredGlobal = report.ignoredCommandsGlobal ?? {};
+  const sortedIgnored = Object.entries(ignoredGlobal).sort((a, b) => b[1] - a[1]);
   const sortedCmds = Object.entries(report.unknownCommandsGlobal).sort((a, b) => b[1] - a[1]);
+  const sumOccurrences = (counts: ReadonlyArray<[string, number]>): number =>
+    counts.reduce((total, [, count]) => total + count, 0);
+  lines.push(
+    `- Commandes implémentées : ${sortedImplemented.length} distinctes (${sumOccurrences(sortedImplemented)} occurrences)`,
+  );
+  lines.push(
+    `- Commandes ignorées volontairement (no-op déclarés) : ${sortedIgnored.length} distinctes (${sumOccurrences(sortedIgnored)} occurrences)`,
+  );
+  lines.push(
+    `- Commandes inconnues : ${sortedCmds.length} distinctes (${sumOccurrences(sortedCmds)} occurrences)`,
+  );
+  lines.push("");
+
+  lines.push("### Commandes implémentées");
+  lines.push("");
+  if (sortedImplemented.length === 0) {
+    lines.push("_Mesure non disponible (rapport sans classification)._");
+  } else {
+    lines.push("| Commande | Occurrences |");
+    lines.push("|---|---|");
+    for (const [cmd, count] of sortedImplemented) {
+      lines.push(`| @${escapeMdPipe(cmd)} | ${count} |`);
+    }
+  }
+  lines.push("");
+
+  lines.push("### Commandes ignorées volontairement (no-op déclarés)");
+  lines.push("");
+  if (sortedIgnored.length === 0) {
+    lines.push("_Aucune commande déclarée no-op dans le registre._");
+  } else {
+    lines.push("| Commande | Effet | Raison | Issue |");
+    lines.push("|---|---|---|---|");
+    for (const [cmd] of sortedIgnored) {
+      const entry = IGNORED_COMMANDS_BY_NAME.get(cmd);
+      lines.push(
+        `| @${escapeMdPipe(cmd)} | ${escapeMdPipe(entry?.effet ?? "?")} | ${escapeMdPipe(entry?.raison ?? "?")} | ${escapeMdPipe(entry?.issue ?? "?")} |`,
+      );
+    }
+  }
+  lines.push("");
+
+  lines.push("### Commandes inconnues (triées par fréquence)");
+  lines.push("");
   if (sortedCmds.length === 0) {
     lines.push("_Aucune commande inconnue._");
   } else {
