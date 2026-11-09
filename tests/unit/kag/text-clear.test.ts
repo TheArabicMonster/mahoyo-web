@@ -84,6 +84,61 @@ Texte.[l]
   });
 });
 
+describe("@cm/@cm4pg — cohérence textoff/texton", () => {
+  it("@cm ne ré-affiche pas la boîte masquée par @textoff et conserve l'état invisible", () => {
+    const runtime = new Runtime(parse(lex(`
+*page0|
+@textoff time=2000
+@cm
+@pg
+    `)));
+    const events: RenderEvent[] = [];
+    for (let i = 0; i < 10; i++) {
+      const step = runtime.step();
+      events.push(...step.events);
+      if (step.stop.kind === "end") break;
+    }
+    const textboxes = events.filter((event): event is Extract<RenderEvent, { kind: "textbox" }> => event.kind === "textbox");
+    // Un seul textbox : celui de @textoff (invisible). @cm n'en émet aucun.
+    expect(textboxes).toHaveLength(1);
+    expect(textboxes[0]?.state.visible).toBe(false);
+    expect(events.some((event) => event.kind === "clearText" && event.force === true)).toBe(true);
+    expect(runtime.getSaveData().state.textbox?.visible).toBe(false);
+  });
+
+  it("le texte suivant @textoff+@cm ré-affiche la boîte via revealTextboxForText", () => {
+    const events = runPage(`
+*page0|
+@textoff time=2000
+@cm
+Texte suivant.[p]
+@pg
+    `);
+    const textIndex = events.findIndex((event) => event.kind === "text");
+    const revealIndex = events.findIndex(
+      (event) => event.kind === "textbox" && event.state.visible === true,
+    );
+    expect(textIndex).toBeGreaterThanOrEqual(0);
+    expect(revealIndex).toBeGreaterThanOrEqual(0);
+    // La réapparition de la boîte précède le texte qui la justifie (#159), avec sa durée de fondu.
+    expect(revealIndex).toBeLessThan(textIndex);
+    expect(events[revealIndex]).toMatchObject({ kind: "textbox", state: { visible: true }, time: 300 });
+  });
+
+  it("@cm4pg avec @texton ultérieur : boîte vidée puis ré-affichée explicitement", () => {
+    const runtime = new Runtime(parse(lex(`
+*page0|
+@textoff time=1000
+@cm4pg
+@texton
+@pg
+    `)));
+    expect(runtime.step().events.some((event) => event.kind === "clearText" && event.force === true)).toBe(true);
+    const save = runtime.getSaveData();
+    expect(save.state.textbox?.visible).toBe(true);
+  });
+});
+
 describe("@cm — état", () => {
   it("vide le texte persisté (reduceStage)", () => {
     const snapshot = reduceStage([

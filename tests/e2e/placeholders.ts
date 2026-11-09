@@ -105,6 +105,9 @@ export const PLACEHOLDER_SCENARIO_PAGES = 40;
 /** Pages des chapitres suivants (parcours complet #94) : assez pour lire, choisir et enchaîner. */
 export const PLACEHOLDER_CHAPTER_PAGES = 6;
 
+/** Marqueur de la page de test `@cm` (#86) : première page du prologue, vidée par `@cm`. */
+export const PLACEHOLDER_CM_MARKER = "Page CM — texte à vider par @cm";
+
 /** Textes distinctifs des scripts, pour vérifier dans le DOM quel chapitre est joué. */
 export const PLACEHOLDER_SCRIPT_MARKERS = {
   prologue: "Page de test e2e",
@@ -142,13 +145,20 @@ export const PLACEHOLDER_CHAIN = {
   chapters: PLACEHOLDER_CHAPTERS,
 } as const;
 
-/** Pages d'un script de test, avec un marqueur de texte pour l'identifier dans le DOM. */
-function pagesFor(marker: string, count: number): string {
-  const pages = Array.from({ length: count }, (_, i) => {
-    const n = String(i + 1).padStart(2, "0");
+/**
+ * Pages d'un script de test (sans `@return`), avec un marqueur de texte pour l'identifier dans le
+ * DOM. `start` permet d'insérer une page spéciale (ex. `@cm`, #86) sans casser la numérotation.
+ */
+function pageBodies(marker: string, count: number, start = 0): string {
+  return Array.from({ length: count }, (_, i) => {
+    const n = String(start + i + 1).padStart(2, "0");
     return `${marker} — page ${n} — texte original généré pour le player. La lecture continue.[p]`;
-  });
-  return `${pages.join("\n")}\n@return\n`;
+  }).join("\n");
+}
+
+/** Pages d'un script de test terminé par `@return`. */
+function pagesFor(marker: string, count: number, start = 0): string {
+  return `${pageBodies(marker, count, start)}\n@return\n`;
 }
 
 /**
@@ -184,10 +194,23 @@ function prologueOpening(): string {
   ].join("\n");
 }
 
+/**
+ * Page de test `@cm` (#86) : le marqueur s'affiche, puis `@cm` vide la page et `@s` marque un
+ * point d'arrêt — le texte de la page est alors vide alors que la boîte reste affichée.
+ * Le e2e dédié (`text-clear.spec.ts`) vérifie ce vidage, puis qu'un clic passe à la page suivante.
+ */
+function cmPage(): string {
+  return `${PLACEHOLDER_CM_MARKER} — texte original généré pour le player.[l]
+@cm
+@s`;
+}
+
 /** Les quatre scripts du parcours complet (textes originaux, aucun asset du jeu). */
 function placeholderScripts(): Record<string, string> {
   return {
-    "1-0.ks": `${prologueOpening()}\n${pagesFor(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES)}`,
+    // Page de test @cm (#86) insérée après les deux premières pages « normales » : la numérotation
+    // et les assertions existantes sur « page 01 »/« page 02 » restent valides.
+    "1-0.ks": `${prologueOpening()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, 2)}\n${cmPage()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES - 2, 2)}\n@return\n`,
     "1-1a.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieA, PLACEHOLDER_CHAPTER_PAGES),
     "1-1b.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieB, PLACEHOLDER_CHAPTER_PAGES),
     "2-0.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.chapitre2, PLACEHOLDER_CHAPTER_PAGES),

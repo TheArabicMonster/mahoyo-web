@@ -45,6 +45,33 @@ describe("DomStageRenderer — vidage du texte @cm/@cm4pg (#86)", () => {
     expect(text().textContent).toContain("Conservé");
   });
 
+  it("@cm sur une boîte masquée par @textoff : texte vidé sans ré-afficher la boîte", async () => {
+    await renderer.apply([{ kind: "textbox", state: { visible: false, frame: true }, time: 0 }], {
+      instant: true,
+      signal: sig(),
+    });
+    await renderer.apply([{ kind: "text", segments: [{ text: "Ancien texte" }] }], { instant: true, signal: sig() });
+    const box = root.querySelector(".mh-stage-textbox") as HTMLElement;
+    expect(box.style.opacity).toBe("0");
+    expect(text().textContent).toContain("Ancien texte");
+
+    await renderer.apply([{ kind: "clearText", force: true }], { instant: true, signal: sig() });
+    expect(text().textContent).toBe("");
+    // @cm ne ré-affiche pas la boîte : la cohérence textoff est conservée pour le prochain texte.
+    expect(box.style.opacity).toBe("0");
+
+    await renderer.apply(
+      [
+        { kind: "textbox", state: { visible: true, frame: true }, time: 300 },
+        { kind: "text", segments: [{ text: "Nouveau texte" }] },
+      ],
+      { instant: true, signal: sig() },
+    );
+    expect(box.style.opacity).toBe("1");
+    expect(text().textContent).toContain("Nouveau texte");
+    expect(text().textContent).not.toContain("Ancien");
+  });
+
   it("clearText implicite efface quand le réglage est actif (défaut)", async () => {
     await renderer.apply([{ kind: "text", segments: [{ text: "À vider" }] }], { instant: true, signal: sig() });
     await renderer.apply([{ kind: "clearText" }], { instant: true, signal: sig() });
