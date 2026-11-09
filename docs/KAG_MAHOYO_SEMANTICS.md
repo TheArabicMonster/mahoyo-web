@@ -532,8 +532,8 @@ inconnues. La baseline est passée à **29 commandes inconnues / 58 occurrences*
 | `@tickclock` | 11 | plugin TJS (`macro.tjs`, `tagHandlers.tickclock`) | image : avance les aiguilles de l'horloge | implémenter | #85 |
 | `@setdefaultmessageaction` | 11 | override TYPE-MOON (`tagex.tjs`) | texte : action continue des messages suivants | implémenter | #85 |
 | `@resetdefaultmessageaction` | 11 | override TYPE-MOON (`tagex.tjs`) | texte : réinitialise cette action continue | implémenter | #85 |
-| `@cm` | 8 | KAG3 | texte : vide tous les calques de message | implémenter | #86 |
-| `@cm4pg` | 7 | override TYPE-MOON (`tagex.tjs`) | texte : `cm` au changement de page (+ copie d'état) | implémenter | #86 |
+| `@cm` | 8 | KAG3 | texte : vide tous les calques de message | implémenté (voir §9 octies) | #86 |
+| `@cm4pg` | 7 | override TYPE-MOON (`tagex.tjs`) | texte : `cm` au changement de page (+ copie d'état) | implémenté (voir §9 octies) | #86 |
 | `@shake` | 4 | override TYPE-MOON (`tagex.tjs`, `.shake`) | effets : secousse d'écran | implémenter | #281 |
 | `@swing` | 1 | override TYPE-MOON (`tagex.tjs`, `.swing`) | effets : secousse aléatoire continue | implémenter | #281 |
 | `@stopswing` | 6 | override TYPE-MOON (`tagex.tjs`, `.stopswing`) | effets : arrêt de la secousse | implémenter | #281 |
@@ -588,7 +588,8 @@ visible/audible/de déroulement n'est classée no-op.
 §9 quinquies), #286 (crédits de fin, §9 ter), #283 (calques image, §9 sexies) et #85
 (commandes visuelles secondaires, §9 septies) sont traités : la baseline est passée à
 **25 commandes inconnues / 46 occurrences** (`npm run audit:baseline` ; `npm run audit:guard
--- --strict` OK). Les autres lots (#86, #282, #284, #287) restent ouverts.
+-- --strict` OK). #86 (commandes de texte restantes) est traité — voir §9 octies ; la baseline
+passe à **23 commandes / 31 occurrences**. Les autres lots (#282, #284, #287) restent ouverts.
 
 ## 9 ter. Crédits de fin (`@staffroll*`) — #286
 
@@ -790,6 +791,34 @@ Traitement du lot #85 (75 occurrences) : `@chgpartbg`, `@dispclock`, `@tickclock
   corpus).
 - Écarts : animation par caractère approximée côté CSS (le moteur anime les couches de glyphes) ;
   rayon/amplitude non paramétrables par script.
+
+## 9 octies. Commandes de texte restantes — `@cm`/`@cm4pg` (#86)
+
+L'issue #86 (issue d'audit ancienne, #82) listait `@cm`, `@cm4pg`, `@s`, `@emb`, `@waittrig`,
+`@history`. Seules **`@cm` (8 occurrences)** et **`@cm4pg` (7)** restaient inconnues du corpus
+narratif ; elles sortent de la baseline, qui passe de **25 commandes / 46 occurrences** (après
+#85) à **23 commandes / 31 occurrences**. Les autres entrées de l'issue sont périmées ou hors corpus (voir ci-dessous).
+
+| Commande | Statut | Détail |
+|---|---|---|
+| `@cm` | **implémenté** | vide la fenêtre de texte : le runtime émet un `clearText` **explicite** (`force: true`), qui s'applique même quand le réglage « Effacement du texte au changement de page » (#177) est désactivé. Le texte persistant (`reduceStage`) et la frappe en cours (`typedUnits`/`readUnits`) sont réinitialisés ; style, position et visibilité de la textbox sont conservés (comme le moteur : `cm` ne touche pas à `@font`/`@position`). |
+| `@cm4pg` | **implémenté** | `tagex.tjs` : `cm4pg` appelle `cm` puis `originalStoreFlags()` — copie de drapeaux internes de cache de lecture, **sans effet visible**. Rendu identique à `@cm` dans le port (le titre « clear message for page » de l'issue est trompeur : il ne s'agit pas d'un changement de page). |
+| `@s` | déjà implémenté (#277) | arrêt du déroulement avec attente de clic (les boutons de click-map ne sont pas modélisés). Aucun travail dans ce lot. |
+| `@emb` | **absent du corpus** | 0 occurrence dans les 221 scripts narratifs comme dans les scripts système fournis : aucune inconnue d'audit, non implémenté. Sémantique moteur (évaluation d'expression TJS insérée dans le texte) à traiter si un script l'utilise un jour. |
+| `@waittrig` | **hors corpus narratif** | uniquement dans des scripts système exclus de l'audit (`call.ks`, `first.ks`, `teatime.ks`, `tracerplugin.ks`) : attente d'un signal de trigger. Non implémenté ; sans impact sur la DoD (corpus narratif). |
+| `@history` | **hors corpus narratif** | idem (`call.ks`, `first.ks`, `teatime.ks`) : active/désactive l'ajout au backlog système. Non implémenté ; le backlog du port est indépendant de cette commande. |
+
+### Notes d'implémentation et tests
+
+- `src/kag/parser.ts` : cas `cm`/`cm4pg` (aucun argument) ; `src/kag/types.ts` : instructions
+  dédiées ; `src/kag/runtime.ts` : dispatch → `{ kind: "clearText", force: true }` ;
+  `src/kag/events.ts` : `clearText.force` ; `src/renderer/stage-renderer.ts` : un `clearText`
+  forcé ignore le réglage #177, un `clearText` implicite de début de page continue de le respecter.
+- **Tests** : `tests/unit/kag/text-clear.test.ts` (parse, runtime `@cm`/`@cm4pg`, clearText
+  implicite non forcé, état persisté) et `tests/unit/renderer/text-clear.test.ts` (effacement
+  forcé malgré le réglage désactivé, respect du réglage pour les clearText implicites).
+- **`.s`/`@emb`/`@waittrig`/`@history`** : voir le tableau ; aucun de ces cas n'ajoute d'inconnue
+  à la baseline (absents du corpus narratif ou déjà implémentés).
 
 ## 10. Commandes non implémentées à figer plus tard
 
