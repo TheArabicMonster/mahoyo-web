@@ -156,6 +156,14 @@ jobs:
         env:
           MAHOYO_E2E_ASSETS: ${{ runner.temp }}/mahoyo-e2e-assets
 
+      # Mesure du débordement du texte (#319) : outil de diagnostic, volontairement non bloquant.
+      # Mode placeholders (aucun asset du jeu) → rapport PARTIEL qui vérifie l'outil ; la mesure du
+      # vrai corpus se fait en local avec MAHOYO_ASSETS_DIR (voir docs/TEXTE_DEBORDEMENT.md).
+      - name: Text overflow report (placeholders, non-blocking)
+        if: matrix.browser == 'chromium'
+        continue-on-error: true
+        run: npm run text:overflow -- --placeholders --browsers chromium --max-pages 400
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
