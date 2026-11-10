@@ -100,7 +100,7 @@ describe("sound-mode.css : galerie sonore (HUD-16)", () => {
     expect(current).toMatch(/border-width:\s*3px/);
     expect(ruleBody(css, ".mh-sound-track.is-selected {")).toMatch(/border:\s*3px\s+solid/);
     expect(ruleBody(css, ".mh-sound-track.is-selected {")).toMatch(
-      /outline:\s*2px\s+solid\s+var\(--mh-focus/,
+      /outline:\s*var\(--mh-focus-width, 2px\)\s+solid\s+var\(--mh-focus/,
     );
     const marker = ruleBody(css, ".mh-sound-track-marker {");
     expect(marker).toMatch(/display:\s*none/);
@@ -113,7 +113,7 @@ describe("sound-mode.css : galerie sonore (HUD-16)", () => {
     expect(ruleWith(css, ".mh-sound-toggle", /border-radius:\s*50%/)).toMatch(/width:\s*42px/);
     expect(ruleBody(css, '.mh-sound-toggle[aria-pressed="true"]')).toMatch(/border:\s*2px\s+solid/);
     expect(ruleBody(css, '.mh-sound-toggle[aria-pressed="true"]')).toMatch(/linear-gradient/);
-    expect(css).toMatch(/:focus-visible\s*\{[^}]*outline:\s*2px\s+solid\s+var\(--mh-focus/);
+    expect(css).toMatch(/:focus-visible[^{]*\{[^}]*outline:\s*var\(--mh-focus-width, 2px\)\s+solid\s+var\(--mh-focus/);
   });
 
   it("barre de progression et volume : range stylés, remplissage cyan, temps tabulaires", () => {

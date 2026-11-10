@@ -51,8 +51,8 @@ describe("focus visible global (DESIGN §10)", () => {
 
   it("pose un filet de sécurité de spécificité nulle pour tous les contrôles", () => {
     expect(code).toMatch(/:where\([^)]*button[^)]*\):focus-visible/);
-    expect(code).toMatch(/outline:\s*2px solid var\(--mh-focus/);
-    expect(code).toMatch(/outline-offset:\s*2px/);
+    expect(code).toMatch(/outline:\s*var\(--mh-focus-width(?:, 2px)?\) solid var\(--mh-focus/);
+    expect(code).toMatch(/outline-offset:\s*var\(--mh-focus-offset(?:, 2px)?\)/);
   });
 
   it("dessine l'anneau de repli des focus programmatiques (#257)", () => {
@@ -75,28 +75,29 @@ describe("focus visible global (DESIGN §10)", () => {
   it.each(Object.entries(screenCss))("l'écran %s a une règle de focus visible cyan 2 px", (_label, rel) => {
     const css = stripComments(read(rel));
     expect(css).toMatch(/:focus-visible/);
-    expect(css).toMatch(/outline:\s*2px solid var\(--mh-focus/);
+    expect(css).toMatch(/outline:\s*var\(--mh-focus-width(?:, 2px)?\) solid var\(--mh-focus/);
   });
 
   it("l'écran titre garde son contour sombre sur fond clair (exception documentée DESIGN §9.3)", () => {
     const css = stripComments(read("src/ui/title-screen.css"));
-    expect(css).toMatch(/\.mh-ui-title-entry:focus[^{]*\{[^}]*outline:\s*2px solid var\(--mh-ink-hover/);
+    expect(css).toMatch(/\.mh-ui-title-entry:focus[^{]*\{[^}]*outline:\s*var\(--mh-focus-width, 2px\) solid var\(--mh-ink-hover/);
   });
 
   it("les zones défilantes focalisables sous Firefox ont un focus visible (config, Archive)", () => {
     // Firefox met les conteneurs défilants dans l'ordre de tabulation : sans règle, le focus y serait
     // invisible (échec CI Firefox de #326). On verrouille la règle pour les deux écrans concernés.
     const config = stripComments(read("src/ui/config-screen.css"));
-    expect(config).toMatch(/\.mh-cfg-col:focus-visible[^{]*\{[^}]*outline:\s*2px solid var\(--mh-focus/);
+    expect(config).toMatch(/\.mh-cfg-col:focus-visible[^{]*\{[^}]*outline:\s*var\(--mh-focus-width, 2px\) solid var\(--mh-focus/);
     const archive = stripComments(read("src/ui/archive-view.css"));
-    expect(archive).toMatch(/\.mh-ui-title-chapters:focus-visible[^{]*\{[^}]*outline:\s*2px solid var\(--mh-focus/);
+    expect(archive).toMatch(/\.mh-ui-title-chapters:focus-visible[^{]*\{[^}]*outline:\s*var\(--mh-focus-width, 2px\) solid var\(--mh-focus/);
   });
 
-  it("sauvegarde/chargement : décalage de focus de 2 px partout, comme le 2 px du DESIGN", () => {
+  it("sauvegarde/chargement : décalage de focus unifié par --mh-focus-offset (#99)", () => {
     const css = stripComments(read("src/ui/save-load-screen.css"));
-    const offsets = [...css.matchAll(/outline-offset:\s*(\d+)px/g)].map((m) => Number(m[1]));
+    const raw = [...css.matchAll(/outline-offset:\s*(\d+)px/g)].map((m) => Number(m[1]));
+    expect(raw).toEqual([]); // plus de géométrie brute : uniquement le token
+    const offsets = [...css.matchAll(/outline-offset:\s*var\(--mh-focus-offset(?:, 2px)?\)/g)];
     expect(offsets.length).toBeGreaterThan(0);
-    expect(offsets.every((offset) => offset === 2)).toBe(true);
   });
 });
 
