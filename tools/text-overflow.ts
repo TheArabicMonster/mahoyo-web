@@ -26,12 +26,12 @@ import { dirname, join, resolve } from "path";
 import { chromium, firefox, type BrowserType } from "playwright";
 import { listCorpus } from "./audit-lib.js";
 import { generateFullReadCorpus } from "../tests/e2e/placeholders.js";
-import { FRAME_TEXT_AREA, FRAME_TEXT_LINE_HEIGHT } from "../src/renderer/text-fit.js";
+import { FRAME_TEXT_LAYOUT, frameTextCharsPerLine } from "../src/renderer/text-fit.js";
 import {
+  CONFIG_TJS_REFERENCE,
   GAME_TEXT_FONT_STACK,
   LAYOUT_LOGICAL,
   LAYOUT_PROVENANCE,
-  NOMINAL_STAGE_PX,
   STAGE_SCALE,
   STAGE_SIZE,
   buildMarkdownReport,
@@ -63,22 +63,25 @@ const REFERENCE_LEFT_MARGIN = { left: 114, width: 1708 };
 /** Écart d'encre (x-height/capitale) mesuré par le propriétaire (#314) : port 22 px vs original 18,5 px. */
 const INK_RATIO = 22 / 18.5;
 
-/** Config actuelle du port : dérivée des fractions et du rem actuels, exprimée en px logiques. */
-const CURRENT_LAYOUT = {
-  leftLogicalPx: FRAME_TEXT_AREA.left * STAGE_SIZE.width,
-  rightLogicalPx: FRAME_TEXT_AREA.right * STAGE_SIZE.width,
-  topLogicalPx: FRAME_TEXT_AREA.top * STAGE_SIZE.height,
-  fontLogicalPx: NOMINAL_STAGE_PX,
-  lineHeightLogicalPx: NOMINAL_STAGE_PX * FRAME_TEXT_LINE_HEIGHT,
+/**
+ * Config **appliquée** au port depuis #320, calibrée sur la capture (oracle) : source unique =
+ * `FRAME_TEXT_LAYOUT` du renderer, pas de valeur dupliquée.
+ */
+const APPLIED_LAYOUT = {
+  leftLogicalPx: FRAME_TEXT_LAYOUT.marginX,
+  rightLogicalPx: FRAME_TEXT_LAYOUT.marginX,
+  topLogicalPx: FRAME_TEXT_LAYOUT.marginY,
+  fontLogicalPx: FRAME_TEXT_LAYOUT.fontSize,
+  lineHeightLogicalPx: FRAME_TEXT_LAYOUT.lineHeight,
 };
 
-/** Config logique proposée (arbitrage Opus 5.5) : marges 69 px, police 26 px, interligne 40,8 px. */
-const PROPOSED_LAYOUT = {
-  leftLogicalPx: LAYOUT_LOGICAL.horizontalMarginPx,
-  rightLogicalPx: LAYOUT_LOGICAL.horizontalMarginPx,
-  topLogicalPx: LAYOUT_LOGICAL.verticalMarginPx,
-  fontLogicalPx: LAYOUT_LOGICAL.fontPx,
-  lineHeightLogicalPx: LAYOUT_LOGICAL.lineHeightPx,
+/** Config **modèle** du `config.tjs` (non commité) : ce que donnerait la config sans calibration capture. */
+const MODEL_LAYOUT = {
+  leftLogicalPx: CONFIG_TJS_REFERENCE.marginL,
+  rightLogicalPx: CONFIG_TJS_REFERENCE.marginR,
+  topLogicalPx: CONFIG_TJS_REFERENCE.marginT,
+  fontLogicalPx: CONFIG_TJS_REFERENCE.defaultFontSize,
+  lineHeightLogicalPx: CONFIG_TJS_REFERENCE.defaultFontSize + CONFIG_TJS_REFERENCE.defaultLineSpacing,
 };
 
 const CHARS = ["M", "x", "あ"];
@@ -175,15 +178,15 @@ type Config = {
 const CONFIGS: Config[] = [
   {
     id: "current",
-    ...CURRENT_LAYOUT,
+    ...APPLIED_LAYOUT,
     convertScriptSizes: false,
-    label: "config actuelle du port (marge 14 %, police 1,7 rem)",
+    label: "config appliquée au port (#320, calibrée capture)",
   },
   {
     id: "proposed",
-    ...PROPOSED_LAYOUT,
+    ...MODEL_LAYOUT,
     convertScriptSizes: false,
-    label: "config logique proposée (marge 69 px, police 26 px)",
+    label: "config modèle config.tjs (non calibrée capture)",
   },
 ];
 
@@ -322,14 +325,14 @@ function verdictsFor(measurement: BrowserMeasurement, pages: readonly TextPage[]
 
 /** Mesures de validation de la mise en page logique proposée (pas des glyphes, caractères/ligne, symétrie). */
 function computeValidation(measurement: BrowserMeasurement, verdictsCurrent: readonly PageVerdict[], verdictsProposed: readonly PageVerdict[]): LayoutValidation {
-  const proposedPitch = measurement.pitches.find((p) => p.label === "nominal-propose");
-  const expectedStagePx = LAYOUT_LOGICAL.fontPx;
+  const proposedPitch = measurement.pitches.find((p) => p.label === "police-appliquee");
+  const expectedStagePx = FRAME_TEXT_LAYOUT.fontSize;
   const measuredStagePx = proposedPitch?.pitch ?? 0;
   const tolerance = 0.02;
   const ratio = expectedStagePx > 0 ? measuredStagePx / expectedStagePx : 0;
-  const widthCurrent = STAGE_SIZE.width - CURRENT_LAYOUT.leftLogicalPx - CURRENT_LAYOUT.rightLogicalPx;
-  const widthProposed = STAGE_SIZE.width - PROPOSED_LAYOUT.leftLogicalPx - PROPOSED_LAYOUT.rightLogicalPx;
-  const lines = (verdicts: readonly PageVerdict[]): number[] => verdicts.map((v) => v.nominalHeightPx / LAYOUT_LOGICAL.lineHeightPx);
+  const widthCurrent = STAGE_SIZE.width - APPLIED_LAYOUT.leftLogicalPx - APPLIED_LAYOUT.rightLogicalPx;
+  const widthProposed = STAGE_SIZE.width - MODEL_LAYOUT.leftLogicalPx - MODEL_LAYOUT.rightLogicalPx;
+  const lines = (verdicts: readonly PageVerdict[]): number[] => verdicts.map((v) => v.nominalHeightPx / FRAME_TEXT_LAYOUT.lineHeight);
   const p95 = (values: number[]): number => {
     if (values.length === 0) return 0;
     const sorted = [...values].sort((a, b) => a - b);
@@ -351,17 +354,17 @@ function computeValidation(measurement: BrowserMeasurement, verdictsCurrent: rea
             ok: Math.abs(ratio - 1) <= tolerance,
           },
     charsPerLine: {
-      currentPort: Math.floor(widthCurrent / CURRENT_LAYOUT.fontLogicalPx),
-      proposed: Math.floor(widthProposed / LAYOUT_LOGICAL.fontPx),
-      expectedOriginal: Math.floor(widthProposed / LAYOUT_LOGICAL.fontPx),
+      currentPort: Math.floor(widthCurrent / APPLIED_LAYOUT.fontLogicalPx),
+      proposed: Math.floor(widthProposed / MODEL_LAYOUT.fontLogicalPx),
+      expectedOriginal: frameTextCharsPerLine(),
       widthCurrentStagePx: widthCurrent,
       widthProposedStagePx: widthProposed,
     },
     marginSymmetry: {
-      leftStagePx: PROPOSED_LAYOUT.leftLogicalPx,
-      rightStagePx: PROPOSED_LAYOUT.rightLogicalPx,
-      deltaStagePx: Math.abs(PROPOSED_LAYOUT.leftLogicalPx - PROPOSED_LAYOUT.rightLogicalPx),
-      ok: Math.abs(PROPOSED_LAYOUT.leftLogicalPx - PROPOSED_LAYOUT.rightLogicalPx) <= 1,
+      leftStagePx: APPLIED_LAYOUT.leftLogicalPx,
+      rightStagePx: APPLIED_LAYOUT.rightLogicalPx,
+      deltaStagePx: Math.abs(APPLIED_LAYOUT.leftLogicalPx - APPLIED_LAYOUT.rightLogicalPx),
+      ok: Math.abs(APPLIED_LAYOUT.leftLogicalPx - APPLIED_LAYOUT.rightLogicalPx) <= 1,
     },
     linesPerPage: { currentP95: p95(lines(verdictsCurrent)), proposedP95: p95(lines(verdictsProposed)) },
     inkRatio: INK_RATIO,
@@ -381,7 +384,7 @@ function buildSnapshot(verdicts: readonly PageVerdict[], mode: "assets" | "place
   return {
     generatedAt: new Date().toISOString(),
     mode,
-    config: "logique : marge 69 px, police 26 px, interligne 40,8 px",
+    config: "appliquée (#320, calibrée capture) : marge 69 px, police 26 px, interligne 40,8 px",
     count: verdicts.filter((v) => v.overflow).length,
     pages: verdicts
       .filter((v) => v.overflow)
@@ -411,8 +414,8 @@ function nominalScenes(
     comparisons: page.scriptSizes.map((size) => compareFontSize(size)),
   }));
   const probeSizes: { label: string; cssPx: number }[] = [
-    { label: "nominal-actuel", cssPx: NOMINAL_STAGE_PX },
-    { label: "nominal-propose", cssPx: LAYOUT_LOGICAL.fontPx },
+    { label: "police-appliquee", cssPx: FRAME_TEXT_LAYOUT.fontSize },
+    { label: "police-modele", cssPx: CONFIG_TJS_REFERENCE.defaultFontSize },
     ...scriptSizes.flatMap((size) => [
       { label: `script-${size}`, cssPx: size },
       { label: `script-${size}-converti`, cssPx: size * (STAGE_SIZE.width / 1280) },
@@ -497,14 +500,14 @@ async function main(): Promise<void> {
     });
     if (validation === null) validation = computeValidation(measurement, verdictsCurrent, verdictsProposed);
     warnings.push(
-      `[${name}] config logique (marge 69, police 26) : ${verdictsProposed.filter((v) => v.overflow).length}/${pages.length} pages en débordement ` +
-        `(config actuelle : ${verdictsCurrent.filter((v) => v.overflow).length}/${pages.length}).`,
+      `[${name}] config appliquée (#320) : ${verdictsCurrent.filter((v) => v.overflow).length}/${pages.length} pages en débordement ; ` +
+        `config modèle config.tjs (non calibrée) : ${verdictsProposed.filter((v) => v.overflow).length}/${pages.length}.`,
     );
   }
 
   let snapshotInfo: TextOverflowReport["snapshot"] = null;
-  if (cli.snapshotPath && browserReports[0]?.proposed) {
-    const snapshot = buildSnapshot(browserReports[0].proposed.verdicts, mode);
+  if (cli.snapshotPath && browserReports[0]) {
+    const snapshot = buildSnapshot(browserReports[0].verdicts, mode);
     mkdirSync(dirname(cli.snapshotPath), { recursive: true });
     writeFileSync(cli.snapshotPath, JSON.stringify(snapshot, null, 2), "utf-8");
     snapshotInfo = { path: cli.snapshotPath, count: snapshot.count };
@@ -512,10 +515,10 @@ async function main(): Promise<void> {
   }
 
   const box = {
-    nominalFontPx: NOMINAL_STAGE_PX,
-    lineHeight: NOMINAL_STAGE_PX * FRAME_TEXT_LINE_HEIGHT,
+    nominalFontPx: FRAME_TEXT_LAYOUT.fontSize,
+    lineHeight: FRAME_TEXT_LAYOUT.lineHeight,
     areaHeightPx: textAreaHeightStagePx(),
-    leftMarginStagePx: FRAME_TEXT_AREA.left * STAGE_SIZE.width,
+    leftMarginStagePx: FRAME_TEXT_LAYOUT.marginX,
   };
   const originalMargin = originalLeftMarginScreenPx(REFERENCE_LEFT_MARGIN);
   const report: TextOverflowReport = {
@@ -567,10 +570,10 @@ async function main(): Promise<void> {
     const s = primary.summary;
     console.log(`Pages : ${s.pages} — débordent à la taille nominale : ${s.overflowing} (${(s.overflowRatio * 100).toFixed(2)} %)`);
     console.log(`p95 remplissage : ${(s.p95FillRatio * 100).toFixed(1)} % ; marge minimale : ${s.worstSafetyPx.toFixed(1)} px (stage)`);
-    console.log(`Marge gauche : ${currentLeftMarginScreenPx().toFixed(1)} px écran (port) vs ${originalMargin.toFixed(1)} px (original) → +${report.marginDeltaScreenPx.toFixed(1)} px`);
+    console.log(`Marge gauche : ${currentLeftMarginScreenPx().toFixed(1)} px écran (port) vs ${originalMargin.toFixed(1)} px (original) → écart ${report.marginDeltaScreenPx.toFixed(2)} px`);
     console.log(
-      `Config logique proposée : marge ${LAYOUT_LOGICAL.horizontalMarginPx} px logiques (${stageToScreenPx(LAYOUT_LOGICAL.horizontalMarginPx).toFixed(1)} px écran), ` +
-        `police ${LAYOUT_LOGICAL.fontPx} px logiques (${stageToScreenPx(LAYOUT_LOGICAL.fontPx).toFixed(1)} px écran)`,
+      `Config appliquée (#320) : marge ${FRAME_TEXT_LAYOUT.marginX} px logiques (${stageToScreenPx(FRAME_TEXT_LAYOUT.marginX).toFixed(1)} px écran), ` +
+        `police ${FRAME_TEXT_LAYOUT.fontSize} px logiques (${stageToScreenPx(FRAME_TEXT_LAYOUT.fontSize).toFixed(1)} px écran)`,
     );
     if (validation) {
       console.log(

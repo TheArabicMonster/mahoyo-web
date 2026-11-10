@@ -1,8 +1,10 @@
 # Débordement du texte et mise en page logique (#319)
 
 Outil de **mesure headless** du texte du corpus, pour objectiver les écarts de rendu du port
-revus par Opus 5.5 (#314) : le port affiche des glyphes plus grands et une marge gauche très
-supérieure à l'original. Après arbitrage :
+revus par Opus 5.5 (#314). Depuis #320, le port applique la mise en page **calibrée capture** ;
+l'outil s'aligne sur la **source unique de vérité** du renderer (`src/renderer/text-fit.ts` :
+`FRAME_TEXT_LAYOUT`, `FRAME_TEXT_LAYOUT_PROVENANCE`, `ENGINE_CONFIG_SHA256`) — il ne duplique plus
+aucune valeur. Après arbitrage :
 
 - la cause du rétrécissement n'est **pas** la taille nominale telle que d'abord supposée : c'est la
   **marge horizontale** (largeur utile trop étroite) et, secondairement, l'écart d'encre
@@ -52,12 +54,12 @@ Les rapports ne contiennent **aucun texte du jeu** (noms de scripts, positions, 
    continue le texte sur la même ligne) ; seuls les `lineBreak` du script (saut de source, `[r]`)
    ajoutent un `\n`.
 2. **Mesure navigateur** : page de mesure autonome reproduisant le cadre image à partir des
-   **constantes importées** (`FRAME_TEXT_AREA`, `FRAME_TEXT_LINE_HEIGHT`, `frameTextAreaHeight`) ;
-   deux configurations mesurées côte à côte :
-   - **actuelle** : marges 14 %/9 % (≈ 143/92 px logiques), police `FRAME_TEXT_REM` = 27,2 px
-     logiques (34 px écran) ;
-   - **logique proposée** : marges 69/69 px logiques, police 26 px logiques (32,5 px écran),
-     interligne 40,8 px logiques.
+   **constantes importées** du renderer (`FRAME_TEXT_LAYOUT`, `frameTextAreaHeight`) ; deux
+   configurations mesurées côte à côte :
+   - **appliquée (#320, calibrée capture)** : marges 69/69 px logiques (86,3 px écran), police
+     26 px logiques (32,5 px écran), interligne 40,8 px logiques ;
+   - **modèle `config.tjs` (non calibré)** : marges 142/142 px, marges verticales 69/69 px,
+     police 26 px, interligne 44 px — pour documenter ce que donnerait la config non calibrée.
 3. **Verdict** : hauteur rendue vs hauteur de zone (576 − 2 × marge verticale) et débordement
    horizontal, par page. Une page « déborde » si son texte dépasse la zone à la taille nominale
    (donc si le port `fitTextBox` réduirait la police).
@@ -69,36 +71,43 @@ Les rapports ne contiennent **aucun texte du jeu** (noms de scripts, positions, 
 Corpus **réel local** (221 scripts narratifs, **7 297 pages** ; assets non commités), Chromium **et**
 Firefox headless (verdicts et métriques identiques), macOS arm64, police Mincho du port résolue :
 
-| Indicateur | Config actuelle (14 % / 1,7 rem) | Config logique (69 px / 26 px) |
+| Indicateur | Config appliquée (#320, capture) | Config modèle `config.tjs` |
 |---|---|---|
-| Pages en débordement à la taille nominale | **0 (0,00 %)** | **0 (0,00 %)** |
-| p95 du taux de remplissage de la zone | 67,5 % | 59,3 % |
-| Marge minimale observée | 74,7 px logiques | 74,6 px logiques |
-| Caractères par ligne (CJK) | **28** | **34** (attendu original : 34) |
-| Lignes par page (p95) | 8,0 | 7,0 |
+| Pages en débordement à la taille nominale | **0 (0,00 %)** | **10 (0,14 %)** Chromium / 14 Firefox |
+| p95 du taux de remplissage de la zone | 59,3 % | 80,4 % |
+| Marge minimale observée | 74,6 px logiques | −2,0 px logiques |
+| Caractères par ligne (CJK) | **34** (attendu original : 34) | **28** |
+| Lignes par page (p95) | 7,0 | 8,6 |
+| Marge gauche à l'écran | **86,3 px** (original mesuré 85,4 → écart 0,8 px) | — |
 
-**Correction assumée** : une première mesure annonçait 444 pages en débordement (6,08 %) ; elle
-était fausse — le modèle d'extraction insérait un saut de ligne à chaque clic `[l]`, alors que le
-renderer du port continue le texte sur la même ligne. Après alignement sur le rendu réel :
-**aucune page du corpus ne déborde**, ni en config actuelle ni en config logique. Cela rejoint
-l'observation du propriétaire (#314) : le rétrécissement n'était pas déclenché dans l'extrait
-analysé.
+**Corrections assumées** :
+1. une première mesure annonçait 444 pages en débordement (6,08 %) ; elle était fausse — le modèle
+   d'extraction insérait un saut de ligne à chaque clic `[l]`, alors que le renderer du port continue
+   le texte sur la même ligne. Après alignement sur le rendu réel : **aucune page du corpus ne
+   déborde** en config appliquée (0/7 297), ce qui rejoint l'observation du propriétaire (#314 : le
+   rétrécissement n'était pas déclenché).
+2. la config « actuelle » du port a changé : #320 a calibré la mise en page sur la capture
+   (69/26/40,8/46,7) et supprimé l'autoshrink. L'outil mesure désormais la **config appliquée** et
+   la **config modèle** `config.tjs` ; seule cette dernière, non calibrée, déborde encore
+   (10 pages Chromium / 14 Firefox, soit 0,14–0,19 %), ce qui confirme que la calibration capture
+   est la bonne décision.
 
-Conséquence : ce n'est pas le débordement qui est en cause, mais le **nombre de caractères par
-ligne** (28 au lieu de 34, soit −18 %) à cause de la marge horizontale, et l'**écart d'encre**
-(cosmétique). Le snapshot versionné
+Le snapshot versionné
 [`TEXTE_DEBORDEMENT_SNAPSHOT.json`](TEXTE_DEBORDEMENT_SNAPSHOT.json) fige la liste (vide) des pages
-restantes en débordement avec la mise en page logique : toute régression future apparaîtra comme un
-écart au snapshot.
+restantes en débordement avec la config appliquée : toute régression future apparaîtra comme un
+écart au snapshot. L'écart d'encre (×1,189) reste **cosmétique** et ne justifie pas de réduire la
+police.
 
 Pages les plus denses (contrôle, noms de scripts seuls, aucun texte) : `2-4.ks` p11 (168 caractères,
-84,5 %), `6-4.ks` p38 (171, 84,5 %), `b-3.ks` p6 (169, 84,5 %), `1-0.ks` p6 et p21 (76 %), etc.
+84,5 %), `1-0.ks` p21 (102, 76 %), `1-1.ks` p15 (137, 76 %), `2-4.ks` p23 (164, 76 %), etc.
 
-## Mise en page logique proposée et provenance
+## Mise en page appliquée et provenance
 
 Aucune valeur en rem ni en pourcentage en dur : tout est exprimé en **unités logiques** du stage
-(repère 1024×576), converti à l'écran par `STAGE_SCALE` (×1,25). Ces valeurs sont centralisées dans
-`LAYOUT_LOGICAL` / `LAYOUT_PROVENANCE` / `CONFIG_TJS_REFERENCE` (`tools/text-overflow-lib.ts`).
+(repère 1024×576), converti à l'écran par `STAGE_SCALE` (×1,25). Ces valeurs sont **dérivées de la
+source unique** `src/renderer/text-fit.ts` (`FRAME_TEXT_LAYOUT`, `FRAME_TEXT_LAYOUT_PROVENANCE`,
+`ENGINE_CONFIG_SHA256`) ; l'outil (`LAYOUT_LOGICAL` / `LAYOUT_PROVENANCE` /
+`CONFIG_TJS_REFERENCE`) n'en duplique aucune.
 
 **Modèle `config.tjs`** (fichier local, **non commité**, sha256
 `82ea1af8b44663097027965ba4e868e3e402b487b853298a5c2df4b2e6006893`, chemin
@@ -137,18 +146,19 @@ confirmés par le modèle **et** par la capture (pas des glyphes mesuré ×1,000
 | Contrôle | Attendu | Mesuré | Verdict |
 |---|---|---|---|
 | Pas des glyphes (1 em) à 26 px logiques | 26,0 px logique / 32,5 px écran ±2 % | **26,0 px logique (×1,000)** | ✓ |
-| Caractères par ligne | proposé **34** (attendu original **34**) | port actuel **28** (largeurs 788 → 886 px logiques) | ✓ |
+| Caractères par ligne | attendu original **34** | appliquée **34** — modèle 28 (largeurs 886 / 740 px logiques) | ✓ |
 | Symétrie des marges (`x_min ≈ W − x_max`) | 69,0 ≈ 69,0 px logiques | écart **0,00 px** | ✓ |
-| Lignes par page (p95) | config logique | actuelle 8,0 → logique 7,0 | — |
+| Lignes par page (p95) | config appliquée vs modèle | appliquée 7,0 → modèle 8,6 | — |
 | Modèle `defaultPitch` | 1 (pas d'un em, sans letter-spacing) | **×1,000** sur le pas mesuré | ✓ |
 | Écart d'encre (x-height/capitale) | — | **×1,189** (port 22 px vs original 18,5 px, #314) | cosmétique |
 
-**Lecture de l'écart d'encre** : ×1,189 porte sur l'**encre** ; avec la police em passée de 27,2 à
-26 px logiques (−4,6 %), il reste ≈ ×1,14 attribuable aux **métriques de police** (famille Mincho du
-port vs police d'origine). C'est une différence **cosmétique**, à traiter par l'approximation
-`text-font-metrics` (`size-adjust` éventuel) **seulement si** les caractères/ligne restent corrects
-— ce que cette mesure vérifie (34 attendus, 34 obtenus). **Réduire la police à ~1,43 rem est
-écarté.**
+**Lecture de l'écart d'encre** : ×1,189 porte sur l'**encre** (hauteur de capitale/x-height), pas
+sur la taille em. La police appliquée est déjà l'em du moteur (26 px logiques = `defaultFontSize`),
+et le pas des glyphes est exact (×1,000) : l'écart restant est attribuable aux **métriques de
+police** (famille Mincho du port vs police d'origine) et reste **cosmétique** — à traiter par
+l'approximation `text-font-metrics` (`size-adjust` éventuel) **seulement si** les caractères/ligne
+restent corrects, ce que cette mesure vérifie (34 attendus, 34 obtenus). **Réduire la police à
+~1,43 rem est écarté.**
 
 ## Taille des scripts
 
@@ -160,11 +170,13 @@ jeu est la constante nominale.
 
 ## Pagination (pas d'autoshrink)
 
-Aucune page du corpus mesuré ne déborde avec la mise en page logique ; si une page devait dépasser à
-l'avenir (traduction, nouvelle scène), la règle est de **paginer** (découpage aux limites de phrase,
-comme `@cm`/pages du moteur d'origine) et jamais de rétrécir la police : la police reste constante,
-la zone ne défile pas. Le snapshot versionné sert de garde-fou : le mode `--snapshot` réécrit la
-liste des pages en débordement, à committer si elle évolue légitimement.
+Aucune page du corpus mesuré ne déborde en config appliquée ; la config **modèle** `config.tjs`
+(non calibrée) déborderait sur 10 pages (Chromium) / 14 (Firefox), ce qui confirme la calibration
+capture. Si une page devait dépasser à l'avenir (traduction, nouvelle scène), la règle est de
+**paginer** (découpage aux limites de phrase, comme `@cm`/pages du moteur d'origine) et jamais de
+rétrécir la police : la police reste constante, la zone ne défile pas. Le snapshot versionné sert
+de garde-fou : le mode `--snapshot` réécrit la liste des pages en débordement, à committer si elle
+évolue légitimement.
 
 ## CI et limites
 
@@ -183,7 +195,8 @@ liste des pages en débordement, à committer si elle évolue légitimement.
 - La provenance est volontairement **contradictoire** : `config.tjs` (modèle) et capture (oracle) ne
   concordent pas sur les marges et l'interligne ; les valeurs appliquées suivent la capture, la
   divergence est consignée pour l'issue de correction (#314), pas résolue ici.
-- Aucune modification du runtime de rendu dans cette PR.
+- L'outil ne modifie pas le runtime : #320 a appliqué la mise en page calibrée, cette PR fournit
+  uniquement la mesure, la provenance dérivée du renderer et le snapshot.
 
 ## Tests
 

@@ -14,7 +14,16 @@ import { parse } from "../src/kag/parser.js";
 import { lex } from "../src/kag/lexer.js";
 import { Runtime } from "../src/kag/runtime.js";
 import type { RenderEvent } from "../src/kag/events.js";
-import { FRAME_TEXT_AREA, FRAME_TEXT_LINE_HEIGHT, FRAME_TEXT_REM, frameTextAreaHeight } from "../src/renderer/text-fit.js";
+import {
+  ENGINE_CONFIG_PATH,
+  ENGINE_CONFIG_SHA256,
+  FRAME_TEXT_AREA,
+  FRAME_TEXT_LAYOUT,
+  FRAME_TEXT_LAYOUT_PROVENANCE,
+  FRAME_TEXT_LINE_HEIGHT,
+  FRAME_TEXT_REM,
+  frameTextAreaHeight,
+} from "../src/renderer/text-fit.js";
 
 /** Repère de référence du jeu d'origine (cf. docs/KAG_MAHOYO_SEMANTICS.md §1). */
 export const ORIGINAL_SIZE = { width: 1280, height: 720 } as const;
@@ -29,7 +38,7 @@ export const GAME_TEXT_FONT_STACK =
 
 /** Taille nominale du texte de jeu dans le stage (px CSS) : `FRAME_TEXT_REM` × 16 px. */
 export const NOMINAL_STAGE_PX = FRAME_TEXT_REM * 16;
-/** Taille nominale à l'écran (px) : 34 px attendus (docs/DESIGN.md §3). */
+/** Taille nominale à l'écran (px) : `FRAME_TEXT_LAYOUT.fontSize` × 1,25 (32,5 px depuis #320). */
 export const NOMINAL_SCREEN_PX = stageToScreenPx(NOMINAL_STAGE_PX);
 
 /**
@@ -38,10 +47,10 @@ export const NOMINAL_SCREEN_PX = stageToScreenPx(NOMINAL_STAGE_PX);
  * Provenance détaillée dans `LAYOUT_PROVENANCE` ; aucune valeur en rem ni en pourcentage en dur.
  */
 export const LAYOUT_LOGICAL = {
-  horizontalMarginPx: 69,
-  fontPx: 26,
-  lineHeightPx: 40.8,
-  verticalMarginPx: 46.7,
+  horizontalMarginPx: FRAME_TEXT_LAYOUT.marginX,
+  fontPx: FRAME_TEXT_LAYOUT.fontSize,
+  lineHeightPx: FRAME_TEXT_LAYOUT.lineHeight,
+  verticalMarginPx: FRAME_TEXT_LAYOUT.marginY,
 } as const;
 
 export type ProvenanceStatus = "hypothèse" | "mesuré";
@@ -51,24 +60,28 @@ export type ProvenanceStatus = "hypothèse" | "mesuré";
  * avec l'empreinte du fichier utilisé. `defaultLineSpacing = 18` s'ajoute à `defaultFontSize = 26`
  * → interligne 44 px logiques ; `defaultPitch = 1` confirme un pas de glyphe d'un em.
  */
+const PROVENANCE_BY_PARAM = new Map(FRAME_TEXT_LAYOUT_PROVENANCE.map((entry) => [entry.param, entry]));
+function configLogical(param: "marginX" | "marginY" | "fontSize" | "lineHeight"): number {
+  return PROVENANCE_BY_PARAM.get(param)?.configLogical ?? 0;
+}
+
+/** Interligne du modèle `config.tjs` (26 + 18 = 44 px logiques), repris de la table du renderer. */
+export const CONFIG_LINE_HEIGHT_PX = configLogical("lineHeight");
+
 export const CONFIG_TJS_REFERENCE = {
-  path: "…/mahoyo-web-poc/tools/output/decrypted/data/override/config.tjs",
-  sha256: "82ea1af8b44663097027965ba4e868e3e402b487b853298a5c2df4b2e6006893",
-  marginL: 142,
-  marginR: 142,
-  marginT: 69,
-  marginB: 69,
-  mw: 1024,
-  mh: 576,
-  defaultFontSize: 26,
-  defaultLineSpacing: 18,
+  path: ENGINE_CONFIG_PATH,
+  sha256: ENGINE_CONFIG_SHA256,
+  marginL: configLogical("marginX"),
+  marginR: configLogical("marginX"),
+  marginT: configLogical("marginY"),
+  marginB: configLogical("marginY"),
+  mw: STAGE_SIZE.width,
+  mh: STAGE_SIZE.height,
+  defaultFontSize: configLogical("fontSize"),
+  defaultLineSpacing: CONFIG_LINE_HEIGHT_PX - configLogical("fontSize"),
   defaultPitch: 1,
   frameGraphic: "txtwindow01",
 } as const;
-
-/** Interligne déduit de `config.tjs` : police 26 + line spacing 18 = 44 px logiques. */
-export const CONFIG_LINE_HEIGHT_PX =
-  CONFIG_TJS_REFERENCE.defaultFontSize + CONFIG_TJS_REFERENCE.defaultLineSpacing;
 
 /**
  * Une entrée de provenance de mise en page : valeur **appliquée** (calibrée capture), valeur du
@@ -103,7 +116,7 @@ export const LAYOUT_PROVENANCE: LayoutProvenanceEntry[] = [
   {
     parameter: "marge horizontale (gauche et droite)",
     logicalPx: LAYOUT_LOGICAL.horizontalMarginPx,
-    configLogicalPx: Math.max(CONFIG_TJS_REFERENCE.marginL, CONFIG_TJS_REFERENCE.marginR),
+    configLogicalPx: configLogical("marginX"),
     screenPx: stageToScreenPx(LAYOUT_LOGICAL.horizontalMarginPx),
     source: `${CONFIG_SHA} : marginL = 142, marginR = 142 (ordre du fichier L, R, T, B — aucune inversion)`,
     capture: "marge gauche mesurée 85,4 px écran / 1,25 = 68,3 ≈ 69 px logiques",
@@ -114,7 +127,7 @@ export const LAYOUT_PROVENANCE: LayoutProvenanceEntry[] = [
   {
     parameter: "taille de police nominale",
     logicalPx: LAYOUT_LOGICAL.fontPx,
-    configLogicalPx: CONFIG_TJS_REFERENCE.defaultFontSize,
+    configLogicalPx: configLogical("fontSize"),
     screenPx: stageToScreenPx(LAYOUT_LOGICAL.fontPx),
     source: `${CONFIG_SHA} : defaultFontSize = 26 (× STAGE_SCALE = 32,5 px écran)`,
     capture: "le pas des glyphes (≈ 1 em) et les caractères/ligne se déduisent de la taille em, pas de l'encre",
@@ -125,7 +138,7 @@ export const LAYOUT_PROVENANCE: LayoutProvenanceEntry[] = [
   {
     parameter: "interligne",
     logicalPx: LAYOUT_LOGICAL.lineHeightPx,
-    configLogicalPx: CONFIG_LINE_HEIGHT_PX,
+    configLogicalPx: configLogical("lineHeight"),
     screenPx: stageToScreenPx(LAYOUT_LOGICAL.lineHeightPx),
     source: `${CONFIG_SHA} : defaultFontSize 26 + defaultLineSpacing 18 = 44`,
     capture: "capture #173 : interligne 51 px écran (77/1080) / 1,25 = 40,8 px logiques",
@@ -136,7 +149,7 @@ export const LAYOUT_PROVENANCE: LayoutProvenanceEntry[] = [
   {
     parameter: "marge verticale (haut et bas)",
     logicalPx: LAYOUT_LOGICAL.verticalMarginPx,
-    configLogicalPx: Math.max(CONFIG_TJS_REFERENCE.marginT, CONFIG_TJS_REFERENCE.marginB),
+    configLogicalPx: configLogical("marginY"),
     screenPx: stageToScreenPx(LAYOUT_LOGICAL.verticalMarginPx),
     source: `${CONFIG_SHA} : marginT = 69, marginB = 69`,
     capture: "capture #173 : haut de zone à 8,1 % × 576 = 46,7 px logiques",
@@ -435,10 +448,10 @@ export type NominalSceneAnalysis = {
 
 export type BrowserOverflowReport = {
   browser: string;
-  /** Config actuelle du port (marge 14 %, police 1,7 rem). */
+  /** Config appliquée au port (#320, calibrée capture : marge 69, police 26, interligne 40,8). */
   verdicts: PageVerdict[];
   summary: OverflowSummary;
-  /** Config logique proposée (marge 69 px, police 26 px), mesurée dans le même navigateur. */
+  /** Config modèle `config.tjs` (marge 142/69, police 26, interligne 44), mesurée dans le même navigateur. */
   proposed: { verdicts: PageVerdict[]; summary: OverflowSummary } | null;
 };
 
@@ -455,7 +468,7 @@ export type GlyphProbe = {
 
 /** Mesures de validation de la mise en page logique (pas des glyphes, caractères/ligne, symétrie, lignes). */
 export type LayoutValidation = {
-  /** Pas des glyphes (1 em attendu = taille de police logique), mesuré à la police proposée. */
+  /** Pas des glyphes (1 em attendu = taille de police logique), mesuré à la police appliquée. */
   glyphPitch: {
     fontLogicalPx: number;
     expectedStagePx: number;
@@ -464,7 +477,7 @@ export type LayoutValidation = {
     tolerance: number;
     ok: boolean;
   } | null;
-  /** Caractères par ligne : port actuel, config proposée, attente d'après la largeur logique. */
+  /** Caractères par ligne : appliquée, modèle config, attente d'après la largeur logique. */
   charsPerLine: {
     currentPort: number;
     proposed: number;
@@ -552,7 +565,7 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
       `${report.originalMarginScreenPx.toFixed(1)} px écran → écart ${report.marginDeltaScreenPx.toFixed(1)} px`,
   );
   lines.push(
-    `- Mise en page logique proposée : marge horizontale **${LAYOUT_LOGICAL.horizontalMarginPx} px logiques** ` +
+    `- Mise en page appliquée (#320, calibrée capture) : marge horizontale **${LAYOUT_LOGICAL.horizontalMarginPx} px logiques** ` +
       `(${stageToScreenPx(LAYOUT_LOGICAL.horizontalMarginPx).toFixed(1)} px écran), police **${LAYOUT_LOGICAL.fontPx} px logiques** ` +
       `(${stageToScreenPx(LAYOUT_LOGICAL.fontPx).toFixed(1)} px écran), interligne ${LAYOUT_LOGICAL.lineHeightPx} px logiques, ` +
       `marge verticale ${LAYOUT_LOGICAL.verticalMarginPx} px logiques`,
@@ -568,7 +581,7 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
     lines.push(`## Navigateur : ${browser.browser}`);
     lines.push("");
     const current = browser.summary;
-    lines.push("### Config actuelle du port (marge 14 %, police 1,7 rem)");
+    lines.push("### Config appliquée (#320, calibrée capture : marge 69, police 26, interligne 40,8)");
     lines.push("");
     lines.push(`- Pages mesurées : **${current.pages}**`);
     lines.push(`- Pages en débordement à la taille nominale : **${current.overflowing}** (${(current.overflowRatio * 100).toFixed(2)} %)`);
@@ -588,7 +601,7 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
     }
     if (browser.proposed) {
       const proposed = browser.proposed.summary;
-      lines.push("### Config logique proposée (marge 69 px, police 26 px)");
+      lines.push("### Config modèle `config.tjs` (marge 142/69, police 26, interligne 44)");
       lines.push("");
       lines.push(`- Pages en débordement : **${proposed.overflowing}** (${(proposed.overflowRatio * 100).toFixed(2)} %)`);
       lines.push(`- p95 du taux de remplissage : ${(proposed.p95FillRatio * 100).toFixed(1)} % ; marge minimale : ${proposed.worstSafetyPx.toFixed(1)} px (stage)`);
@@ -609,7 +622,7 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
     }
   }
 
-  lines.push("## Mise en page logique proposée et provenance");
+  lines.push("## Mise en page appliquée et provenance");
   lines.push("");
   lines.push("Aucune valeur en rem ni en pourcentage en dur : les marges et la police sont exprimées en");
   lines.push("**unités logiques** du stage (repère 1024×576), converties à l'écran par `STAGE_SCALE`.");
@@ -651,8 +664,8 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
       );
     }
     lines.push(
-      `| Caractères par ligne | proposé ${v.charsPerLine.proposed} (attendu original ${v.charsPerLine.expectedOriginal}) | ` +
-        `port actuel ${v.charsPerLine.currentPort} — largeurs ${v.charsPerLine.widthCurrentStagePx.toFixed(0)} / ` +
+      `| Caractères par ligne | attendu original ${v.charsPerLine.expectedOriginal} | appliquée ${v.charsPerLine.currentPort} — ` +
+        `modèle ${v.charsPerLine.proposed} — largeurs ${v.charsPerLine.widthCurrentStagePx.toFixed(0)} / ` +
         `${v.charsPerLine.widthProposedStagePx.toFixed(0)} px stage | ${v.charsPerLine.proposed === v.charsPerLine.expectedOriginal ? "✓" : "≈"} |`,
     );
     lines.push(
@@ -660,7 +673,7 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
         `écart ${v.marginSymmetry.deltaStagePx.toFixed(2)} px | ${v.marginSymmetry.ok ? "✓" : "✗"} |`,
     );
     lines.push(
-      `| Lignes par page (p95) | config proposée | actuelle ${v.linesPerPage.currentP95.toFixed(1)} → proposée ${v.linesPerPage.proposedP95.toFixed(1)} | — |`,
+      `| Lignes par page (p95) | config appliquée vs modèle | appliquée ${v.linesPerPage.currentP95.toFixed(1)} → modèle ${v.linesPerPage.proposedP95.toFixed(1)} | — |`,
     );
     lines.push(
       `| Pitch du modèle (\`defaultPitch\`) | ${CONFIG_TJS_REFERENCE.defaultPitch} (pas d'un em) | pas mesuré ×${v.glyphPitch ? v.glyphPitch.ratio.toFixed(3) : "n/a"} | ${v.glyphPitch?.ok ? "✓" : "—"} |`,
@@ -680,7 +693,7 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
   lines.push("reprend ce repère, agrandi ×1,25. Une taille `@font size=` est donc en px logiques : la taille");
   lines.push("CSS du stage est la taille du script (identité), la taille écran vaut ×1,25. Le corpus narratif");
   lines.push("mesuré **n'utilise aucun `@font size=`** : la taille nominale est la constante du port");
-  lines.push(`(\`FRAME_TEXT_REM\` = 1,7 rem = ${(FRAME_TEXT_REM * 16).toFixed(1)} px logiques = ${stageToScreenPx(FRAME_TEXT_REM * 16).toFixed(1)} px écran).`);
+  lines.push(`(\`FRAME_TEXT_REM\` = ${FRAME_TEXT_REM.toFixed(3)} rem = ${(FRAME_TEXT_REM * 16).toFixed(1)} px logiques = ${stageToScreenPx(FRAME_TEXT_REM * 16).toFixed(1)} px écran).`);
   lines.push("");
   lines.push("Le ratio d'encre de ×1,19 mesuré sur les vidéos (port 22 px vs original 18,5 px) porte sur la");
   lines.push("**hauteur d'encre** (x-height/capitale), pas sur la taille em : le pas des glyphes et les");

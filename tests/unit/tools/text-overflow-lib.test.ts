@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { FRAME_TEXT_AREA, FRAME_TEXT_REM } from "../../../src/renderer/text-fit.js";
+import {
+  ENGINE_CONFIG_SHA256,
+  FRAME_TEXT_FONT_SIZE,
+  FRAME_TEXT_LAYOUT,
+  FRAME_TEXT_LAYOUT_PROVENANCE,
+  frameTextAreaHeight,
+} from "../../../src/renderer/text-fit.js";
 import {
   STAGE_SCALE,
   STAGE_SIZE,
@@ -28,10 +34,13 @@ import {
 
 describe("conversions de repères (#319)", () => {
   it("convertit px du stage (1024×576) vers l'écran (1280×720) avec le facteur 1,25", () => {
+    // Attendus dérivés de la source unique (`src/renderer/text-fit.ts`), jamais figés : #320 a
+    // changé la police (26 logique → 32,5 écran) et la marge (69 logique → 86,25 écran).
     expect(STAGE_SCALE).toBeCloseTo(1.25, 10);
-    expect(stageToScreenPx(FRAME_TEXT_REM * 16)).toBeCloseTo(34, 5);
-    expect(stageToScreenPx(FRAME_TEXT_AREA.left * STAGE_SIZE.width)).toBeCloseTo(179.2, 5);
-    expect(currentLeftMarginScreenPx()).toBeCloseTo(179.2, 5);
+    expect(stageToScreenPx(FRAME_TEXT_FONT_SIZE)).toBeCloseTo(FRAME_TEXT_FONT_SIZE * STAGE_SCALE, 10);
+    expect(stageToScreenPx(FRAME_TEXT_FONT_SIZE)).toBeCloseTo(32.5, 5);
+    expect(stageToScreenPx(FRAME_TEXT_LAYOUT.marginX)).toBeCloseTo(FRAME_TEXT_LAYOUT.marginX * STAGE_SCALE, 10);
+    expect(currentLeftMarginScreenPx()).toBeCloseTo(stageToScreenPx(FRAME_TEXT_LAYOUT.marginX), 10);
   });
 
   it("applique la formule ×(1024/1280)=×0,8 à une taille @font size=", () => {
@@ -53,19 +62,25 @@ describe("conversions de repères (#319)", () => {
   });
 
   it("calcule la hauteur de zone et l'interligne du cadre image", () => {
-    expect(textAreaHeightStagePx()).toBeCloseTo(576 * (1 - 0.081 - 0.081), 5);
-    expect(lineHeightStagePx()).toBeCloseTo(FRAME_TEXT_REM * 16 * 1.5, 10);
+    // Hauteur dérivée de la marge verticale appliquée (46,7 px → 482,6), pas d'une valeur figée.
+    expect(textAreaHeightStagePx()).toBeCloseTo(frameTextAreaHeight(STAGE_SIZE.height), 10);
+    expect(textAreaHeightStagePx()).toBeCloseTo(STAGE_SIZE.height - 2 * FRAME_TEXT_LAYOUT.marginY, 10);
+    expect(lineHeightStagePx()).toBeCloseTo(FRAME_TEXT_LAYOUT.lineHeight, 10);
   });
 });
 
 describe("mise en page logique (#319)", () => {
-  it("expose les constantes logiques et leur conversion écran ×1,25", () => {
-    expect(LAYOUT_LOGICAL.horizontalMarginPx).toBe(69);
-    expect(LAYOUT_LOGICAL.fontPx).toBe(26);
-    expect(LAYOUT_LOGICAL.lineHeightPx).toBeCloseTo(40.8, 5);
-    expect(LAYOUT_LOGICAL.verticalMarginPx).toBeCloseTo(46.7, 5);
-    expect(stageToScreenPx(LAYOUT_LOGICAL.horizontalMarginPx)).toBeCloseTo(86.25, 5);
-    expect(stageToScreenPx(LAYOUT_LOGICAL.fontPx)).toBeCloseTo(32.5, 5);
+  it("expose des constantes alignées sur la source unique du renderer (#320)", () => {
+    // Même source de vérité que `src/renderer/text-fit.ts` : aucun doublon de valeurs.
+    expect(LAYOUT_LOGICAL.horizontalMarginPx).toBe(FRAME_TEXT_LAYOUT.marginX);
+    expect(LAYOUT_LOGICAL.verticalMarginPx).toBe(FRAME_TEXT_LAYOUT.marginY);
+    expect(LAYOUT_LOGICAL.fontPx).toBe(FRAME_TEXT_LAYOUT.fontSize);
+    expect(LAYOUT_LOGICAL.lineHeightPx).toBe(FRAME_TEXT_LAYOUT.lineHeight);
+    expect(stageToScreenPx(LAYOUT_LOGICAL.horizontalMarginPx)).toBeCloseTo(
+      FRAME_TEXT_LAYOUT.marginX * STAGE_SCALE,
+      10,
+    );
+    expect(stageToScreenPx(LAYOUT_LOGICAL.fontPx)).toBeCloseTo(FRAME_TEXT_LAYOUT.fontSize * STAGE_SCALE, 10);
   });
 
   it("documente la provenance des 4 paramètres, tous en statut hypothèse", () => {
@@ -86,32 +101,37 @@ describe("mise en page logique (#319)", () => {
   });
 
   it("conserve les valeurs du modèle config.tjs et documente les écarts avec la capture", () => {
-    // Modèle : config.tjs local (non commité), empreinte fournie dans l'issue #321.
+    // Modèle : config.tjs local (non commité) ; sha/chemin et valeurs appliquées viennent de la
+    // source unique du renderer (`ENGINE_CONFIG_SHA256`, `FRAME_TEXT_LAYOUT_PROVENANCE`).
+    expect(CONFIG_TJS_REFERENCE.sha256).toBe(ENGINE_CONFIG_SHA256);
     expect(CONFIG_TJS_REFERENCE.sha256).toHaveLength(64);
-    expect(CONFIG_TJS_REFERENCE.marginL).toBe(142);
-    expect(CONFIG_TJS_REFERENCE.marginR).toBe(142);
-    expect(CONFIG_TJS_REFERENCE.marginT).toBe(69);
-    expect(CONFIG_TJS_REFERENCE.marginB).toBe(69);
-    expect(CONFIG_TJS_REFERENCE.mw).toBe(1024);
-    expect(CONFIG_TJS_REFERENCE.mh).toBe(576);
-    expect(CONFIG_TJS_REFERENCE.defaultFontSize).toBe(26);
-    expect(CONFIG_TJS_REFERENCE.defaultLineSpacing).toBe(18);
-    expect(CONFIG_LINE_HEIGHT_PX).toBe(44);
+    const config = (param: string) =>
+      FRAME_TEXT_LAYOUT_PROVENANCE.find((entry) => entry.param === param)!.configLogical;
+    expect(CONFIG_TJS_REFERENCE.marginL).toBe(config("marginX"));
+    expect(CONFIG_TJS_REFERENCE.marginR).toBe(config("marginX"));
+    expect(CONFIG_TJS_REFERENCE.marginT).toBe(config("marginY"));
+    expect(CONFIG_TJS_REFERENCE.marginB).toBe(config("marginY"));
+    expect(CONFIG_TJS_REFERENCE.mw).toBe(STAGE_SIZE.width);
+    expect(CONFIG_TJS_REFERENCE.mh).toBe(STAGE_SIZE.height);
+    expect(CONFIG_TJS_REFERENCE.defaultFontSize).toBe(config("fontSize"));
+    expect(CONFIG_TJS_REFERENCE.defaultFontSize).toBe(FRAME_TEXT_LAYOUT.fontSize);
+    expect(CONFIG_LINE_HEIGHT_PX).toBe(config("lineHeight"));
+    expect(CONFIG_TJS_REFERENCE.defaultLineSpacing).toBe(config("lineHeight") - config("fontSize"));
     expect(CONFIG_TJS_REFERENCE.defaultPitch).toBe(1);
     expect(CONFIG_TJS_REFERENCE.frameGraphic).toBe("txtwindow01");
 
     const [horizontal, font, lineHeight, vertical] = LAYOUT_PROVENANCE;
-    // Règle : config = modèle, capture = oracle → valeurs appliquées calibrées capture.
-    expect(horizontal!.logicalPx).toBe(69);
-    expect(horizontal!.configLogicalPx).toBe(142);
+    // Règle : config = modèle, capture = oracle → valeurs appliquées calibrées capture (#320).
+    expect(horizontal!.logicalPx).toBe(FRAME_TEXT_LAYOUT.marginX);
+    expect(horizontal!.configLogicalPx).toBe(config("marginX"));
     expect(horizontal!.divergence).toContain("non tranché");
-    expect(font!.logicalPx).toBe(26);
-    expect(font!.configLogicalPx).toBe(26);
+    expect(font!.logicalPx).toBe(FRAME_TEXT_LAYOUT.fontSize);
+    expect(font!.configLogicalPx).toBe(font!.logicalPx);
     expect(font!.divergence).toContain("Aucun écart");
-    expect(lineHeight!.logicalPx).toBeCloseTo(40.8, 5);
-    expect(lineHeight!.configLogicalPx).toBe(44);
-    expect(vertical!.logicalPx).toBeCloseTo(46.7, 5);
-    expect(vertical!.configLogicalPx).toBe(69);
+    expect(lineHeight!.logicalPx).toBeCloseTo(FRAME_TEXT_LAYOUT.lineHeight, 10);
+    expect(lineHeight!.configLogicalPx).toBe(config("lineHeight"));
+    expect(vertical!.logicalPx).toBeCloseTo(FRAME_TEXT_LAYOUT.marginY, 10);
+    expect(vertical!.configLogicalPx).toBe(config("marginY"));
     expect(vertical!.divergence).toContain("non tranché");
   });
 });
@@ -227,7 +247,12 @@ describe("buildMarkdownReport", () => {
       ],
       nominal: [{ script: "scene.ks", page: 3, scriptSizes: [], comparisons: [compareFontSize(24)] }],
       glyphProbes: [],
-      box: { nominalFontPx: 27.2, lineHeight: 40.8, areaHeightPx: 480, leftMarginStagePx: FRAME_TEXT_AREA.left * STAGE_SIZE.width },
+      box: {
+        nominalFontPx: FRAME_TEXT_LAYOUT.fontSize,
+        lineHeight: FRAME_TEXT_LAYOUT.lineHeight,
+        areaHeightPx: frameTextAreaHeight(STAGE_SIZE.height),
+        leftMarginStagePx: FRAME_TEXT_LAYOUT.marginX,
+      },
       originalMarginScreenPx: 85.4,
       marginDeltaScreenPx: 93.8,
       layout: LAYOUT_PROVENANCE,
