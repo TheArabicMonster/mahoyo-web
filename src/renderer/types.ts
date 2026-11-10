@@ -216,6 +216,12 @@ export interface StageRenderer {
   /** Clic utilisateur : termine le typewriter et amène les effets à leur état final. */
   hurry(): void;
 
+  /**
+   * Termine **uniquement** la frappe en cours (texte), sans couper une transition/effet en cours
+   * (#316) : un clic pendant la frappe ne doit pas tronquer un fondu.
+   */
+  hurryText?(): void;
+
   /** Indicateur d'attente de clic, null = masqué. */
   setClickIndicator(style: "line" | "page" | null): void;
 

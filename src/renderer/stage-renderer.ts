@@ -638,6 +638,21 @@ export class DomStageRenderer implements StageRenderer {
     await Promise.race([promise, new Promise<void>((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))))]).catch(() => {});
   }
 
+  hurryText(): void {
+    if (!this.typewriterResolve) return;
+    if (this.typewriterTimer) {
+      clearTimeout(this.typewriterTimer);
+      this.typewriterTimer = null;
+    }
+    const units = this.buildTextUnits();
+    this.layoutText(units, units.length);
+    this.typedUnits = units.length;
+    const resolve = this.typewriterResolve;
+    this.typewriterResolve = null;
+    this.typewriterHurry = false;
+    resolve();
+  }
+
   hurry(): void {
     // Typewriter : non-sticky. Si le typewriter tourne, on le termine
     // immédiatement (rendu complet + resolve) sans laisser de flag persistant.
