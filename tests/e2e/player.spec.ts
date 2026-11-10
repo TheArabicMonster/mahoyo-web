@@ -29,7 +29,7 @@ test.describe("Player e2e", () => {
     await expect(stage).toBeVisible();
   });
 
-  test("le texte de jeu fait 34 px de corps et 51 px d'interligne à 1280×720 (#182)", async ({ page }) => {
+  test("le texte de jeu fait 32,5 px de corps et 55 px d'interligne à 1280×720 (#314)", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto("/");
     // Le player démarre sur le menu titre : lancer une nouvelle partie.
@@ -56,12 +56,12 @@ test.describe("Player e2e", () => {
       };
     });
     expect(m.frame).toBe("image");
-    expect(m.bodyPx).toBeGreaterThanOrEqual(33);
-    expect(m.bodyPx).toBeLessThanOrEqual(35);
-    expect(m.linePx).toBeGreaterThanOrEqual(50);
-    expect(m.linePx).toBeLessThanOrEqual(52);
-    // La zone de texte s'arrête à 91,9 % de la hauteur (marge basse de 8,1 %) et ne défile pas.
-    expect(m.textBottom).toBeLessThanOrEqual(0.92);
+    // Valeurs dérivées de `config.tjs` (`defaultFontSize=26`, `defaultLineSpacing=18`, stage ×1,25)
+    // et non d'une constante de mise en page (#314) : 26 × 1,25 = 32,5 px ; (26+18) × 1,25 = 55 px.
+    expect(m.bodyPx).toBeCloseTo(32.5, 1);
+    expect(m.linePx).toBeCloseTo(55, 1);
+    // Marge basse moteur : marginB = 69/576, la zone s'arrête à 1 - 69/576 ≈ 88,0 % de la hauteur.
+    expect(m.textBottom).toBeLessThanOrEqual(0.882);
     expect(m.scrollOverflow).toBe(false);
   });
 

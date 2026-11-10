@@ -111,6 +111,9 @@ export const PLACEHOLDER_CM_MARKER = "Page CM — texte à vider par @cm";
 /** Marqueur de la page de test emoji `[graph]` (#284) : image inline dans le texte. */
 export const PLACEHOLDER_EMOJI_MARKER = "Page emoji — texte original avec un cœur";
 
+/** Marqueur de la page de test « texte long » (#314) : frappe sans reflow et police constante. */
+export const PLACEHOLDER_LONG_TEXT_MARKER = "Page longue — le texte ne doit ni se réagencer ni rétrécir";
+
 /** Textes distinctifs des scripts, pour vérifier dans le DOM quel chapitre est joué. */
 export const PLACEHOLDER_SCRIPT_MARKERS = {
   prologue: "Page de test e2e",
@@ -217,12 +220,26 @@ function emojiPage(): string {
   return `${PLACEHOLDER_EMOJI_MARKER} [heart] — texte original généré pour le player.[p]`;
 }
 
+/**
+ * Page de test « texte long » (#314) : 14 lignes de texte original généré (aucun texte du jeu),
+ * assez pour dépasser la zone de message (~10 lignes) → vérifie la police constante et la
+ * stabilité des retours à la ligne pendant la frappe.
+ */
+function longTextPage(): string {
+  const lines = Array.from(
+    { length: 14 },
+    (_, i) =>
+      `Ligne ${String(i + 1).padStart(2, "0")} — texte original généré pour le player. La lecture continue sans rétrécir.`,
+  );
+  return `${PLACEHOLDER_LONG_TEXT_MARKER}[r]\n${lines.join("[r]\n")}[p]`;
+}
+
 /** Les quatre scripts du parcours complet (textes originaux, aucun asset du jeu). */
 function placeholderScripts(): Record<string, string> {
   return {
     // Page de test @cm (#86) insérée après les deux premières pages « normales » : la numérotation
     // et les assertions existantes sur « page 01 »/« page 02 » restent valides.
-    "1-0.ks": `${prologueOpening()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, 2)}\n${cmPage()}\n${emojiPage()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES - 2, 2)}\n@return\n`,
+    "1-0.ks": `${prologueOpening()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, 2)}\n${cmPage()}\n${emojiPage()}\n${longTextPage()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES - 2, 2)}\n@return\n`,
     "1-1a.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieA, PLACEHOLDER_CHAPTER_PAGES),
     "1-1b.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieB, PLACEHOLDER_CHAPTER_PAGES),
     "2-0.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.chapitre2, PLACEHOLDER_CHAPTER_PAGES),

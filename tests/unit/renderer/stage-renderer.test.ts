@@ -310,39 +310,39 @@ describe("DomStageRenderer", () => {
       return { box: root.querySelector("#textbox") as HTMLElement, text: root.querySelector("#text") as HTMLElement };
     }
 
-    it("laisse un texte court à sa taille nominale", async () => {
+    it("garde la police nominale sur un texte court (#314)", async () => {
       const restore = mockTextHeight(() => 3);
       try {
         const { box, text } = await show("court");
         expect(box.dataset.textFit).toBe("nominal");
         expect(text.style.fontSize).toBe("1.5rem");
-        expect(text.style.maxHeight).toBe("");
-        expect(text.style.overflowY).toBe("");
+        expect(text.style.overflowY).toBe("hidden");
       } finally {
         restore();
       }
     });
 
-    it("ne déplace jamais la boîte, même pour une page de 7 lignes (police réduite à la place)", async () => {
+    it("ne réduit plus la police d'une page longue : police constante (#314)", async () => {
       const restore = mockTextHeight(() => 7);
       try {
         const { box, text } = await show("long");
-        expect(box.dataset.textFit).toBe("shrunk");
+        expect(box.dataset.textFit).toBe("nominal");
+        expect(text.style.fontSize).toBe("1.5rem");
+        // La boîte ne bouge pas non plus.
         expect(box.style.bottom).toBe("");
         expect(box.style.top).toBe("");
         expect(box.style.height).toBe("");
-        expect(parseFloat(text.style.fontSize)).toBeLessThan(1.5);
       } finally {
         restore();
       }
     });
 
-    it("la boîte garde la même géométrie d'une page à l'autre", async () => {
+    it("la boîte garde la même géométrie et la même police d'une page à l'autre", async () => {
       let lines = 2;
       const restore = mockTextHeight(() => lines);
       try {
-        const { box } = await show("page");
-        const snapshot = () => [box.style.top, box.style.bottom, box.style.height, box.style.maxHeight].join("|");
+        const { box, text } = await show("page");
+        const snapshot = () => [box.style.top, box.style.bottom, box.style.height, box.style.maxHeight, text.style.fontSize].join("|");
         const first = snapshot();
         for (const n of [9, 12, 4, 30, 1]) {
           lines = n;
@@ -357,46 +357,27 @@ describe("DomStageRenderer", () => {
       }
     });
 
-    it("réduit la police d'une page très longue, sans passer sous 70 %, et respecte fontScale", async () => {
+    it("respecte fontScale sans rétrécissement automatique (#314)", async () => {
       const restore = mockTextHeight(() => 7);
       try {
         const { box, text } = await show("très long", 1.2);
-        expect(box.dataset.textFit).toBe("shrunk");
-        const rem = parseFloat(text.style.fontSize);
-        expect(rem).toBeLessThan(1.5 * 1.2);
-        expect(rem).toBeGreaterThanOrEqual(1.5 * 1.2 * 0.7 - 1e-9);
+        expect(box.dataset.textFit).toBe("nominal");
+        expect(parseFloat(text.style.fontSize)).toBeCloseTo(1.5 * 1.2, 6);
       } finally {
         restore();
       }
     });
 
-    it("rend zone défilable une page qui ne tient pas même à la taille minimale", async () => {
+    // Registre des approximations (#295) — test figé :
+    // approx:text-overflow-clip — le débordement est découpé (pas de pagination auto, pas de shrink).
+    it("découpe une page qui déborde au lieu de défiler ou de réduire (#314)", async () => {
       const restore = mockTextHeight(() => 60);
       try {
         const { box, text } = await show("énorme");
-        expect(box.dataset.textFit).toBe("overflow");
-        expect(text.style.overflowY).toBe("auto");
-        expect(text.style.maxHeight).not.toBe("");
-        expect(parseFloat(text.style.fontSize)).toBeCloseTo(1.5 * 0.7, 6);
-      } finally {
-        restore();
-      }
-    });
-
-    it("rend la taille nominale à la page suivante", async () => {
-      let lines = 8;
-      const restore = mockTextHeight(() => lines);
-      try {
-        const { box, text } = await show("page longue");
-        expect(box.dataset.textFit).toBe("shrunk");
-        lines = 2;
-        await renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text: "court" }] }], {
-          instant: true,
-          signal: new AbortController().signal,
-        });
         expect(box.dataset.textFit).toBe("nominal");
-        expect(text.style.fontSize).toBe("1.5rem");
-        expect(text.style.overflowY).toBe("");
+        // Police constante : plus de réduction ni de barre de défilement.
+        expect(parseFloat(text.style.fontSize)).toBeCloseTo(1.5, 6);
+        expect(text.style.overflowY).toBe("hidden");
       } finally {
         restore();
       }
@@ -487,15 +468,15 @@ describe("DomStageRenderer", () => {
 
     it("atténue le texte déjà lu de la page après le clic, jusqu'au changement de page", async () => {
       await renderer.apply([{ kind: "text", segments: [{ text: "Premier." }] }], { instant: true, signal: sig() });
-      expect(text().querySelector(".mh-stage-text-read")).toBeNull();
+      expect(text().querySelectorAll('[data-read="1"]')).toHaveLength(0);
       renderer.setClickIndicator("line");
       renderer.setClickIndicator(null);
-      expect(text().querySelector(".mh-stage-text-read")?.textContent).toBe("Premier.");
+      expect(text().querySelectorAll('[data-read="1"]').length).toBe(8); // « Premier. » = 8 unités
       await renderer.apply([{ kind: "lineBreak" }, { kind: "text", segments: [{ text: "Second." }] }], { instant: true, signal: sig() });
-      expect(text().querySelector(".mh-stage-text-read")?.textContent).toBe("Premier.");
+      expect(text().querySelectorAll('[data-read="1"]').length).toBe(8);
       expect(text().textContent).toBe("Premier.\nSecond.");
       await renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text: "Page suivante." }] }], { instant: true, signal: sig() });
-      expect(text().querySelector(".mh-stage-text-read")).toBeNull();
+      expect(text().querySelectorAll('[data-read="1"]')).toHaveLength(0);
     });
 
     it("affiche une page restaurée sans atténuation", async () => {
@@ -506,12 +487,12 @@ describe("DomStageRenderer", () => {
         { scene: { bg: null, sprites: [], effect: null }, textbox: { visible: true, frame: true, frameImage: "txtwindow00" }, text: [{ text: "Restauré." }], staffroll: null },
         sig(),
       );
-      expect(text().querySelector(".mh-stage-text-read")).toBeNull();
+      expect(text().querySelectorAll('[data-read="1"]')).toHaveLength(0);
       expect(frame().style.backgroundImage).toContain("txtwindow00");
     });
 
-    it("dispose de presque toute la hauteur de scène avant de réduire la police", async () => {
-      // jsdom : pas de mise en page, hauteur simulée (lignes de FRAME_TEXT_LINE_HEIGHT fois la taille, sans marge).
+    it("garde la police du cadre image constante, même sur une page très longue (#314)", async () => {
+      // jsdom : pas de mise en page, hauteur simulée (lignes de FRAME_TEXT_LINE_HEIGHT fois la taille).
       let lines = 11;
       const spy = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
         if (!this.classList.contains("mh-stage-text")) return 0;
@@ -524,14 +505,14 @@ describe("DomStageRenderer", () => {
         expect(parseFloat(text().style.fontSize)).toBeCloseTo(FRAME_TEXT_REM, 6);
         lines = 13;
         await renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text: "treize lignes" }] }], { instant: true, signal: sig() });
-        expect(box().dataset.textFit).toBe("shrunk");
-        expect(parseFloat(text().style.fontSize)).toBeLessThan(FRAME_TEXT_REM);
+        expect(box().dataset.textFit).toBe("nominal");
+        expect(parseFloat(text().style.fontSize)).toBeCloseTo(FRAME_TEXT_REM, 6);
       } finally {
         spy.mockRestore();
       }
     });
 
-    it("pose dans le CSS un corps de 34 px et un interligne de 51 px à l'écran à 1280×720 (#182)", () => {
+    it("pose dans le CSS un corps constant dérivé du moteur (26 px du repère → 32,5 px à 1280×720, #314)", () => {
       const css = document.getElementById("mh-stage-styles")?.textContent ?? "";
       const rule = css.slice(css.indexOf('.mh-stage-textbox[data-frame-style="image"] .mh-stage-text {'));
       const rem = parseFloat(/font-size:\s*([\d.]+)rem/.exec(rule)![1]!);
@@ -540,10 +521,8 @@ describe("DomStageRenderer", () => {
       expect(leading).toBe(FRAME_TEXT_LINE_HEIGHT);
       // Le stage (1024×576) est agrandi de STAGE_SCALE vers 1280×720 : on compare le rendu à l'écran.
       const bodyPx = rem * 16 * STAGE_SCALE;
-      expect(bodyPx).toBeGreaterThanOrEqual(33);
-      expect(bodyPx).toBeLessThanOrEqual(35);
-      expect(bodyPx * leading).toBeGreaterThanOrEqual(50);
-      expect(bodyPx * leading).toBeLessThanOrEqual(52);
+      expect(bodyPx).toBeCloseTo(26 * STAGE_SCALE, 6);
+      expect(bodyPx * leading).toBeCloseTo(44 * STAGE_SCALE, 6);
     });
 
     it("respecte fontScale", async () => {
@@ -1603,5 +1582,70 @@ describe("DomStageRenderer", () => {
       await renderer.apply([{ kind: "clearText" }], { instant: true, signal: sig() });
       expect(textEl().textContent).toBe("");
     });
+  });
+});
+
+describe("Texte — accessibilité et typographie (#314)", () => {
+  let root: HTMLElement;
+  let renderer: ReturnType<typeof createDomStageRenderer>;
+
+  beforeEach(() => {
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    renderer = createDomStageRenderer({ resolver: createAssetResolver() });
+    renderer.mount(root);
+    renderer.setSettings(DEFAULT_DISPLAY_SETTINGS);
+  });
+  afterEach(() => {
+    renderer.dispose();
+    root.remove();
+  });
+
+  const apply = (text: string) =>
+    renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text }] }], {
+      instant: true,
+      signal: new AbortController().signal,
+    });
+
+  it("expose le texte complet une seule fois au lecteur d'écran (couche visuelle aria-hidden)", async () => {
+    await apply("Bonjour à tous.");
+    const visual = root.querySelector("#text") as HTMLElement;
+    const sr = root.querySelector(".mh-stage-text-sr") as HTMLElement;
+    expect(visual.getAttribute("aria-hidden")).toBe("true");
+    expect(sr).not.toBeNull();
+    expect(sr.getAttribute("aria-live")).toBe("polite");
+    expect(sr.textContent).toBe("Bonjour à tous.");
+    // Le texte complet est présent dès le premier rendu : l'annonce ne dépend pas de la frappe.
+    expect(visual.textContent).toBe("Bonjour à tous.");
+  });
+
+  it("applique les espaces fines insécables françaises à la couche visuelle seulement", async () => {
+    await apply("Oui ! « bonjour »");
+    const units = [...root.querySelectorAll<HTMLElement>(".mh-text-unit")].map((unit) => unit.textContent ?? "");
+    const visual = units.join("");
+    expect(visual).toContain("\u202F!");
+    expect(visual).toContain("«\u202F");
+    expect(visual).toContain("\u202F»");
+    // Le nœud lecteur d'écran garde le texte source (copie/collage fidèle).
+    expect(root.querySelector(".mh-stage-text-sr")?.textContent).toBe("Oui ! « bonjour »");
+  });
+
+  it("construit la structure DOM de la page entière dès le début de la frappe (#314)", async () => {
+    const units = "Une phrase assez longue pour vérifier la stabilité.";
+    const pending = renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text: units }] }], {
+      instant: false,
+      signal: new AbortController().signal,
+    });
+    // Laisse démarrer la frappe (le premier caractère est révélé) sans l'attendre.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const wrappers = [...root.querySelectorAll<HTMLElement>(".mh-text-unit")];
+    // Autant de wrappers que de caractères : la mise en page est complète.
+    expect(wrappers.length).toBe(units.length);
+    // Certaines unités ne sont pas encore révélées, mais existent déjà (pas de reconstruction).
+    expect(root.querySelectorAll(".mh-text-unit-hidden").length).toBeGreaterThan(0);
+    renderer.hurry();
+    await pending;
+    expect(root.querySelectorAll(".mh-text-unit")).toHaveLength(wrappers.length);
+    expect(root.querySelectorAll(".mh-text-unit-hidden")).toHaveLength(0);
   });
 });

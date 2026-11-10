@@ -58,7 +58,7 @@ describe("DomStageRenderer — style du texte et ploy", () => {
     root.remove();
   });
 
-  it("rend le texte stylé dans un <span> et laisse le texte simple en nœud texte", async () => {
+  it("rend le texte stylé dans un <span> (unités enveloppées pour la frappe sans reflow, #314)", async () => {
     const events: RenderEvent[] = [
       { kind: "clearText" },
       { kind: "text", segments: [
@@ -69,11 +69,12 @@ describe("DomStageRenderer — style du texte et ploy", () => {
     await renderer.apply(events, opts());
     const textEl = root.querySelector(".mh-stage-text") as HTMLElement;
     expect(textEl.textContent).toBe("abc");
-    const spans = textEl.querySelectorAll("span");
-    expect(spans).toHaveLength(1);
-    expect(spans[0]?.textContent).toBe("c");
-    expect(spans[0]?.style.color).toBe("rgb(255, 0, 0)");
-    expect(spans[0]?.style.fontStyle).toBe("italic");
+    // Chaque caractère est une unité ; seul le caractère stylé porte les propriétés CSS.
+    const styled = textEl.querySelector<HTMLSpanElement>('span[style*="color"]');
+    expect(styled).not.toBeNull();
+    expect(styled?.textContent).toBe("c");
+    expect(styled?.style.color).toBe("rgb(255, 0, 0)");
+    expect(styled?.style.fontStyle).toBe("italic");
   });
 
   it("applique le style à un caractère avec ruby", async () => {
