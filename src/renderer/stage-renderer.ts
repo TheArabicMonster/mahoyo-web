@@ -55,8 +55,12 @@ export const STAGE_SCALE = 1.25;
 const TEXT_REM = 1.5;
 const TEXT_LINE_HEIGHT = 1.6;
 const TEXT_PADDING_Y = 20;
-/** Style « cadre image » : taille et interligne du texte dans `text-fit.ts` (FRAME_TEXT_REM, #182). */
-const FRAME_TEXT_LETTER_SPACING = "0.06em";
+/**
+ * Style « cadre image » : taille et interligne du texte dans `text-fit.ts` (FRAME_TEXT_REM, #182).
+ * Pas de `letter-spacing` : le moteur a `defaultPitch = 1` (pas) et la capture originale mesure
+ * un pas de glyphe de 1 em (#319/#320) ; un tracking ajouterait +6 % de largeur par caractère.
+ */
+const FRAME_TEXT_LETTER_SPACING = "0";
 /** Opacité du texte déjà lu de la page (capture : ~120 sur un fond à ~30, soit 40 %). */
 const READ_TEXT_OPACITY = 0.4;
 /** Hauteur du stage en repère logique (1024×576), repli quand le conteneur n'a pas de mise en page. */
