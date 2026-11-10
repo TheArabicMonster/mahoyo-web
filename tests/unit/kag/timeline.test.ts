@@ -241,14 +241,17 @@ describe("Runtime — @playtimeline", () => {
       const kinds = stop.schedule.flatMap((e) => e.events.map((ev) => [e.at, ev.kind]));
       expect(kinds).toEqual([
         [0, "scene"],
-        [1000, "timelineLayer"],
-        [1000, "timelineLayer"],
-        [6000, "timelineLayer"],
+        [1000, "track"],
+        [1000, "track"],
+        [6000, "track"],
         [6000, "timelineLayerClear"],
       ]);
-      const layers = stop.schedule.flatMap((e) => e.events).filter((ev): ev is Extract<RenderEvent, { kind: "timelineLayer" }> => ev.kind === "timelineLayer");
-      expect(layers[1]).toEqual({ kind: "timelineLayer", layer: { id: "L1", storage: "carton", x: 224, y: 217, opacity: 1, z: 3400 }, time: 1500 });
-      expect(layers[2]!.layer.rain).toBe(true);
+      const layers = stop.schedule
+        .flatMap((e) => e.events)
+        .filter((ev): ev is Extract<RenderEvent, { kind: "track" }> => ev.kind === "track")
+        .map((ev) => ({ ...ev.track }));
+      expect(layers[1]).toMatchObject({ target: "L1", layer: { id: "L1", storage: "carton", x: 224, y: 217, opacity: 1, z: 3400 }, duration: 1500 });
+      expect(layers[2]!.layer!.rain).toBe(true);
     });
 
     it("les calques ne touchent pas l'état sauvegardé ; sans calque, aucun retrait n'est émis", () => {
@@ -274,7 +277,7 @@ describe("Runtime — @playtimeline", () => {
     it("quand le fond a une transformation, chaque plan la (re)pose via une piste instantanée", () => {
       const poses = events().flatMap((e) =>
         e.events
-          .filter((ev): ev is Extract<RenderEvent, { kind: "track" }> => ev.kind === "track" && ev.track.duration === 0)
+          .filter((ev): ev is Extract<RenderEvent, { kind: "track" }> => ev.kind === "track" && ev.track.duration === 0 && !ev.track.layer)
           .map((ev) => ({ at: e.at, kf: ev.track.keyframes[0] })),
       );
       expect(poses).toEqual([
@@ -306,14 +309,15 @@ describe("Runtime — @playtimeline", () => {
 
     it("le calque reçoit zoom, rotation, ancrage et accélération ; l'effet non pris en charge est signalé une fois", () => {
       const { steps, warnings } = run("@playtimeline scene=7\n@pg\n");
-      const layers = timelineStop(steps).schedule.flatMap((e) => e.events).filter((ev): ev is Extract<RenderEvent, { kind: "timelineLayer" }> => ev.kind === "timelineLayer");
-      expect(layers[0]).toEqual({ kind: "timelineLayer", layer: { id: "L1", storage: "carton", x: 512, y: 288, opacity: 1, z: 1000 }, time: 0 });
-      expect(layers[1]).toEqual({
-        kind: "timelineLayer",
-        layer: { id: "L1", storage: "carton", x: 512, y: 600, opacity: 0, z: 1000, zoomx: 150, zoomy: 50, rotate: 90, afx: 12.5, afy: 34 },
-        time: 3000,
-        accel: 20,
-      });
+      const layers = timelineStop(steps)
+        .schedule.flatMap((e) => e.events)
+        .filter((ev): ev is Extract<RenderEvent, { kind: "track" }> => ev.kind === "track" && !!ev.track.layer)
+        .map((ev) => ev.track);
+      expect(layers[0]!.layer).toMatchObject({ id: "L1", storage: "carton", x: 512, y: 288, opacity: 1, z: 1000 });
+      expect(layers[0]!.duration).toBe(0);
+      expect(layers[1]!.layer).toMatchObject({ id: "L1", storage: "carton", x: 512, y: 600, opacity: 0, z: 1000, zoomx: 150, zoomy: 50, rotate: 90, afx: 12.5, afy: 34 });
+      expect(layers[1]!.duration).toBe(3000);
+      expect(layers[1]!.accel).toBe(20);
       expect(warnings.filter((w) => w.includes("effet de calque"))).toEqual(["effet de calque non pris en charge : haze"]);
     });
   });
@@ -322,7 +326,7 @@ describe("Runtime — @playtimeline", () => {
     const src = "@if exp=cf.speffect\n@playtimeline scene=4\n@else\n@playtimeline scene=5\n@endif\n@pg\n";
     const { steps, warnings } = run(src);
     expect(timelineStop(steps).duration).toBe(9000);
-    expect(timelineStop(steps).schedule.some((e) => e.events.some((ev) => ev.kind === "bgMove"))).toBe(false);
+    expect(timelineStop(steps).schedule.some((e) => e.events.some((ev) => ev.kind === "track" && ev.track.target === "bg"))).toBe(false);
     expect(warnings.filter((w) => w.includes("eval failed"))).toEqual([]);
   });
 
