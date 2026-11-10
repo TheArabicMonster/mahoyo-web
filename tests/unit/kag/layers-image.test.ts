@@ -76,8 +76,8 @@ describe("@infg — parse et runtime", () => {
 @infg storage=sprite center=500 vcenter=300 mx=-50 my=-20 time=800 id=a
 @pg
     `);
-    const scene = findEvent(events, "scene");
-    expect(scene).toBeDefined();
+    // (#317) une animation de calque sur fore n'émet plus de scène : elle ne coupe pas les fondus.
+    expect(findEvent(events, "scene")).toBeUndefined();
     const animate = findEvent(events, "animate");
     expect(animate).toBeDefined();
     if (!animate) return;
@@ -86,9 +86,8 @@ describe("@infg — parse et runtime", () => {
     expect(frames[0]).toMatchObject({ center: 550, vcenter: 320, opacity: 0 });
     expect(frames[1]).toMatchObject({ center: 500, vcenter: 300, opacity: 1, time: 800 });
     // État final : le calque est à sa position finale (comme après l'animation).
-    const sprite = scene!.scene.sprites.find((s) => s.id === "a");
-    expect(sprite).toMatchObject({ x: 500, y: 300, opacity: 1 });
-    void runtime;
+    const sprite = runtime.getSaveData().state.fore!.layers.find((layer) => layer.id === "a");
+    expect(sprite).toMatchObject({ center: 500, vcenter: 300, opacity: 1 });
   });
 });
 

@@ -280,9 +280,51 @@ export type AudioSnapshot = {
 
 // ── Événements de rendu ──
 
+/** Propriété animée par une piste (#317). */
+export type TrackProp = "transform" | "opacity";
+
+/**
+ * Piste d'animation unifiée (#317) : un couple (cible, propriété) = un seul propriétaire.
+ * Le temps est **logique** (ms, côté runtime) ; le renderer ne fait qu'afficher la piste.
+ * `@bgact` émet une piste multi-keyframes sur `bg` ; généralisation `@playtimeline` ensuite.
+ */
+export type TrackKeyframe = {
+  /** Temps relatif au début de la piste (ms). */
+  time: number;
+  /** Valeurs cibles des propriétés continues (repère 1024×576 / % / degrés selon la propriété). */
+  left?: number;
+  top?: number;
+  zoomx?: number;
+  zoomy?: number;
+  rotate?: number;
+  opacity?: number;
+  /** Easing de ce segment (`linear` par défaut) ; `accel` global appliqué sinon. */
+  easing?: string;
+};
+
+export type TrackSpec = {
+  /** Cible : `bg` pour le fond, sinon id de sprite. */
+  target: "bg" | string;
+  prop: TrackProp;
+  keyframes: readonly TrackKeyframe[];
+  /** Durée totale logique (ms) = dernier keyframe. */
+  duration: Ms;
+  /** Accélération moteur : >0 = t^n, <0 = 1-(1-t)^|n|, 0 = linéaire. */
+  accel?: number;
+};
+
 export type RenderEvent =
   /** Passe à la scène cible. */
-  | { kind: "scene"; scene: SceneState; transition: TransitionSpec }
+  | {
+      kind: "scene";
+      scene: SceneState;
+      transition: TransitionSpec;
+      /**
+       * Identité de la transition (#317) : seul un **nouvel** id déclenche `finishTransition` côté
+       * renderer ; une scène de même id = mise à jour d'état sans couper le fondu.
+       */
+      transitionId?: number;
+    }
   /**
    * Déplace le fond affiché jusqu'à (left, top) en `time` ms, en ligne droite ou accélérée
    * (panoramique d'une timeline). Repère 1024×576, comme `SceneState.bgLeft`. Avec `zoomx`,
@@ -291,6 +333,7 @@ export type RenderEvent =
    * chaque nouveau fond ; un événement sans ces champs les laisse inchangés.
    */
   | { kind: "bgMove"; left: number; top: number; time: Ms; accel?: number; zoomx?: number; zoomy?: number; rotate?: number }
+  | { kind: "track"; track: TrackSpec }
   /**
    * Pose un calque de timeline (`time` = 0) ou le fait glisser jusqu'à cet état en `time` ms
    * (position, opacité, zoom et rotation), en ligne droite ou avec l'accélération `accel`.

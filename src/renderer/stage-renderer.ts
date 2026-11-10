@@ -22,6 +22,7 @@ import {
   type StageRendererDeps,
 } from "./types.js";
 import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
+import { sampleTrack } from "./easing-track.js";
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import {
   applyAppearance,
@@ -168,6 +169,11 @@ export class DomStageRenderer implements StageRenderer {
   private textAction: string | null = null;
   /** Nombre d'unités de texte déjà révélées (anti re-type après [l]). */
   private typedUnits = 0;
+
+  /** Dernier id de transition de scène appliqué (#317) : même id = mise à jour sans cut. */
+  private lastTransitionId: number | undefined = undefined;
+  /** Propriétaires de pistes : un couple (cible, propriété) = une seule animation (#317). */
+  private trackAnimations = new Map<string, Animation>();
 
   private transitionPromise: Promise<void> | null = null;
   private transitionResolve: (() => void) | null = null;
@@ -566,6 +572,16 @@ export class DomStageRenderer implements StageRenderer {
     }
     // Termine la transition courante immédiatement (clear timer + overlays + resolve).
     this.finishTransition();
+    // Pistes (#317) : skip = currentTime à la fin, puis état final figé.
+    for (const animation of this.trackAnimations.values()) {
+      try {
+        animation.finish();
+        animation.commitStyles();
+      } catch {
+        /* WAAPI indisponible */
+      }
+    }
+    this.trackAnimations.clear();
     for (const ctrl of this.animations.values()) ctrl.hurry();
     if (this.quakeResolve) {
       this.quakeResolve();
@@ -1098,7 +1114,15 @@ export class DomStageRenderer implements StageRenderer {
         ) {
           this.resetBindOffsets();
         }
+        // (#317) Seul un **nouvel** id de transition coupe/remplace la transition en cours ; une
+        // scène de même id est une mise à jour d'état (réconciliation défensive, pas de cut).
+        if (event.transitionId !== undefined && event.transitionId === this.lastTransitionId) {
+          this.currentScene = event.scene;
+          this.renderScene(true);
+          break;
+        }
         this.currentScene = event.scene;
+        if (event.transitionId !== undefined) this.lastTransitionId = event.transitionId;
         const transitionTime = event.transition.method === "none" ? 0 : event.transition.time;
         // Non-bloquant : on démarre la transition et on rend la main.
         // waitFor("transition") permettra au player d'attendre sa fin.
@@ -1140,6 +1164,10 @@ export class DomStageRenderer implements StageRenderer {
       }
       case "bgMove": {
         this.moveBackground(event.left, event.top, opts.instant ? 0 : event.time, event);
+        break;
+      }
+      case "track": {
+        this.applyTrack(event.track, opts);
         break;
       }
       case "timelineLayer": {
@@ -1422,6 +1450,86 @@ export class DomStageRenderer implements StageRenderer {
    *
    * Non-await : `apply()` rend la main avant la fin de la transition.
    */
+  /**
+   * Applique une piste unifiée (#317). Un couple (cible, propriété) n'a qu'un propriétaire :
+   * une nouvelle piste capture l'état courant comme départ puis `cancel()` l'ancienne ; en fin de
+   * piste, `commitStyles()` fige l'état final.
+   */
+  private applyTrack(track: import("@/kag/events.js").TrackSpec, opts: RunOptions): void {
+    const key = `${track.target}:${track.prop}`;
+    const previous = this.trackAnimations.get(key);
+    if (previous) {
+      try {
+        previous.commitStyles();
+      } catch {
+        /* WAAPI non disponible / déjà annulée */
+      }
+      previous.cancel();
+      this.trackAnimations.delete(key);
+    }
+    const lastValues = track.keyframes[track.keyframes.length - 1];
+    if (track.target === "bg") {
+      // État logique : le runtime possède déjà l'état final ; le renderer l'affiche.
+      this.currentScene = {
+        ...this.currentScene,
+        ...(lastValues?.left === undefined ? {} : { bgLeft: lastValues.left }),
+        ...(lastValues?.top === undefined ? {} : { bgTop: lastValues.top }),
+        ...(lastValues?.zoomx === undefined ? {} : { bgZoomX: lastValues.zoomx }),
+        ...(lastValues?.zoomy === undefined ? {} : { bgZoomY: lastValues.zoomy }),
+        ...(lastValues?.rotate === undefined ? {} : { bgRotate: lastValues.rotate }),
+      };
+      const el = this.bgEl;
+      if (!el || opts.instant || track.duration <= 0 || typeof el.animate !== "function") {
+        this.renderScene(true);
+        return;
+      }
+      const frames = sampleTrack(track, 24).map((sample) => ({
+        offset: sample.offset,
+        backgroundPosition:
+          sample.values.left === undefined && sample.values.top === undefined
+            ? undefined
+            : `${sample.values.left ?? 0}px ${sample.values.top ?? 0}px`,
+        transform:
+          sample.values.zoomx === undefined && sample.values.zoomy === undefined && sample.values.rotate === undefined
+            ? undefined
+            : `scale(${(sample.values.zoomx ?? 100) / 100}, ${(sample.values.zoomy ?? 100) / 100}) rotate(${sample.values.rotate ?? 0}deg)`,
+      }));
+      const animation = el.animate(frames, { duration: track.duration, easing: "linear", fill: "forwards" });
+      this.trackAnimations.set(key, animation);
+      animation.onfinish = () => {
+        try {
+          animation.commitStyles();
+        } catch {
+          /* ignore */
+        }
+        animation.cancel();
+        if (this.trackAnimations.get(key) === animation) this.trackAnimations.delete(key);
+      };
+      return;
+    }
+    // Cible sprite : piste `transform`/`opacity` sur l'élément persistant.
+    const sprite = this.spriteEls.get(track.target);
+    if (!sprite) return;
+    if (track.prop === "opacity") {
+      const target = lastValues?.opacity ?? 1;
+      if (opts.instant || track.duration <= 0) {
+        sprite.style.opacity = String(target);
+        return;
+      }
+      const frames = sampleTrack(track, 24).map((sample) => ({ offset: sample.offset, opacity: sample.values.opacity ?? 1 }));
+      const animation = sprite.animate(frames, { duration: track.duration, easing: "linear", fill: "forwards" });
+      this.trackAnimations.set(key, animation);
+      animation.onfinish = () => {
+        try {
+          animation.commitStyles();
+        } catch {
+          /* ignore */
+        }
+        animation.cancel();
+      };
+    }
+  }
+
   private startTransition(from: SceneState, to: SceneState, time: Ms, opts: RunOptions): void {
     // Termine une transition précédente éventuelle (clear timer + overlays).
     this.finishTransition();

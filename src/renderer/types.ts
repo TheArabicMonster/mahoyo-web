@@ -127,7 +127,8 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   instantEffects: false,
   // Le port garde le clic qui saute les animations (comportement historique) ; la capture
   // d'origine montre « Non », réglable dans l'onglet Son/Effet.
-  stopAnimations: true,
+  // Capture d'origine (#316) : « Non » — un clic ne doit pas couper les fondus de scène.
+  stopAnimations: false,
   clearTextOnPageChange: true,
   specialEffects: true,
 };
