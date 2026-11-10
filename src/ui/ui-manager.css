@@ -47,5 +47,5 @@
 :where(button, input, select, textarea, a[href], [tabindex]):focus-visible {
   outline: 2px solid var(--mh-focus, #5fcfc5);
   outline-offset: 2px;
->>>>>>> 33cff77 (feat(a11y): accessibilité des écrans système (WEB-06))
-}}
+}
+
