@@ -1,95 +1,153 @@
 /**
- * Ajustement de la police pour les pages longues (#161, #163).
+ * Métriques du texte de jeu, **en unités logiques du stage 1024×576** (#314, arbitrage #319/#320).
  *
- * Fonction pure, séparée du renderer pour être testée sans DOM : les mesures
- * (hauteur du texte à une échelle de police donnée) sont fournies par l'appelant.
+ * ## Modèle moteur : `config.tjs` (non commité, assets locaux)
  *
- * Règle (#163) : la boîte de texte est **fixe** (position et hauteur constantes à toutes
- * les pages, voir `textBoxHeight`) ; seul change la taille de la police.
- * - une page qui tient à la taille nominale la garde ;
- * - sinon la police diminue par pas de `step` jusqu'à `minScale` (fraction de la taille
- *   nominale) ;
- * - en dessous, `overflow` vaut vrai et la zone de texte défile.
+ * Fichier lu : `/Users/nomade/github/mahoyo-web-poc/tools/output/decrypted/data/override/config.tjs`,
+ * **sha256 `82ea1af8b44663097027965ba4e868e3e402b487b853298a5c2df4b2e6006893`**. Dans
+ * `MessageLayer_config` (ordre L, R, T, B — **aucune inversion de lecture**) :
+ * `marginL = marginR = 142`, `marginT = marginB = 69`, `mw = 1024`, `mh = 576`,
+ * `defaultFontSize = 26`, `defaultLineSpacing = 18` (→ pas de ligne 44), `defaultPitch = 1`,
+ * `frameGraphic = "txtwindow01"`.
+ *
+ * ## Capture = oracle
+ *
+ * La capture vidéo du jeu original (référence visuelle du propriétaire) donne un texte à ≈6,7 % de
+ * largeur (≈69 px logiques), une marge verticale de 8,1 % (46,7 px) et un pas de ligne de 40,8 px
+ * (51 px écran). Elle **contredit donc la config** sur l'axe horizontal (69 vs 142), vertical
+ * (46,7 vs 69) et l'interligne (40,8 vs 44). Cause probable : version localisée/override,
+ * `@position frame=` ou graphique de cadre — **non tranchée**. Le port applique les valeurs
+ * calibrées sur la capture, pas celles de la config, pour ressembler au jeu du propriétaire.
+ *
+ * ## Valeurs appliquées (aucune constante par scène)
+ *
+ * | Paramètre | Appliqué (logique) | Config (logique) | Capture | Statut |
+ * |---|---|---|---|---|
+ * | Marge horizontale g/d | 69 | 142 | 85,4 px écran / 1,25 ≈ 68,3 | hypothèse (contredit la config) |
+ * | Marge verticale h/b | 46,7 | 69 | 8,1 % × 576 | hypothèse (contredit la config) |
+ * | Police | 26 | 26 | pas des glyphes = 1 em | hypothèse (confirmée) |
+ * | Pas de ligne | 40,8 | 44 (26 + 18) | 51 px écran / 1,25 | hypothèse (contredit la config) |
+ *
+ * `defaultPitch = 1` confirme l'absence de `letter-spacing`. Tant que la cause de l'écart
+ * config/capture n'est pas tranchée, ces valeurs restent des **hypothèses sourcées**, exprimées en
+ * px du repère logique 1024×576 (converties à l'écran par `STAGE_SCALE` ×1,25).
+ *
+ * Le port n'ajuste **pas** la police pour faire tenir une page (#314) : la pagination est scriptée
+ * (`[p]`/`@pg`). Une page plus longue que la zone est découpée, jamais réduite.
  */
 
-export interface TextFitParams {
-  /** Hauteur de la boîte de texte, constante (marges comprises). */
-  boxHeight: number;
-  /** Échelle minimale de la police (fraction de la taille nominale). */
-  minScale: number;
-  /** Pas de réduction de l'échelle. */
-  step: number;
-  /** Hauteur de la zone de texte (marges comprises) à l'échelle donnée. */
-  measureHeight: (scale: number) => number;
-}
+/** Empreinte du `config.tjs` de référence (assets locaux, non commité). */
+export const ENGINE_CONFIG_SHA256 = "82ea1af8b44663097027965ba4e868e3e402b487b853298a5c2df4b2e6006893";
+/** Chemin du `config.tjs` de référence (hors dépôt). */
+export const ENGINE_CONFIG_PATH =
+  "/Users/nomade/github/mahoyo-web-poc/tools/output/decrypted/data/override/config.tjs";
 
-export interface TextFit {
-  /** Échelle de police à appliquer (1 = taille nominale). */
-  scale: number;
-  /** Hauteur maximale de la zone de texte : celle de la boîte (au-delà, elle défile). */
-  maxHeight: number;
-  /** Vrai si le texte ne tient pas même à l'échelle minimale. */
-  overflow: boolean;
-}
-
-export const TEXT_FIT_DEFAULTS = {
-  /** Hauteur de la boîte en fraction de la hauteur de scène : ~6 lignes à la taille nominale. */
-  boxHeightRatio: 0.47,
-  minScale: 0.7,
-  step: 0.05,
+/** Disposition logique du texte (px du repère 1024×576), calibrée sur la capture (oracle). */
+export const FRAME_TEXT_LAYOUT = {
+  /** Marges horizontales (gauche et droite) : 69 px logiques (config : 142). */
+  marginX: 69,
+  /** Marges verticales (haut et bas) : 46,7 px logiques (config : 69). */
+  marginY: 46.7,
+  /** Taille de police : 26 px logiques (`defaultFontSize`, confirmé par la capture). */
+  fontSize: 26,
+  /** Pas de ligne : 40,8 px logiques (config : 44). */
+  lineHeight: 40.8,
 } as const;
+
+/**
+ * Table de provenance de la mise en page (#320) : **config = modèle, capture = oracle**. Chaque
+ * entrée donne la valeur appliquée (calibrée capture), la valeur de config, la mesure capture et le
+ * statut. `contradiction` documente les axes où la capture contredit la config.
+ */
+export const FRAME_TEXT_LAYOUT_PROVENANCE = [
+  {
+    param: "marginX",
+    appliedLogical: 69,
+    configLogical: 142,
+    configSource: "MessageLayer_config marginL = marginR = 142 (ordre L,R,T,B ; lecture confirmée)",
+    captureScreenPx: 85.4,
+    toleranceScreenPx: 1.5,
+    status: "hypothèse",
+    contradiction: true,
+    note: "capture ≈6,7 % de largeur → 68,3 px logiques ; config non explicative (cause non tranchée)",
+  },
+  {
+    param: "marginY",
+    appliedLogical: 46.7,
+    configLogical: 69,
+    configSource: "MessageLayer_config marginT = marginB = 69 (ordre L,R,T,B ; lecture confirmée)",
+    captureScreenPx: 46.7 * 1.25,
+    toleranceScreenPx: 1.5,
+    status: "hypothèse",
+    contradiction: true,
+    note: "capture #173 : 8,1 % × 576 = 46,7 px logiques ; config non explicative",
+  },
+  {
+    param: "fontSize",
+    appliedLogical: 26,
+    configLogical: 26,
+    configSource: "MessageLayer_config defaultFontSize = 26",
+    captureScreenPx: 26 * 1.25,
+    toleranceScreenPx: 0.65, // 2 % de 32,5 px
+    status: "hypothèse",
+    contradiction: false,
+    note: "pas des glyphes = 1 em ; confirmé par la capture",
+  },
+  {
+    param: "lineHeight",
+    appliedLogical: 40.8,
+    configLogical: 44, // defaultFontSize 26 + defaultLineSpacing 18
+    configSource: "MessageLayer_config defaultFontSize = 26, defaultLineSpacing = 18 → 44",
+    captureScreenPx: 51,
+    toleranceScreenPx: 1,
+    status: "hypothèse",
+    contradiction: true,
+    note: "capture #173 : 51 px écran / 1,25 = 40,8 px logiques ; config non explicative",
+  },
+] as const;
+
+/** Taille de police par défaut (px du repère 1024×576). *//** Taille de police par défaut (px du repère 1024×576). */
+export const FRAME_TEXT_FONT_SIZE = FRAME_TEXT_LAYOUT.fontSize;
+/** Taille de police en rem CSS pour `1rem = 16px` dans le repère du stage. */
+export const FRAME_TEXT_REM = FRAME_TEXT_FONT_SIZE / 16;
+/** Interligne CSS = pas de ligne / taille de police. */
+export const FRAME_TEXT_LINE_HEIGHT = FRAME_TEXT_LAYOUT.lineHeight / FRAME_TEXT_LAYOUT.fontSize;
+
+/** Marges de la couche message, en fractions de la scène (69/1024, 46,7/576). */
+export const FRAME_TEXT_AREA = {
+  left: FRAME_TEXT_LAYOUT.marginX / 1024,
+  right: FRAME_TEXT_LAYOUT.marginX / 1024,
+  top: FRAME_TEXT_LAYOUT.marginY / 576,
+  bottom: FRAME_TEXT_LAYOUT.marginY / 576,
+} as const;
+
+/** Hauteur de la boîte de texte en fraction de la hauteur de scène (style « boîte » de repli). */
+const TEXT_BOX_HEIGHT_RATIO = 0.47;
 
 /** Hauteur fixe de la boîte de texte pour une scène de `stageHeight` (même valeur à toutes les pages). */
 export function textBoxHeight(stageHeight: number): number {
-  return stageHeight * TEXT_FIT_DEFAULTS.boxHeightRatio;
+  return stageHeight * TEXT_BOX_HEIGHT_RATIO;
 }
-
-/**
- * Zone de texte du style « cadre image » (#173), en fractions de la scène, mesurée sur une capture
- * du jeu d'origine (1920x1080, `1-2.ks`, cadre `txtwindow02`) :
- * - bord gauche des lignes à x = 268/1920 (14 %) ;
- * - bord droit : la coupure des lignes le place entre 1713 et ~1790/1920 (89 % à 93 %), 91 % retenu ;
- * - première ligne de la page centrée à y = 126/1080, interligne 77/1080 : haut de la zone à
- *   126 - 77/2 = 87,5/1080 (8,1 %) ;
- * - bas : non visible sur la capture, pris symétrique du haut (hypothèse).
- */
-export const FRAME_TEXT_AREA = {
-  left: 0.14,
-  right: 0.09,
-  top: 0.081,
-  bottom: 0.081,
-} as const;
-
-/**
- * Échelle du texte du style « cadre image » (#182, docs/ANALYSE_HUD_ORIGINAL.md §2.4 et docs/DESIGN.md §3).
- *
- * Jeu d'origine à 1280x720 : corps ≈ 34 px, interligne ≈ 51 px (77/1080 de la hauteur). Le stage est
- * dessiné en 1024x576 puis agrandi par `STAGE_SCALE` (1,25, voir stage-renderer.ts) : les valeurs CSS
- * ci-dessous sont donc exprimées dans le repère du stage, et c'est le rendu à l'écran qui doit valoir
- * 34 px / 51 px. 1,7 rem x 16 px x 1,25 = 34 px ; interligne 1,5 : 34 x 1,5 = 51 px.
- */
-export const FRAME_TEXT_REM = 1.7;
-export const FRAME_TEXT_LINE_HEIGHT = 1.5;
 
 /** Hauteur de la zone de texte du style « cadre image » pour une scène de `stageHeight`. */
 export function frameTextAreaHeight(stageHeight: number): number {
   return stageHeight * (1 - FRAME_TEXT_AREA.top - FRAME_TEXT_AREA.bottom);
 }
 
+/** Largeur utile du texte dans le repère logique (1024 − 2 × marge horizontale). */
+export function frameTextWidth(stageWidth = 1024): number {
+  return stageWidth - 2 * FRAME_TEXT_LAYOUT.marginX;
+}
+
+/** Nombre de caractères pleine chasse par ligne (dérivé de l'em et de la largeur utile). */
+export function frameTextCharsPerLine(stageWidth = 1024): number {
+  return Math.floor(frameTextWidth(stageWidth) / FRAME_TEXT_LAYOUT.fontSize);
+}
+
 /**
  * Nombre d'unités de texte à atténuer : le texte déjà lu de la page (avant le dernier clic sur une
- * attente `[l]`) reste affiché, atténué (capture d'origine, #173). `readUnits` est la longueur du
- * texte au moment de ce clic ; on ne dépasse jamais le texte affiché.
+ * attente `[l]`) reste affiché, atténué (capture d'origine, #173).
  */
 export function dimmedUnitCount(readUnits: number, shownUnits: number): number {
   return Math.max(0, Math.min(readUnits, shownUnits));
-}
-
-export function fitTextBox(p: TextFitParams): TextFit {
-  const steps = Math.round((1 - p.minScale) / p.step);
-  for (let i = 0; i <= steps; i++) {
-    const scale = Math.round((1 - i * p.step) * 1000) / 1000;
-    if (p.measureHeight(scale) <= p.boxHeight) return { scale, maxHeight: p.boxHeight, overflow: false };
-  }
-  return { scale: p.minScale, maxHeight: p.boxHeight, overflow: true };
 }

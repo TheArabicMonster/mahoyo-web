@@ -167,6 +167,28 @@ export const APPROXIMATIONS: readonly Approximation[] = [
     compteur: 1,
   },
   {
+    id: "text-font-metrics",
+    ecart:
+      "La police du jeu d'origine (`defaultFace`/`userFace` du moteur, famille Mincho spécifique) n'est pas " +
+      "redistribuable : le port utilise une pile Mincho/serif du système. À taille de police identique " +
+      "(26 px du repère 1024×576, dérivée de config.tjs), la hauteur de glyphe (x-height/capitale) reste " +
+      "différente de la capture d'origine car les métriques de la police diffèrent.",
+    issue: APPROXIMATIONS_ISSUE,
+    test: "tests/unit/renderer/text-fit.test.ts",
+    compteur: 1,
+  },
+  {
+    id: "text-overflow-clip",
+    ecart:
+      "Le texte d'une page plus longue que la zone de message est découpé (overflow hidden) au lieu " +
+      "d'être paginé automatiquement comme peut le faire le moteur (auto-return/auto-pagination) ; " +
+      "aucune réduction de police. La pagination reste décidée par le script ([p]/@pg) ; la mesure " +
+      "exhaustive des débordements du corpus est déléguée à l'issue #319.",
+    issue: APPROXIMATIONS_ISSUE,
+    test: "tests/unit/renderer/stage-renderer.test.ts",
+    compteur: 1,
+  },
+  {
     id: "clock-runtime-vars",
     ecart:
       "L'horloge mémorise l'heure dans l'état runtime (clockHour/clockMinute, sauvegardés) et non dans les " +
