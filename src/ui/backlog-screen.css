@@ -184,3 +184,17 @@
   transform: rotate(45deg);
 }
 .mh-bl-close .mh-bl-icon::after { transform: rotate(-45deg); }
+
+/* ── Portrait (#210, WEB-02) : historique plein écran en colonne, cibles ≥ 44 px ── */
+@media (orientation: portrait) {
+  .mh-bl-header { left: 4%; top: 2%; right: 4%; }
+  .mh-bl-title { font-size: 1.6rem; }
+  .mh-bl-scroll {
+    left: 4%;
+    right: 4%;
+    top: 10%;
+    bottom: 12%;
+  }
+  .mh-bl-list { font-size: 1.05rem; line-height: 1.6; }
+  .mh-bl-button { min-width: 44px; min-height: 44px; }
+}

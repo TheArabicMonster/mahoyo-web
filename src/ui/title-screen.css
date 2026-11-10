@@ -199,3 +199,32 @@
     --mh-title-extra-fade: 0ms; /* le sous-menu apparaît sans fondu */
   }
 }
+
+/* ── Portrait (#210, WEB-02) : menu en colonne centrée, cibles ≥ 44 px réels ── */
+@media (orientation: portrait) {
+  .mh-ui-title-logo {
+    left: 8%;
+    top: 12%;
+    width: 84%;
+    height: 16%;
+    font-size: clamp(2rem, 9vw, 3.4rem);
+  }
+  .mh-ui-title-menu {
+    top: 40%;
+    gap: 0.15rem;
+  }
+  .mh-ui-title-entry {
+    min-height: 44px;
+    padding: 0.5rem 1.25rem;
+    font-size: 1.15rem;
+  }
+  .mh-ui-title-extra-menu {
+    min-height: 44px;
+    font-size: 1rem;
+  }
+  .mh-ui-title-legal {
+    font-size: 0.72rem;
+    padding: 0 1rem;
+    text-align: center;
+  }
+}
