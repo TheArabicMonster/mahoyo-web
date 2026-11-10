@@ -129,6 +129,9 @@ export class SaveLoadScreen {
     this.pageCount = pageCountFor(this.perPage);
     this.pages = paginate([], this.perPage);
     this.element = h("section", `mh-sl mh-sl-${deps.mode}`);
+    // Écran superposé plein cadre (#211) : dialogue modal nommé par `aria-label` (posé au rendu).
+    this.element.setAttribute("role", "dialog");
+    this.element.setAttribute("aria-modal", "true");
     this.header = h("header", "mh-sl-header");
     this.grid = h("div", "mh-sl-grid");
     this.grid.setAttribute("role", "group");

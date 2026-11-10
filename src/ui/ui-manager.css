@@ -37,3 +37,15 @@
   .mh-ui-button,
   .mh-ui-choice { min-height: 44px; }
 }
+/*
+ * Accessibilité (#211, WEB-06) — focus visible global.
+ * Filet de sécurité pour les contrôles des écrans qui n'ont pas de règle dédiée : contour 2 px
+ * `--mh-focus`, décalage 2 px (docs/DESIGN.md §10). `:where()` garde une spécificité nulle, donc
+ * chaque écran peut surcharger la couleur (ex. écran titre sur fond clair : `--mh-ink-hover`).
+ * Jamais `outline: none` sans repère de remplacement.
+ */
+:where(button, input, select, textarea, a[href], [tabindex]):focus-visible {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+>>>>>>> 33cff77 (feat(a11y): accessibilité des écrans système (WEB-06))
+}}

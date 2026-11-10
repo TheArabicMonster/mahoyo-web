@@ -1218,6 +1218,31 @@ export class DomStageRenderer implements StageRenderer {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.3; }
       }
+      /*
+       * Accessibilité (#211, WEB-06 ; docs/DESIGN.md §10) : plus aucune animation ni transition de la
+       * scène sous prefers-reduced-motion — indicateur de clic (clignotement et glyphes animés),
+       * voile de brume, attente (rotation), et fondus de la boîte de texte / du texte lu. Les règles
+       * plus spécifiques des glyphes image sont reprises ici pour l'emporter sans « !important ».
+       */
+      @media (prefers-reduced-motion: reduce) {
+        .mh-stage-haze,
+        .mh-stage-indicator,
+        .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator.mh-glyph-line-ok[data-style="line"],
+        .mh-stage-textbox[data-frame-style="image"] .mh-stage-indicator.mh-glyph-page-ok[data-style="page"],
+        .mh-stage-wait-on,
+        .mh-stage-wait-on.mh-stage-wait-nudge {
+          animation: none;
+        }
+        .mh-stage-textbox,
+        .mh-stage-text-read,
+        .mh-stage-wait {
+          transition: none;
+        }
+        .mh-stage-text-appear,
+        .mh-stage-text[data-text-animation="fade"].mh-stage-text-appear {
+          animation: none;
+        }
+      }
     `;
     document.head.appendChild(style);
   }

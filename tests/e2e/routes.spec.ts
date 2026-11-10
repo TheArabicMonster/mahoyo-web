@@ -19,6 +19,9 @@ async function boot(page: Page, url: string): Promise<void> {
   await page.goto(url);
   // Témoin de non-rechargement : disparaît si la page est rechargée.
   await expect(page.locator("#ui-overlay")).toHaveAttribute("data-screen", /.+/, { timeout: 15000 });
+  // Attendre que le routeur ait aligné l'URL sur la vue : sans cela, `goBack()` peut partir avant que
+  // l'entrée d'historique initiale soit posée (course observée sous Firefox en CI).
+  await expect.poll(() => page.evaluate(() => location.hash), { timeout: 15000 }).toMatch(/^#\//);
   await page.evaluate(() => ((window as unknown as { __noReload?: number }).__noReload = 1));
 }
 
@@ -48,12 +51,14 @@ test.describe("Routes d'URL (WEB-04)", () => {
       expect(await hash(page)).toBe(`#/${route}`);
 
       await page.goBack();
-      await expect(screen(page)).toHaveAttribute("data-screen", "title");
-      expect(await hash(page)).toBe("#/title");
+      // Attentes explicites et généreuses (Firefox CI) : l'URL puis la vue, dans l'ordre du routeur.
+      await expect.poll(() => hash(page), { timeout: 15000 }).toBe("#/title");
+      await expect(screen(page)).toHaveAttribute("data-screen", "title", { timeout: 15000 });
       expect(await noReload(page)).toBe(true);
 
       await page.goForward();
-      await expect(screen(page)).toHaveAttribute("data-screen", dataScreen);
+      await expect.poll(() => hash(page), { timeout: 15000 }).toBe(`#/${route}`);
+      await expect(screen(page)).toHaveAttribute("data-screen", dataScreen, { timeout: 15000 });
       expect(await noReload(page)).toBe(true);
     });
   }
