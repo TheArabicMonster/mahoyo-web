@@ -2,9 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # `v1.1` est la branche d'intégration du train de vagues : les PRs y ciblent
+    # `v1.1` puis `v1.1` → `main` une fois par vague (#342).
+    branches: [main, v1.1]
   pull_request:
-    branches: [main]
+    branches: [main, v1.1]
 
 jobs:
   build-and-test:
