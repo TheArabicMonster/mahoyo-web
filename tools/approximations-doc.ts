@@ -50,6 +50,8 @@ export const APPROXIMATION_LABELS: Readonly<Record<string, string>> = {
   "s-click-wait": "`@s` (attente de sélection)",
   "shake-fullscreen": "`@shake`/`@swing`",
   "staffrollsetting-bgcolor": "`@staffrollsetting bgcolor=`",
+  "text-font-metrics": "Police du texte (métriques de glyphes)",
+  "text-overflow-clip": "Texte trop long (découpe au lieu de pagination)",
   "xchgbgm-volume": "`@xchgbgm volume=`",
 };
 

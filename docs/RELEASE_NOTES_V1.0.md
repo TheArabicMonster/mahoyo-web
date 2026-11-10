@@ -66,8 +66,8 @@ extraits et convertis restent locaux et ignorés par git.
 | Scripts narratifs lus | **221/221** (0 erreur, 0 maxSteps) |
 | Commandes KAG | **125 implémentées**, **5 ignorées volontairement**, **0 inconnue** (baseline vide) |
 | Approximations documentées | **14** (registre #296) |
-| Tests unitaires | **2175 tests** / 141 fichiers |
-| Tests e2e | **151 tests** / 17 fichiers, Chromium + Firefox |
+| Tests unitaires | **2181 tests** / 143 fichiers |
+| Tests e2e | **159 tests** / 18 fichiers, Chromium + Firefox |
 | CI | **3 jobs** : `build-and-test` + matrice `e2e (chromium)` / `e2e (firefox)` |
 
 ## Commandes KAG : audit zéro inconnue
@@ -86,10 +86,12 @@ extraits et convertis restent locaux et ignorés par git.
 
 ## Approximations connues (registre #296)
 
-Quatorze écarts assumés au moteur d'origine, chacun **visible, figé par un test** (`approx:<id>`) et
-**suivi** par l'issue [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296). Le compteur
-associé est versionné (`tools/approximations-baseline.json`) et non croissant silencieusement. Le suivi
-complet est généré dans [`APPROXIMATIONS.md`](APPROXIMATIONS.md) (`npm run approximations:doc`).
+Quatorze écarts étaient assumés au moment de la clôture v1.0 ; l'**état courant**, dérivé du registre,
+est généré dans [`APPROXIMATIONS.md`](APPROXIMATIONS.md) (`npm run approximations:doc`). Chacun est
+**visible, figé par un test** (`approx:<id>`) et **suivi** par l'issue
+[#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) ; le compteur associé est versionné
+(`tools/approximations-baseline.json`) et non croissant silencieusement. Le tableau ci-dessous est la
+photographie de la clôture v1.0 — la doc générée fait foi pour les entrées ajoutées depuis.
 
 | Approximation | Écart assumé |
 |---|---|
@@ -169,6 +171,6 @@ ajouté au dépôt.
 - [`README.md`](../README.md) — présentation, parcours utilisateur et commandes.
 - [`PROGRESS.md`](PROGRESS.md), [`ROADMAP.md`](ROADMAP.md) — état et suites (v1.1).
 - [`LECTURE_COMPLETE.md`](LECTURE_COMPLETE.md) — lecture complète et audit KAG.
-- [`APPROXIMATIONS.md`](APPROXIMATIONS.md) — suivi généré des 14 approximations documentées (#296).
+- [`APPROXIMATIONS.md`](APPROXIMATIONS.md) — suivi généré des approximations documentées (#296).
 - [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) — critères de la v1.0.
 - [`KAG_MAHOYO_SEMANTICS.md`](KAG_MAHOYO_SEMANTICS.md) — sémantique des commandes et registre des approximations.

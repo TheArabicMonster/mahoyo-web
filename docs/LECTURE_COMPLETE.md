@@ -21,7 +21,7 @@ La v1.0 est **close** : le critère « 0 commande KAG inconnue à effet visible 
   ni boucle sans progression.
 - **Garde-fous** : mode **zéro strict** (`npm run audit:guard` : toute inconnue fait échouer, plus de
   baseline), doc générée à jour (`npm run audit:doc`, `npm run check:generated`) et registre des
-  **14 approximations documentées** (`npm run approximations:check`, suivi #296).
+  **approximations documentées** ([`APPROXIMATIONS.md`](APPROXIMATIONS.md), `npm run approximations:check`, suivi #296).
 - **Approximations connues** : liste complète et écarts assumés dans
   [`RELEASE_NOTES_V1.0.md`](RELEASE_NOTES_V1.0.md) ; chaque approximation porte un écart précis, un test
   qui la fige et une issue de suivi.
