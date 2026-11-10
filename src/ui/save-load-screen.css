@@ -92,7 +92,7 @@
   outline: 2px solid var(--mh-focus, #5fcfc5);
   outline-offset: 2px;
 }
-.mh-sl-card:focus:not(:focus-visible) {
+.mh-sl-card:focus:not(:focus-visible):not([data-focus-ring="true"]) {
   outline: none;
 }
 

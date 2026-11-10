@@ -308,6 +308,89 @@ test.describe("Écrans système : sémantique et annonces (WEB-06)", () => {
   });
 });
 
+test.describe("Focus programmatique clavier (Firefox, #257)", () => {
+  /**
+   * Firefox ne propage pas la modalité clavier à un focus posé par programme : sans repli,
+   * `:focus-visible` reste faux et l'anneau n'apparaît pas. `src/ui/focus-modality.ts` pose
+   * `data-focus-ring` en modalité clavier ; on vérifie l'anneau réellement calculé (outline).
+   */
+  const focusRing = async (page: Page) => {
+    return page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return null;
+      const style = getComputedStyle(el);
+      return {
+        tag: el.tagName,
+        cls: String(el.className).split(" ")[0],
+        outlineStyle: style.outlineStyle,
+        outlineWidth: Number.parseFloat(style.outlineWidth) || 0,
+        outlineOffset: Number.parseFloat(style.outlineOffset) || 0,
+        ringAttribute: el.hasAttribute("data-focus-ring"),
+        inScreen: el.closest(".mh-sysmenu, .mh-sl, .mh-cfg, .mh-ui-confirm, .mh-bl, .mh-ui-title-screen") !== null,
+      };
+    });
+  };
+
+  test("Échap : l'entrée du menu système focalisée par programme a un anneau visible", async ({ page }) => {
+    await boot(page);
+    await startGame(page);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".mh-sysmenu")).toBeVisible();
+    await expect(page.locator('.mh-sysmenu [data-entry="save"]')).toBeFocused();
+    const ring = await focusRing(page);
+    expect(ring).not.toBeNull();
+    expect(ring!.outlineStyle, "anneau de focus absent après Échap").toBe("solid");
+    expect(ring!.outlineWidth).toBeGreaterThanOrEqual(2);
+    expect(ring!.outlineOffset).toBeGreaterThanOrEqual(1);
+  });
+
+  test("ouverture au clavier de la configuration : l'onglet focalisé par programme a un anneau", async ({ page }) => {
+    await boot(page);
+    await startGame(page);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".mh-sysmenu")).toBeVisible();
+    // Entrées : save, load, config… — deux flèches bas depuis « Sauvegarder ».
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(overlay(page)).toHaveAttribute("data-screen", "settings");
+    await expect(page.locator(".mh-cfg")).toBeVisible();
+    // L'écran donne le focus à son onglet actif par programme (aucun Tab ici).
+    const ring = await focusRing(page);
+    expect(ring).not.toBeNull();
+    expect(ring!.inScreen).toBe(true);
+    expect(ring!.outlineStyle, "anneau absent sur l'onglet focalisé par programme").toBe("solid");
+    expect(ring!.outlineWidth).toBeGreaterThanOrEqual(2);
+  });
+
+  test("confirmation ouverte au clavier : le bouton présélectionné a un anneau visible", async ({ page }) => {
+    await boot(page);
+    await startGame(page);
+    await page.keyboard.press("Escape");
+    // Depuis « Sauvegarder », deux flèches haut : « Back » puis « Title ».
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".mh-ui-confirm")).toBeVisible();
+    await expect(page.locator(".mh-ui-confirm-no")).toBeFocused();
+    const ring = await focusRing(page);
+    expect(ring!.outlineStyle, "anneau absent sur le bouton présélectionné").toBe("solid");
+    expect(ring!.outlineWidth).toBeGreaterThanOrEqual(2);
+  });
+
+  test("ouverture au pointeur : aucun anneau sur le focus programmatique", async ({ page }) => {
+    await boot(page);
+    await startGame(page);
+    await page.mouse.click(400, 300, { button: "right" });
+    await expect(page.locator(".mh-sysmenu")).toBeVisible();
+    const ring = await focusRing(page);
+    expect(ring).not.toBeNull();
+    expect(ring!.tag).toBe("BUTTON");
+    expect(ring!.outlineStyle, "anneau affiché alors que l'ouverture est au pointeur").toBe("none");
+    expect(ring!.ringAttribute).toBe(false);
+  });
+});
+
 test.describe("Écrans système : prefers-reduced-motion (WEB-06)", () => {
   test("aucune animation ni transition sous mouvement réduit", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });

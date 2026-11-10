@@ -514,6 +514,10 @@ Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le 
   (`ui-manager.css`, `:where(...):focus-visible`) couvre tout contrôle sans règle dédiée ; seul l'écran titre, sur fond
   clair, garde son contour sombre `--mh-ink-hover` (docs §9.3) ; les zones défilantes que Firefox rend
   focalisables au clavier (colonnes de la config, liste Archive) reçoivent aussi ce contour.
+  Pour les **focus programmatiques** (ex. `Échap` ouvre le menu système et focalise « Sauvegarder »),
+  Firefox ne propage pas la modalité clavier à `:focus-visible` : `src/ui/focus-modality.ts` suit la
+  dernière modalité d'entrée et pose `data-focus-ring` en modalité clavier (jamais au pointeur), ce qui
+  affiche le même contour. Aucun écran n'est codé en dur : tous les focus programmatiques en bénéficient.
 - **Sémantique** : `role="dialog"` + `aria-modal` pour les écrans superposés (menu système, confirmation,
   sauvegarde/chargement, historique, configuration, CG/Sound), `role="tablist"` pour les onglets de config,
   `role="list"` pour les listes (historique, archive, son), `aria-live="polite"` pour les toasts et les statuts,

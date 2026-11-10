@@ -228,3 +228,16 @@
     text-align: center;
   }
 }
+
+/*
+ * Repli de focus visible des focus programmatiques (#257) : l'écran titre est sur fond clair, son
+ * contour est sombre (`--mh-ink-hover`, docs §9.3) ; le conteneur de menu, focalisé par programme,
+ * n'affiche pas d'anneau (comme sous Chromium).
+ */
+.mh-ui-title-screen [data-focus-ring="true"]:focus {
+  outline-color: var(--mh-ink-hover);
+}
+
+.mh-ui-title-menu:focus[data-focus-ring="true"] {
+  outline: none;
+}
