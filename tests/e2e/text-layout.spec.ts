@@ -175,22 +175,36 @@ test("pas des glyphes = 1 em (26 px logiques) et 34 caractères pleine chasse pa
   expect(run!.firstLineCount).toBe(34); // floor((1024-2*69)/26) = 34
 });
 
-test("le wrap est identique à 1280×720, 1920×1080 et en portrait (layout logique constant) (#320)", async ({ page }) => {
+test("le wrap est identique à 1280×720 et 1920×1080 (layout logique constant, paysage) (#320)", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 720 });
   await reachLongPageEnd(page);
   const base = await lineSignature(page);
   expect(base.length).toBeGreaterThanOrEqual(6); // page longue multi-lignes
 
-  for (const viewport of [
-    { width: 1920, height: 1080 },
-    { width: 820, height: 1180 }, // portrait
-  ]) {
-    await page.setViewportSize(viewport);
-    await page.reload();
-    await reachLongPageEnd(page);
-    expect(await lineSignature(page)).toEqual(base);
-  }
+  // Le paysage conserve le repère logique 1024×576 : seule l'échelle change.
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.reload();
+  await reachLongPageEnd(page);
+  expect(await lineSignature(page)).toEqual(base);
+
+  // Depuis #210 (décision propriétaire 4), le portrait n'est PAS une simple mise à l'échelle :
+  // le texte passe dans une zone dédiée sous la scène, à taille réelle (wrap différent assumé).
+  // On y vérifie la disposition (zone sous la scène) et la stabilité du wrap à taille constante.
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.reload();
+  await reachLongPageEnd(page);
+  const portraitBase = await lineSignature(page);
+  expect(portraitBase.length).toBeGreaterThanOrEqual(6);
+  const geometry = await page.evaluate(() => {
+    const scene = document.querySelector<HTMLElement>(".mh-stage")!.getBoundingClientRect();
+    const box = document.querySelector<HTMLElement>("#textbox")!.getBoundingClientRect();
+    return { sceneBottom: scene.bottom, boxTop: box.top };
+  });
+  expect(geometry.boxTop).toBeGreaterThanOrEqual(geometry.sceneBottom - 1);
+  await page.reload();
+  await reachLongPageEnd(page);
+  expect(await lineSignature(page)).toEqual(portraitBase); // déterministe à taille portrait constante
 });
 
 
@@ -218,17 +232,22 @@ async function collectFivePageSignatures(page: Page): Promise<number[][]> {
   return signatures;
 }
 
-test("golden 5 pages : retours à la ligne identiques à 1280×720, 1920×1080 et portrait (#320)", async ({ page }) => {
+test("golden 5 pages : retours à la ligne identiques à 1280×720 et 1920×1080 (paysage) (#320)", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 720 });
   const reference = await collectFivePageSignatures(page);
   expect(reference).toHaveLength(5);
-  for (const viewport of [
-    { width: 1920, height: 1080 },
-    { width: 820, height: 1180 },
-  ]) {
-    await page.setViewportSize(viewport);
-    await page.reload();
-    expect(await collectFivePageSignatures(page)).toEqual(reference);
-  }
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.reload();
+  expect(await collectFivePageSignatures(page)).toEqual(reference);
+
+  // Portrait (#210) : zone de texte dédiée à taille réelle — golden propre au portrait (déterministe),
+  // volontairement différent du paysage (ce n'est plus une simple mise à l'échelle).
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.reload();
+  const portrait = await collectFivePageSignatures(page);
+  expect(portrait).toHaveLength(5);
+  await page.reload();
+  expect(await collectFivePageSignatures(page)).toEqual(portrait);
 });
