@@ -22,7 +22,7 @@ import type {
   TextStyle,
   Token,
 } from "./types.js";
-import { parseCommand } from "./parser.js";
+import { parseCommand, flattenControlFlow } from "./parser.js";
 import {
   JOURNAL_COMMANDS,
   journalDurationMs,
@@ -343,7 +343,7 @@ export function createRuntimeState(): RuntimeState {
 
 export class Runtime {
   private context: ScriptContext;
-  private callStack: ScriptContext[] = [];
+  private callStack: Array<ScriptContext & { savedFrames?: unknown; savedMacroParams?: Record<string, unknown> }> = [];
   private state: RuntimeState;
 
   /** Callback pour charger un script par son nom de fichier. */
@@ -626,6 +626,7 @@ export class Runtime {
 
   /** Parse raw tokens (from macro body) into executable instructions. */
   private parseRawTokens(tokens: Token[]): Instruction[] {
+
     const instructions: Instruction[] = [];
     let i = 0;
 
@@ -689,7 +690,7 @@ export class Runtime {
         }
       }
     }
-    return instructions;
+    return flattenControlFlow(instructions).instructions;
   }
 
   /** Parse @if/@elsif/@else/@endif from a raw token stream. */
@@ -892,6 +893,12 @@ export class Runtime {
       }
 
       const instruction = frame.instructions[frame.index];
+      const flatTarget = this.flatControlTarget(instruction, frame.index);
+      if (flatTarget !== null) {
+        frame.index = flatTarget;
+        this.macroParams = savedMacroParams;
+        continue;
+      }
 
       if (instruction.kind === "text") {
         const result = this.processFrameText(frame, instruction);
@@ -2572,6 +2579,17 @@ export class Runtime {
     return [];
   }
 
+  /** Index suivant d'une instruction de contrôle aplatie (#80), ou null si ce n'en est pas une. */
+  private flatControlTarget(instruction: Instruction, currentIndex: number): number | null {
+    if (instruction.kind === "jumpIndex") return instruction.target;
+    if (instruction.kind === "jumpIfNot") {
+      return instruction.cond === undefined || !this.evaluateCondition(instruction.cond)
+        ? instruction.target
+        : currentIndex + 1;
+    }
+    return null;
+  }
+
   private applyJump(instruction: Extract<Instruction, { kind: "jump" }>): StopReason | null {
     // Inter-script jump: @jump storage=other.ks [target=*label]
     if (instruction.storage) {
@@ -2603,23 +2621,21 @@ export class Runtime {
     if (instruction.target) {
       const pageIdx = this.context.script.labels[instruction.target];
       if (pageIdx !== undefined) {
-        // Push return address: same page, instruction AFTER the @call.
-        // If called from a frame, use the frame's returnIndex (the instruction
-        // after the @endif / macro) to avoid resuming inside the block.
+        // (#80) Aplati : le retour reprend exactement après le @call, y compris dans une macro.
+        // On sauvegarde l'état d'exécution de la frame courante ; @return le restaure et reprend
+        // l'instruction suivante de la frame (ou de la page si aucun frame).
         const currentFrame = this.frames.length > 0
           ? this.frames[this.frames.length - 1]
           : undefined;
-        const hasUnfinishedFrame = this.frames.some(
-          (f) => f.index < f.instructions.length - 1,
-        );
-        if (hasUnfinishedFrame) {
-          this.onWarning("@call inside @if/macro skips remaining instructions until @endif/endmacro");
-        }
-        const returnIndex = currentFrame?.returnIndex ?? this.context.instructionIndex + 1;
+        if (currentFrame) currentFrame.index += 1;
+        const savedFrames = this.frames.map((frame) => ({ ...frame, instructions: [...frame.instructions] }));
+        const savedMacroParams = this.macroParams;
         this.callStack.push({
           ...this.context,
-          instructionIndex: returnIndex,
+          instructionIndex: this.context.instructionIndex + (currentFrame ? 0 : 1),
           segmentIndex: 0,
+          savedFrames,
+          savedMacroParams,
         });
         this.frames = [];
         this.macroParams = {};
@@ -2637,9 +2653,10 @@ export class Runtime {
   private applyReturn(): void {
     const prevContext = this.callStack.pop();
     if (prevContext !== undefined) {
-      this.context = prevContext;
-      this.frames = [];
-      this.macroParams = {};
+      const { savedFrames, savedMacroParams, ...context } = prevContext;
+      this.context = context;
+      this.frames = (savedFrames as typeof this.frames | undefined) ?? [];
+      this.macroParams = savedMacroParams ?? {};
       this.pendingContextChange = true;
       return;
     }
@@ -3196,6 +3213,11 @@ export class Runtime {
 
       while (this.context.instructionIndex < instructions.length) {
         const instruction = instructions[this.context.instructionIndex];
+        const flatTarget = this.flatControlTarget(instruction, this.context.instructionIndex);
+        if (flatTarget !== null) {
+          this.context.instructionIndex = flatTarget;
+          continue;
+        }
 
         if (instruction.kind === "text") {
           const result = this.processText(instruction);

@@ -224,24 +224,24 @@ describe("parse", () => {
     }
   });
 
-  it("parses @if...@endif as a single conditional instruction", () => {
+  it("aplatit @if...@endif en jumpIfNot + instructions (#80)", () => {
     const script = parse(lex([
       `@if cond="1"`,
       `@eval exp="f.x = 1"`,
       `@endif`,
     ].join("\n")));
     const page = script.pages[0];
-    const conditional = page.instructions.find((i) => i.kind === "conditional");
-    expect(conditional).toBeDefined();
-    if (conditional && conditional.kind === "conditional") {
-      expect(conditional.branches.length).toBe(1);
-      expect(conditional.branches[0].cond).toBe("1");
-      expect(conditional.branches[0].instructions.length).toBe(1);
-      expect(conditional.branches[0].instructions[0].kind).toBe("eval");
+    expect(page.instructions.find((i) => i.kind === "conditional")).toBeUndefined();
+    expect(page.instructions.map((i) => i.kind)).toEqual(["jumpIfNot", "eval"]);
+    const jump = page.instructions[0];
+    expect(jump.kind).toBe("jumpIfNot");
+    if (jump.kind === "jumpIfNot") {
+      expect(jump.cond).toBe("1");
+      expect(jump.target).toBe(2); // fin du bloc = après le corps
     }
   });
 
-  it("parses @if...@else...@endif with two branches", () => {
+  it("aplatit @if...@else...@endif en sauts vers les branches (#80)", () => {
     const script = parse(lex([
       `@if cond="0"`,
       `@eval exp="f.x = 1"`,
@@ -250,18 +250,19 @@ describe("parse", () => {
       `@endif`,
     ].join("\n")));
     const page = script.pages[0];
-    const conditional = page.instructions.find((i) => i.kind === "conditional");
-    expect(conditional).toBeDefined();
-    if (conditional && conditional.kind === "conditional") {
-      expect(conditional.branches.length).toBe(2);
-      expect(conditional.branches[0].cond).toBe("0");
-      expect(conditional.branches[0].instructions[0].kind).toBe("eval");
-      expect(conditional.branches[1].cond).toBeUndefined();
-      expect(conditional.branches[1].instructions[0].kind).toBe("eval");
+    expect(page.instructions.map((i) => i.kind)).toEqual(["jumpIfNot", "eval", "jumpIndex", "eval"]);
+    const first = page.instructions[0];
+    const skip = page.instructions[2];
+    expect(first.kind).toBe("jumpIfNot");
+    expect(skip.kind).toBe("jumpIndex");
+    if (first.kind === "jumpIfNot" && skip.kind === "jumpIndex") {
+      expect(first.cond).toBe("0");
+      expect(first.target).toBe(3); // début de la branche @else
+      expect(skip.target).toBe(4); // fin du bloc
     }
   });
 
-  it("parses nested @if blocks", () => {
+  it("aplatit les @if imbriqués (aucune instruction conditional restante)", () => {
     const script = parse(lex([
       `@if cond="1"`,
       `@if cond="2"`,
@@ -270,11 +271,9 @@ describe("parse", () => {
       `@endif`,
     ].join("\n")));
     const page = script.pages[0];
-    const outer = page.instructions.find((i) => i.kind === "conditional");
-    expect(outer).toBeDefined();
-    if (outer && outer.kind === "conditional") {
-      expect(outer.branches[0].instructions[0].kind).toBe("conditional");
-    }
+    expect(page.instructions.some((i) => i.kind === "conditional")).toBe(false);
+    expect(page.instructions.filter((i) => i.kind === "jumpIfNot")).toHaveLength(2);
+    expect(page.instructions.at(-1)?.kind).toBe("eval");
   });
 
   it("parses @macro...@endmacro as a macrodef instruction", () => {
