@@ -39,7 +39,8 @@
     "check:generated": "npm run audit:doc && npm run approximations:doc -- --check && git diff --exit-code -- docs/LECTURE_COMPLETE.md && npm run approximations:check",
     "perf": "tsx tools/perf-measure.ts",
     "journal:capture": "tsx tools/journal-capture.ts",
-    "journal:compare": "tsx tools/journal-compare.ts"
+    "journal:compare": "tsx tools/journal-compare.ts",
+    "diag:transitions": "tsx tools/diagnose-transitions.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
