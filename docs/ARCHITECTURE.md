@@ -139,6 +139,15 @@ src/renderer/ + src/ui/  ── rendu navigateur
   la vue `flowchart` avec `revealAll` (réglage), `currentScript`, `story` et `thumbnail` (clé du manifeste -> URL,
   `AssetResolver.uiImage`). Les entrées titre/menu système et la route ouvrent tous cette vue (FLOW-08 / #207).
 
+### `src/pwa/` — PWA et hors ligne (#96)
+
+- **`register.ts`** : enregistrement du service worker (production uniquement), gestion de la mise à jour
+  (`controllerchange` + `SKIP_WAITING`, rechargement contrôlé une seule fois, garde-fou de session).
+- **`sw-source.ts`** : génération du code source du service worker — pré-cache versionné de la coquille,
+  navigation network-first, cache runtime borné des assets du jeu (`/assets/**`), nettoyage des anciens
+  caches. Le fichier `dist/sw.js` est produit au build par `tools/pwa-sw.ts` (les noms hachés des bundles
+  ne sont connus qu'après `vite build`).
+
 ### `src/core/` — utilitaires
 
 - **`asset-resolver.ts`** / **`asset-manifest.ts`** : résolution des URLs d'assets et manifeste.
@@ -163,6 +172,8 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`tlg-decode.ts`** : décodeur intégré TLG0.0/TLG5.0 (PNG via zlib), utilisé sans `--tlg-cmd` ; TLG6 signalé en échec.
 - **`story-chain.ts`** : génère `story-chain.json` (enchaînement, chapitres, choix) et `story-graph.json` (graphe de scénario).
 - **`timelines.ts`** : génère `timelines.json` pour l'ouverture.
+- **`pwa-sw.ts`** (#96) : lit `dist/.vite/manifest.json` après `vite build` et écrit `dist/sw.js`
+  (pré-cache de la coquille + version), invoqué par `npm run build`.
 - **`audit-scenario.ts`** : audit des commandes KAG et des assets référencés (`MAHOYO_ASSETS_DIR` ou `public/assets`). Chaque commande rencontrée est classée **implémentée / ignorée volontairement / inconnue** (#275) ; sortie console, JSON (`unknownCommandsGlobal` séparé de `ignoredCommandsGlobal`) et Markdown.
 - **`ignored-commands.ts`** : registre **unique** des no-ops volontaires (`name`, `raison`, `effet`, `issue`) ; une commande à effet visible/audible/de déroulement exige une justification explicite et un accord (DoD v1.0).
 - **`audit-commands.ts`** / **`audit-commands-baseline.json`** : helpers de classification et **baseline figée vide** (mode zéro strict, #302) ; plus de mécanisme de décroissance ni de script `audit:baseline`, la baseline ne doit jamais contenir d'inconnue.
