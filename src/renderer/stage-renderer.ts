@@ -35,13 +35,11 @@ import { textStyleToCss } from "./text-style.js";
 import { cssUrl } from "./css-url.js";
 import {
   dimmedUnitCount,
-  fitTextBox,
   frameTextAreaHeight,
   FRAME_TEXT_AREA,
   FRAME_TEXT_LINE_HEIGHT,
   FRAME_TEXT_REM,
   textBoxHeight,
-  TEXT_FIT_DEFAULTS,
 } from "./text-fit.js";
 import { CLICK_GLYPHS, frameImageOpacity, indicatorOffset, resolveFrameStyle, type FrameStyle } from "./text-frame.js";
 import { cssEasing, easeProgress } from "@/core/easing.js";
@@ -142,6 +140,19 @@ export class DomStageRenderer implements StageRenderer {
   private clickStyle: "line" | "page" | null = null;
   /** Unités de la page déjà lues (avant le dernier clic) : affichées atténuées (#173). */
   private readUnits = 0;
+  /**
+   * Éléments d'une unité de texte rendue (un `<span>` par caractère/ruby/graph), avec l'index
+   * d'unité à partir duquel ils sont révélés. La page est mise en page **en entier** une fois,
+   * puis la frappe ne change que `visibility` : aucun reflow pendant la frappe (#314).
+   */
+  private textUnitEls: { el: HTMLSpanElement; revealAt: number }[] = [];
+  /** Index d'unité → wrapper (révélation ciblée, un seul span modifié par caractère tapé). */
+  private unitByIndex = new Map<number, HTMLSpanElement>();
+  /** Nœud lecteur d'écran : texte **complet** de la page, annoncé une fois (jamais par caractère). */
+  private srEl: HTMLElement | null = null;
+  /** La première mise en page attend `document.fonts.ready` (#314). */
+  private fontsReady = false;
+  private fontsRelayoutQueued = false;
   /** Bulle « ploy » active (@ploysay) ; exposée sur la textbox en attributs data-*. */
   private ploy: PloyState | null = null;
   private staffroll: StaffrollState | null = null;
@@ -456,7 +467,23 @@ export class DomStageRenderer implements StageRenderer {
     this.indicatorEl.style.visibility = "hidden";
     this.loadClickGlyphs();
 
-    this.textboxEl.append(frame, this.textEl, this.indicatorEl);
+    this.textEl.setAttribute("aria-hidden", "true");
+    this.srEl = document.createElement("p");
+    this.srEl.className = "mh-stage-text-sr";
+    this.srEl.setAttribute("aria-live", "polite");
+    this.srEl.setAttribute("aria-atomic", "true");
+
+    this.textboxEl.append(frame, this.textEl, this.indicatorEl, this.srEl);
+    // La mise en page dépend des polices chargées (#314) : on la refait une fois `fonts.ready`.
+    if (typeof document !== "undefined" && "fonts" in document && document.fonts) {
+      void document.fonts.ready.then(() => {
+        this.fontsReady = true;
+        if (this.fontsRelayoutQueued && !this.typewriterResolve) this.relayoutText();
+        this.fontsRelayoutQueued = false;
+      });
+    } else {
+      this.fontsReady = true;
+    }
 
     this.waitEl = document.createElement("div");
     this.waitEl.className = "mh-stage-wait";
@@ -526,7 +553,7 @@ export class DomStageRenderer implements StageRenderer {
         this.typewriterTimer = null;
       }
       const units = this.buildTextUnits();
-      this.renderTextUpTo(units, units.length);
+      this.layoutText(units, units.length);
       this.typedUnits = units.length;
       const resolve = this.typewriterResolve;
       this.typewriterResolve = null;
@@ -560,7 +587,7 @@ export class DomStageRenderer implements StageRenderer {
       const units = this.buildTextUnits();
       if (units.length !== this.readUnits) {
         this.readUnits = units.length;
-        this.renderTextUpTo(units, this.typedUnits);
+        this.applyReadEffects();
       }
     }
   }
@@ -674,8 +701,7 @@ export class DomStageRenderer implements StageRenderer {
       this.textEl.style.setProperty("--mh-read-opacity", String(settings.readFade ? settings.readFadeOpacity : 1));
       this.textEl.style.setProperty("--mh-read-duration", `${settings.readFade ? settings.readFadeDuration : 0}ms`);
       this.textEl.dataset.textAnimation = settings.textAnimation;
-      this.textEl.style.fontSize = `${this.nominalTextRem()}rem`;
-      this.fitText(this.buildTextUnits(), this.typedUnits);
+      this.relayoutText();
     }
     this.renderEffect();
   }
@@ -693,6 +719,7 @@ export class DomStageRenderer implements StageRenderer {
     this.text = [];
     this.typedUnits = 0;
     this.readUnits = 0;
+    this.textUnitEls = [];
     this.textbox = { visible: true, frame: true };
     this.staffroll = null;
     this.renderScene(true);
@@ -833,7 +860,7 @@ export class DomStageRenderer implements StageRenderer {
         left: 10%;
         right: 10%;
         bottom: 5%;
-        height: ${TEXT_FIT_DEFAULTS.boxHeightRatio * 100}%;
+        height: ${(textBoxHeight(STAGE_HEIGHT) / STAGE_HEIGHT) * 100}%;
       }
       .mh-stage-textbox-frame {
         position: absolute;
@@ -851,11 +878,27 @@ export class DomStageRenderer implements StageRenderer {
         font-size: ${TEXT_REM}rem;
         line-height: ${TEXT_LINE_HEIGHT};
         white-space: pre-wrap;
+        /* Police constante (#314) : la zone est découpée comme la couche de message du moteur,
+           aucun autoshrink ni barre de défilement ; les pages sont gérées par le script. */
+        overflow: hidden;
       }
       /*
        * Cadre image (#173) : l'image txtwindowNN (1024x576) couvre la scène, le texte est posé dessus
        * sans boîte, dans la zone mesurée sur le jeu d'origine (voir FRAME_TEXT_AREA).
        */
+      /* Accessibilité (#314) : la couche visuelle est aria-hidden, le texte complet de la page est
+         exposé une seule fois dans ce nœud lecteur d'écran (et sélectionnable/copiable). */
+      .mh-stage-text-sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: pre-wrap;
+        border: 0;
+      }
       .mh-stage-textbox[data-frame-style="image"] {
         inset: 0;
       }
@@ -918,6 +961,23 @@ export class DomStageRenderer implements StageRenderer {
       }
       @media (prefers-reduced-motion: reduce) {
         .mh-stage-text-swing { animation: none; }
+      }
+      /* Frappe sans reflow (#314) : la page entière est mise en page, les unités non encore
+         révélées sont seulement invisibles (visibility préserve les retours à la ligne). */
+      .mh-text-unit {
+        display: inline;
+      }
+      /* « swing » (#314) : les caractères d'un même mot restent solidaires (pas de coupure
+         entre deux lettres) ; l'oscillation s'applique par caractère à l'intérieur. */
+      .mh-text-unit-word {
+        white-space: nowrap;
+      }
+      .mh-text-unit.mh-text-unit-hidden {
+        visibility: hidden;
+      }
+      .mh-text-unit[data-read="1"] {
+        opacity: var(--mh-read-opacity, ${READ_TEXT_OPACITY});
+        transition: opacity var(--mh-read-duration, 300ms) ease;
       }
       .mh-stage-text-read {
         opacity: var(--mh-read-opacity, ${READ_TEXT_OPACITY});
@@ -2242,9 +2302,9 @@ export class DomStageRenderer implements StageRenderer {
         if (style.image) this.requestFrameImage(style.image);
       }
     }
-    if (modeChanged) this.fitText(this.buildTextUnits(), this.typedUnits);
+    if (modeChanged) this.relayoutText();
     // Action continue des messages : re-rendu du texte déjà affiché (animation CSS par caractère).
-    if (actionChanged) this.renderTextUpTo(this.buildTextUnits(), this.typedUnits);
+    if (actionChanged) this.relayoutText();
     this.placeIndicator();
   }
 
@@ -2309,24 +2369,78 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   /** Reconstruit le DOM de la textbox jusqu'à n unités (inclu) avec ruby. */
-  private renderTextUpTo(units: TextUnit[], n: number): void {
+  /**
+   * Met en page la page **entière** une seule fois (#314) : un `<span>` par unité (caractère,
+   * groupe ruby ou image `[graph]`), les unités au-delà de `revealed` étant seulement
+   * `visibility:hidden`. Le wrap est donc déterministe et ne bouge plus pendant la frappe.
+   */
+  private layoutText(units: TextUnit[], revealed = this.typedUnits): void {
     if (!this.textEl) return;
     const wasEmpty = this.textEl.childNodes.length === 0;
     this.textEl.replaceChildren();
+    this.textUnitEls = [];
     const frag = document.createDocumentFragment();
-    const limit = Math.min(n, units.length);
-    // Texte déjà lu de la page : regroupé dans un span atténué (#173).
-    const dim = dimmedUnitCount(this.readUnits, limit);
-    const readEl = dim > 0 ? document.createElement("span") : null;
-    if (readEl) {
-      readEl.className = "mh-stage-text-read";
-      frag.appendChild(readEl);
-    }
+    const limit = units.length;
+    const readCount = dimmedUnitCount(this.readUnits, limit);
     const swing = this.textAction === "swing";
+
+    this.unitByIndex = new Map();
+    const makeWrapper = (revealAt: number, parent: Node): HTMLSpanElement => {
+      const wrapper = document.createElement("span");
+      wrapper.className = "mh-text-unit";
+      wrapper.dataset.unit = String(revealAt);
+      if (revealAt >= revealed) wrapper.classList.add("mh-text-unit-hidden");
+      if (revealAt < readCount) wrapper.dataset.read = "1";
+      this.textUnitEls.push({ el: wrapper, revealAt });
+      this.unitByIndex.set(revealAt, wrapper);
+      parent.appendChild(wrapper);
+      return wrapper;
+    };
+
+    /**
+     * Typographie française (#314) : espace fine insécable avant `? ! : ;` et à l'intérieur des
+     * guillemets `« »`, pour que le retour à la ligne ne sépare jamais la ponctuation du mot.
+     * Seule la couche visuelle est transformée : le nœud lecteur d'écran garde le texte source.
+     */
+    const typographicChar = (index: number): string => {
+      const unit = units[index];
+      if (!unit || unit.graph || unit.ruby) return unit?.char ?? "";
+      let char = unit.char;
+      if (char === " ") {
+        let next = index + 1;
+        while (next < limit && (units[next]?.graph || units[next]?.ruby || units[next]?.char === " ")) next++;
+        let prev = index - 1;
+        while (prev >= 0 && (units[prev]?.graph || units[prev]?.ruby || units[prev]?.char === " ")) prev--;
+        const nextChar = units[next]?.char ?? "";
+        const prevChar = units[prev]?.char ?? "";
+        if ("?!:;»".includes(nextChar) || prevChar === "«") char = "\u202F";
+      } else if ("?!:;".includes(char)) {
+        // Ponctuation orpheline (sans espace dans le script) : insécable avec le mot précédent.
+        char = `\u202F${char}`;
+      }
+      return char;
+    };
+
+    // `swing` (#314) : les caractères d'un même mot sont regroupés dans un conteneur
+    // `white-space: nowrap` pour ne jamais couper un mot pendant l'oscillation.
+    let swingWord: HTMLSpanElement | null = null;
     for (let i = 0; i < limit; i++) {
-      const parent: Node = readEl && i < dim ? readEl : frag;
       const u = units[i];
       const hasCss = u.css !== undefined && Object.keys(u.css).length > 0;
+      const simpleChar = !u.graph && !u.ruby;
+      const isSpace = simpleChar && (u.char ?? "").trim() === "";
+      let parent: Node = frag;
+      if (swing && simpleChar && !isSpace) {
+        if (!swingWord) {
+          swingWord = document.createElement("span");
+          swingWord.className = "mh-text-unit-word";
+          frag.appendChild(swingWord);
+        }
+        parent = swingWord;
+      } else {
+        swingWord = null;
+      }
+      const wrapper = makeWrapper(i, parent);
       let node: Node;
       if (u.graph) {
         const img = document.createElement("img");
@@ -2335,8 +2449,8 @@ export class DomStageRenderer implements StageRenderer {
         img.src = this.resolver.image(u.graph.storage);
         node = img;
       } else if (u.ruby) {
-        // Un ruby couvre plusieurs caractères : une seule balise <ruby>, la lecture
-        // posée une fois sur le groupe (le typewriter n'en révèle qu'une partie au début).
+        // Un ruby couvre plusieurs caractères : une seule balise <ruby> (la frappe révèle le
+        // groupe d'un coup, comme la couche de glyphes du moteur).
         let base = u.char;
         while (i + 1 < limit && units[i + 1]!.ruby && units[i + 1]!.group === u.group) {
           i++;
@@ -2349,29 +2463,104 @@ export class DomStageRenderer implements StageRenderer {
         ruby.appendChild(rt);
         node = ruby;
       } else if (hasCss || swing) {
-        node = document.createElement("span");
-        node.textContent = u.char;
+        const span = document.createElement("span");
+        span.textContent = typographicChar(i);
         if (swing) {
           // Approximation de l'action continue « swing » du moteur (oscillation par caractère).
-          (node as HTMLElement).className = "mh-stage-text-swing";
-          (node as HTMLElement).style.animationDelay = `${(-(i % 17) * 0.12).toFixed(2)}s`;
+          span.className = "mh-stage-text-swing";
+          span.style.animationDelay = `${(-(i % 17) * 0.12).toFixed(2)}s`;
         }
+        node = span;
       } else {
-        node = document.createTextNode(u.char);
+        node = document.createTextNode(typographicChar(i));
       }
       if (hasCss && node instanceof HTMLElement) {
         for (const [prop, value] of Object.entries(u.css!)) node.style.setProperty(prop, value);
       }
-      parent.appendChild(node);
+      wrapper.appendChild(node);
     }
     this.textEl.appendChild(frag);
-    if (wasEmpty && limit > 0 && this.settings.textAnimation === "fade") {
+
+    // Lecteur d'écran : texte complet de la page, une seule fois (jamais pendant la frappe).
+    if (this.srEl) {
+      const plain = this.text.map((seg) => ("text" in seg ? seg.text : "graph" in seg ? (seg.graph.alt ?? "") : "")).join("");
+      if (this.srEl.textContent !== plain) this.srEl.textContent = plain;
+    }
+    if (!this.fontsReady && !this.fontsRelayoutQueued) this.fontsRelayoutQueued = true;
+
+    // Police **constante** (#314) : plus de fit/autoshrink ; zone découpée (overflow hidden).
+    const rem = this.nominalTextRem();
+    this.textEl.style.fontSize = `${rem}rem`;
+    this.textEl.style.maxHeight = this.textAreaHeight() > 0 ? `${this.textAreaHeight()}px` : "";
+    this.textEl.style.overflowY = "hidden";
+    if (this.textboxEl) this.textboxEl.dataset.textFit = "nominal";
+
+    if (wasEmpty && revealed > 0 && this.settings.textAnimation === "fade") {
       // Relance l'animation d'apparition à chaque nouvelle page (#177).
       this.textEl.classList.remove("mh-stage-text-appear");
       void this.textEl.offsetWidth;
       this.textEl.classList.add("mh-stage-text-appear");
     }
     this.placeIndicator();
+  }
+
+  /** Révèle les `n` premières unités sans retoucher la mise en page (visibility seule). */
+  private revealTextUpTo(n: number): void {
+    const limit = Math.max(0, n);
+    const from = this.typedUnits;
+    if (limit < from) {
+      // Cas rare (restauration) : on remet l'état de visibilité complet.
+      for (const unit of this.textUnitEls) {
+        unit.el.classList.toggle("mh-text-unit-hidden", unit.revealAt >= limit);
+      }
+    } else {
+      // Un seul wrapper DOM modifié par caractère révélé (#314) ; les groupes ruby partagent
+      // l'index de leur premier caractère.
+      for (let i = from; i < limit; i++) this.unitByIndex.get(i)?.classList.remove("mh-text-unit-hidden");
+    }
+    this.typedUnits = limit;
+    this.placeIndicator();
+  }
+
+  /** Met à jour l'atténuation du texte déjà lu, sans re-mettre en page. */
+  private applyReadEffects(): void {
+    for (const unit of this.textUnitEls) {
+      if (unit.revealAt < this.readUnits) unit.el.dataset.read = "1";
+      else delete unit.el.dataset.read;
+    }
+  }
+
+  /** Re-mise en page à taille de police/zone courante (réglages, style de cadre, action message). */
+  private relayoutText(): void {
+    this.layoutText(this.buildTextUnits(), this.typedUnits);
+  }
+
+  /** Rectangle du dernier caractère visible d'une unité (texte, ruby ou image graph). */
+  private lastCharRect(el: HTMLElement): DOMRect | null {
+    const img = el.querySelector("img.mh-stage-graph");
+    if (img) {
+      const rect = img.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 ? rect : null;
+    }
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let last: Text | null = null;
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (!(node instanceof Text)) continue;
+      const parent = node.parentElement;
+      if (parent && (parent.tagName === "RT" || parent.tagName === "RP")) continue;
+      if (/\S/.test(node.data)) last = node;
+    }
+    if (!last || typeof document.createRange !== "function") return null;
+    let end = last.data.length;
+    while (end > 0 && /\s/.test(last.data[end - 1]!)) end--;
+    if (end === 0) return null;
+    const range = document.createRange();
+    range.setStart(last, end - 1);
+    range.setEnd(last, end);
+    const rects = typeof range.getClientRects === "function" ? range.getClientRects() : [];
+    const rect = rects[rects.length - 1];
+    return rect && rect.width > 0 && rect.height > 0 ? rect : null;
   }
 
   /** Cadre image : l'indicateur suit le texte ; ancienne boîte : il reste dans le coin de la boîte. */
@@ -2389,87 +2578,28 @@ export class DomStageRenderer implements StageRenderer {
     }
     if (el.parentNode !== textEl || el !== textEl.lastChild) textEl.appendChild(el);
 
-    // L'indicateur est hors du flux : on le centre sur la boîte du dernier caractère (#175).
-    const node = this.lastVisibleTextNode();
-    if (!node?.data) return;
-    let end = node.data.length;
-    while (end > 0 && /\s/.test(node.data[end - 1]!)) end--;
-    if (end === 0 || typeof document.createRange !== "function") return;
-    const range = document.createRange();
-    range.setStart(node, end - 1);
-    range.setEnd(node, end);
-    const rects = typeof range.getClientRects === "function" ? range.getClientRects() : [];
-    const char = rects[rects.length - 1];
+    // L'indicateur est hors du flux : on le centre sur la boîte du dernier caractère révélé (#175).
+    const revealed = this.textUnitEls.filter((unit) => unit.revealAt < this.typedUnits);
+    const lastUnit = revealed[revealed.length - 1];
+    if (!lastUnit) return;
+    const char = this.lastCharRect(lastUnit.el);
+    if (!char) return;
     const textRect = textEl.getBoundingClientRect();
-    // Largeur logique du contenu : `clientWidth` exclut la barre de défilement d'une page qui
-    // déborde ; la largeur calculée, elle, reste fiable pour retrouver l'échelle de la scène.
     const computedWidth = Number.parseFloat(getComputedStyle(textEl).width);
     const logicalWidth = computedWidth > 0 ? computedWidth : textEl.clientWidth;
-    if (!char || char.width === 0 || char.height === 0 || textRect.width === 0 || logicalWidth <= 0) {
-      return;
-    }
+    if (char.width === 0 || char.height === 0 || textRect.width === 0 || logicalWidth <= 0) return;
     const height = el.offsetHeight || CLICK_GLYPHS.page.height;
     const pos = indicatorOffset(char, textRect, textRect.width / logicalWidth, height);
     el.style.left = `${pos.left}px`;
     el.style.top = `${pos.top}px`;
   }
 
-  /** Dernier nœud de texte visible, hors indicateur et hors furigana (`rt`/`rp`). */
-  private lastVisibleTextNode(): Text | null {
-    if (!this.textEl) return null;
-    const indicator = this.indicatorEl;
-    const walker = document.createTreeWalker(this.textEl, NodeFilter.SHOW_TEXT);
-    let last: Text | null = null;
-    let node: Node | null;
-    while ((node = walker.nextNode())) {
-      if (!(node instanceof Text)) continue;
-      if (indicator?.contains(node)) continue;
-      const parent = node.parentElement;
-      if (parent && (parent.tagName === "RT" || parent.tagName === "RP")) continue;
-      if (/\S/.test(node.data)) last = node;
-    }
-    return last;
-  }
-
-  /**
-   * Ajuste la taille de la police à la page entière (voir `text-fit.ts`) dans la boîte fixe, puis
-   * affiche les `keep` premières unités. Tout se fait avant le prochain rendu : pas de
-   * clignotement. Sans mise en page (jsdom), la hauteur mesurée est nulle et rien ne change.
-   */
-  private fitText(units: TextUnit[], keep: number): void {
-    const textEl = this.textEl;
-    const boxEl = this.textboxEl;
-    if (!textEl || !boxEl) return;
-    this.renderTextUpTo(units, units.length);
-    const nominalRem = this.nominalTextRem();
-    // Mesure à zone libre : sans plafond ni défilement hérités de la page précédente.
-    textEl.style.maxHeight = "";
-    textEl.style.overflowY = "";
-    const fit = fitTextBox({
-      ...TEXT_FIT_DEFAULTS,
-      boxHeight: this.textAreaHeight(),
-      measureHeight: (scale) => {
-        textEl.style.fontSize = `${nominalRem * scale}rem`;
-        return textEl.offsetHeight;
-      },
-    });
-    textEl.style.fontSize = `${nominalRem * fit.scale}rem`;
-    if (fit.overflow) {
-      textEl.style.maxHeight = `${fit.maxHeight}px`;
-      textEl.style.overflowY = "auto";
-    }
-    boxEl.dataset.textFit = fit.overflow ? "overflow" : fit.scale < 1 ? "shrunk" : "nominal";
-    if (keep < units.length) this.renderTextUpTo(units, keep);
-    // La police finale peut avoir changé : replacer l'indicateur sur le dernier caractère.
-    this.placeIndicator();
-  }
-
   private renderText(instant: boolean): void {
     if (!this.textEl) return;
     const units = this.buildTextUnits();
     if (instant) {
-      this.fitText(units, units.length);
       this.typedUnits = units.length;
+      this.layoutText(units, units.length);
       return;
     }
     // Non-instant : le typewriter gère la révélation progressive.
@@ -2480,8 +2610,8 @@ export class DomStageRenderer implements StageRenderer {
       const units = this.buildTextUnits();
       // Anti re-type : on continue depuis typedUnits (déjà révélées).
       const startUnit = Math.min(this.typedUnits, units.length);
-      // Taille et position de la page entière avant de la révéler : pas de saut en cours de frappe.
-      this.fitText(units, startUnit);
+      // Mise en page de la page entière avant révélation : plus aucun reflow en cours de frappe.
+      this.layoutText(units, startUnit);
       const speed = opts.textSpeed ?? this.settings.textSpeedUnread;
 
       /** Résout la frappe en cours : fin normale, hurry, ou annulation. */
@@ -2514,8 +2644,7 @@ export class DomStageRenderer implements StageRenderer {
       opts.signal.addEventListener("abort", onAbort, { once: true });
 
       if (opts.instant || speed <= 0 || this.typewriterHurry) {
-        this.renderTextUpTo(units, units.length);
-        this.typedUnits = units.length;
+        this.revealTextUpTo(units.length);
         this.typewriterHurry = false;
         settle();
         return;
@@ -2526,13 +2655,12 @@ export class DomStageRenderer implements StageRenderer {
       const step = () => {
         if (!this.textEl) return;
         if (this.typewriterHurry) {
-          this.renderTextUpTo(units, units.length);
-          this.typedUnits = units.length;
+          this.revealTextUpTo(units.length);
           settle();
           return;
         }
         i++;
-        this.renderTextUpTo(units, i);
+        this.revealTextUpTo(i);
         if (i >= units.length) {
           this.typedUnits = units.length;
           settle();
