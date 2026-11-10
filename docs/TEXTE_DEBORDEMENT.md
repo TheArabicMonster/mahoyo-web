@@ -1,10 +1,21 @@
-# Débordement du texte et taille nominale (#319)
+# Débordement du texte et mise en page logique (#319)
 
-Outil de **mesure headless** du texte du corpus, pour objectiver deux écarts constatés sur le rendu
-du port (revue Opus 5.5, #314) : le port affiche des glyphes ~19 % plus grands que l'original et une
-marge gauche ~+94 px écran. `fitTextBox` ne peut que **réduire** la police : la cause est donc la
-**taille nominale / la position** de la fenêtre de message, pas l'autoshrink. Ce document donne la
-méthode, les mesures de référence et la formule proposée ; **le correctif du runtime reste dans #314**.
+Outil de **mesure headless** du texte du corpus, pour objectiver les écarts de rendu du port
+revus par Opus 5.5 (#314) : le port affiche des glyphes plus grands et une marge gauche très
+supérieure à l'original. Après arbitrage :
+
+- la cause du rétrécissement n'est **pas** la taille nominale telle que d'abord supposée : c'est la
+  **marge horizontale** (largeur utile trop étroite) et, secondairement, l'écart d'encre
+  (cosmétique) ;
+- **la police ne doit pas être réduite à ~1,43 rem** : le ratio d'encre ×1,19 mesure la hauteur
+  d'encre, pas la taille em ; le pas des glyphes et les caractères/ligne dépendent de la taille em
+  (26 px logiques) ;
+- la mise en page cible est exprimée en **unités logiques** (repère 1024×576), sans rem ni
+  pourcentage en dur : **marge 69 px logiques**, **police 26 px logiques** (32,5 px écran),
+  interligne 40,8 px logiques.
+
+L'outil **ne modifie pas le runtime** : il fournit les mesures, la provenance et le snapshot ; le
+correctif reste dans #314.
 
 ## Commande
 
@@ -15,132 +26,141 @@ npm run text:overflow
 # Placeholders forcés (CI, aucun asset du jeu) — rapport partiel + avertissement
 npm run text:overflow -- --placeholders --browsers chromium --max-pages 400
 
-# Les deux navigateurs (Firefox s'il est installé) et tout le corpus
-MAHOYO_ASSETS_DIR=public/assets npm run text:overflow -- --browsers chromium,firefox --max-pages 60000
+# Les deux navigateurs, tout le corpus, avec snapshot versionné
+MAHOYO_ASSETS_DIR=public/assets npm run text:overflow -- \
+  --browsers chromium,firefox --max-pages 60000 --snapshot docs/TEXTE_DEBORDEMENT_SNAPSHOT.json
 ```
 
 | Option | Effet |
 |---|---|
 | `--placeholders` | force le corpus de placeholders (aucun asset du jeu), rapport partiel |
 | `--browsers chromium,firefox` | navigateurs mesurés (défaut : chromium) |
-| `--max-pages N` | borne le nombre de pages mesurées (défaut 4 000) |
-| `--max-scripts N` | borne le nombre de scripts (défaut 300) |
+| `--max-pages N` / `--max-scripts N` | bornes du corpus mesuré (défaut 4 000 pages / 300 scripts) |
 | `--assets <dir>` | dossier d'assets (défaut : `MAHOYO_ASSETS_DIR`, sinon `public/assets`) |
 | `--json` / `--md` | chemins des rapports (défaut : `reports/text-overflow.{json,md}`, ignorés par git) |
+| `--snapshot <f>` | écrit le snapshot versionnable des pages restant en débordement (config logique) |
 
-L'outil écrit un rapport **JSON** et **Markdown** ; il ne contient **aucun texte du jeu** (seuls les
-noms de scripts, positions, tailles et métriques de mise en page). Il ne modifie pas le runtime.
+Les rapports ne contiennent **aucun texte du jeu** (noms de scripts, positions, tailles, métriques).
 
 ## Méthode
 
-1. **Extraction** (`tools/text-overflow-lib.ts`) : chaque script narratif du corpus est rejoué en
-   headless avec le vrai `Runtime` ; les pages sont le texte accumulé entre deux clics de **page**,
-   avec un saut de ligne pour chaque attente de ligne `[l]`. Le texte n'est jamais écrit dans les
-   rapports.
-2. **Mesure navigateur** : une page de mesure autonome reproduit le cadre image du port à partir des
-   **constantes importées** (`FRAME_TEXT_AREA`, `FRAME_TEXT_REM`, `FRAME_TEXT_LINE_HEIGHT`,
-   `frameTextAreaHeight`) : stage 1024×576 agrandi ×1,25, police Mincho du port, `line-height` 1,5,
-   `letter-spacing` 0,06 em, `white-space: pre-wrap`. La police réellement résolue est enregistrée.
-3. **Verdict** : pour chaque page, la hauteur rendue est comparée à la hauteur de la zone
-   (482,7 px stage) et la largeur au débordement horizontal. Une page « déborde » si son texte
-   dépasse à la **taille nominale** (donc si `fitTextBox` réduirait la police).
-4. Deux configurations sont mesurées côte à côte : **actuelle** (marge gauche 14 %, police 1,7 rem)
-   et **proposée** (marge gauche 6,67 %, police ~1,43 rem — voir formules ci-dessous).
+1. **Extraction** (`tools/text-overflow-lib.ts`) : chaque script narratif est rejoué en headless avec
+   le vrai `Runtime` ; une page est le texte accumulé jusqu'au clic de **page**. Le texte est
+   concaténé comme le fait le renderer : un clic `[l]` **ne coupe pas** la ligne (le renderer
+   continue le texte sur la même ligne) ; seuls les `lineBreak` du script (saut de source, `[r]`)
+   ajoutent un `\n`.
+2. **Mesure navigateur** : page de mesure autonome reproduisant le cadre image à partir des
+   **constantes importées** (`FRAME_TEXT_AREA`, `FRAME_TEXT_LINE_HEIGHT`, `frameTextAreaHeight`) ;
+   deux configurations mesurées côte à côte :
+   - **actuelle** : marges 14 %/9 % (≈ 143/92 px logiques), police `FRAME_TEXT_REM` = 27,2 px
+     logiques (34 px écran) ;
+   - **logique proposée** : marges 69/69 px logiques, police 26 px logiques (32,5 px écran),
+     interligne 40,8 px logiques.
+3. **Verdict** : hauteur rendue vs hauteur de zone (576 − 2 × marge verticale) et débordement
+   horizontal, par page. Une page « déborde » si son texte dépasse la zone à la taille nominale
+   (donc si le port `fitTextBox` réduirait la police).
+4. **Validation** : pas des glyphes (1 em attendu), caractères/ligne, symétrie des marges
+   (`x_min ≈ W − x_max`), lignes/page, et écart d'encre vs original.
 
 ## Mesures de référence
 
-Corpus **réel local** (221 scripts narratifs, **7 298 pages** ; assets non commités), Chromium **et** Firefox
-headless, placeholders non utilisés, macOS arm64 (les deux navigateurs donnent les mêmes verdicts) :
+Corpus **réel local** (221 scripts narratifs, **7 297 pages** ; assets non commités), Chromium **et**
+Firefox headless (verdicts et métriques identiques), macOS arm64, police Mincho du port résolue :
 
-| Indicateur | Valeur |
-|---|---|
-| Pages mesurées | **7 298** (identiques Chromium/Firefox) |
-| Pages qui débordent à la taille nominale | **444 (6,08 %)** — cause « hauteur » uniquement, sur les deux navigateurs |
-| p95 du taux de remplissage de la zone | **101,5 %** (Firefox : 101,3 %) |
-| Marge minimale observée | **−251,3 px** (stage) — page la plus longue |
-| Avec la configuration proposée | **10 pages (0,14 %)** en débordement (idem Firefox) |
+| Indicateur | Config actuelle (14 % / 1,7 rem) | Config logique (69 px / 26 px) |
+|---|---|---|
+| Pages en débordement à la taille nominale | **0 (0,00 %)** | **0 (0,00 %)** |
+| p95 du taux de remplissage de la zone | 67,5 % | 59,3 % |
+| Marge minimale observée | 74,7 px logiques | 74,6 px logiques |
+| Caractères par ligne (CJK) | **28** | **34** (attendu original : 34) |
+| Lignes par page (p95) | 8,0 | 7,0 |
 
-Pages les plus denses (noms de scripts seuls, aucun texte) :
+**Correction assumée** : une première mesure annonçait 444 pages en débordement (6,08 %) ; elle
+était fausse — le modèle d'extraction insérait un saut de ligne à chaque clic `[l]`, alors que le
+renderer du port continue le texte sur la même ligne. Après alignement sur le rendu réel :
+**aucune page du corpus ne déborde**, ni en config actuelle ni en config logique. Cela rejoint
+l'observation du propriétaire (#314) : le rétrécissement n'était pas déclenché dans l'extrait
+analysé.
 
-| Script | Page | Caractères | Remplissage | Marge (px stage) |
-|---|---|---|---|---|
-| `wik_nap.ks` | 4 | 151 | 152,1 % | −251,3 |
-| `5a-9.ks` | 2 | 159 | 135,3 % | −170,3 |
-| `5b-15.ks` | 27 | 130 | 135,3 % | −170,3 |
-| `b-3.ks` | 6 | 169 | 135,3 % | −170,3 |
-| `1-0.ks` | 21 | 102 | 126,8 % | −129,3 |
-| `2-3.ks` | 41 | 150 | 126,8 % | −129,3 |
-| `2-4.ks` | 23 | 164 | 126,8 % | −129,3 |
-| `3-1.ks` | 29 | 147 | 126,8 % | −129,3 |
-| `4-4.ks` | 45 | 138 | 126,8 % | −129,3 |
-| `6-1.ks` | 2 | 107 | 126,8 % | −129,3 |
+Conséquence : ce n'est pas le débordement qui est en cause, mais le **nombre de caractères par
+ligne** (28 au lieu de 34, soit −18 %) à cause de la marge horizontale, et l'**écart d'encre**
+(cosmétique). Le snapshot versionné
+[`TEXTE_DEBORDEMENT_SNAPSHOT.json`](TEXTE_DEBORDEMENT_SNAPSHOT.json) fige la liste (vide) des pages
+restantes en débordement avec la mise en page logique : toute régression future apparaîtra comme un
+écart au snapshot.
 
-Interprétation : **6 % des pages du corpus déclenchent réellement le rétrécissement** de police du
-port (dont `1-0.ks` page 21) — le mécanisme n'est pas théorique. Avec la police nominale
-et la marge corrigées, il ne reste que **10 pages** en débordement (0,14 %), à traiter par pagination
-ou ajustement de page plutôt que par rétrécissement global.
+Pages les plus denses (contrôle, noms de scripts seuls, aucun texte) : `2-4.ks` p11 (168 caractères,
+84,5 %), `6-4.ks` p38 (171, 84,5 %), `b-3.ks` p6 (169, 84,5 %), `1-0.ks` p6 et p21 (76 %), etc.
 
-## Taille nominale : formule de conversion
+## Mise en page logique proposée et provenance
 
-Repères : le moteur du jeu travaille en **1024×576** (docs/KAG_MAHOYO_SEMANTICS.md §1) ; le stage du
-port reprend ce repère, agrandi ×1,25 vers le viewport 1280×720 (`STAGE_SCALE`).
+Aucune valeur en rem ni en pourcentage en dur : tout est exprimé en **unités logiques** du stage
+(repère 1024×576), converti à l'écran par `STAGE_SCALE` (×1,25). Ces valeurs sont centralisées dans
+`LAYOUT_LOGICAL` / `LAYOUT_PROVENANCE` (`tools/text-overflow-lib.ts`).
 
-- Une taille `@font size=` est **déjà dans le repère 1024** : la taille CSS du stage est la taille du
-  script (identité) et la taille écran vaut ×1,25. Si un script utilisait un repère 1280, la
-  conversion serait ×(1024/1280) = ×0,8 ; le corpus narratif mesuré **n'utilise aucun `@font size=`**
-  (seuls des `@font` de couleur/contour), donc cette hypothèse n'a pas d'effet ici.
-- La **taille nominale par défaut** (sans `@font size=`) est la constante du port
-  `FRAME_TEXT_REM = 1,7 rem` = 27,2 px stage = **34 px écran**.
-- Mesure de glyphes **sur les mêmes caractères** (canvas, police du port) :
+| Paramètre | Valeur logique (px) | Écran (px) | Source | Mesure de capture | Tolérance | Statut |
+|---|---|---|---|---|---|---|
+| Marge horizontale (gauche et droite) | **69** | 86,3 | `MessageLayer_config` « 142/142/69/69 » — les 4 valeurs ont probablement été lues dans le mauvais ordre (KAG = L/T/R/B) | marge gauche mesurée 85,4 px écran / 1,25 = 68,3 ≈ 69 px logiques | ±2 % | hypothèse |
+| Taille de police nominale | **26** | 32,5 | `MessageLayer_config` : 26 px logiques × scale | le pas des glyphes (≈ 1 em) et les caractères/ligne se déduisent de la taille em, pas de l'encre | ±2 % sur le pas | hypothèse |
+| Interligne | 40,8 | 51,0 | capture #173 : interligne 51 px écran (77/1080) / 1,25 | 51 px écran sur la capture d'origine | ±2 % | hypothèse |
+| Marge verticale (haut et bas) | 46,7 | 58,4 | capture #173 : haut de zone à 8,1 % × 576 | 8,1 % × 576 = 46,7 px logiques | ±2 % | hypothèse |
 
-| Police CSS (stage px) | Écran (px) | M (hauteur écran) | x (hauteur écran) | あ (hauteur écran) |
-|---|---|---|---|---|
-| 27,2 (actuelle) | 34,0 | 24,7 | 17,2 | 29,2 |
-| 22,9 (recommandée) | 28,6 | 20,7 | 14,4 | 24,6 |
+Toutes les valeurs restent au statut **hypothèse** tant que le TJS de configuration
+(`MessageLayer_config`) n'est pas extrait du jeu : elles viennent d'une capture ou d'une lecture à
+confirmer, jamais d'un ajustement par scène.
 
-Le ratio entre les deux est **1,19** (24,7/20,7), identique au ratio mesuré par le propriétaire sur
-les vidéos (#314 : port 22 px vs original 18,5 px). La formule recommandée est donc **globale** :
+## Mesures de validation (config logique)
 
-```
-police nominale écran = FRAME_TEXT_REM × (18,5 / 22)  →  1,7 rem × 0,841 ≈ 1,43 rem ≈ 28,6 px écran
-taille CSS stage      = taille écran / 1,25           →  22,9 px
-```
+| Contrôle | Attendu | Mesuré | Verdict |
+|---|---|---|---|
+| Pas des glyphes (1 em) à 26 px logiques | 26,0 px logique / 32,5 px écran ±2 % | **26,0 px logique (×1,000)** | ✓ |
+| Caractères par ligne | proposé **34** (attendu original **34**) | port actuel **28** (largeurs 788 → 886 px logiques) | ✓ |
+| Symétrie des marges (`x_min ≈ W − x_max`) | 69,0 ≈ 69,0 px logiques | écart **0,00 px** | ✓ |
+| Lignes par page (p95) | config logique | actuelle 8,0 → logique 7,0 | — |
+| Écart d'encre (x-height/capitale) | — | **×1,189** (port 22 px vs original 18,5 px, #314) | cosmétique |
 
-Aucune constante par scène : le facteur ne dépend que du ratio de glyphe mesuré (à valider par une
-capture comparée de l'original avant correction).
+**Lecture de l'écart d'encre** : ×1,189 porte sur l'**encre** ; avec la police em passée de 27,2 à
+26 px logiques (−4,6 %), il reste ≈ ×1,14 attribuable aux **métriques de police** (famille Mincho du
+port vs police d'origine). C'est une différence **cosmétique**, à traiter par l'approximation
+`text-font-metrics` (`size-adjust` éventuel) **seulement si** les caractères/ligne restent corrects
+— ce que cette mesure vérifie (34 attendus, 34 obtenus). **Réduire la police à ~1,43 rem est
+écarté.**
 
-## Marge gauche
+## Taille des scripts
 
-| | Valeur |
-|---|---|
-| Port (`FRAME_TEXT_AREA.left` = 14 %) | 143,4 px stage = **179,2 px écran** |
-| Original (mesure vidéo #319 : 114 px / 1708 × 1280) | **85,4 px écran** (6,67 %) |
-| Écart | **+93,8 px écran** |
+Le moteur du jeu travaille en **1024×576** (docs/KAG_MAHOYO_SEMANTICS.md §1) ; le stage du port
+reprend ce repère, agrandi ×1,25. Une taille `@font size=` est donc déjà en px logiques : la taille
+CSS du stage est la taille du script (identité), la taille écran vaut ×1,25. Le corpus narratif
+mesuré **n'utilise aucun `@font size=`** (seuls des `@font` de couleur/contour) : la seule taille en
+jeu est la constante nominale.
 
-La zone utile du port est donc réduite de ~94 px, ce qui provoque des retours à la ligne
-supplémentaires. Marge recommandée : `left = 114/1708 ≈ 6,67 %` (constante unique, dérivée de la
-mesure de l'original, pas par scène). La marge droite (`right = 9 %`) reste à confirmer par la même
-capture.
+## Pagination (pas d'autoshrink)
+
+Aucune page du corpus mesuré ne déborde avec la mise en page logique ; si une page devait dépasser à
+l'avenir (traduction, nouvelle scène), la règle est de **paginer** (découpage aux limites de phrase,
+comme `@cm`/pages du moteur d'origine) et jamais de rétrécir la police : la police reste constante,
+la zone ne défile pas. Le snapshot versionné sert de garde-fou : le mode `--snapshot` réécrit la
+liste des pages en débordement, à committer si elle évolue légitimement.
 
 ## CI et limites
 
-- **CI** : une étape **non bloquante** exécute le mode placeholders sur Chromium dans le job `e2e
-  (chromium)` (`npm run text:overflow -- --placeholders --browsers chromium --max-pages 400`,
-  `continue-on-error: true`). Le corpus de placeholders (pages courtes) donne un rapport **partiel** :
-  il vérifie le fonctionnement de l'outil, pas la couverture du vrai corpus.
-- Les mesures de référence ci-dessus nécessitent les **assets réels locaux** (`MAHOYO_ASSETS_DIR`),
-  jamais commités.
+- **CI** : étape **non bloquante** dans le job `e2e (chromium)` —
+  `npm run text:overflow -- --placeholders --browsers chromium --max-pages 400`
+  (`continue-on-error: true`). Le corpus de placeholders (pages courtes) donne un rapport **partiel** :
+  il vérifie l'outil, pas la couverture du vrai corpus.
+- Les mesures de référence nécessitent les **assets réels locaux** (`MAHOYO_ASSETS_DIR`), jamais
+  commités ; seuls des noms de scripts, positions et métriques apparaissent dans les rapports.
 - La police dépend du système : la pile Mincho du port résout « Hiragino Mincho ProN » sur macOS ;
-  sur une machine sans ces polices, le navigateur retombe sur une police de remplacement (le rapport
-  enregistre la police résolue). Les comparaisons chiffrées de ce document sont faites sur macOS.
-- Le ratio de glyphe de l'original (18,5/22) vient de la mesure vidéo du propriétaire (#314), pas
-  d'une capture de référence dans le dépôt : il sert de proposition à valider, pas de vérité
-  définitive.
-- Aucune modification du runtime de rendu dans cette PR : le correctif (police nominale, marges, wrap
-  déterministe, suppression du rétrécissement) est traité dans #314.
+  le rapport enregistre la police résolue. Les chiffres de ce document sont mesurés sur macOS.
+- **Observation à confirmer avec #314** : le renderer du port ne pose pas de saut de ligne pour
+  `[l]` (le texte continue sur la même ligne) ; la mesure reflète ce comportement. Si le runtime doit
+  insérer un `\n` pour `[l]` comme le moteur d'origine, les hauteurs augmenteront — à rejouer avec
+  l'outil après correction.
+- Aucune modification du runtime de rendu dans cette PR.
 
 ## Tests
 
 `tests/unit/tools/text-overflow-lib.test.ts` (13 tests) : conversions de repères, comparaison des
-tailles, extraction des pages (regroupement, `[l]`, `@font size=`, bornes, métadonnées sans texte),
-verdict de débordement, agrégats/p95, rendu Markdown sans fuite de texte.
+tailles, extraction des pages (regroupement, `[l]` sans coupure, `@font size=`, bornes, métadonnées
+sans texte), verdict de débordement, agrégats/p95, rendu Markdown sans fuite de texte et avec la
+provenance.
