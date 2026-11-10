@@ -570,8 +570,11 @@ export class DomStageRenderer implements StageRenderer {
 
   private layoutPortrait(): void {
     if (!this.root || !this.container || !this.dockEl || !this.textboxEl || !this.waitEl) return;
-    // 1 px CSS = 1 px logique : la scène 1024×576 est réduite à la largeur réelle.
-    const width = this.root.clientWidth || window.innerWidth || 1024;
+    // 1 px CSS = 1 px logique : la scène 1024×576 est réduite à la largeur réelle. On lit
+    // `window.innerWidth` en priorité : au retour paysage→portrait, le listener du renderer peut
+    // passer avant la mise à jour de la taille inline du #viewport faite par le player, et
+    // `root.clientWidth` vaudrait encore 1280 (scène trop large, #98).
+    const width = window.innerWidth || this.root.clientWidth || STAGE_WIDTH;
     const sceneScale = width / STAGE_WIDTH;
     this.root.dataset.layout = "portrait";
     this.sceneScale = sceneScale;
@@ -982,7 +985,8 @@ export class DomStageRenderer implements StageRenderer {
       [data-layout="portrait"] .mh-stage-text {
         position: absolute;
         inset: 0;
-        padding: 1.5rem 1.6rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+        /* Réserve la barre d'actions tactile (#203) en bas du dock, + encoche (#98). */
+        padding: 1.5rem 1.6rem calc(5rem + env(safe-area-inset-bottom, 0px));
         font-size: 1.7rem;
         line-height: 1.6;
         letter-spacing: 0;
