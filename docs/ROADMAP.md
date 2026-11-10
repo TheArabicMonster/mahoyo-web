@@ -19,7 +19,7 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
   CG mode (#208), HUD-16 Sound mode (#209), FLOW-07 accessibilité du flowchart (#206) et FLOW-08 intégration
   au titre/menu/route (#207). Restent v1.1 : HUD-17/18, WEB-02/06, FLOW-09, accessibilité WCAG AA, mobile et
   responsive, PWA et thème complet.
-- **E6** : en cours (v1.1) — **2162 tests unitaires** (140 fichiers), `npm run lint` (ESLint 9), build et
+- **E6** : en cours (v1.1) — **2175 tests unitaires** (141 fichiers), `npm run lint` (ESLint 9), build et
   `check:assets` verts ; e2e Playwright sur **Chromium et Firefox** en placeholders (17 fichiers de spec) ;
   CI à **3 jobs** (`build-and-test` avec lint, anti-assets, build, tests unitaires, tests d'intégration en
   skip sur checkout nu et lecture complète des 221 scripts sur placeholders ; matrice e2e). Audit KAG
@@ -40,7 +40,8 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
   (#275), triage documenté (#276), commandes standard `@s`/`@endif`/`@image`/`@ruby` (#277) et lots
   d'implémentation #85/#86/#281–#287 ; mode **zéro strict** et garde-fou CI (#302).
 - **Approximations** : registre de **14 approximations documentées** (écart précis, test figé, issue de
-  suivi #296, compteur versionné) et garde-fou `approximations:check` (#295).
+  suivi #296, compteur versionné), suivi généré dans [`APPROXIMATIONS.md`](APPROXIMATIONS.md) et garde-fou
+  `approximations:check` (#295, #296).
 - **Documentation de clôture** : README (parcours #93, état #302), ROADMAP, PROGRESS et ARCHITECTURE à
   jour, notes de version prêtes (non publiées, [`RELEASE_NOTES_V1.0.md`](RELEASE_NOTES_V1.0.md)) et DoD
   v1.0 cochée. Issue chapeau de l'écart DoD **#274** fermée ; **aucun tag ni release** avant le test
@@ -56,7 +57,7 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
 | Accessibilité / mobile | [#97](https://github.com/TheArabicMonster/mahoyo-web/issues/97) WCAG AA · [#98](https://github.com/TheArabicMonster/mahoyo-web/issues/98) mobile et tablette |
 | Confort / plateforme | [#99](https://github.com/TheArabicMonster/mahoyo-web/issues/99) thème complet et animations · [#96](https://github.com/TheArabicMonster/mahoyo-web/issues/96) PWA hors ligne · [#100](https://github.com/TheArabicMonster/mahoyo-web/issues/100) objectifs de performance chiffrés |
 | Moteur KAG | [#80](https://github.com/TheArabicMonster/mahoyo-web/issues/80) `@if`/`@macro` à plat et `@call` fiable |
-| Approximations | [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) suivi commun des approximations documentées (registre #295) |
+| Approximations | [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) suivi commun des approximations documentées (registre #295, doc générée [`APPROXIMATIONS.md`](APPROXIMATIONS.md)) |
 | Outillage | [#265](https://github.com/TheArabicMonster/mahoyo-web/issues/265) `.gitignore` du lien symbolique `node_modules` |
 
 ## E0 — Gouvernance & socle 🔄
@@ -102,7 +103,7 @@ Les épics sont regroupés en deux jalons de livraison : **v1.0** et **v1.1** (v
 
 ## E6 — QA & optimisation 🔄
 
-- Tests de non-régression : **2162 tests unitaires** (140 fichiers) et suite e2e Playwright sur Chromium et
+- Tests de non-régression : **2175 tests unitaires** (141 fichiers) et suite e2e Playwright sur Chromium et
   Firefox en placeholders (17 fichiers de spec, dont le parcours complet #94 et l'accessibilité du flowchart).
 - CI à **3 jobs** : `build-and-test` (lint, contrôle anti-assets, build, tests unitaires, tests d'intégration
   en skip propre sur checkout nu puis lecture complète des 221 scripts sur corpus de placeholders) et matrice

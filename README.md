@@ -11,7 +11,7 @@ Ce dépôt contient le **projet réel** : un player web moderne et maintenable p
 - Phases actives : **E5 — UI/UX** (finitions v1.1) et **E6 — QA & optimisation**.
 - Le player lit le corpus narratif complet, gère les choix, l'historique, les sauvegardes IndexedDB et les écrans du HUD d'origine.
 - Dernières livraisons (9 novembre) : transitions plein écran (#205), CG mode (#208), Sound mode (#209), accessibilité du flowchart (#206), intégration du flowchart au titre, au menu système et aux routes (#207), e2e Chromium + Firefox (#94, #243), corrections de fidélité des fonds, calques et effets (#249, #252, #260), lint ESLint 9 avec CI (#220), lecture complète en placeholders (#269, #273), audit KAG classé puis **zéro inconnue** (#274, #275 à #287, #302) et parcours utilisateur (#93).
-- Vérification locale : `npm run test:unit` (**2162 tests**), `npm run lint`, `npm run build` et `npm run check:assets` passent ; `npm run test:e2e` tourne en placeholders sur Chromium et Firefox (**151 tests**, 17 fichiers) ; la lecture complète se lance sur les assets locaux ou sur le corpus de placeholders, et les garde-fous KAG sont vérifiables hors assets (`npm run audit:guard`, `npm run check:generated`).
+- Vérification locale : `npm run test:unit` (**2175 tests**), `npm run lint`, `npm run build` et `npm run check:assets` passent ; `npm run test:e2e` tourne en placeholders sur Chromium et Firefox (**151 tests**, 17 fichiers) ; la lecture complète se lance sur les assets locaux ou sur le corpus de placeholders, et les garde-fous KAG sont vérifiables hors assets (`npm run audit:guard`, `npm run check:generated`).
 
 Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 
@@ -30,7 +30,7 @@ Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 - **Tactile** : appui long = menu système, balayage vers le haut = historique, barre d'actions rapides (Q.Save, Q.Load, Auto, Skip, Historique, Plein écran) sur appareil tactile uniquement, cibles de 48 px réels ; la souris et le clavier ne changent pas.
 - **Traductions** : japonais d'origine et patch fan français Moon-Trad installable par script ; sélecteur de langue dans la configuration.
 - **Pipeline** : extraction `.xp3` automatisée par gabarit d'outil externe, manifeste d'assets, rapport d'exécution et codes de sortie, conversion `.tlg` → PNG/WebP, audio OGG, normalisation des `.ks`, audit classé du corpus (commandes KAG implémentée / ignorée volontairement / inconnue, registre et garde-fou CI, #275), table d'enchaînement et graphe de scénario.
-- **Qualité** : 2162 tests unitaires, `npm run lint` (ESLint 9, 0 erreur), suite e2e Playwright sur Chromium et Firefox en placeholders (151 tests, 17 fichiers, parcours complet inclus), lecture complète des 221 scripts en CI sur corpus de placeholders, **audit KAG zéro inconnue (125 implémentées, 5 no-ops justifiés)**, registre de **14 approximations** documentées (#296), CI à 3 jobs et contrôle anti-assets.
+- **Qualité** : 2175 tests unitaires, `npm run lint` (ESLint 9, 0 erreur), suite e2e Playwright sur Chromium et Firefox en placeholders (151 tests, 17 fichiers, parcours complet inclus), lecture complète des 221 scripts en CI sur corpus de placeholders, **audit KAG zéro inconnue (125 implémentées, 5 no-ops justifiés)**, registre de **14 approximations** documentées ([`docs/APPROXIMATIONS.md`](docs/APPROXIMATIONS.md), #296), CI à 3 jobs et contrôle anti-assets.
 - **Design system** : palette, typographie, espacements et états mesurés sur le jeu d'origine, tokens CSS dans `src/ui/tokens.css`.
 
 ## Langues
@@ -279,6 +279,7 @@ npm run check:assets                      # aucun asset sous copyright dans le d
 npm run audit                             # audit du corpus KAG (via public/assets, ou MAHOYO_ASSETS_DIR)
 npm run audit:guard                       # garde-fou commandes KAG (zéro strict : registre des no-ops, baseline vide, doc ; échec sur toute inconnue)
 npm run audit:doc -- --check              # vérifie que la doc des commandes KAG est à jour
+npm run approximations:doc -- --check     # vérifie que la doc des approximations est à jour
 ```
 
 ### Dépannage
@@ -338,7 +339,7 @@ Détail complet : [`docs/CONFIG_PLAN.md`](docs/CONFIG_PLAN.md).
 ## Limites connues
 
 État au 9 novembre 2026, v1.0 close. Les écarts de fidélité, d'accessibilité et de confort ci-dessous
-restent suivis en v1.1 (et dans les notes de version pour les approximations du port).
+restent suivis en v1.1 (voir les approximations documentées dans [`docs/APPROXIMATIONS.md`](docs/APPROXIMATIONS.md) et les notes de version).
 
 - **Ouverture** : rejouée par le lecteur de timeline (panoramiques, calques et audio, #125) et toujours
   sautable. Restent la fidélité de la pluie et des accélérations (#158) et le flash blanc/panoramique
@@ -361,7 +362,8 @@ restent suivis en v1.1 (et dans les notes de version pour les approximations du 
 | Sujet | Fichier |
 |---|---|
 | Progression et milestones | [`docs/PROGRESS.md`](docs/PROGRESS.md) |
-| Notes de version v1.0 et approximations connues | [`docs/RELEASE_NOTES_V1.0.md`](docs/RELEASE_NOTES_V1.0.md) |
+| Notes de version v1.0 | [`docs/RELEASE_NOTES_V1.0.md`](docs/RELEASE_NOTES_V1.0.md) |
+| Approximations documentées (suivi v1.1, registre #295) | [`docs/APPROXIMATIONS.md`](docs/APPROXIMATIONS.md) |
 | Roadmap et épics | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
 | Architecture et contrats | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Design system du HUD | [`docs/DESIGN.md`](docs/DESIGN.md) |

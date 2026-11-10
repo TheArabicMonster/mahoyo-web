@@ -168,6 +168,7 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`audit-commands.ts`** / **`audit-commands-baseline.json`** : helpers de classification et **baseline figée vide** (mode zéro strict, #302) ; plus de mécanisme de décroissance ni de script `audit:baseline`, la baseline ne doit jamais contenir d'inconnue.
 - **`audit-guard.ts`** (`npm run audit:guard`) : garde-fou CI **zéro strict** — registre des no-ops justifiés valide, baseline vide, doc générée à jour, et (avec les assets) **aucune** commande inconnue ; `--strict` est conservé pour compatibilité (comportement par défaut).
 - **`audit-commands-doc.ts`** (`npm run audit:doc`) : génère la section « commandes KAG » de [`LECTURE_COMPLETE.md`](LECTURE_COMPLETE.md) depuis le registre et la baseline vide (pas de double liste manuelle).
+- **`approximations-doc.ts`** (`npm run approximations:doc`) : génère [`APPROXIMATIONS.md`](APPROXIMATIONS.md) depuis le registre et la baseline des approximations (#296) ; `--check` est vérifié par `check:generated`.
 - Conversions `convert-tlg.ts` / `convert-audio.ts`, normalisation `normalize-ks.ts`, traduction `translation.ts`,
   contrôle anti-assets `check-no-assets.ts` et progression `progress.ts` ; tests unitaires dans `tests/unit/tools/`.
 
@@ -204,7 +205,7 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
 
 ## Tests et fixtures
 
-- `tests/unit/` : **2162 tests unitaires** (140 fichiers) sur le moteur KAG, le rendu, les écrans, la
+- `tests/unit/` : **2175 tests unitaires** (141 fichiers) sur le moteur KAG, le rendu, les écrans, la
   persistance et les outils ; `tests/unit/mocks/` fournit les mocks partagés (`FakeAudioPlayer`,
   `FakeUIManager`, `FakeRuntime`) et `tests/fixtures/*.json` les séquences de `Step` générées à partir de samples.
 - `tests/integration/` : lecture complète du corpus (`full-read.test.ts`, 221 scripts, 0 erreur, 0 boucle),

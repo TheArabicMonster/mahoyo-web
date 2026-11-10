@@ -33,7 +33,8 @@
     "corpus:full-read": "tsx tests/integration/prepare-full-read-corpus.ts",
     "approximations:check": "tsx tools/approximations-guard.ts",
     "approximations:baseline": "tsx tools/approximations-guard.ts --update-baseline",
-    "check:generated": "npm run audit:doc && git diff --exit-code -- docs/LECTURE_COMPLETE.md && npm run approximations:check"
+    "approximations:doc": "tsx tools/approximations-doc.ts",
+    "check:generated": "npm run audit:doc && npm run approximations:doc -- --check && git diff --exit-code -- docs/LECTURE_COMPLETE.md && npm run approximations:check"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
