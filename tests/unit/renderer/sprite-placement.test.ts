@@ -4,7 +4,7 @@
  * @vitest-environment node
  */
 import { describe, it, expect } from "vitest";
-import { partbgClipRect, resolvePlacement, type PlacementParams } from "@/renderer/sprite-placement.js";
+import { KAG_LAYER_DEFAULT_SIZE, partbgClipRect, resolvePlacement, spriteAnchorSize, type PlacementParams } from "@/renderer/sprite-placement.js";
 
 const STAGE = { width: 1024, height: 576 };
 const IMG = { width: 800, height: 600 };
@@ -27,9 +27,17 @@ describe("resolvePlacement — boîte et ancrage (#315)", () => {
     expect(p).toMatchObject({ x: 412, y: 238 });
   });
 
-  it("ne clampe pas une image plus grande que l'écran (débordement géré par le clip/overflow)", () => {
-    const p = place({ center: 512, vcenter: 288 }, { width: 2048, height: 1152 });
-    expect(p).toMatchObject({ x: -512, y: -288, width: 2048, height: 1152 });
+  it("ancre une image plus grande que l'écran sur la view area (largeur stage + marge KAG)", () => {
+    const image = { width: 2048, height: 1152 };
+    expect(spriteAnchorSize(image, STAGE)).toEqual({ width: 1024, height: 576 + KAG_LAYER_DEFAULT_SIZE });
+    const p = place({ center: 512, vcenter: 288 }, image);
+    expect(p).toMatchObject({ x: 0, y: 288 - (576 + KAG_LAYER_DEFAULT_SIZE) / 2, width: 2048, height: 1152 });
+  });
+
+  it("plan rapproché (#315) : 304×672 ancré sur la view area, pas sur la hauteur native", () => {
+    // vcenter=335 du script 1-2.ks : anchor 608 → top = 335 − 304 = 31 px logiques.
+    const p = place({ center: 831, vcenter: 335 }, { width: 304, height: 672 });
+    expect(p).toMatchObject({ x: 831 - 152, y: 31, width: 304, height: 672 });
   });
 
   it("applique zoom/rotation par transform autour du centre, sans translate(-50%)", () => {
