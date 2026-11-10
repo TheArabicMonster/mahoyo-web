@@ -86,3 +86,22 @@ réservée (`width` inline en px) avant décodage. Corpus : **2 402 `@chgfg`** d
   `ours.mov` : le correctif supprime la création d'orphelin (cause mesurée), les preuves ci-dessus
   vérifient la géométrie DOM/formule ; aucun asset n'est commité.
 - Le panoramique de fond (`@bgact`) relève de **#317**, pas de cette issue.
+
+## Correctif 2026-11-11 — ancrage `vcenter` et view area (#315, validation visuelle #347)
+
+La validation visuelle automatisée (`npm run validate:visual`, assets réels locaux) montrait encore
+un écart vertical de **−42 px (5,83 %)** au plan rapproché, alors que l'horizontal était bon
+(−10 px, 0,78 %).
+
+Cause confirmée : `center2top(c) = c − height/2 − verticalCorrect` (TJS `compositionlayer.tjs`).
+Pour le sprite `山城01(大)` (304×672), le port utilisait `height = 672` (hauteur native). La **view
+area** du calque de sprite est plafonnée par la scène (+ marge de couche KAG `CharacterLayer`
+par défaut 32) : `height = min(672, 576 + 32) = 608`, donc `top = 335 − 304 = 31` au lieu de
+`−1`. Le renderer compense le `translate(-50%)` CSS de `(hauteur native − view area)/2` et
+`resolvePlacement` expose `spriteAnchorSize(imageSize, stage)` ; aucun offset par scène.
+
+Validation après correctif (même outil, assets réels) : **Δx = −10,0 px (0,78 %)**,
+**Δy = −2,0 px (0,28 %)**, décor NCC 97,3 %, sprite NCC 89,9 % → **critère ≤ 1 % respecté**.
+Tests : plan rapproché 304×672→608 et image 2048×1152→1024×608 dans
+`tests/unit/renderer/sprite-placement.test.ts`. L'échelle horizontale n'est pas plafonnée pour une
+image plus étroite que le stage (304 < 1024).

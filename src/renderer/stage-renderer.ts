@@ -24,7 +24,7 @@ import {
 import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
 import { sampleTrack } from "./easing-track.js";
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
-import { partbgClipRect, resolvePlacement, type ImageSize, type Rect } from "./sprite-placement.js";
+import { partbgClipRect, resolvePlacement, spriteAnchorSize, type ImageSize, type Rect } from "./sprite-placement.js";
 import { storageKey } from "@/core/storage-key.js";
 import {
   applyAppearance,
@@ -1620,8 +1620,12 @@ export class DomStageRenderer implements StageRenderer {
             img.addEventListener("load", () => this.renderScene(true), { once: true });
           }
         }
-        img.style.left = `${s.x}px`;
-        img.style.top = `${s.y}px`;
+        // Ancrage effectif (center2left/center2top) : pour une image plus grande que la fenêtre,
+        // l'ancre moteur est plafonnée à la view area (stage) ; le CSS centrant par translate(-50%)
+        // sur la taille native, on compense de (taille native − taille de view area)/2 (#315).
+        const anchor = spriteAnchorSize(size ?? { width: STAGE_WIDTH, height: STAGE_HEIGHT }, STAGE_SIZE);
+        img.style.left = `${s.x + (size ? (size.width - anchor.width) / 2 : 0)}px`;
+        img.style.top = `${s.y + (size ? (size.height - anchor.height) / 2 : 0)}px`;
         img.style.opacity = String(s.opacity);
         img.style.zIndex = String(s.z);
         img.style.visibility = s.visible === false ? "hidden" : "";
@@ -1799,10 +1803,30 @@ export class DomStageRenderer implements StageRenderer {
     }
 
     // Rend la nouvelle scène (sprites réconciliés + nouveau fond).
+    const previousSpriteIds = new Set(from.sprites.map((sprite) => sprite.id));
     this.renderScene(true);
     if (!this.bgEl) {
       fromImg?.remove();
       return;
+    }
+    // #316 : les calques **apparus** avec la nouvelle scène (ex. `@partbg` du bureau) sont au-dessus
+    // de l'overlay de l'ancien fond : sans fondu propre, ils apparaissent d'un coup (cut). On les
+    // fait apparaître progressivement sur la même durée que la transition de scène.
+    const addedSprites = [...this.spriteEls.entries()].filter(([id]) => !previousSpriteIds.has(id));
+    if (addedSprites.length > 0) {
+      for (const [id, el] of addedSprites) {
+        const sprite = to.sprites.find((candidate) => candidate.id === id);
+        const targetOpacity = sprite?.opacity ?? 1;
+        el.style.opacity = "0";
+        requestAnimationFrame(() => {
+          if (!el.isConnected) return;
+          el.style.transition = `opacity ${time}ms ease`;
+          el.style.opacity = String(targetOpacity);
+        });
+      }
+      setTimeout(() => {
+        for (const [, el] of addedSprites) el.style.removeProperty("transition");
+      }, time + 50);
     }
 
     // Overlay avec l'ancien fond, par-dessus, qui fade out.
