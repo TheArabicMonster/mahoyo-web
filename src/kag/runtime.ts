@@ -354,6 +354,9 @@ export class Runtime {
    */
   public onCommand: ((command: string) => void) | null = null;
 
+  /** Identité des scènes émises (#317) : seul un nouvel id coupe la transition en cours. */
+  private sceneTransitionId = 0;
+
   /** Macros définies par @macro/@endmacro. */
   private macros: Map<string, Token[]> = new Map();
 
@@ -1014,10 +1017,12 @@ export class Runtime {
   }
 
   private emitScene(transition: TransitionSpec): RenderEvent {
+    this.sceneTransitionId += 1;
     return {
       kind: "scene",
       scene: this.buildSceneState("fore"),
       transition,
+      transitionId: this.sceneTransitionId,
     };
   }
 
@@ -1185,21 +1190,40 @@ export class Runtime {
    */
   private applyBgact(instruction: Extract<Instruction, { kind: "bgact" }>): RenderEvent | null {
     const first = instruction.keyframes[0];
-    if (!first) return null;
+    const last = instruction.keyframes[instruction.keyframes.length - 1];
+    if (!first || !last) return null;
     const page = this.resolvePage("bgact", instruction.page);
     const target = this.getPageState(page);
     if (!target.background) return null;
-    if (first.left !== undefined && first.top !== undefined) {
-      target.bgLeft = first.left;
-      target.bgTop = first.top;
+    // État runtime = **état final** de la piste (save/load en plein panoramique = état final, #317).
+    if (last.left !== undefined && last.top !== undefined) {
+      target.bgLeft = last.left;
+      target.bgTop = last.top;
     }
     this.patchBgTransform(target, {
-      zoomx: first.zoomx !== undefined ? first.zoomx * 100 : undefined,
-      zoomy: first.zoomy !== undefined ? first.zoomy * 100 : undefined,
-      rotate: first.rotate,
+      zoomx: last.zoomx !== undefined ? last.zoomx * 100 : undefined,
+      zoomy: last.zoomy !== undefined ? last.zoomy * 100 : undefined,
+      rotate: last.rotate,
     });
+    // Piste unifiée (#317) : une seule propriété `transform` pour la cible `bg`. La page back
+    // prépare l'état ; la piste n'est émise que si le calque est visible (fore).
     if (page === "back") return null;
-    return this.emitScene({ method: "none" });
+    return {
+      kind: "track",
+      track: {
+        target: "bg",
+        prop: "transform",
+        duration: last.time,
+        keyframes: instruction.keyframes.map((frame) => ({
+          time: frame.time,
+          ...(frame.left === undefined ? {} : { left: frame.left }),
+          ...(frame.top === undefined ? {} : { top: frame.top }),
+          ...(frame.zoomx === undefined ? {} : { zoomx: frame.zoomx * 100 }),
+          ...(frame.zoomy === undefined ? {} : { zoomy: frame.zoomy * 100 }),
+          ...(frame.rotate === undefined ? {} : { rotate: frame.rotate }),
+        })),
+      },
+    };
   }
 
   private applyPartbg(instruction: Extract<Instruction, { kind: "partbg" }>): { events: RenderEvent[]; stop?: StopReason } {
@@ -1870,9 +1894,8 @@ export class Runtime {
       }
     }
 
-    if (page === "fore") {
-      events.push(this.emitScene({ method: "none" }));
-    }
+    // (#317) Une animation de calque sur la page affichée ne ré-émet PAS de scène : elle ne doit
+    // jamais terminer la transition de fond en cours. L'événement `animate` porte l'animation.
     events.push({ kind: "animate", target: realId, def: enrichedDef });
     return events;
   }
