@@ -44,7 +44,8 @@
     "diag:transitions": "tsx tools/diagnose-transitions.ts",
     "text:overflow": "tsx tools/text-overflow.ts",
     "oracle:state": "tsx tools/state-oracle.ts",
-    "assets:dimensions": "tsx tools/image-dimensions.ts"
+    "assets:dimensions": "tsx tools/image-dimensions.ts",
+    "validate:visual": "tsx tools/validate-visual.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
