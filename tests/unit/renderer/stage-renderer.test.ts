@@ -522,7 +522,7 @@ describe("DomStageRenderer", () => {
       // Le stage (1024×576) est agrandi de STAGE_SCALE vers 1280×720 : on compare le rendu à l'écran.
       const bodyPx = rem * 16 * STAGE_SCALE;
       expect(bodyPx).toBeCloseTo(26 * STAGE_SCALE, 6);
-      expect(bodyPx * leading).toBeCloseTo(44 * STAGE_SCALE, 6);
+      expect(bodyPx * leading).toBeCloseTo(40.8 * STAGE_SCALE, 6);
     });
 
     it("respecte fontScale", async () => {

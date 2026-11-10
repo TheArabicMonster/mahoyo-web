@@ -12,8 +12,12 @@ import { describe, it, expect } from "vitest";
 import {
   dimmedUnitCount,
   frameTextAreaHeight,
+  frameTextCharsPerLine,
+  frameTextWidth,
   FRAME_TEXT_AREA,
   FRAME_TEXT_LINE_HEIGHT,
+  FRAME_TEXT_LAYOUT,
+  FRAME_TEXT_LAYOUT_PROVENANCE,
   FRAME_TEXT_REM,
   textBoxHeight,
 } from "@/renderer/text-fit.js";
@@ -33,29 +37,57 @@ describe("textBoxHeight", () => {
 });
 
 describe("zone de texte du cadre image", () => {
-  it("reprend les marges moteur exactes (`MessageLayer_config` : 142/1024, 69/576)", () => {
-    expect(FRAME_TEXT_AREA.left).toBeCloseTo(142 / 1024, 9);
-    expect(FRAME_TEXT_AREA.right).toBeCloseTo(142 / 1024, 9);
-    expect(FRAME_TEXT_AREA.top).toBeCloseTo(69 / 576, 9);
-    expect(FRAME_TEXT_AREA.bottom).toBeCloseTo(69 / 576, 9);
+  it("reprend les marges arbitrées en unités logiques (69 px horizontaux, 46,7 px verticaux)", () => {
+    expect(FRAME_TEXT_LAYOUT.marginX).toBe(69);
+    expect(FRAME_TEXT_LAYOUT.marginY).toBe(46.7);
+    expect(FRAME_TEXT_AREA.left).toBeCloseTo(69 / 1024, 9);
+    expect(FRAME_TEXT_AREA.right).toBeCloseTo(69 / 1024, 9);
+    expect(FRAME_TEXT_AREA.top).toBeCloseTo(46.7 / 576, 9);
+    expect(FRAME_TEXT_AREA.bottom).toBeCloseTo(46.7 / 576, 9);
   });
 
-  it("donne une hauteur de zone cohérente avec la scène", () => {
-    expect(frameTextAreaHeight(576)).toBeCloseTo(576 * (1 - (2 * 69) / 576), 6);
+  it("donne une hauteur et une largeur utiles cohérentes (1024 − 2×69 = 886)", () => {
+    expect(frameTextAreaHeight(576)).toBeCloseTo(576 - 2 * 46.7, 6);
+    expect(frameTextWidth()).toBe(886);
+    // 886 / 26 = 34,07 → 34 caractères pleine chasse par ligne (attendu original : 34).
+    expect(frameTextCharsPerLine()).toBe(34);
   });
 });
 
 describe("police du cadre image dérivée du moteur (#314)", () => {
-  it("corps 26 px du repère 1024×576 (`defaultFontSize`) → 1,625 rem", () => {
+  it("corps 26 px du repère 1024×576 (`defaultFontSize`) → 1,625 rem (32,5 px écran)", () => {
     expect(FRAME_TEXT_REM).toBeCloseTo(26 / 16, 9);
     const bodyPx = FRAME_TEXT_REM * 16 * 1.25; // écran 1280×720
     expect(bodyPx).toBeCloseTo(32.5, 6);
   });
 
-  it("interligne = (fontSize + lineSpacing) / fontSize = 44/26 (`config.tjs`)", () => {
-    expect(FRAME_TEXT_LINE_HEIGHT).toBeCloseTo(44 / 26, 9);
+  it("interligne = pas de ligne capture 40,8 px logiques → 51 px écran", () => {
+    expect(FRAME_TEXT_LAYOUT.lineHeight).toBe(40.8);
+    expect(FRAME_TEXT_LINE_HEIGHT).toBeCloseTo(40.8 / 26, 9);
     const bodyPx = FRAME_TEXT_REM * 16 * 1.25;
-    expect(bodyPx * FRAME_TEXT_LINE_HEIGHT).toBeCloseTo(55, 6);
+    expect(bodyPx * FRAME_TEXT_LINE_HEIGHT).toBeCloseTo(51, 6);
+  });
+
+  it("la table de provenance explique la capture à ±1,5 px écran (statut hypothèse)", () => {
+    expect(FRAME_TEXT_LAYOUT_PROVENANCE).toHaveLength(4);
+    for (const entry of FRAME_TEXT_LAYOUT_PROVENANCE) {
+      expect(entry.status).toBe("hypothèse");
+      expect(entry.logical).toBeGreaterThan(0);
+      // Valeur logique × 1,25 = valeur écran, comparée à la mesure capture avec sa tolérance.
+      expect(Math.abs(entry.logical * 1.25 - entry.captureScreenPx)).toBeLessThanOrEqual(entry.toleranceScreenPx);
+    }
+    const margin = FRAME_TEXT_LAYOUT_PROVENANCE.find((entry) => entry.param === "marginX")!;
+    expect(margin.logical * 1.25).toBeCloseTo(86.25, 6);
+    // 86,25 px écran vs 85,4 mesurés → 0,85 px d'écart, dans la tolérance de mesure.
+    expect(margin.captureScreenPx).toBeCloseTo(85.4, 6);
+    expect(FRAME_TEXT_LAYOUT_PROVENANCE.find((entry) => entry.param === "fontSize")!.logical).toBe(26);
+  });
+
+  it("le pas des glyphes vaut 1 em (26 px logiques) : indépendant de la police chargée", () => {
+    // Invariant de mise en page : les caractères/ligne et le pas se déduisent de l'em (26 px),
+    // pas de l'encre (x-height/capitale) — la calibration d'encre reste cosmétique (#319).
+    expect(FRAME_TEXT_LAYOUT.fontSize / FRAME_TEXT_LAYOUT.fontSize).toBe(1);
+    expect(frameTextCharsPerLine()).toBe(Math.floor(frameTextWidth() / 26));
   });
 });
 

@@ -231,7 +231,9 @@ function longTextPage(): string {
     (_, i) =>
       `Ligne ${String(i + 1).padStart(2, "0")} — texte original généré pour le player. La lecture continue sans rétrécir.`,
   );
-  return `${PLACEHOLDER_LONG_TEXT_MARKER}[r]\n${lines.join("[r]\n")}[p]`;
+  // Ligne de glyphes pleine chasse : mesure reproductible du pas (1 em) et des caractères/ligne.
+  const fullWidth = "あ".repeat(34);
+  return `${PLACEHOLDER_LONG_TEXT_MARKER}[r]\n${fullWidth}[r]\n${lines.join("[r]\n")}[p]`;
 }
 
 /** Les quatre scripts du parcours complet (textes originaux, aucun asset du jeu). */

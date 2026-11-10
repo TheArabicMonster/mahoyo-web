@@ -29,7 +29,7 @@ test.describe("Player e2e", () => {
     await expect(stage).toBeVisible();
   });
 
-  test("le texte de jeu fait 32,5 px de corps et 55 px d'interligne à 1280×720 (#314)", async ({ page }) => {
+  test("le texte de jeu fait 32,5 px de corps et 51 px d'interligne à 1280×720 (#314/#320)", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto("/");
     // Le player démarre sur le menu titre : lancer une nouvelle partie.
@@ -51,17 +51,25 @@ test.describe("Player e2e", () => {
         frame: box.dataset.frameStyle,
         bodyPx: parseFloat(cs.fontSize) * k,
         linePx: parseFloat(cs.lineHeight) * k,
+        // Marges logiques symétriques (#320) : x_min = W − x_max = 69 px du repère 1024.
+        textLeftLogical: (area.left - stageRect.left) / k,
+        textRightLogical: (stageRect.right - area.right) / k,
         textBottom: (area.bottom - stageRect.top) / stageRect.height,
         scrollOverflow: text.scrollHeight > text.clientHeight + 1,
       };
     });
     expect(m.frame).toBe("image");
-    // Valeurs dérivées de `config.tjs` (`defaultFontSize=26`, `defaultLineSpacing=18`, stage ×1,25)
-    // et non d'une constante de mise en page (#314) : 26 × 1,25 = 32,5 px ; (26+18) × 1,25 = 55 px.
+    // Valeurs logiques arbitrées (#319/#320) : police 26 px × 1,25 = 32,5 px écran ; pas de ligne
+    // capture 40,8 px × 1,25 = 51 px écran. Aucune constante par scène.
     expect(m.bodyPx).toBeCloseTo(32.5, 1);
-    expect(m.linePx).toBeCloseTo(55, 1);
-    // Marge basse moteur : marginB = 69/576, la zone s'arrête à 1 - 69/576 ≈ 88,0 % de la hauteur.
-    expect(m.textBottom).toBeLessThanOrEqual(0.882);
+    expect(m.linePx).toBeCloseTo(51, 1);
+    // Marges horizontales logiques symétriques : 69 px de chaque côté (arbitrage #319/#320),
+    // pas 142/14 % ; la symétrie était l'un des contrôles de la capture originale.
+    expect(m.textLeftLogical).toBeCloseTo(69, 0);
+    expect(m.textRightLogical).toBeCloseTo(69, 0);
+    expect(Math.abs(m.textRightLogical - m.textLeftLogical)).toBeLessThanOrEqual(0.5);
+    // Marge verticale logique 46,7 px : la zone s'arrête à 1 - 46,7/576 ≈ 91,9 % de la hauteur.
+    expect(m.textBottom).toBeLessThanOrEqual(0.92);
     expect(m.scrollOverflow).toBe(false);
   });
 

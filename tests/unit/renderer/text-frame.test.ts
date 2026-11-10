@@ -52,19 +52,18 @@ describe("frameImageOpacity", () => {
 });
 
 describe("zone de texte du cadre image", () => {
-  it("reprend les marges exactes du moteur (`MessageLayer_config`)", () => {
-    // config.tjs : marginL = marginR = 142, marginT = marginB = 69, scène mw×mh = 1024×576.
-    expect(FRAME_TEXT_AREA.left).toBeCloseTo(142 / 1024, 9);
-    expect(FRAME_TEXT_AREA.right).toBeCloseTo(142 / 1024, 9);
-    expect(FRAME_TEXT_AREA.top).toBeCloseTo(69 / 576, 9);
-    expect(FRAME_TEXT_AREA.bottom).toBeCloseTo(69 / 576, 9);
+  it("reprend les marges arbitrées en unités logiques (#319/#320)", () => {
+    expect(FRAME_TEXT_AREA.left).toBeCloseTo(69 / 1024, 9);
+    expect(FRAME_TEXT_AREA.right).toBeCloseTo(69 / 1024, 9);
+    expect(FRAME_TEXT_AREA.top).toBeCloseTo(46.7 / 576, 9);
+    expect(FRAME_TEXT_AREA.bottom).toBeCloseTo(46.7 / 576, 9);
   });
 
   it("laisse presque toute la hauteur de scène au texte (#314)", () => {
     const h = frameTextAreaHeight(576);
-    expect(h).toBeCloseTo(576 * (1 - (2 * 69) / 576), 6);
-    // Pas de ligne moteur = fontSize 26 + lineSpacing 18 = 44 px du repère.
-    expect(Math.floor(h / 44)).toBe(9);
+    expect(h).toBeCloseTo(576 - 2 * 46.7, 6);
+    // Pas de ligne capture : 40,8 px du repère.
+    expect(Math.floor(h / 40.8)).toBe(11);
   });
 });
 

@@ -110,3 +110,124 @@ test("la frappe ne réagence pas le texte et la police reste constante (texte lo
   });
   expect(lineCount).toBeGreaterThanOrEqual(6);
 });
+
+
+/**
+ * Pas des glyphes (1 em) et caractères par ligne (#320) : la ligne de 34 `あ` de la page longue
+ * doit mesurer 34 × 26 px logiques (32,5 px écran à 1280), et le wrap doit rester identique quand
+ * la fenêtre change (layout logique 1024×576, seule la transformation d'échelle change).
+ */
+const fullWidthRun = (page: Page) =>
+  page.evaluate(() => {
+    const units = [...document.querySelectorAll<HTMLElement>(".mh-text-unit")]
+      .filter((unit) => unit.textContent === "あ")
+      .map((unit) => unit.getBoundingClientRect())
+      .sort((a, b) => (Math.abs(a.top - b.top) > 1 ? a.top - b.top : a.left - b.left));
+    if (units.length < 2) return null;
+    const stage = document.querySelector<HTMLElement>(".mh-stage")!;
+    const stageRect = stage.getBoundingClientRect();
+    const scale = stageRect.width / stage.offsetWidth;
+    const firstLineTop = units[0]!.top;
+    const firstLine = units.filter((rect) => Math.abs(rect.top - firstLineTop) <= 1);
+    const pitch = firstLine.length > 1 ? (firstLine[1]!.left - firstLine[0]!.left) / scale : null;
+    return {
+      count: units.length,
+      firstLineCount: firstLine.length,
+      pitchLogical: pitch,
+      fontSize: parseFloat(getComputedStyle(document.querySelector<HTMLElement>(".mh-stage-text")!).fontSize),
+    };
+  });
+
+const lineSignature = (page: Page) =>
+  page.evaluate(() => {
+    const units = [...document.querySelectorAll<HTMLElement>(".mh-text-unit")].filter(
+      (unit) => !unit.classList.contains("mh-text-unit-hidden"),
+    );
+    const lines = new Map<number, number>();
+    for (const unit of units) {
+      const rect = unit.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) continue;
+      const top = Math.round(rect.top * 2) / 2;
+      lines.set(top, (lines.get(top) ?? 0) + (unit.textContent ?? "").length);
+    }
+    return [...lines.entries()].sort((a, b) => a[0] - b[0]).map(([, count]) => count);
+  });
+
+async function reachLongPageEnd(page: Page): Promise<void> {
+  await boot(page);
+  await page.locator(".mh-ui-new-game").click();
+  await expect(text(page)).toContainText(/\S{5}/, { timeout: 15000 });
+  await advanceToLongPage(page);
+  await expect(page.locator("#textbox-indicator")).toBeVisible({ timeout: 20000 });
+  await expect.poll(async () => page.locator(".mh-text-unit.mh-text-unit-hidden").count(), { timeout: 30000 }).toBe(0);
+}
+
+test("pas des glyphes = 1 em (26 px logiques) et 34 caractères pleine chasse par ligne (#320)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await reachLongPageEnd(page);
+  const run = await fullWidthRun(page);
+  expect(run).not.toBeNull();
+  expect(run!.fontSize).toBeCloseTo(26, 3); // valeur CSS du repère logique
+  expect(run!.pitchLogical).not.toBeNull();
+  expect(run!.pitchLogical!).toBeCloseTo(26, 0); // 1 em = 26 px logiques (±0,5)
+  expect(run!.pitchLogical! / 26).toBeGreaterThan(0.98);
+  expect(run!.pitchLogical! / 26).toBeLessThan(1.02);
+  expect(run!.firstLineCount).toBe(34); // floor((1024-2*69)/26) = 34
+});
+
+test("le wrap est identique à 1280×720, 1920×1080 et en portrait (layout logique constant) (#320)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await reachLongPageEnd(page);
+  const base = await lineSignature(page);
+  expect(base.length).toBeGreaterThanOrEqual(6); // page longue multi-lignes
+
+  for (const viewport of [
+    { width: 1920, height: 1080 },
+    { width: 820, height: 1180 }, // portrait
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.reload();
+    await reachLongPageEnd(page);
+    expect(await lineSignature(page)).toEqual(base);
+  }
+});
+
+
+/**
+ * Golden 5 pages (#320) : pour 5 pages du prologue, la signature des retours à la ligne (nombre de
+ * caractères par ligne visible) doit être **identique** aux trois formats d'écran — la mise en page
+ * est logique (1024×576), seule la transformation d'échelle change.
+ */
+async function collectFivePageSignatures(page: Page): Promise<number[][]> {
+  await boot(page);
+  await page.locator(".mh-ui-new-game").click();
+  const signatures: number[][] = [];
+  const seen = new Set<string>();
+  for (let attempt = 0; attempt < 40 && signatures.length < 5; attempt++) {
+    await expect(page.locator("#textbox-indicator")).toBeVisible({ timeout: 20000 });
+    const content = await text(page).innerText();
+    const marker = /page (\d{2})/.exec(content)?.[1];
+    if (marker && !seen.has(marker)) {
+      seen.add(marker);
+      signatures.push(await lineSignature(page));
+    }
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+  }
+  return signatures;
+}
+
+test("golden 5 pages : retours à la ligne identiques à 1280×720, 1920×1080 et portrait (#320)", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const reference = await collectFivePageSignatures(page);
+  expect(reference).toHaveLength(5);
+  for (const viewport of [
+    { width: 1920, height: 1080 },
+    { width: 820, height: 1180 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.reload();
+    expect(await collectFivePageSignatures(page)).toEqual(reference);
+  }
+});
