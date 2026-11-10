@@ -130,6 +130,49 @@ describe("CG mode — écran (HUD-15)", () => {
     expect(host.querySelector(".mh-cg-viewer-caption")!.textContent).toBe("1 / 1");
   });
 
+  it("sémantique (#97) : tabpanel sur la zone défilante, grille <ul> et <li> valides", () => {
+    mount();
+    const scroll = host.querySelector<HTMLElement>(".mh-cg-scroll")!;
+    expect(scroll.getAttribute("role")).toBe("tabpanel");
+    expect(scroll.id).toBe("ui-cg-panel");
+    expect(scroll.getAttribute("aria-labelledby")).toBe("ui-cg-tab-event");
+    const grid = host.querySelector<HTMLElement>(".mh-cg-grid")!;
+    expect(grid.tagName).toBe("UL");
+    expect(grid.hasAttribute("role")).toBe(false); // liste implicite : les <li> restent valides
+    expect(grid.querySelectorAll(":scope > li")).toHaveLength(tiles().length);
+  });
+
+  it("nom accessible des tuiles verrouillées : il contient le texte visible (#97)", () => {
+    mount();
+    const tile = tiles()[0]!;
+    const visible = tile.querySelector(".mh-cg-tile-locked")!.textContent!;
+    expect(visible).toBe("image non affichée");
+    expect(tile.getAttribute("aria-label")!.toLowerCase()).toContain(visible.toLowerCase());
+  });
+
+  it("visionneuse (#97) : alternative textuelle de l'image et noms contenant le texte visible", () => {
+    mount(["cg01"]);
+    tiles()[0]!.click();
+    expect(viewerImage().alt).toBe("Image de la galerie 1 sur 1");
+    const zoomReset = host.querySelectorAll<HTMLButtonElement>(".mh-cg-viewer-button")[2]!;
+    expect(zoomReset.getAttribute("aria-label")).toContain("1:1");
+    const close = host.querySelector<HTMLButtonElement>(".mh-cg-viewer-close")!;
+    expect(close.getAttribute("aria-label")!.toLowerCase()).toContain("retour");
+  });
+
+  it("visionneuse modale (#97) : le reste de la galerie est inerte tant qu'elle est ouverte", () => {
+    mount(["cg01"]);
+    const scroll = host.querySelector<HTMLElement>(".mh-cg-scroll")!;
+    const header = host.querySelector<HTMLElement>(".mh-cg-header")!;
+    expect(scroll.inert).toBe(false);
+    tiles()[0]!.click();
+    expect(scroll.inert).toBe(true);
+    expect(header.inert).toBe(true);
+    key("Escape");
+    expect(scroll.inert).toBe(false);
+    expect(header.inert).toBe(false);
+  });
+
   it("bascule Évènement / Arrière-plan avec des compteurs implicites (onglets ARIA)", () => {
     mount(["bg_a"]);
     const [eventTab, backgroundTab] = tabs();

@@ -203,13 +203,15 @@ export function createCgMode(options: CgModeOptions): CgMode {
   screen.appendChild(header);
 
   // ── Grille (une seule zone, remplie pour la catégorie active) ──
+  // Le rôle `tabpanel` est porté par la zone défilante, pas par le `<ul>` : sinon les `<li>` de la
+  // grille ne sont plus dans une liste (violation axe `listitem`, #97).
+  const scroll = h("div", "mh-cg-scroll");
+  scroll.id = "ui-cg-panel";
+  scroll.setAttribute("role", "tabpanel");
+  scroll.setAttribute("aria-labelledby", `ui-cg-tab-${category}`);
   const grid = h("ul", "mh-cg-grid");
-  grid.id = "ui-cg-panel";
-  grid.setAttribute("role", "tabpanel");
-  grid.setAttribute("aria-labelledby", `ui-cg-tab-${category}`);
   const empty = h("p", "mh-cg-empty", t("cg.empty"));
   empty.hidden = true;
-  const scroll = h("div", "mh-cg-scroll");
   scroll.append(grid, empty);
   screen.appendChild(scroll);
 
@@ -236,10 +238,15 @@ export function createCgMode(options: CgModeOptions): CgMode {
   const viewerBar = h("div", "mh-cg-viewer-bar");
   const prev = button("mh-cg-viewer-button mh-cg-viewer-prev", "‹", t("cg.viewer.prev"));
   const zoomOut = button("mh-cg-viewer-button", "−", t("cg.viewer.zoomOut"));
-  const zoomReset = button("mh-cg-viewer-button", "1:1", t("cg.viewer.zoomReset"));
+  // Le nom accessible contient le texte visible (axe `label-content-name-mismatch`, WCAG SC 2.5.3).
+  const zoomReset = button("mh-cg-viewer-button", "1:1", `1:1 — ${t("cg.viewer.zoomReset")}`);
   const zoomIn = button("mh-cg-viewer-button", "+", t("cg.viewer.zoomIn"));
   const next = button("mh-cg-viewer-button mh-cg-viewer-next", "›", t("cg.viewer.next"));
-  const close = button("mh-cg-viewer-button mh-cg-viewer-close", t("common.back"), t("cg.viewer.close"));
+  const close = button(
+    "mh-cg-viewer-button mh-cg-viewer-close",
+    t("common.back"),
+    `${t("common.back")} — ${t("cg.viewer.close")}`,
+  );
   const caption = h("p", "mh-cg-viewer-caption");
   caption.setAttribute("aria-live", "polite");
   viewerBar.append(prev, zoomOut, zoomReset, zoomIn, next, caption, close);
@@ -272,10 +279,16 @@ export function createCgMode(options: CgModeOptions): CgMode {
     const entry = list[wrapped]!;
     viewerKey = entry.key;
     viewerImage.src = entry.url;
-    viewerImage.alt = "";
+    // Image de contenu : alternative textuelle générique localisée (WCAG 1.1.1). Le numéro de
+    // position est aussi annoncé par la légende `aria-live`.
+    viewerImage.alt = t("cg.viewer.imageAlt", { n: String(wrapped + 1), total: String(list.length) });
     caption.textContent = `${wrapped + 1} / ${list.length}`;
     setZoom(CG_MIN_ZOOM);
     viewerOpen = true;
+    // Visionneuse modale : le reste de la galerie ne doit plus être atteignable au clavier/lecteur.
+    header.inert = true;
+    scroll.inert = true;
+    footer.inert = true;
     viewer.hidden = false;
     viewer.focus();
   };
@@ -290,6 +303,9 @@ export function createCgMode(options: CgModeOptions): CgMode {
   const closeViewer = (): void => {
     viewerOpen = false;
     viewer.hidden = true;
+    header.inert = false;
+    scroll.inert = false;
+    footer.inert = false;
     viewerImage.removeAttribute("src");
     viewerKey = null;
     const tile = tiles.find((candidate) => candidate.dataset.key === selectedKey);
@@ -320,7 +336,7 @@ export function createCgMode(options: CgModeOptions): CgMode {
   function setCategory(next: CgCategory): void {
     category = next;
     screen.dataset.category = category;
-    grid.setAttribute("aria-labelledby", `ui-cg-tab-${category}`);
+    scroll.setAttribute("aria-labelledby", `ui-cg-tab-${category}`);
     for (const key of ["event", "background"] as const) {
       const active = key === category;
       tabButtons[key].setAttribute("aria-selected", active ? "true" : "false");
@@ -348,7 +364,14 @@ export function createCgMode(options: CgModeOptions): CgMode {
       const tile = button("mh-cg-tile", "");
       tile.dataset.key = entry.key;
       tile.dataset.locked = unlocked ? "false" : "true";
-      tile.setAttribute("aria-label", unlocked ? t("cg.open", { n: String(index + 1) }) : t("cg.lockedHint", { n: String(index + 1) }));
+      // Le nom accessible d'une tuile verrouillée doit contenir son texte visible « image non
+      // affichée » (règle axe `label-content-name-mismatch`, WCAG 2.1 SC 2.5.3).
+      tile.setAttribute(
+        "aria-label",
+        unlocked
+          ? t("cg.open", { n: String(index + 1) })
+          : `${t("cg.locked")} — ${t("cg.lockedHintShort", { n: String(index + 1) })}`,
+      );
       if (unlocked) {
         tile.classList.add("is-unlocked");
         const img = document.createElement("img");
