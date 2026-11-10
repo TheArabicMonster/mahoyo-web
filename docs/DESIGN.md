@@ -120,13 +120,22 @@ Aucune police du jeu n'est distribuée. Piles proposées (libres ou système) :
 | Libellés de config et boutons | ≈ 28 px | ≈ 19 px | `--mh-control-size: 1.2rem` |
 | Mention de droits | 14 px | ≈ 9 px | `--mh-legal-size: 0.6rem` (jamais sous 10 px réels, voir §10) |
 
-> **Texte de jeu : mise en œuvre (#182, revue #314).** Le player dessine la scène en 1024×576 puis l'agrandit de 1,25 vers 1280×720. Les métriques sont désormais **dérivées du moteur** (`data/override/config.tjs`, `MessageLayer_config`) et non de constantes de mise en page : marges `marginL = marginR = 142` et `marginT = marginB = 69` sur 1024×576 ; police `defaultFontSize = 26` px du repère ; interligne `defaultLineSpacing = 18` → pas de ligne = 44 px. Soit à l'écran : corps 26 × 1,25 = **32,5 px**, interligne 44 × 1,25 = **55 px**.
+> **Texte de jeu : mise en œuvre (#182, arbitrage #319/#320).** Le player dessine la scène en 1024×576 puis l'agrandit de 1,25 vers 1280×720. La mise en page est exprimée **en unités logiques** (px du repère 1024×576), avec une table de provenance (`FRAME_TEXT_LAYOUT_PROVENANCE` dans `src/renderer/text-fit.ts`) :
 >
-> **Plus d'ajustement automatique de police (#314)** : `fitTextBox` (échelle 1 → 0,7) a été supprimé ; la page entière est mise en page une seule fois (spans par unité, `visibility` pour la révélation), la police reste constante et le texte excédentaire est découpé comme la couche de message du moteur (la pagination est scriptée via `[p]`/`@pg` ; mesure exhaustive des débordements du corpus déléguée à #319, fallback découpe consigné au registre #296 `text-overflow-clip`). L'accessibilité expose le texte complet une fois (`aria-live="polite"`, couche visuelle `aria-hidden`), et la typographie FR applique des espaces fines insécables avant `? ! : ;` et dans `« »`.
+> | Paramètre | Valeur logique | Source | Capture (écran 1280) | Statut |
+> |---|---|---|---|---|
+> | Marge horizontale (g/d) | **69** | `MessageLayer_config` (extraction locale, non commitée) ; 69 explique la capture | 85,4 px → 69 × 1,25 = 86,25 px (±0,85) | hypothèse |
+> | Marge verticale (h/b) | **46,7** | capture #173 : 8,1 % × 576 | 58,4 px | hypothèse |
+> | Police | **26** | `MessageLayer_config` `defaultFontSize = 26` ; pas des glyphes = 1 em | 32,5 px | hypothèse |
+> | Pas de ligne | **40,8** | capture #173 : 51 px / 1,25 | 51 px | hypothèse |
 >
-> La famille de police exacte du jeu d'origine (Mincho propriétaire) n'étant pas redistribuable, la pile Mincho/serif du système a des **métriques de glyphe** légèrement différentes à taille égale : écart suivi au registre #296 (`text-font-metrics`).
+> Le TJS exact n'étant pas présent dans le dépôt (assets non commités), ces valeurs sont **sourcées mais restent des hypothèses** : capture = oracle, aucune valeur n'est propre à une scène. Largeur utile = 1024 − 2 × 69 = **886 px** → **34 caractères pleine chasse/ligne** (`floor(886/26)`), identique à l'original ; pas de `letter-spacing` (moteur `defaultPitch = 1`, capture 1 em).
 >
-> `getComputedStyle` renvoie 26 px / 44 px (avant agrandissement) : la conformité se mesure sur le rendu (`getBoundingClientRect` du stage ÷ largeur du stage), pas sur la valeur calculée seule.
+> **Plus d'ajustement automatique de police (#314)** : `fitTextBox` (échelle 1 → 0,7) a été supprimé ; la page entière est mise en page une seule fois (spans par unité, `visibility` pour la révélation), la police reste constante et le texte excédentaire est découpé comme la couche de message du moteur (pagination scriptée via `[p]`/`@pg` ; mesure exhaustive des débordements du corpus #319 : **0 page en débordement** avec cette mise en page ; fallback découpe consigné au registre #296 `text-overflow-clip`). L'accessibilité expose le texte complet une fois (`aria-live="polite"`, couche visuelle `aria-hidden`), et la typographie FR applique des espaces fines insécables avant `? ! : ;` et dans `« »`.
+>
+> La famille de police exacte du jeu d'origine (Mincho propriétaire) n'étant pas redistribuable, la pile Mincho/serif du système a des **métriques de glyphe** différentes à taille égale (ratio d'encre ~1,19) : écart **cosmétique** suivi au registre #296 (`text-font-metrics`), **sans réduire la police** (le pas de glyphe et les caractères/ligne, eux, sont corrects).
+>
+> `getComputedStyle` renvoie 26 px / 40,8 px (avant agrandissement) : la conformité se mesure sur le rendu (`getBoundingClientRect` du stage ÷ largeur du stage), pas sur la valeur calculée seule. Contrôles e2e : 32,5 px / 51 px écran, marge gauche 69 px logiques, pas de 1 em et 34 caractères/ligne sur une ligne de `あ`, wrap identique à 1280×720 et 1920×1080.
 
 ## 4. Espacement et grille
 
