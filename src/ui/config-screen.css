@@ -452,8 +452,8 @@
 .mh-cfg [tabindex]:focus-visible,
 /* Firefox rend les zones défilantes focalisables au clavier : elles reçoivent aussi le focus visible. */
 .mh-cfg-col:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* ── Écran tactile : cibles de 44 px au moins ── */

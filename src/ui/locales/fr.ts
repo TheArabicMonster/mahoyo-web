@@ -285,6 +285,7 @@ export const fr = {
   "config.effects.stopAnimations": "Arrêt des animations en cours",
   "config.effects.clearText": "Effacement du texte au changement de page",
   "config.effects.special": "Affichage des effets spéciaux",
+  "config.effects.reduceMotion": "Réduire les animations de l'interface",
 
   // ── Configuration : Raccourcis ──
   "config.shortcuts.section": "Raccourcis clavier",

@@ -20,8 +20,8 @@ describe("system-menu.css", () => {
   });
 
   it("le focus clavier est visible (contour 2 px --mh-focus, décalage 2 px)", () => {
-    expect(code).toMatch(/:focus-visible[^{]*\{[^}]*outline: 2px solid var\(--mh-focus/);
-    expect(code).toMatch(/outline-offset: 2px/);
+    expect(code).toMatch(/:focus-visible[^{]*\{[^}]*outline: var\(--mh-focus-width, 2px\) solid var\(--mh-focus/);
+    expect(code).toMatch(/outline-offset: var\(--mh-focus-offset, 2px\)/);
   });
 
   it("les entrées n'ont ni fond ni cadre (texte seul)", () => {

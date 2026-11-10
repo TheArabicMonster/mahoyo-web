@@ -71,12 +71,17 @@ describe("tokens.css : variables du design system", () => {
     expect(tokensCss).not.toMatch(/url\(/);
     const withoutComments = tokensCss.replace(/\/\*[\s\S]*?\*\//g, "");
     const selectors = [...withoutComments.matchAll(/([^{}]+)\{/g)].map((m) => m[1]!.trim());
-    expect(selectors).toEqual([":root", "@media (prefers-reduced-motion: reduce)", ":root"]);
+    expect(selectors).toEqual([
+      ":root",
+      "@media (prefers-reduced-motion: reduce)",
+      ":root",
+      ':root[data-reduce-motion="true"]',
+    ]);
   });
 
   it("met toutes les durées --mh-dur-* à 0ms sous prefers-reduced-motion", () => {
     const durations = names.filter((n) => n.startsWith("--mh-dur-"));
-    expect(durations.length).toBe(6);
+    expect(durations.length).toBeGreaterThanOrEqual(9); // 6 historiques + 3 d'interface (#99)
     const body = reducedMotionBody(tokensCss);
     for (const d of durations) {
       expect(body).toMatch(new RegExp(`${d}\\s*:\\s*0ms\\s*;`));

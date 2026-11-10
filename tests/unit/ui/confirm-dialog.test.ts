@@ -265,7 +265,7 @@ describe("confirm-dialog.css", () => {
   });
 
   it("garde un contour de focus visible", () => {
-    expect(css).toMatch(/:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--mh-focus\)/);
+    expect(css).toMatch(/:focus-visible\s*\{[^}]*outline:\s*var\(--mh-focus-width, 2px\) solid var\(--mh-focus\)/);
   });
 });
 

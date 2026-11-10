@@ -51,6 +51,24 @@ describe("mergeSettings", () => {
     expect(merged.display.fullscreenMode).toBe("fit");
   });
 
+  describe("réduction des animations (#99)", () => {
+    it("est désactivée par défaut", () => {
+      expect(DEFAULT_SETTINGS.display.reduceMotion).toBe(false);
+      expect(mergeSettings(DEFAULT_SETTINGS, {}).display.reduceMotion).toBe(false);
+    });
+
+    it("s'active et se désactive par patch", () => {
+      const on = mergeSettings(DEFAULT_SETTINGS, { display: { reduceMotion: true } as never });
+      expect(on.display.reduceMotion).toBe(true);
+      expect(mergeSettings(on, { display: { reduceMotion: false } as never }).display.reduceMotion).toBe(false);
+    });
+
+    it("normalise une valeur persistée non booléenne en false", () => {
+      const corrupted = { display: { reduceMotion: "true" } } as never;
+      expect(mergeSettings(DEFAULT_SETTINGS, corrupted).display.reduceMotion).toBe(false);
+    });
+  });
+
   it("fusionne les raccourcis action par action", () => {
     const merged = mergeSettings(DEFAULT_SETTINGS, {
       shortcuts: { saveMenu: ["x"] } as never,

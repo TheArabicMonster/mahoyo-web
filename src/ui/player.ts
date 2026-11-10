@@ -1447,9 +1447,19 @@ export class Player implements PlayerCommands {
   }
 
   private applySettings(): void {
+    this.applyReducedMotionPreference();
     this.stage.setSettings(this.settings.display);
     this.audio.setSettings(this.settings.audio);
     this.applyViewportScale();
+  }
+
+  /**
+   * Réduction des animations choisie dans le jeu (#99) : attribut `data-reduce-motion` sur <html>,
+   * lu par `tokens.css` (durées à 0 + neutralisation CSS). Complète `prefers-reduced-motion`, qui
+   * reste géré par les media queries.
+   */
+  private applyReducedMotionPreference(): void {
+    document.documentElement.dataset.reduceMotion = this.settings.display.reduceMotion ? "true" : "false";
   }
 
   /**

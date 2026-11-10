@@ -223,16 +223,16 @@
    c'est le contour de sélection qui porte la couleur, le marqueur signale la lecture. */
 .mh-sound-track.is-selected {
   border: 3px solid var(--mh-cyan-glint, #5fcfc5);
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* Focus clavier visible sur tous les contrôles de l'écran (DESIGN §10). */
 .mh-sound-screen button:focus-visible,
 .mh-sound-screen input:focus-visible,
 .mh-sound-screen [tabindex]:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* ── Ligne d'information : compositeur / titre, en cyan, filet plein cadre sur toute la largeur ──────
@@ -530,8 +530,8 @@ input[type="range"].mh-sound-volume-range {
 }
 
 .mh-sound-back:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* ── Grille responsive : le conteneur est `.mh-sound-scroll` (inline-size) ───────────────────────────

@@ -218,6 +218,22 @@ Tokens proposés : `--mh-dur-fast: 150ms`, `--mh-dur-menu: 270ms`, `--mh-dur-fad
 `--mh-dur-scene-out: 1200ms`, `--mh-dur-scene-in: 850ms`, `--mh-ease: linear`. Avec `prefers-reduced-motion`,
 toutes ces durées tombent à 0 sauf la frappe du texte.
 
+> **Animations d'interface et réduction du mouvement (#99, HUD-01).** Les composants communs
+> (`ui-manager.css`) consomment les tokens de mouvement : ouverture d'un écran superposé et des panneaux par
+> **fondu d'opacité** `--mh-dur-ui-in` (220 ms, `--mh-ease-out`), entrées de liste en fondu, et entrée du titre
+> échelonnée (`--mh-dur-stagger` = 45 ms) sur le logo, les entrées et la mention de droits. Aucune animation ne
+> déplace la géométrie : les mesures de mise en page restent stables (e2e). Hover/press des contrôles utilisent
+> `--mh-dur-fast`/`--mh-ease` ; les animations propres des écrans (menu système, config, confirmation, toasts,
+> transitions de scène) gardent leurs durées mesurées documentées plus bas.
+>
+> **Réduction des animations** : deux mécanismes complémentaires. (1) `prefers-reduced-motion: reduce` met tous
+> les tokens de durée à 0 ms et neutralise les animations/transitions CSS (règle globale `:root *`). (2) le joueur
+> peut choisir **Config → Son/Effet → « Réduire les animations de l'interface »** (réglage `display.reduceMotion`,
+> défaut non, persisté avec les autres réglages) : le player pose `data-reduce-motion="true"` sur `<html>`, ce qui
+> remet les tokens à 0 ms et neutralise les animations CSS. Ce choix complète `tokens.css` sans retirer la frappe du
+> texte (pilotée par les réglages de texte du jeu). Les focus visibles utilisent `--mh-focus-width`/`--mh-focus-offset`
+> (2 px / 2 px) et `--mh-focus` sur tous les écrans.
+
 > **Transitions plein écran (HUD-14, #205).** Mise en œuvre dans `src/ui/transitions.ts` (séquencement) et
 > `src/ui/transitions.css` (rideau et écran de chargement, CSS pur), branchés dans `player.ts` par trois appels :
 > `beginScript` (titre → jeu, ou chargement → scène depuis la partie), `returnToTitle` (jeu → titre) et `load`
@@ -585,6 +601,17 @@ Implémentés dans `src/ui/tokens.css` (tâche HUD-01 / #181), importés par `sr
   --mh-toast-fill: #587888;
   --mh-focus: #5fcfc5;
 
+  /* Surfaces génériques des écrans superposés (#99) */
+  --mh-scrim: rgba(0, 0, 0, 0.75);
+  --mh-scrim-soft: rgba(0, 0, 0, 0.5);
+  --mh-ui-panel-fill: rgba(20, 20, 30, 0.92);
+  --mh-ui-panel-border: #666677;
+  --mh-ui-button-fill: #222233;
+  --mh-ui-button-hover: #333355;
+  --mh-shadow-panel: 0 6px 24px rgba(7, 17, 27, 0.55);
+  --mh-focus-width: 2px;
+  --mh-focus-offset: 2px;
+
   /* Typo */
   --mh-font-text: "Hiragino Mincho ProN", "Yu Mincho", "Shippori Mincho", "Noto Serif JP", "EB Garamond", Georgia, serif;
   --mh-font-title: "Cormorant Garamond", "EB Garamond", Georgia, serif;
@@ -605,6 +632,10 @@ Implémentés dans `src/ui/tokens.css` (tâche HUD-01 / #181), importés par `sr
   --mh-dur-scene-out: 1200ms;
   --mh-dur-scene-in: 850ms;
   --mh-ease: linear;
+  --mh-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --mh-dur-ui-in: 220ms;
+  --mh-dur-ui-out: 180ms;
+  --mh-dur-stagger: 45ms;
 
   /* Espacement (échelle de 8 px@720) */
   --mh-space-1: 8px;
