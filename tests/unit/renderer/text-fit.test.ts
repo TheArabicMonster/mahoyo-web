@@ -16,6 +16,8 @@ import {
   frameTextWidth,
   FRAME_TEXT_AREA,
   FRAME_TEXT_LINE_HEIGHT,
+  ENGINE_CONFIG_PATH,
+  ENGINE_CONFIG_SHA256,
   FRAME_TEXT_LAYOUT,
   FRAME_TEXT_LAYOUT_PROVENANCE,
   FRAME_TEXT_REM,
@@ -68,19 +70,34 @@ describe("police du cadre image dérivée du moteur (#314)", () => {
     expect(bodyPx * FRAME_TEXT_LINE_HEIGHT).toBeCloseTo(51, 6);
   });
 
-  it("la table de provenance explique la capture à ±1,5 px écran (statut hypothèse)", () => {
+  it("provenance : config = modèle, capture = oracle, contradiction documentée (#320)", () => {
+    // Sha256 du config.tjs de référence (assets locaux non commités) cité par la table.
+    expect(ENGINE_CONFIG_PATH).toContain("override/config.tjs");
+    expect(ENGINE_CONFIG_SHA256).toHaveLength(64);
+    expect(ENGINE_CONFIG_SHA256).toBe("82ea1af8b44663097027965ba4e868e3e402b487b853298a5c2df4b2e6006893");
     expect(FRAME_TEXT_LAYOUT_PROVENANCE).toHaveLength(4);
     for (const entry of FRAME_TEXT_LAYOUT_PROVENANCE) {
       expect(entry.status).toBe("hypothèse");
-      expect(entry.logical).toBeGreaterThan(0);
-      // Valeur logique × 1,25 = valeur écran, comparée à la mesure capture avec sa tolérance.
-      expect(Math.abs(entry.logical * 1.25 - entry.captureScreenPx)).toBeLessThanOrEqual(entry.toleranceScreenPx);
+      // La valeur **appliquée** (calibrée capture) explique la capture à la tolérance près.
+      expect(Math.abs(entry.appliedLogical * 1.25 - entry.captureScreenPx)).toBeLessThanOrEqual(
+        entry.toleranceScreenPx,
+      );
     }
-    const margin = FRAME_TEXT_LAYOUT_PROVENANCE.find((entry) => entry.param === "marginX")!;
-    expect(margin.logical * 1.25).toBeCloseTo(86.25, 6);
-    // 86,25 px écran vs 85,4 mesurés → 0,85 px d'écart, dans la tolérance de mesure.
-    expect(margin.captureScreenPx).toBeCloseTo(85.4, 6);
-    expect(FRAME_TEXT_LAYOUT_PROVENANCE.find((entry) => entry.param === "fontSize")!.logical).toBe(26);
+    // Valeurs réelles de MessageLayer_config (L, R, T, B — aucune inversion de lecture).
+    const byParam = Object.fromEntries(FRAME_TEXT_LAYOUT_PROVENANCE.map((entry) => [entry.param, entry]));
+    expect(byParam.marginX!.configLogical).toBe(142);
+    expect(byParam.marginY!.configLogical).toBe(69);
+    expect(byParam.fontSize!.configLogical).toBe(26);
+    expect(byParam.lineHeight!.configLogical).toBe(44); // 26 + defaultLineSpacing 18
+    // La config n'explique PAS la capture sur X, Y et l'interligne ; elle l'explique pour la police.
+    expect(byParam.marginX!.contradiction).toBe(true);
+    expect(byParam.marginY!.contradiction).toBe(true);
+    expect(byParam.lineHeight!.contradiction).toBe(true);
+    expect(byParam.fontSize!.contradiction).toBe(false);
+    // Exemple : 142 px logiques (config) → 177,5 px écran, hors tolérance des 85,4 px mesurés.
+    expect(byParam.marginX!.configLogical * 1.25).toBeGreaterThan(byParam.marginX!.captureScreenPx + byParam.marginX!.toleranceScreenPx);
+    // La valeur appliquée calibrée reste 69/46,7/26/40,8.
+    expect(FRAME_TEXT_LAYOUT).toEqual({ marginX: 69, marginY: 46.7, fontSize: 26, lineHeight: 40.8 });
   });
 
   it("le pas des glyphes vaut 1 em (26 px logiques) : indépendant de la police chargée", () => {

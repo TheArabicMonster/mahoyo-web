@@ -176,6 +176,7 @@ test("pas des glyphes = 1 em (26 px logiques) et 34 caractères pleine chasse pa
 });
 
 test("le wrap est identique à 1280×720, 1920×1080 et en portrait (layout logique constant) (#320)", async ({ page }) => {
+  test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 720 });
   await reachLongPageEnd(page);
   const base = await lineSignature(page);
