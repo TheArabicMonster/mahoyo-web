@@ -14,6 +14,8 @@ export default defineConfig({
     target: "es2022",
     outDir: "dist",
     sourcemap: true,
+    // Manifeste des bundles hachés, lu par `tools/pwa-sw.ts` pour précacher la coquille (#96).
+    manifest: true,
   },
   server: {
     port: 5173,
