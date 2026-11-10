@@ -303,8 +303,10 @@ export type TrackKeyframe = {
 };
 
 export type TrackSpec = {
-  /** Cible : `bg` pour le fond, sinon id de sprite. */
+  /** Cible : `bg` pour le fond, sinon id de sprite ou de calque de timeline. */
   target: "bg" | string;
+  /** Métadonnées de création/état final d'un calque de timeline (#317). */
+  layer?: import("./events.js").TimelineLayerState;
   prop: TrackProp;
   keyframes: readonly TrackKeyframe[];
   /** Durée totale logique (ms) = dernier keyframe. */

@@ -54,3 +54,18 @@ Modèle unique `{target, prop, keyframes, start, duration, easing}` alimenté pa
 - Preuves exigées restantes : oracle d'état (hash à chaque `text`) sur les 221 scripts, compteur de
   `scene` réduit exactement des 2 601 scènes immédiates, e2e `1-0.ks` réel (9 changements, opacité
   monotone pendant `@movefg`), save/load mi-panoramique.
+
+
+## Suite (#317) — calques de timeline sur le modèle `track`
+
+- `@playtimeline` émet désormais **une piste `track` par calque** (`target = id`, `prop =
+  "transform"`, `layer` = métadonnées de création/état final, `duration`, `accel`), au lieu de
+  l'événement `timelineLayer`. Le renderer applique la piste via `applyTimelineLayer` (transition
+  CSS position/opacité/zoom/rotation + `accel`), **sans scène ni cut**.
+- `timelineLayerClear` reste l'unique événement de nettoyage de fin de séquence.
+- Preuve oracle sur `main` courant (`ef7160e`) : **251 scripts, 49 436 steps, 23 209 événements
+  `text`, 0 hash différent, 15 746 scènes = 15 746** après conversion — aucun état logique modifié.
+- Restent (hors de ce lot) : suppression complète des types `bgMove`/`timelineLayer` (plus émis par
+  le runtime, conservés pour la compatibilité des tests/rendu), e2e `1-0.ks` réel (opacité monotone
+  `@movefg`), save/load mi-panoramique e2e, pièges `nowait`/sprite deux pages/`img.decode()`/
+  `@wact`/reduced-motion/rules interchangeables.

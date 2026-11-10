@@ -2173,8 +2173,18 @@ export class Runtime {
       if (k.afx !== undefined) layer.afx = k.afx;
       if (k.afy !== undefined) layer.afy = k.afy;
       if (k.effect) unsupportedEffects.add(k.effect);
-      const event: RenderEvent = { kind: "timelineLayer", layer, time: k.time };
-      if (k.accel) event.accel = k.accel;
+      // Piste unifiée (#317) : le calque porte ses métadonnées, la piste porte l'animation.
+      const event: RenderEvent = {
+        kind: "track",
+        track: {
+          target: k.id,
+          prop: "transform",
+          layer,
+          duration: k.time,
+          ...(k.accel ? { accel: k.accel } : {}),
+          keyframes: [{ time: 0 }, { time: k.time, left: k.x, top: k.y, opacity: k.opacity, zoomx: k.zoomx ?? 100, zoomy: k.zoomy ?? 100, rotate: k.rotate ?? 0 }],
+        },
+      };
       entries.push({ at: k.at, order: order++, events: [event] });
     }
     for (const effect of unsupportedEffects) this.onWarning(`effet de calque non pris en charge : ${effect}`);

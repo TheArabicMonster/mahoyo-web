@@ -1696,6 +1696,12 @@ export class DomStageRenderer implements StageRenderer {
       this.trackAnimations.delete(key);
     }
     const lastValues = track.keyframes[track.keyframes.length - 1];
+    if (track.layer) {
+      // Calque de timeline (#317) : le renderer applique la piste via la transition CSS dédiée
+      // (position/opacité/zoom/rotation + accel), sans scène ni cut.
+      this.applyTimelineLayer(track.layer, opts.instant ? 0 : track.duration, track.accel ?? 0);
+      return;
+    }
     if (track.target === "bg") {
       // État logique : le runtime possède déjà l'état final ; le renderer l'affiche.
       this.currentScene = {
