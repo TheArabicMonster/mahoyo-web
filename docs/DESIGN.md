@@ -512,7 +512,8 @@ Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le 
 - **Clavier** : tout écran se parcourt sans souris (flèches, Entrée, Échap), focus **visible** (contour 2 px cyan
   `#5fcfc5`, décalage 2 px) ; `Échap` ferme toujours l'écran superposé. Un **filet de sécurité global**
   (`ui-manager.css`, `:where(...):focus-visible`) couvre tout contrôle sans règle dédiée ; seul l'écran titre, sur fond
-  clair, garde son contour sombre `--mh-ink-hover` (docs §9.3).
+  clair, garde son contour sombre `--mh-ink-hover` (docs §9.3) ; les zones défilantes que Firefox rend
+  focalisables au clavier (colonnes de la config, liste Archive) reçoivent aussi ce contour.
 - **Sémantique** : `role="dialog"` + `aria-modal` pour les écrans superposés (menu système, confirmation,
   sauvegarde/chargement, historique, configuration, CG/Sound), `role="tablist"` pour les onglets de config,
   `role="list"` pour les listes (historique, archive, son), `aria-live="polite"` pour les toasts et les statuts,

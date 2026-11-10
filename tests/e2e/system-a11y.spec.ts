@@ -184,10 +184,15 @@ test.describe("Écrans système : clavier, focus visible et Échap (WEB-06)", ()
     await boot(page);
     await page.locator('[data-entry="config"]').first().click();
     const cfg = page.locator(".mh-cfg");
+    // Attendre l'écran ET son état stabilisé avant de parcourir au clavier : en Firefox, les zones
+    // défilantes de la config deviennent focalisables (focus visible vérifié) et le focus initial est
+    // posé par programme.
+    await expect(overlay(page)).toHaveAttribute("data-screen", "settings");
     await expect(cfg).toBeVisible();
     expectVisibleFocus(await tabStops(page, ".mh-cfg", 30), "config");
+    await expect(overlay(page)).toHaveAttribute("data-screen", "settings");
     await page.keyboard.press("Escape");
-    await expect(overlay(page)).toHaveAttribute("data-screen", "title");
+    await expect(overlay(page)).toHaveAttribute("data-screen", "title", { timeout: 15000 });
   });
 
   test("menu système : focus visible, focus piégé, Échap ferme", async ({ page }) => {

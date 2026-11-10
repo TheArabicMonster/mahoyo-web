@@ -70,6 +70,15 @@ describe("focus visible global (DESIGN §10)", () => {
     expect(css).toMatch(/\.mh-ui-title-entry:focus[^{]*\{[^}]*outline:\s*2px solid var\(--mh-ink-hover/);
   });
 
+  it("les zones défilantes focalisables sous Firefox ont un focus visible (config, Archive)", () => {
+    // Firefox met les conteneurs défilants dans l'ordre de tabulation : sans règle, le focus y serait
+    // invisible (échec CI Firefox de #326). On verrouille la règle pour les deux écrans concernés.
+    const config = stripComments(read("src/ui/config-screen.css"));
+    expect(config).toMatch(/\.mh-cfg-col:focus-visible[^{]*\{[^}]*outline:\s*2px solid var\(--mh-focus/);
+    const archive = stripComments(read("src/ui/archive-view.css"));
+    expect(archive).toMatch(/\.mh-ui-title-chapters:focus-visible[^{]*\{[^}]*outline:\s*2px solid var\(--mh-focus/);
+  });
+
   it("sauvegarde/chargement : décalage de focus de 2 px partout, comme le 2 px du DESIGN", () => {
     const css = stripComments(read("src/ui/save-load-screen.css"));
     const offsets = [...css.matchAll(/outline-offset:\s*(\d+)px/g)].map((m) => Number(m[1]));
