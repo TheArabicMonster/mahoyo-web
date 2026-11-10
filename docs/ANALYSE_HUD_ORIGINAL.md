@@ -362,7 +362,7 @@ Légende priorité : p0 = bloquant v1.0, p1 = important, p2 = utile, p3 = confor
 | E28 | Routes URL | n/a | aucune | adaptation absente | p3 |
 | E29 | Sauvegardes locales | fichiers | `localStorage` + vignette en data-URL | quota, pas d'export | p2 |
 | E30 | i18n de l'interface | FR (patch) + JA décoratif | libellés FR en dur dans `ui-manager.ts` | pas de dictionnaire | p2 |
-| E31 | Accessibilité de l'interface | cibles souris | `aria-modal` (confirm), onglets de config ; pas de focus visible global, pas de rôles pour les autres écrans | partiel | p2 |
+| E31 | Accessibilité de l'interface | cibles souris | focus visible global (filet `ui-manager.css` + 2 px cyan partout), `role="dialog"` + `aria-modal` sur tous les écrans superposés, `tablist`/`list`, `aria-live`, `Échap` sur chaque écran, mouvement réduit scène comprise ; audit axe-core sans violation (#211) | couvert (#211) | p2 |
 | E32 | Indicateurs auto / skip | non vus | badge texte en haut à droite | à confirmer | p2 |
 | E33 | Choix | non vu | boutons génériques (`.mh-ui-choice`) ; curseur d'origine `selectcursor` non utilisé | à confirmer | p1 |
 | E34 | Retour au titre / quitter | confirmation ornée, *Non* par défaut | `confirm()` générique, texte « La progression non sauvegardée sera perdue » | style ; *Non* par défaut | p2 |

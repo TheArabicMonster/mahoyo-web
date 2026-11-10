@@ -208,7 +208,7 @@
 }
 .mh-sl-comment:focus-visible {
   outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 /* Case « Verr. » */
@@ -337,7 +337,7 @@
 }
 .mh-sl-page:focus-visible {
   outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 /* ── Pied d'écran « Retour » ── */

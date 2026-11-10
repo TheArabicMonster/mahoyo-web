@@ -35,6 +35,8 @@ src/renderer/ + src/ui/  ── rendu navigateur
 
 - **`types.ts`** : interfaces `StageRenderer` et `AudioPlayer`, `DisplaySettings` et `AudioSettings`.
 - **`stage-renderer.ts`** : scène, sprites, fonds, transitions, effets, texte, cadre image et indicateurs.
+  Sous `prefers-reduced-motion`, la scène ne joue plus aucune animation ni fondu (indicateur de clic, glyphes animés,
+  brume, attente, boîte de texte) — WEB-06 / #211.
 - **`text-fit.ts`** : calculs purs de la police, de la zone de texte et de l'atténuation du texte lu.
 - **`text-frame.ts`** : choix du cadre de message, opacité, glyphes `linebreak_a`/`pagebreak_a` et position de l'indicateur.
 - **`audio-manager.ts`** : implémentation web de `AudioPlayer` (BGM, SE, voix, fondus, volumes et mutes par canal).
@@ -48,6 +50,9 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`ui-assets.ts`** : résolveur d'images d'interface avec repli (`createUiAssets`, `UI_ASSET_KEYS`, variables `--mh-asset-*`) ; aucune requête quand la clé manque (HUD-03, #189).
 - **`save-load-screen.ts`** / **`save-pages.ts`** : écrans de sauvegarde et de chargement (grille 2×4, 15 pages, fiches, verrou, commentaire) et leur modèle pur ; voir `docs/DESIGN.md` §9.5.
 - **`ui-manager.css`**, **`tokens.css`** : styles des écrans et tokens du design system (palette, typo, durées, états).
+  `ui-manager.css` porte le **focus visible global** (`:where(button, input, select, textarea, a[href], [tabindex])`:focus-visible`,
+  contour 2 px `--mh-focus`, décalage 2 px) : filet de sécurité pour les contrôles sans règle dédiée, chaque écran pouvant
+  surcharger la couleur (WEB-06 / #211). Les écrans superposés sont des `role="dialog"` + `aria-modal` nommés.
 - **`toast.ts`**, **`toast.css`** : composant `ToastStack` des messages éphémères (cadre sarcelle bas droite, 3 au plus, `aria-live="polite"`) ; `DomUIManager.toast()` y délègue.
 - **`confirm-dialog.ts`** / **`confirm-dialog.css`** : boîte de confirmation au design d'origine (HUD-05, #190), composant
   autonome en CSS pur. `openConfirmDialog(parent, { message, yesLabel, noLabel, defaultButton? })` renvoie

@@ -510,10 +510,17 @@ Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le 
 - **Taille** : corps de texte de jeu ≥ 24 px@720 ; mention légale ≥ 10 px réels ; libellés d'interface ≥ 16 px@720.
 - **Cibles** : 44 px minimum sur écran tactile (le jeu d'origine est conçu pour la souris, avec des cibles de 28 à 36 px@720).
 - **Clavier** : tout écran se parcourt sans souris (flèches, Entrée, Échap), focus **visible** (contour 2 px cyan
-  `#5fcfc5`, décalage 2 px) ; `Échap` ferme toujours l'écran superposé.
-- **Sémantique** : `role="dialog"` + `aria-modal` pour les confirmations, `role="tablist"` pour les onglets de config,
-  `aria-live="polite"` pour les toasts, `aria-label` sur toute icône sans texte.
-- **Mouvement** : respecter `prefers-reduced-motion` (aucun fondu hors frappe du texte).
+  `#5fcfc5`, décalage 2 px) ; `Échap` ferme toujours l'écran superposé. Un **filet de sécurité global**
+  (`ui-manager.css`, `:where(...):focus-visible`) couvre tout contrôle sans règle dédiée ; seul l'écran titre, sur fond
+  clair, garde son contour sombre `--mh-ink-hover` (docs §9.3).
+- **Sémantique** : `role="dialog"` + `aria-modal` pour les écrans superposés (menu système, confirmation,
+  sauvegarde/chargement, historique, configuration, CG/Sound), `role="tablist"` pour les onglets de config,
+  `role="list"` pour les listes (historique, archive, son), `aria-live="polite"` pour les toasts et les statuts,
+  `aria-label` sur toute icône sans texte.
+- **Mouvement** : respecter `prefers-reduced-motion` — aucun fondu hors frappe du texte, et **aucune** animation de la
+  scène (indicateur de clic et glyphes animés, brume, attente) ni fondu de la boîte de texte / du texte lu.
+- **Preuves** : `tests/e2e/system-a11y.spec.ts` (audit axe-core par écran, clavier/focus visible de chaque arrêt,
+  `Échap`, sémantique, mouvement réduit) et `tests/unit/ui/system-a11y-css.test.ts` (focus, contrastes, mouvement réduit).
 - **Langue** : `lang` posé sur l'interface (`fr`, `ja`, `en`) ; les sous-titres japonais décoratifs sont `aria-hidden`.
 - **Couleur seule** : un état ne dépend jamais de la seule couleur (survol = couleur + lueur ; sélection de grille =
   bord épais + marqueur).

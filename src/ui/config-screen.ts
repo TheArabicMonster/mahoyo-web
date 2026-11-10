@@ -101,6 +101,9 @@ export function createConfigScreen(
   // ── Cadre ──
 
   const root = h("section", "mh-cfg");
+  // Écran superposé plein cadre (#211) : dialogue modal nommé par son titre.
+  root.setAttribute("role", "dialog");
+  root.setAttribute("aria-modal", "true");
   root.setAttribute("aria-label", t("config.title"));
 
   const header = h("header", "mh-cfg-header");
