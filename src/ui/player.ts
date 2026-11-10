@@ -486,7 +486,11 @@ export class Player implements PlayerCommands {
     }
     if (this.applying) {
       // @clickskip enabled=0 : le clic ne termine plus la frappe en cours.
-      if (this.clickSkipEnabled) this.stage.hurry();
+      // #316 : ne terminer QUE la frappe, pas une transition/effet en cours (sinon cut parasite).
+      if (this.clickSkipEnabled) {
+        if (this.stage.hurryText) this.stage.hurryText();
+        else this.stage.hurry();
+      }
       return;
     }
     if (this.onAdvance) {
@@ -510,7 +514,8 @@ export class Player implements PlayerCommands {
     if (this.state === "title" || this.state === "loading" || this.overlays.length > 0) return false;
     if (this.settings.display.fastForwardScope === "read" && !this.pageRead) return false;
     if (!this.applying) return false;
-    this.stage.hurry();
+    if (this.stage.hurryText) this.stage.hurryText();
+    else this.stage.hurry();
     return true;
   }
 

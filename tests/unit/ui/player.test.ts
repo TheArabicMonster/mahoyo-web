@@ -69,6 +69,7 @@ class ScriptedRuntime implements RuntimeLike {
 
 class TestStage extends RecordingStageRenderer {
   hurries = 0;
+  hurryTexts = 0;
   restores = 0;
   applyCalls: { events: readonly RenderEvent[]; opts: RunOptions }[] = [];
   active = 0;
@@ -94,6 +95,9 @@ class TestStage extends RecordingStageRenderer {
   }
   hurry(): void {
     this.hurries++;
+  }
+  hurryText(): void {
+    this.hurryTexts++;
   }
   setClickIndicator(style?: "line" | "page" | null): void {
     this.indicators.push(style ?? null);
@@ -234,7 +238,7 @@ describe("Player", () => {
     expect(ctx.ui.toasts.at(-1)?.message).toContain("vide");
   });
 
-  it("un clic pendant l'affichage du texte appelle hurry()", async () => {
+  it("un clic pendant l'affichage du texte appelle hurryText() sans couper la transition (#316)", async () => {
     const ctx = setup();
     current = ctx.player;
     let release!: () => void;
@@ -243,7 +247,9 @@ describe("Player", () => {
     ctx.player.startScript("t.ks");
     await until(() => ctx.stage.applyCalls.length > 0);
     ctx.player.advance();
-    expect(ctx.stage.hurries).toBe(1);
+    expect(ctx.stage.hurryTexts).toBe(1);
+    // #316 : pas de hurry() global (qui couperait une transition en cours).
+    expect(ctx.stage.hurries).toBe(0);
     release();
     await until(() => ctx.player.currentState === "waiting-click");
   });
@@ -1385,11 +1391,12 @@ describe("Player — vitesses et avance rapide (#177)", () => {
     ctx.player.startScript("t.ks");
     await until(() => ctx.stage.active > 0, "frappe en cours");
 
-    const before = ctx.stage.hurries;
+    const before = ctx.stage.hurryTexts;
     expect(ctx.player.hurryText()).toBe(false);
     ctx.player.updateSettings({ display: display({ fastForwardScope: "all" }) });
     expect(ctx.player.hurryText()).toBe(true);
-    expect(ctx.stage.hurries).toBe(before + 1);
+    expect(ctx.stage.hurryTexts).toBe(before + 1);
+    expect(ctx.stage.hurries).toBe(0);
     release();
     await until(() => ctx.player.currentState === "waiting-click", "fin de page");
   });
