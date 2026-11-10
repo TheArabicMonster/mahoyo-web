@@ -1489,4 +1489,5 @@ describe("@chgfg — sélection moteur et position (#315)", () => {
       center: 200,
       vcenter: 150,
     });
+  });
 });
