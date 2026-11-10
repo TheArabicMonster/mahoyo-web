@@ -28,14 +28,21 @@ async function boot(page: Page): Promise<void> {
   await expect(page.locator(".mh-ui-new-game")).toBeVisible({ timeout: 15000 });
 }
 
-/** Avance jusqu'à la page ruby + emoji (5ᵉ page du prologue de test). */
+/**
+ * Avance jusqu'à la page ruby + emoji. On s'appuie sur le **contenu stable** (marqueur de la page
+ * ou présence de la balise `ruby`) et non sur `#textbox-indicator` : la page « texte long »
+ * (#314/#320, insérée avant) et les pages en cours de frappe peuvent le laisser masqué, ce qui
+ * faisait échouer l'attente initiale (#310 CI Chromium + Firefox).
+ */
 async function advanceToRubyEmojiPage(page: Page): Promise<void> {
-  for (let i = 0; i < 16; i++) {
-    await expect(page.locator("#textbox-indicator")).toBeVisible({ timeout: 20000 });
+  for (let i = 0; i < 30; i++) {
     if ((await text(page).innerText()).includes(PLACEHOLDER_RUBY_EMOJI_MARKER)) return;
+    if ((await page.locator(".mh-stage-text ruby").count()) > 0) return;
+    // Laisse la frappe/la transition démarrer avant de presser Entrée (hurry puis page suivante).
+    await page.waitForTimeout(120);
     await page.keyboard.press("Enter");
   }
-  throw new Error("La page de test ruby + emoji n'a pas été atteinte");
+  throw new Error("La page de test ruby + emoji n'a pas été atteinte (marqueur/ruby absents)");
 }
 
 test("le ruby s'attache à l'image [graph] et non au texte suivant (#300)", async ({ page }) => {
