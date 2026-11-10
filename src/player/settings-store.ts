@@ -75,6 +75,8 @@ export function mergeSettings(base: Readonly<GameSettings>, patch: Partial<GameS
       display.textSpeedRead = Math.max(0, displayPatch.textSpeed - 10);
     }
   }
+  // Booléen strict : une valeur persistée non booléenne retombe sur false (#99).
+  display.reduceMotion = display.reduceMotion === true;
   if (displayPatch.autoDelay !== undefined) {
     display.autoPageDelay = displayPatch.autoDelay;
     if (displayPatch.autoLineDelay === undefined) display.autoLineDelay = displayPatch.autoDelay;

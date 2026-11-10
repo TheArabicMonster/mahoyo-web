@@ -84,6 +84,12 @@ export type DisplaySettings = {
   clearTextOnPageChange: boolean;
   /** Afficher les effets spéciaux (noise, haze, tremblements). */
   specialEffects: boolean;
+  /**
+   * Réduire les animations de l'interface (#99) : fondus d'écrans/panneaux neutralisés (tokens de
+   * mouvement à 0 et attribut `data-reduce-motion` sur <html>), en plus de `prefers-reduced-motion`.
+   * La frappe du texte reste pilotée par les réglages de texte du jeu.
+   */
+  reduceMotion: boolean;
 };
 
 export type AudioSettings = {
@@ -131,6 +137,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   stopAnimations: false,
   clearTextOnPageChange: true,
   specialEffects: true,
+  reduceMotion: false,
 };
 
 /** Valeurs par défaut audio (#177). */

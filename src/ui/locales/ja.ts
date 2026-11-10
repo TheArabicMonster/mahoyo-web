@@ -278,6 +278,7 @@ export const ja: Readonly<Record<keyof typeof fr, string>> = {
   "config.effects.stopAnimations": "再生中の演出を止める",
   "config.effects.clearText": "ページ切り替え時にテキストを消す",
   "config.effects.special": "特殊効果を表示",
+  "config.effects.reduceMotion": "UIアニメーションを減らす",
 
   // ── コンフィグ：ショートカット ──
   "config.shortcuts.section": "キーボードショートカット",

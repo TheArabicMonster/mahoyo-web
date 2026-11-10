@@ -278,6 +278,7 @@ export const en: Readonly<Record<keyof typeof fr, string>> = {
   "config.effects.stopAnimations": "Stop running animations",
   "config.effects.clearText": "Clear text on page change",
   "config.effects.special": "Show special effects",
+  "config.effects.reduceMotion": "Reduce interface animations",
 
   // ── Config: Shortcuts ──
   "config.shortcuts.section": "Keyboard shortcuts",
