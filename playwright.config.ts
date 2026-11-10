@@ -14,6 +14,9 @@ process.env.MAHOYO_E2E_ASSETS = assetsDir;
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // Le spec PWA exige un build de production (service worker) : il tourne via
+  // `playwright.pwa.config.ts` (`npm run test:e2e:pwa`), pas sur le serveur de dev.
+  testIgnore: "**/pwa.spec.ts",
   globalSetup: "./tests/e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

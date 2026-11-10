@@ -134,11 +134,13 @@ sans aucun skip** ; les seules exclusions concernent Firefox :
   l'anneau de focus clavier du menu n'apparaît donc pas — écart d'accessibilité réel suivi hors de ce
   lot (fichier propriété de #231).
 
-La CI comporte **3 jobs** : `build-and-test` (`npm ci`, lint, contrôle anti-assets, `npm run build`,
+La CI comporte **4 jobs** : `build-and-test` (`npm ci`, lint, contrôle anti-assets, `npm run build`,
 tests unitaires, tests d'intégration en skip propre sur checkout nu, puis corpus de placeholders et
-lecture complète des 221 scripts, Prettier non bloquant) et la matrice `e2e (chromium)` / `e2e (firefox)`
-(`fail-fast: false`) avec placeholders. Les deux jobs e2e tournent en parallèle pour garder un temps de
-mur d'un seul navigateur, au prix de deux runners — choix documenté dans `.github/workflows/ci.yml`.
+lecture complète des 221 scripts, Prettier non bloquant), la matrice `e2e (chromium)` / `e2e (firefox)`
+(`fail-fast: false`) avec placeholders, et `pwa (offline)` (build de production + service worker,
+manifeste et relecture hors ligne vérifiés dans Chromium). Les jobs e2e tournent en parallèle pour garder
+un temps de mur d'un seul navigateur, au prix de deux runners — choix documenté dans
+`.github/workflows/ci.yml`.
 
 > Environnements restreints (sandbox macOS d'un agent, conteneurs) : Firefox imbrique son propre
 > sandbox, que certains sandboxes d'exécution refusent (`sandbox_init() failed`). Pour la
@@ -306,6 +308,36 @@ cat .pipeline-work/pipeline-report.json
 cat .pipeline-work/report.json
 npm run check:assets
 ```
+
+## Installer le jeu (PWA) et jouer hors ligne
+
+Une fois `public/assets/` généré et le site servi en **HTTPS** (ou sur `localhost`), le player est une
+**PWA installable** — le service worker n'est actif qu'en production (`vite preview`, site déployé).
+
+- **Manifeste** `public/manifest.json` : nom, `display: standalone`, orientation paysage, thème sombre
+  (`#1a1a2e` / `#0a0a0a`, voir [`docs/DESIGN.md`](docs/DESIGN.md)), icônes originales 192 et 512 (dont
+  `maskable`). Lié depuis `index.html` (manifeste, `theme-color`, icônes Apple).
+- **Service worker généré au build** (`npm run build` → `dist/sw.js`, source `tools/pwa-sw.ts`) :
+  - **pré-cache de la coquille** (HTML, JS/CSS hachés du build, manifeste, icônes) dans un cache
+    versionné `mahoyo-shell-<hash>` : l'application démarre hors ligne dès le premier chargement ;
+  - **cache runtime borné** des assets du jeu (`/assets/**` : images, audio, scripts, manifeste,
+    données) — au plus 400 entrées, les plus anciennes sont évincées ; ils ne sont **jamais**
+    pré-cachés (plusieurs Go) ;
+  - **navigation network-first** (une nouvelle version déployée est vue dès qu'on est en ligne, repli
+    sur la coquille hors ligne), assets **cache-first** ; les requêtes cross-origin (polices), `Range`
+    et `/api/` ne sont pas mises en cache.
+- **Hors ligne** : après un premier chargement (qui met les fichiers utilisés en cache), le player se
+  recharge et lit le contenu **déjà chargé** ; les pages/images jamais chargées resteront manquantes
+  jusqu'à un passage en ligne (le player tolère l'asset absent, il n'y a pas de blocage).
+- **Mise à jour** : un nouveau build change le hash de la coquille ; le nouveau service worker est
+  installé puis activé sur message `SKIP_WAITING`, et la page est **rechargée une seule fois**
+  (garde-fou de session anti-boucle). L'ancien cache `mahoyo-shell-*` est supprimé à l'activation.
+- **Installation** : bouton « Installer » dans Chrome/Edge ; Safari iOS via Partager → « Sur l'écran
+  d'accueil ». Firefox ne propose pas l'installation PWA de bureau sous Linux (limite du navigateur).
+- **Vérification automatisée** : `npm run test:e2e:pwa` (Chromium) construit avec placeholders, sert
+  `vite preview`, contrôle le manifeste, l'enregistrement du service worker, les caches et une
+  **relecture hors ligne** (`context.setOffline(true)`). Lighthouse a retiré sa catégorie PWA
+  (v12, 2024) : l'installabilité est vérifiée par ces contrôles explicites plutôt que par un score.
 
 ## Commandes et configuration
 

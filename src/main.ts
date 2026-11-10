@@ -18,6 +18,7 @@ import { createCgProgress, trackCgImages } from "./player/cg-seen.js";
 import { createLocalSettingsStore } from "./player/settings-store.js";
 import type { ProgressAccess } from "./player/save-transfer.js";
 import { downloadSaveExport, importSaveFile, pickSaveFile } from "./ui/save-transfer.js";
+import { installPwa } from "./pwa/register.js";
 
 const ASSET_BASE = "/assets";
 const MANIFEST_URL = `${ASSET_BASE}/asset-manifest.json`;
@@ -170,6 +171,9 @@ function exposeSaveTransfer(saveStore: ResilientSaveStore, progress: ProgressAcc
   };
   (window as unknown as { mahoyoSaves?: typeof api }).mahoyoSaves = api;
 }
+
+// PWA (#96) : enregistrement du service worker en production (coquille + assets hors ligne).
+installPwa();
 
 main().catch((err) => {
   console.error("[main] Erreur fatale:", err);

@@ -15,10 +15,27 @@
  *
  * Le même module est appelé par `tests/e2e/global-setup.ts` (journalisation + contrôle).
  */
-import { existsSync } from "fs";
+import { copyFileSync, existsSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { generatePlaceholderAssets } from "./placeholders.js";
+
+/** Fichiers de la coquille PWA (public/) nécessaires au build e2e hors ligne (#96). */
+const PWA_SHELL_FILES = ["manifest.json", "icon-192.png", "icon-512.png"] as const;
+const REPO_PUBLIC_DIR = join(import.meta.dirname, "../../public");
+
+/**
+ * Copie le manifeste PWA et les icônes du dépôt dans le `publicDir` de test :
+ * les placeholders générés ne les produisent pas, or le build PWA en a besoin
+ * (les vrais assets du jeu, eux, ne sont jamais requis).
+ */
+export function copyPwaShellFiles(publicDir: string): void {
+  for (const file of PWA_SHELL_FILES) {
+    const source = join(REPO_PUBLIC_DIR, file);
+    const target = join(publicDir, file);
+    if (existsSync(source) && !existsSync(target)) copyFileSync(source, target);
+  }
+}
 
 export type E2eAssetsMode = "placeholders" | "real";
 
@@ -50,6 +67,7 @@ export function prepareE2eAssets(): { publicDir: string; mode: E2eAssetsMode } {
   }
 
   generatePlaceholderAssets(publicDir);
+  copyPwaShellFiles(publicDir);
   return { publicDir, mode: "placeholders" };
 }
 
