@@ -510,6 +510,10 @@ Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le 
   reste ≥ 4,5:1 sur les fonds sombres ; sur une scène claire, l'ombre doit rester active (le réglage d'opacité est
   laissé à l'utilisateur, avec un minimum recommandé de 30 %).
 - **Taille** : corps de texte de jeu ≥ 24 px@720 ; mention légale ≥ 10 px réels ; libellés d'interface ≥ 16 px@720.
+  La **taille de texte** est réglable dans la configuration (curseur « Taille du texte », 0,5 à 2) et s'applique
+  au texte du jeu.
+- **Zoom (WCAG 1.4.4)** : le `meta viewport` n'interdit ni le zoom (pas de `user-scalable=no`) ni son plafond
+  (pas de `maximum-scale`) ; la page reste utilisable zoomée et l'audit axe `meta-viewport` est vert (#97).
 - **Cibles** : 44 px minimum sur écran tactile (le jeu d'origine est conçu pour la souris, avec des cibles de 28 à 36 px@720).
 - **Clavier** : tout écran se parcourt sans souris (flèches, Entrée, Échap), focus **visible** (contour 2 px cyan
   `#5fcfc5`, décalage 2 px) ; `Échap` ferme toujours l'écran superposé. Un **filet de sécurité global**
@@ -524,10 +528,21 @@ Pas d'élément visuel : l'URL décrit l'écran ouvert, pour le lien direct, le 
   sauvegarde/chargement, historique, configuration, CG/Sound), `role="tablist"` pour les onglets de config,
   `role="list"` pour les listes (historique, archive, son), `aria-live="polite"` pour les toasts et les statuts,
   `aria-label` sur toute icône sans texte.
+  Galerie CG (#97) : le rôle `tabpanel` est porté par la zone défilante (pas par le `<ul>` de la grille, pour que
+  les `<li>` restent valides) ; les tuiles verrouillées et les boutons de la visionneuse ont un nom accessible qui
+  **contient leur texte visible** (WCAG 2.5.3) ; l'image de la visionneuse a une alternative textuelle localisée
+  (« Image de la galerie {n} sur {total} ») et le reste de la galerie est `inert` pendant la visionneuse modale.
 - **Mouvement** : respecter `prefers-reduced-motion` — aucun fondu hors frappe du texte, et **aucune** animation de la
   scène (indicateur de clic et glyphes animés, brume, attente) ni fondu de la boîte de texte / du texte lu.
 - **Preuves** : `tests/e2e/system-a11y.spec.ts` (audit axe-core par écran, clavier/focus visible de chaque arrêt,
   `Échap`, sémantique, mouvement réduit) et `tests/unit/ui/system-a11y-css.test.ts` (focus, contrastes, mouvement réduit).
+- **Audit WCAG AA global (#97)** : `tests/e2e/a11y-aa.spec.ts` audite avec axe-core (tags WCAG 2.0/2.1/2.2 A+AA) la
+  page entière des vues atteignables — titre, Extra, Archive, les 4 onglets de config, menu système, confirmation,
+  sauvegarde, chargement, historique, jeu (prologue + choix), flowchart, galerie CG et visionneuse —, en Chromium et
+  en Firefox, et vérifie le zoom (`meta viewport`), la taille de texte réglable et le mode couleurs forcées.
+  Résultat : **0 violation** sur ces vues en mode placeholders. Écarts connus : le Sound mode n'a pas de piste dans
+  les placeholders (entrée désactivée, non auditable sans assets utilisateur) ; le contraste du texte du jeu dépend
+  des scènes réelles de l'utilisateur (l'ombre du texte reste le garde-fou, §10).
 - **Langue** : `lang` posé sur l'interface (`fr`, `ja`, `en`) ; les sous-titres japonais décoratifs sont `aria-hidden`.
 - **Couleur seule** : un état ne dépend jamais de la seule couleur (survol = couleur + lueur ; sélection de grille =
   bord épais + marqueur).
