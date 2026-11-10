@@ -581,7 +581,7 @@ describe("Runtime @macro/@endmacro", () => {
     expect(step1.stop?.kind).toBe("click");
   });
 
-  it("B1bis: @call dans @if reprend après @endif (limitation connue)", () => {
+  it("H2.1 — @call dans @if reprend juste après le @call (#80)", () => {
     const warnings: string[] = [];
     const s = parse(lex([
       `*page0|`,
@@ -600,11 +600,32 @@ describe("Runtime @macro/@endmacro", () => {
     runtime.onWarning = (msg) => warnings.push(msg);
     runtime.step();
     expect(fvars(runtime).subCalled).toBe("yes");
+    // Aplatissement (#80) : les instructions entre @call et @endif ne sont plus sautées.
+    expect(fvars(runtime).afterCallInIf).toBe("yes");
     expect(fvars(runtime).afterIf).toBe("yes");
-    // Known limitation: with nested frames, @call returns after the @endif,
-    // so instructions between @call and @endif are skipped.
-    expect(fvars(runtime).afterCallInIf).toBeUndefined();
-    expect(warnings.some((w) => w.includes("@call inside @if/macro"))).toBe(true);
+    expect(warnings.some((w) => w.includes("@call inside @if/macro"))).toBe(false);
+  });
+
+  it("H2.1 — @call dans une macro reprend juste après le @call, paramètres conservés (#80)", () => {
+    const s = parse(lex([
+      `*page0|`,
+      `@macro name=with_call`,
+      `@call target=sub`,
+      `@eval exp="%1"`,
+      `@endmacro`,
+      `@with_call 1="f.afterCallInMacro = 'yes'"`,
+      `@eval exp="f.afterMacro = 'yes'"`,
+      `@pg`,
+      `*sub|`,
+      `@eval exp="f.subCalled = 'yes'"`,
+      `@return`,
+      `@pg`,
+    ].join("\n")));
+    const runtime = new Runtime(s);
+    runtime.step();
+    expect(fvars(runtime).subCalled).toBe("yes");
+    expect(fvars(runtime).afterCallInMacro).toBe("yes");
+    expect(fvars(runtime).afterMacro).toBe("yes");
   });
 
   it("B3bis: @jump dans @if vers un label de la même page", () => {
