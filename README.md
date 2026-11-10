@@ -4,14 +4,14 @@
 
 Ce dépôt contient le **projet réel** : un player web moderne et maintenable pour lire Mahoyo dans un navigateur, en partant des fichiers du jeu original possédés par l'utilisateur.
 
-## Statut (9 novembre 2026)
+## Statut (10 novembre 2026)
 
-- **v1.0 : 101 issues fermées sur 101 (100 %, 🟢 Terminé)** — DoD v1.0 close le 2026-11-09 (#302), **prête pour le test manuel du propriétaire (CI verte)** : audit KAG **0 commande inconnue** (**125 implémentées**, **5 no-ops justifiés** dans le registre, baseline vide), lecture complète **221/221 scripts** (0 erreur, 0 maxSteps) et garde-fous zéro strict en CI (`npm run audit:guard`, `npm run check:generated`). Notes de version prêtes mais **non publiées** ([`docs/RELEASE_NOTES_V1.0.md`](docs/RELEASE_NOTES_V1.0.md)) ; **aucun tag ni release ne sera créé avant la validation du propriétaire**.
-- **v1.1** : 43 issues fermées sur 62 (**69 %**) — confort, accessibilité et finitions ; c'est l'épic suivant, **en cours**.
-- Phases actives : **E5 — UI/UX** (finitions v1.1) et **E6 — QA & optimisation**.
+- **v1.0 : 101 issues fermées sur 101 (100 %, 🟢 Terminé)** — DoD v1.0 close le 2026-11-09 (#302) : audit KAG **0 commande inconnue** (**125 implémentées**, **5 no-ops justifiés**, baseline vide), lecture complète **221/221 scripts** (0 erreur, 0 maxSteps) et garde-fous zéro strict en CI (`npm run audit:guard`, `npm run check:generated`). Notes de version **non publiées** ([`docs/RELEASE_NOTES_V1.0.md`](docs/RELEASE_NOTES_V1.0.md)) ; **aucun tag ni release** avant validation du propriétaire.
+- **v1.1 : 67 issues fermées sur 74 (91 %, 🟡 En cours)** — vague « confort, accessibilité et finitions » : 6 issues restantes (#315, #316, #254, #213, #187, #158) + #347 (validation visuelle automatisée), dont plusieurs **bloquées sur des enregistrements/captures du propriétaire**. Notes **brouillon** : [`docs/RELEASE_NOTES_V1_1.md`](docs/RELEASE_NOTES_V1_1.md) (**aucun tag ni release**).
+- Phases actives : **E5 — UI/UX** (écran de choix #213, captures #187) et **E6 — QA & optimisation** (validation visuelle #347).
 - Le player lit le corpus narratif complet, gère les choix, l'historique, les sauvegardes IndexedDB et les écrans du HUD d'origine.
-- Dernières livraisons (9 novembre) : transitions plein écran (#205), CG mode (#208), Sound mode (#209), accessibilité du flowchart (#206), intégration du flowchart au titre, au menu système et aux routes (#207), e2e Chromium + Firefox (#94, #243), corrections de fidélité des fonds, calques et effets (#249, #252, #260), lint ESLint 9 avec CI (#220), lecture complète en placeholders (#269, #273), audit KAG classé puis **zéro inconnue** (#274, #275 à #287, #302) et parcours utilisateur (#93).
-- Vérification locale : `npm run test:unit` (**2181 tests**), `npm run lint`, `npm run build` et `npm run check:assets` passent ; `npm run test:e2e` tourne en placeholders sur Chromium et Firefox (**159 tests**, 18 fichiers) ; la lecture complète se lance sur les assets locaux ou sur le corpus de placeholders, et les garde-fous KAG sont vérifiables hors assets (`npm run audit:guard`, `npm run check:generated`).
+- Dernières livraisons (vague v1.1, 10 novembre) : **WCAG AA** (0 violation axe-core), focus Firefox (#257), mobile/tactile (#98, #210), thème et animations (#99), KAG à plat (#80), pistes/transitions unifiées (#317, correctifs #315/#316 mergés), garde-fou anti-marqueurs de conflit (#342), CI 4 jobs et corrections #332/#337.
+- Vérification locale : `npm run test:unit` (**2382 tests**), `npm run lint`, `npm run build` et `npm run check:assets` passent ; `npm run test:e2e` tourne en placeholders sur Chromium et Firefox (**254 tests**, 26 fichiers) ; la CI comporte **4 jobs** (`build-and-test`, `pwa`, `e2e (chromium)`, `e2e (firefox)`), avec `check:generated`, `audit:guard` zéro strict et `oracle:state`.
 
 Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 
@@ -396,7 +396,10 @@ restent suivis en v1.1 (voir les approximations documentées dans [`docs/APPROXI
 | Sujet | Fichier |
 |---|---|
 | Progression et milestones | [`docs/PROGRESS.md`](docs/PROGRESS.md) |
-| Notes de version v1.0 | [`docs/RELEASE_NOTES_V1.0.md`](docs/RELEASE_NOTES_V1.0.md) |
+| Notes de version v1.0 (non publiées) | [`docs/RELEASE_NOTES_V1.0.md`](docs/RELEASE_NOTES_V1.0.md) |
+| Notes de version v1.1 (brouillon, non publiées) | [`docs/RELEASE_NOTES_V1_1.md`](docs/RELEASE_NOTES_V1_1.md) |
+| Recette visuelle v1.1 (propriétaire) | [`docs/TEST_VISUEL_V1_1.md`](docs/TEST_VISUEL_V1_1.md) |
+| Captures complémentaires (HUD-17) | [`docs/GUIDE_CAPTURES.md`](docs/GUIDE_CAPTURES.md) |
 | Approximations documentées (suivi v1.1, registre #295) | [`docs/APPROXIMATIONS.md`](docs/APPROXIMATIONS.md) |
 | Roadmap et épics | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
 | Architecture et contrats | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
