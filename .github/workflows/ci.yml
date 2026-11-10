@@ -29,6 +29,9 @@ jobs:
       - name: Check for committed assets
         run: npm run check:assets
 
+      - name: Check for Git conflict markers (#342)
+        run: npm run check:conflict-markers
+
       - name: Build
         run: npm run build
 
