@@ -170,6 +170,7 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`audit-commands-doc.ts`** (`npm run audit:doc`) : génère la section « commandes KAG » de [`LECTURE_COMPLETE.md`](LECTURE_COMPLETE.md) depuis le registre et la baseline vide (pas de double liste manuelle).
 - **`approximations-doc.ts`** (`npm run approximations:doc`) : génère [`APPROXIMATIONS.md`](APPROXIMATIONS.md) depuis le registre et la baseline des approximations (#296) ; `--check` est vérifié par `check:generated`.
 - **`journal-capture.ts`** (`npm run journal:capture`) / **`journal-compare.ts`** (`npm run journal:compare`) : journal d'exécution headless (`@trans`/`@bg`/`@bgact`/`@playtimeline`/calques, durées déclarée/effective, keyframes, état fore/back) et comparaison **alignée par événement** (n-ième occurrence de chaque commande) — diag #318, voir [`JOURNAL_EXECUTION.md`](JOURNAL_EXECUTION.md).
+- **`diagnose-transitions.ts`** (`npm run diag:transitions`) : diagnostic des transitions (#316) — liste par événement les `@trans` (time/rule/nowait, méthode/durée résolues) et les changements de scène immédiats (`@fbgact`/`@movefg`/`@fgact page=fore`…), et signale les fondus `nowait` interrompus par un cut ; voir [`DIAGNOSTIC_TRANSITIONS.md`](DIAGNOSTIC_TRANSITIONS.md).
 - Conversions `convert-tlg.ts` / `convert-audio.ts`, normalisation `normalize-ks.ts`, traduction `translation.ts`,
   contrôle anti-assets `check-no-assets.ts` et progression `progress.ts` ; tests unitaires dans `tests/unit/tools/`.
 
