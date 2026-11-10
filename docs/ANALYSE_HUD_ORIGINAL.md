@@ -389,23 +389,34 @@ raccourcis configurables complets, sélection de langue, reprise à un chapitre.
 
 ## 6. Points non vérifiables avec cette vidéo
 
-À confirmer par captures supplémentaires de l'utilisateur :
+> **Action du propriétaire — guide dédié : [`GUIDE_CAPTURES.md`](GUIDE_CAPTURES.md).** Il donne les
+> scénarios pas à pas, le format des fichiers (1920×1080, 60 fps, plein écran, interface FR), la checklist
+> de collecte et la livraison **hors dépôt** (aucune capture commitée). Les numéros 1 à 15 ci-dessous sont
+> les **scénarios de capture** du guide.
+>
+> **État au 2026-11-10 : aucun point n'est encore vérifié** (aucune capture reçue). Le point 1 conditionne
+> l'écran de choix **#213 (HUD-18), qui reste bloqué** ; les points 2–15 complètent HUD-17.
 
-1. **Écran de choix** : apparence des options, curseur, survol, animation, position (aucun choix rencontré).
-2. **Écran Save** (sauvegarde) : mêmes gabarit et assets présumés ; confirmation d'écrasement ; ordre des emplacements.
+Captures attendues (1–15), toutes à confirmer par le propriétaire :
+
+1. **Écran de choix** (bloque #213, écart E33) : apparence des options, curseur, survol, animation, position (aucun choix rencontré).
+2. **Écran Save** (sauvegarde, E10/E12/E36) : mêmes gabarit et assets présumés ; confirmation d'écrasement ; ordre des emplacements.
 3. **Cartes de titre de chapitre** et transitions de chapitre.
-4. **Indicateurs auto / skip** à l'écran (modes jamais activés).
-5. **Écran *Archive* déverrouillé** (grille de livres).
+4. **Indicateurs auto / skip** à l'écran (modes jamais activés ; écart E32).
+5. **Écran *Archive* déverrouillé** (grille de livres ; écart E19).
 6. **Écran de fin / crédits**.
-7. **Entrée *graphic*** : comportement réel.
-8. **Historique** : signification des deux niveaux de luminosité, comportement au clic d'une entrée, voix.
+7. **Entrée *graphic*** : comportement réel (masquage du texte, retour).
+8. **Historique** (E13) : signification des deux niveaux de luminosité, comportement au clic d'une entrée, voix.
 9. **États désactivés** des entrées du menu système (`@lockquickmenu`).
-10. **Boutons survolés** (bascules de config, *Supprimer*/*Charger*) : couleurs exactes de survol.
+10. **Boutons survolés** (bascules de config, *Supprimer*/*Charger*) : couleurs exactes de survol (tokens `DESIGN.md`).
 11. **Position verticale du texte** : règle d'ancrage (haut vs centré) selon la scène.
 12. **Vitesse de frappe réelle** (la page a été terminée par un clic ; la vidéo ne donne pas un débit fiable).
 13. **Raccourcis réels** (non pressés pendant l'enregistrement) et animation des sprites d'attente (fréquence).
 14. **Courbes** d'animation (rampes linéaires observées ; les courbes de menu à 270 ms sont à ± 1 image).
 15. **Page *Message* de la config en jeu** (comportement des 4 onglets ouverts depuis le jeu, pas depuis le titre).
+
+Le guide liste aussi les écarts concernés (§4 : E10, E15, E19, E23, E32, E33…) et ce que chaque capture
+permet de mesurer (positions, couleurs hex, durées, cadences, courbes).
 
 ## 7. Fonctionnalité « Flowchart » (propre à la version web)
 
@@ -659,14 +670,15 @@ Aucune ne nécessite d'asset commité. Les « critères » sont vérifiables par
 - Dépend de : HUD-02, HUD-08.
 
 **HUD-17 — Captures complémentaires** (E5, p1)
-- Demander à l'utilisateur les captures de §6 (choix, Save, titre de chapitre, auto/skip, fin) puis compléter
+- Guide opératoire : [`GUIDE_CAPTURES.md`](GUIDE_CAPTURES.md) — 15 scénarios, format, checklist, livraison hors dépôt.
+- Demander à l'utilisateur les captures de §6 (choix en priorité pour #213, Save, titre de chapitre, auto/skip, fin) puis compléter
   `ANALYSE_HUD_ORIGINAL.md` et `DESIGN.md`.
 - Critères : §6 vidé ou reclassé ; tokens ajoutés.
 - Fichiers : `docs/ANALYSE_HUD_ORIGINAL.md`, `docs/DESIGN.md`.
 - Dépend de : —.
 
 **HUD-18 — Écran de choix fidèle** (E5, p1)
-- À spécifier après HUD-17 ; utiliser `selectcursor` si présent.
+- À spécifier après HUD-17 (capture n° 1 de [`GUIDE_CAPTURES.md`](GUIDE_CAPTURES.md), **bloquant**) ; utiliser `selectcursor` si présent.
 - Dépend de : HUD-17, HUD-01.
 
 ### 8.5 Flowchart

@@ -19,6 +19,7 @@ import { createCgProgress, trackCgImages } from "./player/cg-seen.js";
 import { createLocalSettingsStore } from "./player/settings-store.js";
 import type { ProgressAccess } from "./player/save-transfer.js";
 import { downloadSaveExport, importSaveFile, pickSaveFile } from "./ui/save-transfer.js";
+import { installFocusRingFallback } from "./ui/focus-modality.js";
 import { installPwa } from "./pwa/register.js";
 
 const ASSET_BASE = "/assets";
@@ -83,6 +84,9 @@ async function loadChain(resolver: AssetResolver): Promise<StoryChain | null> {
 }
 
 async function main() {
+  // Focus visible des focus programmatiques (#257) : suivi de modalité clavier/pointeur installé
+  // avant tout écran, pour les navigateurs (Firefox) qui ne propagent pas `:focus-visible`.
+  installFocusRingFallback();
   const [manifest, imageDimensions] = await Promise.all([loadManifest(), loadImageDimensions()]);
   const settingsStore = createLocalSettingsStore();
   // Suivi des CG vues (HUD-15, #208) : progression persistée, enveloppe le résolveur pour marquer

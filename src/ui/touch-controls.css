@@ -37,6 +37,11 @@ body,
   --touch-target: calc(var(--mh-touch-target-px, 48) * 1px / var(--mh-ui-scale, 1));
   --touch-gap: calc(8px / var(--mh-ui-scale, 1));
   --touch-margin: calc(12px / var(--mh-ui-scale, 1));
+  /* Encoches / barre gestuelle (#98, #210) : marges de sécurité en px réels, converties en px logiques. */
+  --touch-safe-top: calc(env(safe-area-inset-top, 0px) / var(--mh-ui-scale, 1));
+  --touch-safe-right: calc(env(safe-area-inset-right, 0px) / var(--mh-ui-scale, 1));
+  --touch-safe-bottom: calc(env(safe-area-inset-bottom, 0px) / var(--mh-ui-scale, 1));
+  --touch-safe-left: calc(env(safe-area-inset-left, 0px) / var(--mh-ui-scale, 1));
   --touch-font: calc(14px / var(--mh-ui-scale, 1));
   --touch-line: calc(1px / var(--mh-ui-scale, 1));
   --touch-ink: var(--mh-text-menu, #a9c8cc);
@@ -93,8 +98,8 @@ body,
 /* ── Bouton de menu persistant : coin haut-droit, discret au repos ── */
 .mh-touch-menu {
   position: absolute;
-  top: var(--touch-margin);
-  right: var(--touch-margin);
+  top: calc(var(--touch-margin) + var(--touch-safe-top));
+  right: calc(var(--touch-margin) + var(--touch-safe-right));
   width: var(--touch-target);
   height: var(--touch-target);
   display: flex;
@@ -121,9 +126,9 @@ body,
 /* ── Barre d'actions rapides : bas de la scène, centrée ── */
 .mh-touch-bar {
   position: absolute;
-  left: var(--touch-margin);
-  right: var(--touch-margin);
-  bottom: var(--touch-margin);
+  left: calc(var(--touch-margin) + var(--touch-safe-left));
+  right: calc(var(--touch-margin) + var(--touch-safe-right));
+  bottom: calc(var(--touch-margin) + var(--touch-safe-bottom));
   display: flex;
   flex-wrap: wrap;
   justify-content: center;

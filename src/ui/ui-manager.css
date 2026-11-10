@@ -47,5 +47,16 @@
 :where(button, input, select, textarea, a[href], [tabindex]):focus-visible {
   outline: 2px solid var(--mh-focus, #5fcfc5);
   outline-offset: 2px;
->>>>>>> 33cff77 (feat(a11y): accessibilité des écrans système (WEB-06))
-}}
+}
+
+/*
+ * Repli `:focus-visible` des focus programmatiques (#257). Firefox ne propage pas la modalité clavier
+ * à un focus posé par programme (ex. `Échap` ouvre le menu système puis focalise « Sauvegarder ») :
+ * `focus-modality.ts` pose `data-focus-ring` uniquement en modalité clavier, jamais au pointeur.
+ * L'anneau suit docs/DESIGN.md §10. `:where()` limite la spécificité pour laisser chaque écran
+ * surcharger la couleur (l'écran titre garde son contour sombre sur fond clair, docs §9.3).
+ */
+:where(button, input, select, textarea, a[href], [tabindex], [role="button"])[data-focus-ring="true"]:focus {
+  outline: 2px solid var(--mh-focus, #5fcfc5);
+  outline-offset: 2px;
+}

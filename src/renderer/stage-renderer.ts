@@ -570,8 +570,11 @@ export class DomStageRenderer implements StageRenderer {
 
   private layoutPortrait(): void {
     if (!this.root || !this.container || !this.dockEl || !this.textboxEl || !this.waitEl) return;
-    // 1 px CSS = 1 px logique : la scène 1024×576 est réduite à la largeur réelle.
-    const width = this.root.clientWidth || window.innerWidth || 1024;
+    // 1 px CSS = 1 px logique : la scène 1024×576 est réduite à la largeur réelle. On lit
+    // `window.innerWidth` en priorité : au retour paysage→portrait, le listener du renderer peut
+    // passer avant la mise à jour de la taille inline du #viewport faite par le player, et
+    // `root.clientWidth` vaudrait encore 1280 (scène trop large, #98).
+    const width = window.innerWidth || this.root.clientWidth || STAGE_WIDTH;
     const sceneScale = width / STAGE_WIDTH;
     this.root.dataset.layout = "portrait";
     this.sceneScale = sceneScale;
@@ -982,7 +985,8 @@ export class DomStageRenderer implements StageRenderer {
       [data-layout="portrait"] .mh-stage-text {
         position: absolute;
         inset: 0;
-        padding: 1.5rem 1.6rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+        /* Réserve la barre d'actions tactile (#203) en bas du dock, + encoche (#98). */
+        padding: 1.5rem 1.6rem calc(5rem + env(safe-area-inset-bottom, 0px));
         font-size: 1.7rem;
         line-height: 1.6;
         letter-spacing: 0;
@@ -1315,16 +1319,8 @@ export class DomStageRenderer implements StageRenderer {
         this.renderEffect();
         break;
       }
-      case "bgMove": {
-        this.moveBackground(event.left, event.top, opts.instant ? 0 : event.time, event);
-        break;
-      }
       case "track": {
         this.applyTrack(event.track, opts);
-        break;
-      }
-      case "timelineLayer": {
-        this.applyTimelineLayer(event.layer, opts.instant ? 0 : event.time, event.accel ?? 0);
         break;
       }
       case "timelineLayerClear": {
@@ -1684,6 +1680,13 @@ export class DomStageRenderer implements StageRenderer {
    * piste, `commitStyles()` fige l'état final.
    */
   private applyTrack(track: import("@/kag/events.js").TrackSpec, opts: RunOptions): void {
+    // Accessibilité : `prefers-reduced-motion` = état final immédiat, via le même chemin (pas de
+    // rendu parallèle) ; l'orchestrateur de pistes applique la durée 0.
+    const reducedMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const instant = opts.instant || reducedMotion;
     const key = `${track.target}:${track.prop}`;
     const previous = this.trackAnimations.get(key);
     if (previous) {
@@ -1696,6 +1699,23 @@ export class DomStageRenderer implements StageRenderer {
       this.trackAnimations.delete(key);
     }
     const lastValues = track.keyframes[track.keyframes.length - 1];
+    if (track.layer) {
+      // Calque de timeline (#317) : le renderer applique la piste via la transition CSS dédiée
+      // (position/opacité/zoom/rotation + accel), sans scène ni cut.
+      this.applyTimelineLayer(track.layer, instant ? 0 : track.duration, track.accel ?? 0);
+      return;
+    }
+    // Un panoramique simple (2 keyframes) reste rendu par la transition CSS historique, qui gère
+    // aussi `@bindbg` et les fondus interrompus ; les pistes multi-keyframes passent par WAAPI.
+    if (track.target === "bg" && track.keyframes.length <= 2) {
+      this.moveBackground(lastValues?.left ?? 0, lastValues?.top ?? 0, instant ? 0 : track.duration, {
+        accel: track.accel,
+        zoomx: lastValues?.zoomx,
+        zoomy: lastValues?.zoomy,
+        rotate: lastValues?.rotate,
+      });
+      return;
+    }
     if (track.target === "bg") {
       // État logique : le runtime possède déjà l'état final ; le renderer l'affiche.
       this.currentScene = {
@@ -1707,7 +1727,7 @@ export class DomStageRenderer implements StageRenderer {
         ...(lastValues?.rotate === undefined ? {} : { bgRotate: lastValues.rotate }),
       };
       const el = this.bgEl;
-      if (!el || opts.instant || track.duration <= 0 || typeof el.animate !== "function") {
+      if (!el || instant || track.duration <= 0 || typeof el.animate !== "function") {
         this.renderScene(true);
         return;
       }
@@ -1740,7 +1760,7 @@ export class DomStageRenderer implements StageRenderer {
     if (!sprite) return;
     if (track.prop === "opacity") {
       const target = lastValues?.opacity ?? 1;
-      if (opts.instant || track.duration <= 0) {
+      if (instant || track.duration <= 0) {
         sprite.style.opacity = String(target);
         return;
       }

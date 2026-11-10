@@ -64,10 +64,12 @@ describe("fonctions pures", () => {
     expect(nextTouchSeen(false, "pen")).toBe(false);
   });
 
-  it("actionForGesture : appui long = menu, balayage haut = historique, le reste ne fait rien", () => {
+  it("actionForGesture : appui long = menu, balayage haut = historique, balayage droite = retour arrière", () => {
     expect(actionForGesture("long-press")).toBe("menu");
     expect(actionForGesture("swipe-up")).toBe("backlog");
-    for (const g of ["tap", "swipe-down", "swipe-left", "swipe-right"] as const) {
+    // #98 : geste « back » des navigateurs mobiles.
+    expect(actionForGesture("swipe-right")).toBe("rollback");
+    for (const g of ["tap", "swipe-down", "swipe-left"] as const) {
       expect(actionForGesture(g)).toBeNull();
     }
   });

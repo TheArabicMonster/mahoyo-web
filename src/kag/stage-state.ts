@@ -59,13 +59,16 @@ function applyEvent(state: StageState, event: RenderEvent): void {
       state.fore = { ...event.scene };
       break;
     }
-    case "bgMove": {
-      state.fore = { ...state.fore, bgLeft: event.left, bgTop: event.top };
+    case "track": {
+      if (event.track.target === "bg") {
+        const last = event.track.keyframes[event.track.keyframes.length - 1];
+        if (last?.left !== undefined || last?.top !== undefined) {
+          state.fore = { ...state.fore, ...(last.left === undefined ? {} : { bgLeft: last.left }), ...(last.top === undefined ? {} : { bgTop: last.top }) };
+        }
+      }
       break;
     }
-    case "timelineLayer":
     case "timelineLayerClear":
-      // Calques transitoires d'une timeline : hors de l'état sauvegardé.
       break;
     case "animate": {
       state.animations.set(event.target, event.def);
