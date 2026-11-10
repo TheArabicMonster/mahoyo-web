@@ -214,16 +214,19 @@ describe("Runtime — @playtimeline", () => {
       expect(scenes[2]!.ev.scene).toMatchObject({ bgLeft: -48, bgTop: -300 });
     });
 
-    it("émet un bgMove par panoramique, à son instant, après le fond qu'il déplace", () => {
+    it("émet une piste `track` par panoramique, à son instant, après le fond qu'il déplace", () => {
       const stop = stop5();
-      const moves = stop.schedule.flatMap((e) => e.events.filter((ev) => ev.kind === "bgMove").map((ev) => ({ at: e.at, ev })));
-      expect(moves).toEqual([
-        { at: 1000, ev: { kind: "bgMove", left: -167, top: -48, time: 5000 } },
-        { at: 6000, ev: { kind: "bgMove", left: -48, top: -100, time: 2000 } },
-        { at: 8000, ev: { kind: "bgMove", left: -48, top: -90, time: 0 } },
-      ]);
+      const tracks = stop.schedule.flatMap((e) =>
+        e.events
+          .filter((ev): ev is Extract<RenderEvent, { kind: "track" }> => ev.kind === "track")
+          .map((ev) => ({ at: e.at, duration: ev.track.duration, last: ev.track.keyframes[ev.track.keyframes.length - 1] })),
+      );
+      expect(tracks).toHaveLength(3);
+      expect(tracks[0]).toMatchObject({ at: 1000, duration: 5000, last: { left: -167, top: -48 } });
+      expect(tracks[1]).toMatchObject({ at: 6000, duration: 2000, last: { left: -48, top: -100 } });
+      expect(tracks[2]).toMatchObject({ at: 8000, duration: 0, last: { left: -48, top: -90 } });
       const at6000 = stop.schedule.filter((e) => e.at === 6000).flatMap((e) => e.events.map((ev) => ev.kind));
-      expect(at6000).toEqual(["scene", "bgMove"]);
+      expect(at6000).toEqual(["scene", "track"]);
     });
 
     it("l'état final reçoit la position atteinte par le dernier panoramique", () => {
@@ -259,28 +262,46 @@ describe("Runtime — @playtimeline", () => {
   describe("accélération, zoom, rotation, ancrage et effet (#125, phase 2)", () => {
     const events = () => timelineStop(run("@playtimeline scene=7\n@pg\n").steps).schedule.map((e) => ({ at: e.at, events: e.events }));
 
-    it("bgMove porte l'accélération, le zoom et la rotation des données", () => {
-      const move = events().flatMap((e) => e.events).find((ev) => ev.kind === "bgMove" && ev.time > 0);
-      expect(move).toEqual({ kind: "bgMove", left: -381, top: -613, time: 2000, accel: 3, zoomx: 60, zoomy: 60, rotate: 315 });
+    it("la piste `track` porte l'accélération, le zoom et la rotation des données", () => {
+      const move = events()
+        .flatMap((e) => e.events)
+        .find((ev): ev is Extract<RenderEvent, { kind: "track" }> => ev.kind === "track" && ev.track.duration > 0);
+      expect(move).toBeDefined();
+      expect(move!.track).toMatchObject({ target: "bg", prop: "transform", duration: 2000, accel: 3 });
+      expect(move!.track.keyframes[move!.track.keyframes.length - 1]).toMatchObject({ left: -381, top: -613, zoomx: 60, zoomy: 60, rotate: 315 });
     });
 
-    it("quand le fond a une transformation, chaque plan la (re)pose : valeurs par défaut pour un plan sans zoom", () => {
-      const poses = events().flatMap((e) => e.events.filter((ev) => ev.kind === "bgMove" && ev.time === 0).map((ev) => ({ at: e.at, ev })));
+    it("quand le fond a une transformation, chaque plan la (re)pose via une piste instantanée", () => {
+      const poses = events().flatMap((e) =>
+        e.events
+          .filter((ev): ev is Extract<RenderEvent, { kind: "track" }> => ev.kind === "track" && ev.track.duration === 0)
+          .map((ev) => ({ at: e.at, kf: ev.track.keyframes[0] })),
+      );
       expect(poses).toEqual([
-        { at: 0, ev: { kind: "bgMove", left: -384, top: -1168, time: 0, zoomx: 800, zoomy: 800, rotate: 0 } },
-        { at: 4000, ev: { kind: "bgMove", left: -48, top: -48, time: 0, zoomx: 100, zoomy: 100, rotate: 0 } },
+        { at: 0, kf: { time: 0, left: -384, top: -1168, zoomx: 800, zoomy: 800, rotate: 0 } },
+        { at: 4000, kf: { time: 0, left: -48, top: -48, zoomx: 100, zoomy: 100, rotate: 0 } },
       ]);
     });
 
     it("un plan de même image et même position mais de zoom différent n'est pas ignoré ; un doublon exact l'est", () => {
       const stop = timelineStop(run("@playtimeline scene=8\n@pg\n").steps);
-      const poses = stop.schedule.flatMap((e) => e.events.filter((ev) => ev.kind === "bgMove").map((ev) => ({ at: e.at, zoomx: (ev as { zoomx?: number }).zoomx })));
+      const poses = stop.schedule.flatMap((e) =>
+        e.events
+          .filter((ev): ev is Extract<RenderEvent, { kind: "track" }> => ev.kind === "track")
+          .map((ev) => ({ at: e.at, zoomx: ev.track.keyframes[0]?.zoomx })),
+      );
       expect(poses).toEqual([{ at: 0, zoomx: 100 }, { at: 1000, zoomx: 200 }]);
     });
 
-    it("sans transformation dans les données, aucun bgMove supplémentaire n'est émis", () => {
+    it("sans transformation dans les données, aucune piste instantanée supplémentaire n'est émise", () => {
       const stop = timelineStop(run("@playtimeline scene=5\n@pg\n").steps);
-      expect(stop.schedule.flatMap((e) => e.events).filter((ev) => ev.kind === "bgMove" && ev.time === 0 && ev.zoomx !== undefined)).toEqual([]);
+      const instant = stop.schedule
+        .flatMap((e) => e.events)
+        .filter((ev): ev is Extract<RenderEvent, { kind: "track" }> => ev.kind === "track" && ev.track.duration === 0);
+      // Seul le panoramique final `time=0` existe ; aucune piste de « pose » instantanée
+      // supplémentaire (scene 5 n'a pas de transformation de fond).
+      expect(instant).toHaveLength(1);
+      expect(instant[0]!.track).toMatchObject({ target: "bg", prop: "transform", duration: 0 });
     });
 
     it("le calque reçoit zoom, rotation, ancrage et accélération ; l'effet non pris en charge est signalé une fois", () => {

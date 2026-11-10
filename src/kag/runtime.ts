@@ -2070,7 +2070,25 @@ export class Runtime {
       });
       const events = res.events;
       if (bgTransformed && bg.left !== undefined && bg.top !== undefined) {
-        events.push({ kind: "bgMove", left: bg.left, top: bg.top, time: 0, zoomx: bg.zoomx ?? 100, zoomy: bg.zoomy ?? 100, rotate: bg.rotate ?? 0 });
+        // Piste unifiée (#317) : même modèle que @bgact, durée 0 = état final immédiat.
+        events.push({
+          kind: "track",
+          track: {
+            target: "bg",
+            prop: "transform",
+            duration: 0,
+            keyframes: [
+              {
+                time: 0,
+                left: bg.left,
+                top: bg.top,
+                zoomx: bg.zoomx ?? 100,
+                zoomy: bg.zoomy ?? 100,
+                rotate: bg.rotate ?? 0,
+              },
+            ],
+          },
+        });
       }
       entries.push({ at: bg.at, order: order++, events });
     }
@@ -2079,11 +2097,33 @@ export class Runtime {
     // la position atteinte par le dernier panoramique du dernier fond.
     const lastBgAt = previous?.at ?? 0;
     for (const m of scene.moves ?? []) {
-      const move: RenderEvent = { kind: "bgMove", left: m.left, top: m.top, time: m.time };
-      if (m.accel) move.accel = m.accel;
-      if (m.zoomx !== undefined) move.zoomx = m.zoomx;
-      if (m.zoomy !== undefined) move.zoomy = m.zoomy;
-      if (m.rotate !== undefined) move.rotate = m.rotate;
+      // Piste unifiée (#317) : un panoramique de timeline est une piste `bg` multi-keyframes,
+      // exactement comme `@bgact` — plus de `bgMove` ad hoc côté renderer.
+      const fromLeft = this.state.fore.bgLeft ?? m.left;
+      const fromTop = this.state.fore.bgTop ?? m.top;
+      const fromZoomX = this.state.fore.bgZoomX ?? 100;
+      const fromZoomY = this.state.fore.bgZoomY ?? 100;
+      const fromRotate = this.state.fore.bgRotate ?? 0;
+      const move: RenderEvent = {
+        kind: "track",
+        track: {
+          target: "bg",
+          prop: "transform",
+          duration: m.time,
+          ...(m.accel ? { accel: m.accel } : {}),
+          keyframes: [
+            { time: 0, left: fromLeft, top: fromTop, zoomx: fromZoomX, zoomy: fromZoomY, rotate: fromRotate },
+            {
+              time: m.time,
+              left: m.left,
+              top: m.top,
+              zoomx: m.zoomx ?? fromZoomX,
+              zoomy: m.zoomy ?? fromZoomY,
+              rotate: m.rotate ?? fromRotate,
+            },
+          ],
+        },
+      };
       entries.push({ at: m.at, order: order++, events: [move] });
       if (previous && previous.left !== undefined && m.at >= lastBgAt) {
         this.state.fore.bgLeft = m.left;
