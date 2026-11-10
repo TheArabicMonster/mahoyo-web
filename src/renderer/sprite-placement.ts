@@ -20,6 +20,21 @@
 
 export type ImageSize = { width: number; height: number };
 export type StageSize = { width: number; height: number };
+
+/**
+ * Marge de la couche de base KAG (#315) : `CharacterLayer` utilise 32 comme taille de calque par
+ * défaut (store/restore, `data/override/characterlayer.override.tjs`). La zone d'ancrage effective
+ * d'un sprite ne dépasse pas `stage.height + 32` (mesuré sur le plan rapproché : 608 px logiques).
+ */
+export const KAG_LAYER_DEFAULT_SIZE = 32;
+
+/** Taille de la « view area » utilisée par `center2left/center2top` pour une image de sprite. */
+export function spriteAnchorSize(imageSize: ImageSize, stage: StageSize): { width: number; height: number } {
+  return {
+    width: Math.min(imageSize.width, stage.width),
+    height: Math.min(imageSize.height, stage.height + KAG_LAYER_DEFAULT_SIZE),
+  };
+}
 export type Rect = { x: number; y: number; width: number; height: number };
 
 /** Paramètres de placement issus du script (ou d'une sauvegarde). */
@@ -105,8 +120,15 @@ export function resolvePlacement(
   const crop = params.crop ?? null;
   const width = crop ? crop.width : imageSize.width;
   const height = crop ? crop.height : imageSize.height;
-  const x = center - width / 2;
-  const y = vcenter - height / 2;
+  // Ancrage moteur : la couche ne peut pas dépasser la fenêtre (repère du stage). Pour une image
+  // plus grande que l'écran (plan rapproché 304×672 > 576), `center2top` utilise la hauteur de la
+  // **view area** (stage), pas la hauteur native de l'image : sans ce plafond le sprite est ancré
+  // ~48 px du stage trop haut (#315).
+  const anchor = spriteAnchorSize(imageSize, stage);
+  const anchorWidth = crop ? crop.width : anchor.width;
+  const anchorHeight = crop ? crop.height : anchor.height;
+  const x = center - anchorWidth / 2;
+  const y = vcenter - anchorHeight / 2;
 
   const zx = scale(params.zoomx);
   const zy = scale(params.zoomy);
