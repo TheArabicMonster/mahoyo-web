@@ -120,7 +120,13 @@ Aucune police du jeu n'est distribuée. Piles proposées (libres ou système) :
 | Libellés de config et boutons | ≈ 28 px | ≈ 19 px | `--mh-control-size: 1.2rem` |
 | Mention de droits | 14 px | ≈ 9 px | `--mh-legal-size: 0.6rem` (jamais sous 10 px réels, voir §10) |
 
-> **Texte de jeu : mise en œuvre (#182).** Le player dessine la scène en 1024×576 puis l'agrandit de 1,25 vers 1280×720. Le texte de jeu est donc réglé dans ce repère : `FRAME_TEXT_REM = 1.7` et `FRAME_TEXT_LINE_HEIGHT = 1.5` (`src/renderer/text-fit.ts`), soit 1,7 × 16 × 1,25 = 34 px de corps et 51 px d'interligne à l'écran, comme l'original. `getComputedStyle` renvoie 27,2 px / 40,8 px (avant agrandissement) : la conformité se mesure sur le rendu (`getBoundingClientRect` du stage ÷ largeur du stage), pas sur la valeur calculée seule.
+> **Texte de jeu : mise en œuvre (#182, revue #314).** Le player dessine la scène en 1024×576 puis l'agrandit de 1,25 vers 1280×720. Les métriques sont désormais **dérivées du moteur** (`data/override/config.tjs`, `MessageLayer_config`) et non de constantes de mise en page : marges `marginL = marginR = 142` et `marginT = marginB = 69` sur 1024×576 ; police `defaultFontSize = 26` px du repère ; interligne `defaultLineSpacing = 18` → pas de ligne = 44 px. Soit à l'écran : corps 26 × 1,25 = **32,5 px**, interligne 44 × 1,25 = **55 px**.
+>
+> **Plus d'ajustement automatique de police (#314)** : `fitTextBox` (échelle 1 → 0,7) a été supprimé ; la page entière est mise en page une seule fois (spans par unité, `visibility` pour la révélation), la police reste constante et le texte excédentaire est découpé comme la couche de message du moteur (la pagination est scriptée via `[p]`/`@pg` ; mesure exhaustive des débordements du corpus déléguée à #319, fallback découpe consigné au registre #296 `text-overflow-clip`). L'accessibilité expose le texte complet une fois (`aria-live="polite"`, couche visuelle `aria-hidden`), et la typographie FR applique des espaces fines insécables avant `? ! : ;` et dans `« »`.
+>
+> La famille de police exacte du jeu d'origine (Mincho propriétaire) n'étant pas redistribuable, la pile Mincho/serif du système a des **métriques de glyphe** légèrement différentes à taille égale : écart suivi au registre #296 (`text-font-metrics`).
+>
+> `getComputedStyle` renvoie 26 px / 44 px (avant agrandissement) : la conformité se mesure sur le rendu (`getBoundingClientRect` du stage ÷ largeur du stage), pas sur la valeur calculée seule.
 
 ## 4. Espacement et grille
 
