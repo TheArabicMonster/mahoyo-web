@@ -72,6 +72,7 @@ npm run preview
 | `npm run corpus:full-read` | génère un corpus de placeholders pour la lecture complète (CI) |
 | `npm run test:e2e` | Playwright, player dans un vrai navigateur (voir ci-dessous) |
 | `npm run lint` | ESLint 9 (flat config) sur `src/`, `tools/`, `tests/` et les configs (voir [`docs/LINT.md`](docs/LINT.md)) |
+| `npm run validate:visual` | validation visuelle locale des sprites/transitions sur assets réels (voir [`docs/VALIDATION_VISUELLE.md`](docs/VALIDATION_VISUELLE.md)) |
 | `npm run perf` | budgets de performance chiffrés : bundle, premier rendu, fluidité, mémoire (voir [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)) |
 | `npm run text:overflow` | mesure du débordement du texte du corpus et de la taille nominale (voir [`docs/TEXTE_DEBORDEMENT.md`](docs/TEXTE_DEBORDEMENT.md)) |
 
@@ -414,6 +415,7 @@ restent suivis en v1.1 (voir les approximations documentées dans [`docs/APPROXI
 | Lecture complète du corpus | [`docs/LECTURE_COMPLETE.md`](docs/LECTURE_COMPLETE.md) |
 | Budgets et mesures de performance | [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) |
 | Débordement du texte et taille nominale | [`docs/TEXTE_DEBORDEMENT.md`](docs/TEXTE_DEBORDEMENT.md) |
+| Validation visuelle (sprites, transitions) | [`docs/VALIDATION_VISUELLE.md`](docs/VALIDATION_VISUELLE.md) |
 | Traduction française | [`docs/TRADUCTION.md`](docs/TRADUCTION.md) |
 | Layout DOM et z-index | [`docs/layout.md`](docs/layout.md) |
 | Définition of Done | [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md) |
