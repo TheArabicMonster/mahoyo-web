@@ -289,6 +289,21 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
 - Références, marges, procédure en cas de dépassement et limites : [`PERFORMANCE.md`](PERFORMANCE.md).
 - CI : mesure statique **non bloquante** des budgets de bundle après le build
   (`--no-build --static-only --warn-only`) ; la mesure navigateur complète reste locale.
+### Débordement du texte (#319)
+
+- `tools/text-overflow.ts` (`npm run text:overflow`) : rejoue chaque script du corpus avec le vrai
+  `Runtime`, mesure dans Chromium (et Firefox en option) la hauteur/largeur rendues de chaque page
+  vs la zone de texte du cadre image, avec les polices du port, et produit un rapport JSON +
+  Markdown (`reports/text-overflow.*`, ignorés par git) sans aucun texte du jeu.
+- `tools/text-overflow-lib.ts` : helpers purs (extraction des pages, conversions de repères
+  stage/écran, verdict de débordement, agrégats, rendu Markdown), testés dans
+  `tests/unit/tools/text-overflow-lib.test.ts`.
+- Deux configurations mesurées : actuelle et proposée (marge gauche 6,67 %, police nominale
+  ~1,43 rem) ; la formule et les mesures de référence sont dans
+  [`TEXTE_DEBORDEMENT.md`](TEXTE_DEBORDEMENT.md). L'outil **ne modifie pas** le runtime : le
+  correctif est traité dans #314.
+- CI : rapport placeholders **non bloquant** dans le job `e2e (chromium)` ; le vrai corpus se mesure
+  en local avec `MAHOYO_ASSETS_DIR`.
 
 ## Principes
 
