@@ -164,3 +164,9 @@ body,
     transition: none;
   }
 }
+
+/* ── Portrait (#210, WEB-02) : barre d'actions sur deux lignes, cibles ≥ 44 px ── */
+@media (orientation: portrait) {
+  .mh-touch-bar { flex-wrap: wrap; gap: 0.35rem; }
+  .mh-touch-btn { min-width: 44px; min-height: 44px; }
+}

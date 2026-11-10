@@ -382,3 +382,68 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* ── Portrait (#210, WEB-02) : 1 colonne × 4 lignes par page (30 pages), cibles ≥ 44 px ── */
+@media (orientation: portrait) {
+  .mh-sl {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: calc(0.5rem + env(safe-area-inset-top, 0px)) 4% calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    overflow: hidden;
+  }
+  .mh-sl-header {
+    position: static;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex: none;
+  }
+  .mh-sl-title { font-size: 1.6rem; }
+  .mh-sl-transfer {
+    position: static;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    flex: none;
+  }
+  .mh-sl-transfer .mh-ui-button { min-height: 44px; }
+  .mh-sl-grid {
+    position: static;
+    flex: 1;
+    min-height: 0;
+    width: auto;
+    height: auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: minmax(64px, 1fr);
+    row-gap: 0.5rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 0.25rem;
+  }
+  .mh-sl-card {
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    grid-template-rows: auto;
+    row-gap: 0.4rem;
+    min-height: 64px;
+  }
+  .mh-sl-card .mh-sl-thumb { height: 100%; min-height: 44px; }
+  .mh-sl-actions .mh-ui-button,
+  .mh-sl-actions button { min-height: 44px; }
+  .mh-sl-pager {
+    position: static;
+    flex: none;
+    max-width: none;
+    margin: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mh-sl-page { min-width: 44px; min-height: 44px; }
+  .mh-sl-back { position: static; align-self: center; min-height: 44px; min-width: 44px; }
+}

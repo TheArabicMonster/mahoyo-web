@@ -145,3 +145,17 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* ── Portrait (#210, WEB-02) : boîte pleine largeur, boutons ≥ 44 px ── */
+@media (orientation: portrait) {
+  .mh-ui-confirm-box {
+    width: 100%;
+    max-width: none;
+    margin: 0 1rem;
+    min-height: 0;
+    padding: 20px 18px;
+  }
+  .mh-ui-confirm-message { font-size: 1rem; }
+  .mh-ui-confirm-row { flex-direction: column; gap: 0.5rem; }
+  .mh-ui-confirm-row .mh-ui-button { min-height: 44px; width: 100%; }
+}

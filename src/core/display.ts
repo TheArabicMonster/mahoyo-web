@@ -55,3 +55,46 @@ export function computeViewportScale(
 export function applyViewportScale(element: HTMLElement, scale: number): void {
   element.style.transform = `scale(${scale})`;
 }
+
+/**
+ * Disposition du viewport (#210) : paysage = repère logique 1280×720 mis à l'échelle ;
+ * portrait = **aucune mise à l'échelle** (1 px logique = 1 px CSS réel), le viewport prend la
+ * taille réelle de la fenêtre pour que la scène 16:9 occupe la largeur et que le texte dispose
+ * d'une zone dédiée sous la scène (décision propriétaire 4). Les préréglages de taille et les
+ * modes plein écran ne s'appliquent qu'au paysage.
+ */
+export type ViewportLayout = {
+  portrait: boolean;
+  /** Échelle appliquée au viewport (`1` en portrait). */
+  scale: number;
+  /** Dimensions logiques du viewport (celles posées en style inline). */
+  width: number;
+  height: number;
+};
+
+export function computeViewportLayout(
+  viewportWidth: number,
+  viewportHeight: number,
+  opts: { fullscreen: boolean; mode: FullscreenMode; windowSize: WindowSize },
+): ViewportLayout {
+  const width = Math.max(1, viewportWidth);
+  const height = Math.max(1, viewportHeight);
+  if (height > width) {
+    // Portrait : le viewport épouse la fenêtre (pas de transformation), pour que les écrans
+    // système et la zone de texte soient rendus à taille réelle (lisibilité, cibles tactiles).
+    return { portrait: true, scale: 1, width, height };
+  }
+  return { portrait: false, scale: computeViewportScale(width, height, opts), width: GAME_WIDTH, height: GAME_HEIGHT };
+}
+
+/** Applique la disposition au viewport : taille logique, échelle et repère `data-layout`. */
+export function applyViewportLayout(element: HTMLElement, layout: ViewportLayout): void {
+  if (layout.portrait) {
+    element.dataset.layout = "portrait";
+  } else {
+    delete element.dataset.layout;
+  }
+  element.style.width = `${layout.width}px`;
+  element.style.height = `${layout.height}px`;
+  applyViewportScale(element, layout.scale);
+}

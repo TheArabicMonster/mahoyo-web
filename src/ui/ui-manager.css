@@ -23,3 +23,17 @@
 /* Toasts : voir toast.css (HUD-13, #191). */
 .mh-ui-loading { z-index: 300; background: rgba(0, 0, 0, 0.5); pointer-events: auto; }
 /* Écran de configuration : voir config-screen.css (HUD-09, #200). */
+
+/* ── Portrait (#210, WEB-02) : panneaux et grilles génériques en une colonne ── */
+@media (orientation: portrait) {
+  .mh-ui-panel {
+    width: calc(100% - 2rem);
+    max-height: calc(100% - 2rem);
+    padding: 1rem;
+  }
+  .mh-ui-scripts { grid-template-columns: 1fr; }
+  .mh-ui-field { flex-wrap: wrap; }
+  .mh-ui-field-label { min-width: 0; width: 100%; }
+  .mh-ui-button,
+  .mh-ui-choice { min-height: 44px; }
+}

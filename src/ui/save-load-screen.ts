@@ -21,8 +21,10 @@ import {
   moveCursor,
   paginate,
   SAVE_COMMENT_MAX_LENGTH,
-  SAVE_PAGE_COUNT,
+  SAVE_COLUMNS_PORTRAIT,
   SAVE_SLOTS_PER_PAGE,
+  SAVE_SLOTS_PER_PAGE_PORTRAIT,
+  pageCountFor,
   type GridKey,
 } from "./save-pages.js";
 import type { ConfirmOptions, PlayerCommands, SaveSlot, SlotId } from "./types.js";
@@ -101,7 +103,12 @@ export class SaveLoadScreen {
   private readonly back: HTMLButtonElement;
   private readonly transfer: El;
 
-  private pages: SaveSlot[][] = paginate([]);
+  /** Disposition portrait (#210) : 1 colonne × 4 fiches par page, 30 pages. */
+  private readonly portrait: boolean;
+  private readonly perPage: number;
+  private readonly columns: number;
+  private readonly pageCount: number;
+  private pages: SaveSlot[][] = [];
   private cards: El[] = [];
   private sigs: string[] = [];
   private page = 1;
@@ -112,6 +119,15 @@ export class SaveLoadScreen {
   constructor(deps: SaveLoadDeps) {
     this.deps = deps;
     this.mode = deps.mode;
+    // #210 : en portrait, 1 colonne × 4 lignes par page (le paysage garde 2 × 4 et 15 pages).
+    this.portrait =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(orientation: portrait)").matches;
+    this.perPage = this.portrait ? SAVE_SLOTS_PER_PAGE_PORTRAIT : SAVE_SLOTS_PER_PAGE;
+    this.columns = this.portrait ? SAVE_COLUMNS_PORTRAIT : 2;
+    this.pageCount = pageCountFor(this.perPage);
+    this.pages = paginate([], this.perPage);
     this.element = h("section", `mh-sl mh-sl-${deps.mode}`);
     this.header = h("header", "mh-sl-header");
     this.grid = h("div", "mh-sl-grid");
@@ -134,12 +150,12 @@ export class SaveLoadScreen {
 
   /** Remplace les emplacements affichés (appelé à chaque `show` de la vue, y compris après une action). */
   setSlots(slots: readonly SaveSlot[]): void {
-    this.pages = paginate(slots).map((p) => p.map(copySlot));
+    this.pages = paginate(slots, this.perPage).map((p) => p.map(copySlot));
     this.sync();
   }
 
   goToPage(page: number, focusKey?: string): void {
-    const next = clampPage(page);
+    const next = clampPage(page, this.perPage);
     if (next === this.page && this.renderedPage === next) return;
     this.page = next;
     this.sync(focusKey);
@@ -160,11 +176,11 @@ export class SaveLoadScreen {
       this.renderedPage = this.page;
       this.sigs = [];
       this.renderPager();
-      this.status.textContent = t("slots.pageStatus", { n: this.page, total: SAVE_PAGE_COUNT });
-      this.grid.setAttribute("aria-label", t("slots.pageStatus", { n: this.page, total: SAVE_PAGE_COUNT }));
+      this.status.textContent = t("slots.pageStatus", { n: this.page, total: this.pageCount });
+      this.grid.setAttribute("aria-label", t("slots.pageStatus", { n: this.page, total: this.pageCount }));
     }
     const slots = this.pages[this.page - 1] ?? [];
-    for (let i = 0; i < SAVE_SLOTS_PER_PAGE; i++) {
+    for (let i = 0; i < this.perPage; i++) {
       const slot = slots[i];
       if (!slot) continue;
       const sig = signature(slot);
@@ -222,7 +238,7 @@ export class SaveLoadScreen {
   private renderPager(): void {
     this.pager.setAttribute("aria-label", t("slots.pagesLabel"));
     const list = h("ol", "mh-sl-pages");
-    for (let n = 1; n <= SAVE_PAGE_COUNT; n++) {
+    for (let n = 1; n <= this.pageCount; n++) {
       const li = h("li");
       const btn = this.makeButton("mh-sl-page", () => this.goToPage(n, `page-${n}`), String(n));
       btn.setAttribute("aria-label", t("slots.pageAria", { n }));
@@ -422,19 +438,19 @@ export class SaveLoadScreen {
 
     if (e.key === "PageUp" || e.key === "PageDown") {
       e.preventDefault();
-      const next = clampPage(this.page + (e.key === "PageDown" ? 1 : -1));
+      const next = clampPage(this.page + (e.key === "PageDown" ? 1 : -1), this.perPage);
       this.goToPage(next, inPager ? `page-${next}` : `card-${this.cursor}`);
       return;
     }
     if (inPager && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
       e.preventDefault();
-      const next = clampPage(this.page + (e.key === "ArrowRight" ? 1 : -1));
+      const next = clampPage(this.page + (e.key === "ArrowRight" ? 1 : -1), this.perPage);
       this.goToPage(next, `page-${next}`);
       return;
     }
     if (onCard && GRID_KEYS.includes(e.key)) {
       e.preventDefault();
-      const next = moveCursor(this.cursor, e.key as GridKey);
+      const next = moveCursor(this.cursor, e.key as GridKey, this.columns);
       this.setCursor(next);
       this.cards[next]?.focus();
       return;

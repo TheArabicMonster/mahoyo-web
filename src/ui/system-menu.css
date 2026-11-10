@@ -140,3 +140,42 @@
   line-height: 1;
   color: var(--mh-sysmenu-head);
 }
+
+/* ── Portrait (#210, WEB-02) : menu en colonne centrée (référence Tsukiweb), cibles ≥ 48 px ── */
+@media (orientation: portrait) {
+  .mh-sysmenu {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: calc(0.5rem + env(safe-area-inset-top, 0px)) 0 calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    background: rgba(4, 8, 10, 0.94);
+  }
+  .mh-sysmenu-head,
+  .mh-sysmenu-list {
+    position: static;
+    width: 66vw;
+    max-width: 34rem;
+  }
+  .mh-sysmenu-head {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.75rem;
+  }
+  .mh-sysmenu-title { font-size: 1.15rem; }
+  .mh-sysmenu-deco { font-size: 0.8rem; }
+  .mh-sysmenu-item { height: 3rem; }
+  .mh-sysmenu-entry {
+    height: 3rem;
+    line-height: 3rem;
+    font-size: 1.1rem;
+  }
+  .mh-sysmenu-back {
+    position: static;
+    margin-top: 0.5rem;
+    min-height: 44px;
+    width: 66vw;
+    max-width: 34rem;
+  }
+}

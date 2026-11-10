@@ -472,3 +472,54 @@
   .mh-cfg-range input[type="range"] { height: 44px; }
   .mh-cfg-range { height: 44px; }
 }
+
+/* ── Portrait (#210, WEB-02) : onglets défilables horizontalement, panneaux en une colonne ── */
+@media (orientation: portrait) {
+  .mh-cfg-header { left: 4%; top: 2%; }
+  .mh-cfg-title { font-size: 1.6rem; }
+  .mh-cfg-tabs {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 7.5%;
+    gap: 1.25rem;
+    padding: 0 4%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mh-cfg-tab { min-height: 44px; font-size: 1.15rem; flex: none; }
+  .mh-cfg-heading { left: 4%; right: 4%; top: 13%; }
+  .mh-cfg-body {
+    position: absolute;
+    inset: 17% 0 12% 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0 4% 0.5rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    pointer-events: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mh-cfg-col,
+  .mh-cfg-col-left,
+  .mh-cfg-col-right,
+  .mh-cfg-col-wide {
+    position: static;
+    left: auto;
+    width: 100%;
+    height: auto;
+    margin-top: 0;
+    padding: 0;
+    overflow: visible;
+  }
+  .mh-cfg-panel {
+    position: static;
+    width: 100%;
+  }
+  .mh-cfg-row { min-height: 44px; }
+  .mh-cfg-back,
+  .mh-cfg-reset { min-height: 44px; }
+}

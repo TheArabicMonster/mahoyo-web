@@ -65,6 +65,7 @@ const FRAME_TEXT_LETTER_SPACING = "0";
 /** Opacité du texte déjà lu de la page (capture : ~120 sur un fond à ~30, soit 40 %). */
 const READ_TEXT_OPACITY = 0.4;
 /** Hauteur du stage en repère logique (1024×576), repli quand le conteneur n'a pas de mise en page. */
+const STAGE_WIDTH = 1024;
 const STAGE_HEIGHT = 576;
 
 /**
@@ -129,6 +130,12 @@ export class DomStageRenderer implements StageRenderer {
   private textEl: HTMLElement | null = null;
   private indicatorEl: HTMLElement | null = null;
   private waitEl: HTMLElement | null = null;
+  /** Zone de texte dédiée sous la scène en portrait (#210, décision propriétaire 4). */
+  private dockEl: HTMLElement | null = null;
+  private portraitLayout = false;
+  /** Échelle courante de la scène (1.25 en paysage, largeur réelle/1024 en portrait). */
+  private sceneScale = STAGE_SCALE;
+  private readonly onViewportResize = (): void => this.applyLayout();
 
   private settings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
 
@@ -500,9 +507,70 @@ export class DomStageRenderer implements StageRenderer {
     this.waitEl.setAttribute("aria-hidden", "true");
 
     this.container.append(stage, this.textboxEl, this.waitEl);
-    root.appendChild(this.container);
 
+    // Portrait (#210) : le texte quitte la scène et passe dans une zone dédiée sous le 16:9.
+    this.dockEl = document.createElement("div");
+    this.dockEl.className = "mh-portrait-dock";
+    this.dockEl.id = "portrait-text-dock";
+
+    root.append(this.container, this.dockEl);
+    window.addEventListener("resize", this.onViewportResize);
+    window.addEventListener("orientationchange", this.onViewportResize);
+    this.applyLayout();
     this.applyTextbox();
+  }
+
+  /**
+   * Applique la disposition portrait/paysage (#210). En paysage, rien ne change : la scène
+   * 1024×576 est mise à l'échelle `STAGE_SCALE` et la boîte de texte reste dans la scène. En
+   * portrait, la scène 16:9 occupe la largeur en haut et la boîte de texte est déplacée dans une
+   * zone dédiée sous la scène (aucune superposition), à taille réelle.
+   */
+  private applyLayout(): void {
+    if (!this.root || !this.container || !this.dockEl || !this.textboxEl || !this.waitEl) return;
+    const portrait = window.innerHeight > window.innerWidth;
+    if (portrait === this.portraitLayout) {
+      if (portrait) this.layoutPortrait();
+      else {
+        this.dockEl.style.display = "none";
+        this.container.style.removeProperty("transform");
+      }
+      return;
+    }
+    this.portraitLayout = portrait;
+    if (portrait) {
+      this.layoutPortrait();
+    } else {
+      this.root.removeAttribute("data-layout");
+      this.sceneScale = STAGE_SCALE;
+      this.container.style.removeProperty("transform");
+      this.dockEl.style.display = "none";
+      this.container.append(this.textboxEl, this.waitEl);
+      this.fitText(this.buildTextUnits(), this.typedUnits);
+    }
+    this.applyTextbox();
+  }
+
+  /** Transformation de base de la scène (sans secousse) selon la disposition courante. */
+  private baseStageTransform(): string {
+    return this.portraitLayout ? `scale(${this.sceneScale})` : "";
+  }
+
+  private layoutPortrait(): void {
+    if (!this.root || !this.container || !this.dockEl || !this.textboxEl || !this.waitEl) return;
+    // 1 px CSS = 1 px logique : la scène 1024×576 est réduite à la largeur réelle.
+    const width = this.root.clientWidth || window.innerWidth || 1024;
+    const sceneScale = width / STAGE_WIDTH;
+    this.root.dataset.layout = "portrait";
+    this.sceneScale = sceneScale;
+    this.container.style.transform = `scale(${sceneScale})`;
+    this.container.style.transformOrigin = "0 0";
+    const sceneHeight = STAGE_HEIGHT * sceneScale;
+    this.dockEl.style.top = `${sceneHeight}px`;
+    this.dockEl.style.display = "block";
+    if (this.textboxEl.parentElement !== this.dockEl) this.dockEl.append(this.textboxEl);
+    if (this.waitEl.parentElement !== this.dockEl) this.dockEl.append(this.waitEl);
+    this.fitText(this.buildTextUnits(), this.typedUnits);
   }
 
   async apply(events: readonly RenderEvent[], opts: RunOptions): Promise<void> {
@@ -756,9 +824,13 @@ export class DomStageRenderer implements StageRenderer {
     this.svgFilters?.remove();
     this.svgFilters = null;
     this.filterIds.clear();
+    window.removeEventListener("resize", this.onViewportResize);
+    window.removeEventListener("orientationchange", this.onViewportResize);
     if (this.container && this.root) {
       this.root.removeChild(this.container);
     }
+    this.dockEl?.remove();
+    this.dockEl = null;
     this.root = null;
     this.container = null;
   }
@@ -868,6 +940,49 @@ export class DomStageRenderer implements StageRenderer {
       @keyframes mh-haze-pulse {
         0%, 100% { opacity: 0.2; transform: scale(1); }
         50% { opacity: 0.5; transform: scale(1.05); }
+      }
+      /* Portrait (#210) : zone de texte dédiée sous la scène 16:9, à taille réelle. */
+      .mh-portrait-dock {
+        display: none;
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2;
+        overflow: hidden;
+        background: #07090b;
+        border-top: 1px solid #263238;
+      }
+      [data-layout="portrait"] .mh-stage {
+        transform-origin: 0 0;
+      }
+      [data-layout="portrait"] .mh-portrait-dock { display: block; }
+      [data-layout="portrait"] .mh-stage-textbox {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        transition: none;
+      }
+      /* Le cadre image du 16:9 ne s'applique pas à la zone dédiée : panneau opaque lisible. */
+      [data-layout="portrait"] .mh-stage-textbox-frame { display: none !important; }
+      [data-layout="portrait"] .mh-stage-text {
+        position: absolute;
+        inset: 0;
+        padding: 1.5rem 1.6rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+        font-size: 1.7rem;
+        line-height: 1.6;
+        letter-spacing: 0;
+        text-shadow: none;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+      [data-layout="portrait"] .mh-stage-wait {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
       }
       .mh-stage-textbox {
         position: absolute;
@@ -2098,7 +2213,7 @@ export class DomStageRenderer implements StageRenderer {
           const dx = (Math.random() - 0.5) * 2 * spec.hmax;
           const dy = (Math.random() - 0.5) * 2 * spec.vmax;
           // Décalage en pixels écran (1280×720), puis agrandissement : `scale` reste obligatoire.
-          this.container.style.transform = `translate(${dx}px, ${dy}px) scale(${STAGE_SCALE})`;
+          this.container.style.transform = `translate(${dx}px, ${dy}px) scale(${this.sceneScale})`;
           const elapsed = performance.now() - start;
           if (duration !== null && elapsed >= duration) {
             this.stopQuake();
@@ -2117,7 +2232,7 @@ export class DomStageRenderer implements StageRenderer {
   private stopQuake(): void {
     if (this.quakeTimer) clearTimeout(this.quakeTimer);
     this.quakeTimer = null;
-    if (this.container) this.container.style.transform = "";
+    if (this.container) this.container.style.transform = this.baseStageTransform();
     if (this.quakeResolve) {
       this.quakeResolve();
       this.quakeResolve = null;
@@ -2171,7 +2286,7 @@ export class DomStageRenderer implements StageRenderer {
         dx = Math.sin(phase) * ampX;
         dy = Math.sin(phase) * ampY;
       }
-      this.container.style.transform = `translate(${dx}px, ${dy}px) scale(${STAGE_SCALE})`;
+      this.container.style.transform = `translate(${dx}px, ${dy}px) scale(${this.sceneScale})`;
       if (duration !== null && elapsed >= duration) {
         this.stopScreenShake();
         return;
@@ -2190,7 +2305,7 @@ export class DomStageRenderer implements StageRenderer {
       this.shakeResolve = null;
     }
     // Ne pas écraser la transformation si un `@quake` a repris la main entre-temps.
-    if (this.container && !this.quakeTimer) this.container.style.transform = "";
+    if (this.container && !this.quakeTimer) this.container.style.transform = this.baseStageTransform();
   }
 
   /** `prefers-reduced-motion` : pas d'effet agressif (secousses, apparition animée). */
@@ -2445,6 +2560,7 @@ export class DomStageRenderer implements StageRenderer {
   /** Hauteur disponible pour le texte, en pixels du repère de la scène. */
   private textAreaHeight(): number {
     const boxEl = this.textboxEl;
+    if (this.portraitLayout) return boxEl?.clientHeight || this.root?.clientHeight || STAGE_HEIGHT;
     if (this.frameStyle.mode === "image") {
       return frameTextAreaHeight(boxEl?.clientHeight || this.container?.clientHeight || STAGE_HEIGHT);
     }
@@ -2800,7 +2916,7 @@ export class DomStageRenderer implements StageRenderer {
       this.shakeResolve();
       this.shakeResolve = null;
     }
-    if (this.container && !this.quakeTimer) this.container.style.transform = "";
+    if (this.container && !this.quakeTimer) this.container.style.transform = this.baseStageTransform();
     if (this.staffrollTimer) clearTimeout(this.staffrollTimer);
     this.staffrollTimer = null;
     const staffrollResolve = this.staffrollResolve;

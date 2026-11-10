@@ -2,7 +2,7 @@ import "./main.css";
 import "./ui/tokens.css";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { AssetResolver } from "@/core/asset-resolver.js";
-import { applyViewportScale, computeViewportScale } from "@/core/display.js";
+import { applyViewportLayout, computeViewportLayout } from "@/core/display.js";
 import { createDomStageRenderer } from "./renderer/stage-renderer.js";
 import { createSoundEngine } from "./renderer/audio-manager.js";
 import { DomUIManager } from "./ui/ui-manager.js";
@@ -87,10 +87,10 @@ async function main() {
   viewport.id = "viewport";
   app.appendChild(viewport);
 
-  // Échelle initiale ; le player la recalcule selon les réglages (#177).
-  applyViewportScale(
+  // Disposition initiale ; le player la recalcule selon les réglages (#177, #210).
+  applyViewportLayout(
     viewport,
-    computeViewportScale(window.innerWidth, window.innerHeight, {
+    computeViewportLayout(window.innerWidth, window.innerHeight, {
       fullscreen: false,
       mode: "fit",
       windowSize: "fit",
