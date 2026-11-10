@@ -600,6 +600,16 @@ Implémentés dans `src/ui/tokens.css` (tâche HUD-01 / #181), importés par `sr
 - **Ratio** : `#viewport` reste 16:9 mis à l'échelle sur desktop. En portrait, les écrans système **reflowent**
   (voir `ANALYSE_HUD_ORIGINAL.md`, §3 pour la référence Tsukiweb) au lieu d'être réduits : un écran système ne doit
   pas dépendre d'un ratio fixe, seul le jeu (scène + texte) le garde.
+- **Portrait — implémentation (#210, WEB-02 ; décision propriétaire 4)** : en portrait le viewport prend la taille
+  réelle de la fenêtre (échelle 1, `computeViewportLayout`) au lieu du repère 1280×720 réduit. La scène 16:9 est
+  affichée en **lettrebox en haut** (largeur de l'écran) et le texte de jeu passe dans une **zone dédiée sous la
+  scène** (`#portrait-text-dock`, jamais superposé à l'image) : police ≥ 1,7 rem (≈ 27 px réels), défilement interne
+  si la page est longue, indicateurs d'attente dans la zone. Les écrans système reflowent via
+  `@media (orientation: portrait)` : titre en colonne, menu système centré sur ≈ 2/3 de la largeur (entrées ≥ 48 px),
+  sauvegarde/chargement **1 colonne × 4 lignes par page** (30 pages, cibles ≥ 44 px), onglets de configuration
+  défilables horizontalement, historique et confirmation pleine largeur ; `viewport-fit=cover` est activé pour les
+  encoches (`env(safe-area-inset-*)`). Le paysage desktop reste **inchangé** (transform 1,25 de la scène, texte dans
+  l'image). Les préréglages de taille et les modes plein écran ne s'appliquent qu'au paysage.
 - **Unités** : `rem` rapportées à la taille de base du viewport (`docs/layout.md`), jamais `px` fixes.
 - **Interactions tactiles** : le clic droit n'existe pas ; bouton de menu persistant discret, appui long, balayage et barre d'actions rapides (§9.8, WEB-01 / #203), actifs seulement sur appareil tactile.
 - **Sauvegardes** : locales (navigateur), avec export/import ; la grille 15 pages × 8 emplacements du jeu d'origine

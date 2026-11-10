@@ -11,6 +11,9 @@ export const SAVE_COLUMNS = 2;
 export const SAVE_ROWS = 4;
 export const SAVE_SLOTS_PER_PAGE = SAVE_COLUMNS * SAVE_ROWS;
 export const SAVE_PAGE_COUNT = 15;
+/** Portrait (#210) : grille 1 colonne × 4 lignes, le nombre de pages double (120 positions). */
+export const SAVE_COLUMNS_PORTRAIT = 1;
+export const SAVE_SLOTS_PER_PAGE_PORTRAIT = 4;
 /** Emplacements spéciaux du port, dans l'ordre d'affichage (tête de la page 1). */
 export const SPECIAL_SLOT_IDS = ["auto", "quick"] as const satisfies readonly SlotId[];
 /** Positions de la grille (120). */
@@ -31,10 +34,15 @@ export function isSpecialSlot(id: SlotId): id is (typeof SPECIAL_SLOT_IDS)[numbe
   return id === "auto" || id === "quick";
 }
 
-/** Ramène un numéro de page dans 1..15 (valeur non finie : page 1). */
-export function clampPage(page: number): number {
+/** Nombre de pages pour une taille de page donnée (8 → 15 pages, 4 en portrait → 30). */
+export function pageCountFor(perPage: number = SAVE_SLOTS_PER_PAGE): number {
+  return Math.ceil(SAVE_POSITION_COUNT / perPage);
+}
+
+/** Ramène un numéro de page dans 1..N (valeur non finie : page 1). */
+export function clampPage(page: number, perPage: number = SAVE_SLOTS_PER_PAGE): number {
   if (!Number.isFinite(page)) return 1;
-  return Math.min(SAVE_PAGE_COUNT, Math.max(1, Math.trunc(page)));
+  return Math.min(pageCountFor(perPage), Math.max(1, Math.trunc(page)));
 }
 
 /** Page (1..15) qui porte l'emplacement, ou null s'il n'est pas dans la grille. */
@@ -47,25 +55,35 @@ export function pageOfSlot(id: SlotId): number | null {
  * Découpe les emplacements fournis en 15 pages de 8. Les emplacements absents de la liste sont complétés
  * par des emplacements vides ; ceux qui sortent de la grille (numéro > 118) sont ignorés.
  */
-export function paginate(slots: readonly SaveSlot[]): SaveSlot[][] {
+export function paginate(
+  slots: readonly SaveSlot[],
+  perPage: number = SAVE_SLOTS_PER_PAGE,
+): SaveSlot[][] {
   const byId = new Map(slots.map((s) => [String(s.id), s] as const));
   const all = saveSlotIds().map((id) => byId.get(String(id)) ?? { id, data: null });
-  return Array.from({ length: SAVE_PAGE_COUNT }, (_, p) => all.slice(p * SAVE_SLOTS_PER_PAGE, (p + 1) * SAVE_SLOTS_PER_PAGE));
+  return Array.from({ length: pageCountFor(perPage) }, (_, p) =>
+    all.slice(p * perPage, (p + 1) * perPage),
+  );
 }
 
 /** Déplace le curseur de la grille 2×4 (index 0..7, rangée par rangée) ; reste en place au bord. */
-export function moveCursor(index: number, key: GridKey): number {
-  const col = index % SAVE_COLUMNS;
-  const row = Math.floor(index / SAVE_COLUMNS);
+export function moveCursor(
+  index: number,
+  key: GridKey,
+  columns: number = SAVE_COLUMNS,
+): number {
+  const cols = Math.max(1, columns);
+  const col = index % cols;
+  const row = Math.floor(index / cols);
   switch (key) {
     case "ArrowLeft":
       return col > 0 ? index - 1 : index;
     case "ArrowRight":
-      return col < SAVE_COLUMNS - 1 ? index + 1 : index;
+      return col < cols - 1 ? index + 1 : index;
     case "ArrowUp":
-      return row > 0 ? index - SAVE_COLUMNS : index;
+      return row > 0 ? index - cols : index;
     case "ArrowDown":
-      return row < SAVE_ROWS - 1 ? index + SAVE_COLUMNS : index;
+      return row < SAVE_ROWS - 1 ? index + cols : index;
   }
 }
 

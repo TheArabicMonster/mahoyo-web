@@ -4,7 +4,7 @@ import { Runtime, type RuntimeSaveData } from "@/kag/runtime.js";
 import { applyStageSnapshot, reduceAudio } from "@/kag/stage-state.js";
 import { WebAudioPlayer } from "@/renderer/audio-manager.js";
 import { createAssetResolver, type AssetResolver } from "@/core/asset-resolver.js";
-import { applyViewportScale, computeViewportScale } from "@/core/display.js";
+import { applyViewportLayout, computeViewportLayout } from "@/core/display.js";
 import { defaultShortcuts } from "@/core/shortcuts.js";
 import { hasTranslation, parseLanguageIndex, type LanguageIndex } from "@/core/language.js";
 import { parseStoryGraph } from "@/core/flow-graph.js";
@@ -1452,16 +1452,19 @@ export class Player implements PlayerCommands {
     this.applyViewportScale();
   }
 
-  /** Applique l'échelle du viewport (mode plein écran et taille d'affichage, #177). */
+  /**
+   * Applique la disposition du viewport : repère 1280×720 mis à l'échelle en paysage (#177),
+   * viewport à taille réelle en portrait (#210, zone de texte dédiée sous la scène).
+   */
   private applyViewportScale(): void {
     const root = this.deps.root;
     if (!root) return;
-    const scale = computeViewportScale(window.innerWidth, window.innerHeight, {
+    const layout = computeViewportLayout(window.innerWidth, window.innerHeight, {
       fullscreen: Boolean(document.fullscreenElement),
       mode: this.settings.display.fullscreenMode,
       windowSize: this.settings.display.windowSize,
     });
-    applyViewportScale(root, scale);
+    applyViewportLayout(root, layout);
   }
 
   private setState(state: PlayerState): void {
