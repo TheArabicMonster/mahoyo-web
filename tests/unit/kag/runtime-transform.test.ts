@@ -117,31 +117,39 @@ ${BGACT}
 @trans time=0 nowait=1
 texte inventé
 `);
-    expect(scene).toMatchObject({ bg: "fond", bgLeft: 111, bgTop: -566, bgZoomX: 120, bgZoomY: 120 });
+    // #317 : l'état runtime est l'état **final** de la piste (save/load mi-panoramique).
+    expect(scene).toMatchObject({ bg: "fond", bgLeft: -63, bgTop: -566, bgZoomX: 120, bgZoomY: 120 });
     expect(scene.sprites.map((s) => s.id)).toEqual(["sprite"]);
     expect(scene.sprites[0]).toMatchObject({ zoomx: 200, zoomy: 200 });
   });
 
-  it("pose l'état de départ (première keyframe) quand le @bg ne précisait rien", () => {
+  it("pose l'état final quand le @bg ne précisait rien (#317)", () => {
     const scene = lastScene(`
 @bg storage=fond
 ${BGACT}
 @trans time=0 nowait=1
 texte inventé
 `);
-    expect(scene).toMatchObject({ bg: "fond", bgLeft: 111, bgTop: -566, bgZoomX: 120, bgZoomY: 120 });
+    expect(scene).toMatchObject({ bg: "fond", bgLeft: -63, bgTop: -566, bgZoomX: 120, bgZoomY: 120 });
   });
 
-  it("sur fore : émet une scène sans transition ; sur back : aucun événement", () => {
+  it("sur fore : émet une piste `track` (pas de scène) ; l'état runtime est final", () => {
     const runtime = new Runtime(parse(lex(`
 @bg storage=fond time=0 page=fore
 @bgact page=fore props=-storage,left,top keys=(0,0,l,fond,5,6)(1000,,,,9,9) storage=fond
 texte inventé
 `)));
-    const scenes = runtime.step().events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
-    const last = scenes[scenes.length - 1]!;
-    expect(last.scene).toMatchObject({ bg: "fond", bgLeft: 5, bgTop: 6 });
-    expect(last.transition).toEqual({ method: "none" });
+    const events = runtime.step().events;
+    const scenes = events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
+    const tracks = events.filter((e): e is Extract<RenderEvent, { kind: "track" }> => e.kind === "track");
+    // Seul le @bg initial émet une scène ; @bgact ne termine/coupe aucune transition.
+    expect(scenes).toHaveLength(1);
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0]!.track).toMatchObject({ target: "bg", prop: "transform", duration: 1000 });
+    expect(tracks[0]!.track.keyframes.map((frame) => [frame.time, frame.left, frame.top])).toEqual([
+      [0, 5, 6],
+      [1000, 9, 9],
+    ]);
   });
 });
 

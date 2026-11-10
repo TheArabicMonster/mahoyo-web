@@ -1052,6 +1052,8 @@ describe("Player — séquence minutée (@playtimeline)", () => {
     await ctx.player.ready;
     ctx.player.startScript("t.ks");
     await until(() => bgs(ctx).includes("a"), "première entrée");
+    // #317 : stopAnimations=false par défaut ; ce test vérifie le clic-qui-saute quand activé.
+    ctx.player.updateSettings({ display: display({ stopAnimations: true }) });
 
     ctx.player.advance();
     await until(() => ctx.player.currentState === "waiting-click", "séquence sautée");
@@ -1068,6 +1070,7 @@ describe("Player — séquence minutée (@playtimeline)", () => {
     await ctx.player.ready;
     ctx.player.startScript("t.ks");
     await until(() => bgs(ctx).includes("a"), "première entrée");
+    ctx.player.updateSettings({ display: display({ stopAnimations: true }) });
     ctx.player.advance();
     ctx.player.advance();
     ctx.player.advance();
