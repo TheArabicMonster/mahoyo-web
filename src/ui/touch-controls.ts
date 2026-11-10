@@ -97,13 +97,19 @@ export const TOUCH_ACTIONS: readonly ActionDef[] = [
   { id: "fullscreen", labelKey: "touch.fullscreen", run: (c) => c.commands.toggleFullscreen() },
 ];
 
-/** Geste → action. Seuls l'appui long et le balayage vers le haut sont câblés ; l'appui simple avance via `click`. */
-export function actionForGesture(gesture: GestureKind): "menu" | "backlog" | null {
+/**
+ * Geste → action. L'appui simple avance via le `click` natif ; l'appui long ouvre le menu ; le
+ * balayage vers le haut ouvre l'historique ; le balayage vers la droite revient en arrière
+ * (rollback, comme le geste « back » des navigateurs mobiles, #98).
+ */
+export function actionForGesture(gesture: GestureKind): "menu" | "backlog" | "rollback" | null {
   switch (gesture) {
     case "long-press":
       return "menu";
     case "swipe-up":
       return "backlog";
+    case "swipe-right":
+      return "rollback";
     default:
       return null;
   }
@@ -146,6 +152,12 @@ export function createTouchControls(
   let lastTouchAt = -Infinity;
   let rafId: number | undefined;
   let disposed = false;
+  /**
+   * Défilement du texte en portrait (#98) : la boîte de texte est sous la scène et peut défiler
+   * (pages longues). L'overlay capte les pointeurs (`touch-action: none` en jeu), donc on fait
+   * défiler la zone à la main pour ne pas voler le geste ni avancer le texte après un glissement.
+   */
+  let textDrag: { pointerId: number; lastY: number; startY: number; moved: boolean; el: HTMLElement } | null = null;
 
   const isActive = (): boolean => coarse || touchSeen;
 
@@ -267,10 +279,29 @@ export function createTouchControls(
     if (action === "menu") {
       lastLongPressAt = now();
       ctx.commands.openScreen("pause");
-    } else {
+    } else if (action === "backlog") {
       ctx.commands.openScreen("backlog");
+    } else {
+      // Balayage vers la droite : retour arrière (le player ignore si l'historique est vide).
+      ctx.commands.rollback();
     }
     suppressClickUntil = now() + CLICK_SUPPRESS_MS;
+  }
+
+  /**
+   * Zone de texte défilante au point touché (#98) : la boîte de texte (dock portrait #210 ou
+   * textbox de la scène en paysage) est **sous** l'overlay qui capte les pointeurs ; on la retrouve
+   * par géométrie, et seulement si son contenu déborde réellement. Un glissement dedans fait défiler
+   * le texte au lieu de déclencher un geste (menu/historique) ou d'avancer après le relâchement.
+   */
+  function scrollableTextAt(x: number, y: number): HTMLElement | null {
+    const box = document.querySelector<HTMLElement>("#textbox");
+    const el = document.querySelector<HTMLElement>(".mh-stage-text");
+    if (!box || !el) return null;
+    const rect = box.getBoundingClientRect();
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+    if (el.scrollHeight <= el.clientHeight + 1) return null;
+    return el;
   }
 
   function armLongPress(): void {
@@ -299,6 +330,13 @@ export function createTouchControls(
     if (pe.pointerType !== "touch" || !root) return;
     wake();
     if (interactive(pe.target) || !ctx.isPlaying()) return;
+    // Portrait (#98) : un geste qui part de la zone de texte défilante fait défiler (pas de
+    // balayage menu/historique, pas d'appui long) ; le tap simple continue d'avancer via `click`.
+    const textEl = scrollableTextAt(pe.clientX, pe.clientY);
+    if (textEl) {
+      textDrag = { pointerId: pe.pointerId, lastY: pe.clientY, startY: pe.clientY, moved: false, el: textEl };
+      return;
+    }
     recognizer.pointerDown({ id: pe.pointerId, x: pe.clientX, y: pe.clientY, t: now() });
     armLongPress();
   }
@@ -306,6 +344,18 @@ export function createTouchControls(
   function onPointerMove(e: Event): void {
     const pe = e as PointerEvent;
     if (pe.pointerType !== "touch") return;
+    if (textDrag && textDrag.pointerId === pe.pointerId) {
+      const dy = textDrag.lastY - pe.clientY;
+      textDrag.lastY = pe.clientY;
+      if (Math.abs(pe.clientY - textDrag.startY) > 6) textDrag.moved = true;
+      if (textDrag.moved) {
+        textDrag.el.scrollTop += dy;
+        // Le geste est consommé par le défilement : pas de clic d'avance au relâchement.
+        suppressClickUntil = now() + CLICK_SUPPRESS_MS;
+        if (e.cancelable) e.preventDefault();
+      }
+      return;
+    }
     recognizer.pointerMove({ id: pe.pointerId, x: pe.clientX, y: pe.clientY, t: now() });
   }
 
@@ -314,6 +364,11 @@ export function createTouchControls(
     if (pe.pointerType !== "touch") return;
     lastTouchAt = now();
     clearTimeout(longPressTimer);
+    if (textDrag && textDrag.pointerId === pe.pointerId) {
+      if (textDrag.moved) suppressClickUntil = now() + CLICK_SUPPRESS_MS;
+      textDrag = null;
+      return;
+    }
     runGesture(recognizer.pointerUp({ id: pe.pointerId, x: pe.clientX, y: pe.clientY, t: now() }));
   }
 
@@ -321,6 +376,10 @@ export function createTouchControls(
     const pe = e as PointerEvent;
     if (pe.pointerType !== "touch") return;
     clearTimeout(longPressTimer);
+    if (textDrag && textDrag.pointerId === pe.pointerId) {
+      textDrag = null;
+      return;
+    }
     recognizer.pointerCancel(pe.pointerId);
   }
 
