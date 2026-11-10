@@ -23,6 +23,15 @@ import type {
   Token,
 } from "./types.js";
 import { parseCommand } from "./parser.js";
+import {
+  JOURNAL_COMMANDS,
+  journalDurationMs,
+  journalParams,
+  journalTransition,
+  normalizeJournalKeyframes,
+  summarizePage,
+  type RuntimeJournalEntry,
+} from "./journal.js";
 import { lookupTimeline, type TimelineBg, type TimelineData } from "@/core/timeline.js";
 import type { AnimationDef, PageLayer } from "./types.js";
 import type {
@@ -356,6 +365,17 @@ export class Runtime {
 
   /** Identité des scènes émises (#317) : seul un nouvel id coupe la transition en cours. */
   private sceneTransitionId = 0;
+  /**
+   * Journal d'exécution détaillé (#318) : commandes, paramètres, état résolu, durées et keyframes.
+   * `null` par défaut (aucun surcoût en production) ; alimenté par l'outil de diagnostic.
+   */
+  public onJournal: ((entry: RuntimeJournalEntry) => void) | null = null;
+
+  /** Facteur de vitesse appliqué aux durées effectives du journal (`1` = normal). */
+  public journalSpeedFactor = 1;
+
+  /** Compteur d'occurrences par commande (alignement par événement, #318). */
+  private journalCounts = new Map<string, number>();
 
   /** Macros définies par @macro/@endmacro. */
   private macros: Map<string, Token[]> = new Map();
@@ -2513,6 +2533,40 @@ export class Runtime {
     return instruction.kind;
   }
 
+  /** Construit et émet une entrée de journal (#318). Aucun coût si `onJournal` est null. */
+  private emitJournalEntry(
+    instruction: Instruction,
+    command: string,
+    position: { scriptName: string; page: number; instruction: number },
+    result: { events: readonly RenderEvent[]; stop?: StopReason },
+  ): void {
+    if (!this.onJournal) return;
+    const occurrence = (this.journalCounts.get(command) ?? 0) + 1;
+    this.journalCounts.set(command, occurrence);
+    const durationMs = journalDurationMs(instruction, result.stop);
+    const speedFactor = this.journalSpeedFactor > 0 ? this.journalSpeedFactor : 1;
+    const keyframes =
+      instruction.kind === "bgact"
+        ? normalizeJournalKeyframes(instruction.keyframes)
+        : instruction.kind === "animate"
+          ? normalizeJournalKeyframes(instruction.def.keyframes)
+          : undefined;
+    this.onJournal({
+      occurrence,
+      command,
+      position,
+      params: journalParams(instruction),
+      page: this.resolvedPageOf(instruction),
+      durationMs,
+      speedFactor,
+      effectiveDurationMs: durationMs === null ? null : durationMs / speedFactor,
+      transition: journalTransition(instruction, result.events),
+      ...(keyframes === undefined ? {} : { keyframes }),
+      fore: summarizePage(this.state.fore),
+      back: summarizePage(this.state.back),
+    });
+  }
+
   private resolvedPageOf(instruction: Instruction): PageLayer | null {
     switch (instruction.kind) {
       case "bg":
@@ -3023,7 +3077,7 @@ export class Runtime {
         }
 
         if (this.onCommand) this.onCommand(this.commandNameOf(instruction));
-        const tracePosition = this.onTrace ? this.buildPosition() : null;
+        const tracePosition = this.onTrace || this.onJournal ? this.buildPosition() : null;
         const result = this.applyInstruction(instruction);
         if (this.onTrace && tracePosition) {
           this.onTrace({
@@ -3034,6 +3088,10 @@ export class Runtime {
             fore: structuredClone(this.state.fore),
             back: structuredClone(this.state.back),
           });
+        }
+        if (this.onJournal && tracePosition) {
+          const command = this.commandNameOf(instruction);
+          if (JOURNAL_COMMANDS.has(command)) this.emitJournalEntry(instruction, command, tracePosition, result);
         }
         events.push(...result.events);
         if (result.stop) {
