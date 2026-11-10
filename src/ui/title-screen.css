@@ -51,7 +51,10 @@
 }
 
 /* ── Logo : image du manifeste, ou titre textuel de repli ── */
+/* Entrée du titre (#99) : fondus échelonnés, opacité seule (la géométrie reste stable) ;
+   sous mouvement réduit les tokens tombent à 0 et les animations sont coupées plus bas. */
 .mh-ui-title-logo {
+  animation: mh-ui-title-fade-in var(--mh-dur-fade-in) var(--mh-ease-out) both;
   position: absolute;
   left: 26.094%;
   top: 17.083%;
@@ -148,6 +151,7 @@
 }
 
 .mh-ui-title-entry {
+  animation: mh-ui-title-fade-in var(--mh-dur-ui-in) var(--mh-ease-out) both;
   appearance: none;
   box-sizing: border-box;
   height: var(--mh-title-menu-pitch);
@@ -176,12 +180,26 @@
 }
 
 .mh-ui-title-entry:focus-visible {
-  outline: 2px solid var(--mh-ink-hover);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-ink-hover);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
+
+/* Échelonnement des entrées (opacité seulement, pas de déplacement) : 6 entrées au plus. */
+.mh-ui-title-menu .mh-ui-title-entry:nth-child(2),
+.mh-ui-title-extra-menu .mh-ui-title-entry:nth-child(2) { animation-delay: calc(var(--mh-dur-stagger) * 1); }
+.mh-ui-title-menu .mh-ui-title-entry:nth-child(3),
+.mh-ui-title-extra-menu .mh-ui-title-entry:nth-child(3) { animation-delay: calc(var(--mh-dur-stagger) * 2); }
+.mh-ui-title-menu .mh-ui-title-entry:nth-child(4),
+.mh-ui-title-extra-menu .mh-ui-title-entry:nth-child(4) { animation-delay: calc(var(--mh-dur-stagger) * 3); }
+.mh-ui-title-menu .mh-ui-title-entry:nth-child(5),
+.mh-ui-title-extra-menu .mh-ui-title-entry:nth-child(5) { animation-delay: calc(var(--mh-dur-stagger) * 4); }
+.mh-ui-title-menu .mh-ui-title-entry:nth-child(6),
+.mh-ui-title-extra-menu .mh-ui-title-entry:nth-child(6) { animation-delay: calc(var(--mh-dur-stagger) * 5); }
 
 /* ── Mention de droits ── */
 .mh-ui-title-legal {
+  animation: mh-ui-title-fade-in var(--mh-dur-fade-in) var(--mh-ease-out)
+    calc(var(--mh-dur-stagger) * 3) both;
   position: absolute;
   left: 0;
   right: 0;
@@ -194,10 +212,27 @@
   color: var(--mh-title-legal);
 }
 
+@keyframes mh-ui-title-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mh-ui-title-screen {
     --mh-title-extra-fade: 0ms; /* le sous-menu apparaît sans fondu */
   }
+  .mh-ui-title-logo,
+  .mh-ui-title-entry,
+  .mh-ui-title-legal {
+    animation: none;
+  }
+}
+
+/* Réduction des animations choisie dans le jeu (#99) : même neutralisation. */
+:root[data-reduce-motion="true"] .mh-ui-title-logo,
+:root[data-reduce-motion="true"] .mh-ui-title-entry,
+:root[data-reduce-motion="true"] .mh-ui-title-legal {
+  animation: none;
 }
 
 /* ── Portrait (#210, WEB-02) : menu en colonne centrée, cibles ≥ 44 px réels ── */

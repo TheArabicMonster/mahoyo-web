@@ -202,8 +202,8 @@
 }
 
 .mh-flow-scroll:focus-visible {
-  outline: 2px solid var(--mh-focus);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* Taille `contenu x zoom` (posée en JS), centrée quand elle est plus étroite que la carte. */
@@ -259,8 +259,8 @@
 }
 
 .mh-flow-tool:focus-visible {
-  outline: 2px solid var(--mh-focus);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 .mh-flow-tool:disabled {
@@ -322,8 +322,8 @@
 }
 
 .mh-flow-detail:focus-visible {
-  outline: 2px solid var(--mh-focus);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 .mh-flow-detail-head {
@@ -365,8 +365,8 @@
 
 .mh-flow-detail-close:focus-visible,
 .mh-flow-replay:focus-visible {
-  outline: 2px solid var(--mh-focus);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 .mh-flow-detail-list {
@@ -418,7 +418,7 @@
 }
 
 .mh-flow-node[data-selected="true"] .mh-flow-shape {
-  outline: 2px solid var(--mh-text-title);
+  outline: var(--mh-focus-width, 2px) solid var(--mh-text-title);
   outline-offset: 3px;
 }
 
@@ -836,8 +836,8 @@
 }
 
 .mh-flow-back:focus-visible {
-  outline: 2px solid var(--mh-focus);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* ── Portrait (#206) : une colonne, carte pleine largeur, un chapitre à la fois ── */

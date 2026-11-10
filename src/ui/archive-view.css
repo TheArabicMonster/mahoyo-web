@@ -47,8 +47,8 @@
 .mh-ui-title-extra .mh-ui-button:focus-visible,
 /* Firefox rend la liste défilante focalisable au clavier : focus visible également. */
 .mh-ui-title-extra .mh-ui-title-chapters:focus-visible {
-  outline: 2px solid var(--mh-focus);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* Chapitre non déverrouillé : emplacement inerte, sans titre (anti-spoiler). Le focus reste visible. */

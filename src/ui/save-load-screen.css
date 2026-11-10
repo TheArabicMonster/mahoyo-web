@@ -89,8 +89,8 @@
 }
 .mh-sl-card:focus-visible,
 .mh-sl-card:focus {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 .mh-sl-card:focus:not(:focus-visible):not([data-focus-ring="true"]) {
   outline: none;
@@ -207,8 +207,8 @@
   user-select: text;
 }
 .mh-sl-comment:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* Case « Verr. » */
@@ -251,8 +251,8 @@
   transform: rotate(40deg);
 }
 .mh-sl-lock input:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* ── Boutons Supprimer / Charger (ou Sauvegarder) ── */
@@ -285,8 +285,8 @@
   border-color: var(--mh-cyan-glint, #5fcfc5);
 }
 .mh-sl-btn:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 .mh-sl-btn:disabled,
 .mh-sl-btn[aria-disabled="true"] {
@@ -336,8 +336,8 @@
   text-shadow: 0 0 10px rgba(0, 192, 192, 0.45);
 }
 .mh-sl-page:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* ── Pied d'écran « Retour » ── */
@@ -366,8 +366,8 @@
   text-shadow: 0 0 14px rgba(95, 207, 197, 0.55);
 }
 .mh-sl-back:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* Texte pour lecteurs d'écran seulement. */
