@@ -146,10 +146,16 @@ describe("checkApproximationsDoc / writeApproximationsDoc", () => {
 });
 
 describe("Document livré (#296)", () => {
-  it("couvre les 14 approximations du registre", () => {
-    expect(APPROXIMATIONS).toHaveLength(14);
+  it("couvre toutes les approximations du registre, sans nombre figé", () => {
+    // Invariant de génération : la doc suit le registre, quel que soit son nombre d'entrées.
+    expect(APPROXIMATIONS.length).toBeGreaterThan(0);
     expect(Object.keys(APPROXIMATION_LABELS).sort()).toEqual(APPROXIMATIONS.map((entry) => entry.id).sort());
     expect(labelProblems()).toEqual([]);
+    const doc = renderApproximationsDoc();
+    expect(doc).toContain(`**${APPROXIMATIONS.length} approximations**`);
+    for (const entry of APPROXIMATIONS) {
+      expect(doc).toContain(`\`${entry.id}\``);
+    }
   });
 
   it("est à jour par rapport au registre et à la baseline", () => {

@@ -2,11 +2,11 @@
 
 > Ce fichier est **généré** par `npm run approximations:doc` depuis le registre `tools/approximations.ts` (#295) et la baseline `tools/approximations-baseline.json`. Ne pas l'éditer à la main : modifier le registre, puis régénérer. `npm run check:generated` (CI) échoue si le fichier est obsolète.
 
-Une **approximation** est un écart assumé au moteur d'origine, admis par la DoD v1.0 (#274) parce qu'il est visible, testé et suivi. Le registre compte **14 approximations** (compteur cumulé : **14** déviation(s) documentée(s)).
+Une **approximation** est un écart assumé au moteur d'origine, admis par la DoD v1.0 (#274) parce qu'il est visible, testé et suivi. Le registre compte **16 approximations** (compteur cumulé : **16** déviation(s) documentée(s)).
 
 Chaque entrée est rattachée à l'issue de suivi v1.1 [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) et porte quatre éléments obligatoires vérifiés en CI : écart précis, issue v1.1, test figé (marqueur `approx:<id>`) et compteur versionné non croissant.
 
-Baseline versionnée : `tools/approximations-baseline.json` (générée le 2026-11-09).
+Baseline versionnée : `tools/approximations-baseline.json` (générée le 2026-11-10).
 
 ## Registre
 
@@ -25,7 +25,9 @@ Baseline versionnée : `tools/approximations-baseline.json` (générée le 2026-
 | 11 | `s-click-wait` | `@s` (attente de sélection) | @s attend un clic simple, alors que le moteur attend une sélection de bouton/lien (click-map) ; aucun script narratif chargé par le player n'utilise @s. | [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) | `tests/unit/kag/parser.test.ts` | 1 |
 | 12 | `shake-fullscreen` | `@shake`/`@swing` | @shake/@swing visent un calque dans le moteur ; le port applique l'oscillation à la scène entière et ignore storage/page/actmode/force. Une seule secousse active à la fois. | [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) | `tests/unit/kag/plugin-effects.test.ts` | 1 |
 | 13 | `staffrollsetting-bgcolor` | `@staffrollsetting bgcolor=` | @staffrollsetting bgcolor= est conservé dans l'état mais jamais peint : le plugin d'origine stocke la couleur sans jamais l'utiliser (paramètre mort). | [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) | `tests/unit/kag/runtime.test.ts` | 1 |
-| 14 | `xchgbgm-volume` | `@xchgbgm volume=` | @xchgbgm volume= est appliqué comme volume de piste, alors que le moteur règle un volume global BGM scriptable (le port n'a pas de volume global distinct des réglages utilisateur). | [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) | `tests/unit/kag/runtime.test.ts` | 1 |
+| 14 | `text-font-metrics` | Police du texte (métriques de glyphes) | La police du jeu d'origine (`defaultFace`/`userFace` du moteur, famille Mincho spécifique) n'est pas redistribuable : le port utilise une pile Mincho/serif du système. À taille de police identique (26 px du repère 1024×576, dérivée de config.tjs), la hauteur de glyphe (x-height/capitale) reste différente de la capture d'origine car les métriques de la police diffèrent. | [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) | `tests/unit/renderer/text-fit.test.ts` | 1 |
+| 15 | `text-overflow-clip` | Texte trop long (découpe au lieu de pagination) | Le texte d'une page plus longue que la zone de message est découpé (overflow hidden) au lieu d'être paginé automatiquement comme peut le faire le moteur (auto-return/auto-pagination) ; aucune réduction de police. La pagination reste décidée par le script ([p]/@pg) ; la mesure exhaustive des débordements du corpus est déléguée à l'issue #319. | [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) | `tests/unit/renderer/stage-renderer.test.ts` | 1 |
+| 16 | `xchgbgm-volume` | `@xchgbgm volume=` | @xchgbgm volume= est appliqué comme volume de piste, alors que le moteur règle un volume global BGM scriptable (le port n'a pas de volume global distinct des réglages utilisateur). | [#296](https://github.com/TheArabicMonster/mahoyo-web/issues/296) | `tests/unit/kag/runtime.test.ts` | 1 |
 
 ## Procédure — ajouter une approximation
 
