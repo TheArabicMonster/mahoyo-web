@@ -46,58 +46,103 @@ export const LAYOUT_LOGICAL = {
 
 export type ProvenanceStatus = "hypothèse" | "mesuré";
 
-/** Une entrée de provenance de mise en page : valeur logique, source, mesure de capture, tolérance. */
+/**
+ * Référence du modèle `config.tjs` du jeu (fichier local, **non commité**) : valeurs réellement lues,
+ * avec l'empreinte du fichier utilisé. `defaultLineSpacing = 18` s'ajoute à `defaultFontSize = 26`
+ * → interligne 44 px logiques ; `defaultPitch = 1` confirme un pas de glyphe d'un em.
+ */
+export const CONFIG_TJS_REFERENCE = {
+  path: "…/mahoyo-web-poc/tools/output/decrypted/data/override/config.tjs",
+  sha256: "82ea1af8b44663097027965ba4e868e3e402b487b853298a5c2df4b2e6006893",
+  marginL: 142,
+  marginR: 142,
+  marginT: 69,
+  marginB: 69,
+  mw: 1024,
+  mh: 576,
+  defaultFontSize: 26,
+  defaultLineSpacing: 18,
+  defaultPitch: 1,
+  frameGraphic: "txtwindow01",
+} as const;
+
+/** Interligne déduit de `config.tjs` : police 26 + line spacing 18 = 44 px logiques. */
+export const CONFIG_LINE_HEIGHT_PX =
+  CONFIG_TJS_REFERENCE.defaultFontSize + CONFIG_TJS_REFERENCE.defaultLineSpacing;
+
+/**
+ * Une entrée de provenance de mise en page : valeur **appliquée** (calibrée capture), valeur du
+ * **modèle** `config.tjs`, source, mesure de capture, tolérance et divergence éventuelle.
+ */
 export type LayoutProvenanceEntry = {
   parameter: string;
+  /** Valeur appliquée, calibrée sur la capture (oracle). */
   logicalPx: number;
+  /** Valeur du modèle `config.tjs` (px logiques), quand elle existe. */
+  configLogicalPx: number | null;
   screenPx: number;
   source: string;
   capture: string;
   tolerance: string;
   status: ProvenanceStatus;
+  /** Explication de l'écart modèle/capture, ou "aucun écart". */
+  divergence: string;
 };
 
+const CONFIG_SHA = `config.tjs local (sha256 ${CONFIG_TJS_REFERENCE.sha256.slice(0, 12)}…)`;
+const OVERRIDE_HYPOTHESIS =
+  "Écart **non tranché** : version localisée/override, `@position frame=…` ou graphique de cadre (`frameGraphic`) peuvent expliquer que la capture ne montre pas la valeur du modèle ; règle retenue : config = modèle, capture = oracle → valeur appliquée calibrée capture.";
+
 /**
- * Provenance des valeurs de mise en page. Les valeurs restent au statut **hypothèse** tant que le
- * TJS de configuration (`MessageLayer_config`) n'est pas extrait du jeu : elles viennent soit d'une
- * capture, soit d'une lecture à confirmer. Aucune valeur n'est ajustée par scène.
+ * Provenance des valeurs de mise en page. Règle Opus 5.5 : **config = modèle, capture = oracle**.
+ * Les valeurs appliquées restent calibrées sur la capture (statut `hypothèse`), la valeur du modèle
+ * `config.tjs` est conservée en regard et la divergence est documentée, pas tranchée arbitrairement.
+ * Aucune valeur n'est ajustée par scène.
  */
 export const LAYOUT_PROVENANCE: LayoutProvenanceEntry[] = [
   {
     parameter: "marge horizontale (gauche et droite)",
     logicalPx: LAYOUT_LOGICAL.horizontalMarginPx,
+    configLogicalPx: Math.max(CONFIG_TJS_REFERENCE.marginL, CONFIG_TJS_REFERENCE.marginR),
     screenPx: stageToScreenPx(LAYOUT_LOGICAL.horizontalMarginPx),
-    source: "MessageLayer_config « 142/142/69/69 » — les 4 valeurs ont probablement été lues dans le mauvais ordre (KAG = L/T/R/B)",
+    source: `${CONFIG_SHA} : marginL = 142, marginR = 142 (ordre du fichier L, R, T, B — aucune inversion)`,
     capture: "marge gauche mesurée 85,4 px écran / 1,25 = 68,3 ≈ 69 px logiques",
     tolerance: "±2 %",
     status: "hypothèse",
+    divergence: `Modèle 142 vs capture ≈69. ${OVERRIDE_HYPOTHESIS}`,
   },
   {
     parameter: "taille de police nominale",
     logicalPx: LAYOUT_LOGICAL.fontPx,
+    configLogicalPx: CONFIG_TJS_REFERENCE.defaultFontSize,
     screenPx: stageToScreenPx(LAYOUT_LOGICAL.fontPx),
-    source: "MessageLayer_config : 26 px logiques × STAGE_SCALE = 32,5 px écran",
-    capture: "le pas des glyphes (≈ 1 em) et les caractères/ligne se déduisent de la taille em (26 px), pas de l'encre",
+    source: `${CONFIG_SHA} : defaultFontSize = 26 (× STAGE_SCALE = 32,5 px écran)`,
+    capture: "le pas des glyphes (≈ 1 em) et les caractères/ligne se déduisent de la taille em, pas de l'encre",
     tolerance: "±2 % sur le pas des glyphes",
     status: "hypothèse",
+    divergence: "Aucun écart : modèle 26 = valeur appliquée 26.",
   },
   {
     parameter: "interligne",
     logicalPx: LAYOUT_LOGICAL.lineHeightPx,
+    configLogicalPx: CONFIG_LINE_HEIGHT_PX,
     screenPx: stageToScreenPx(LAYOUT_LOGICAL.lineHeightPx),
-    source: "capture #173 : interligne 51 px écran (77/1080) / 1,25",
-    capture: "51 px écran mesurés sur la capture d'origine",
+    source: `${CONFIG_SHA} : defaultFontSize 26 + defaultLineSpacing 18 = 44`,
+    capture: "capture #173 : interligne 51 px écran (77/1080) / 1,25 = 40,8 px logiques",
     tolerance: "±2 %",
     status: "hypothèse",
+    divergence: `Modèle 44 vs capture 40,8. ${OVERRIDE_HYPOTHESIS}`,
   },
   {
     parameter: "marge verticale (haut et bas)",
     logicalPx: LAYOUT_LOGICAL.verticalMarginPx,
+    configLogicalPx: Math.max(CONFIG_TJS_REFERENCE.marginT, CONFIG_TJS_REFERENCE.marginB),
     screenPx: stageToScreenPx(LAYOUT_LOGICAL.verticalMarginPx),
-    source: "capture #173 : haut de zone à 8,1 % × 576 px logiques",
-    capture: "8,1 % × 576 = 46,7 px logiques",
+    source: `${CONFIG_SHA} : marginT = 69, marginB = 69`,
+    capture: "capture #173 : haut de zone à 8,1 % × 576 = 46,7 px logiques",
     tolerance: "±2 %",
     status: "hypothèse",
+    divergence: `Modèle 69 vs capture 46,7. ${OVERRIDE_HYPOTHESIS}`,
   },
 ];
 
@@ -569,14 +614,28 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
   lines.push("Aucune valeur en rem ni en pourcentage en dur : les marges et la police sont exprimées en");
   lines.push("**unités logiques** du stage (repère 1024×576), converties à l'écran par `STAGE_SCALE`.");
   lines.push("");
-  lines.push("| Paramètre | Valeur logique (px) | Écran (px) | Source | Mesure de capture | Tolérance | Statut |");
-  lines.push("|---|---|---|---|---|---|---|");
+  lines.push(
+    `Règle de provenance : **config = modèle, capture = oracle**. Le modèle est le \`config.tjs\` local ` +
+      `(sha256 \`${CONFIG_TJS_REFERENCE.sha256}\`, non commité) : mw = ${CONFIG_TJS_REFERENCE.mw}, ` +
+      `mh = ${CONFIG_TJS_REFERENCE.mh}, marginL/R = ${CONFIG_TJS_REFERENCE.marginL}/${CONFIG_TJS_REFERENCE.marginR}, ` +
+      `marginT/B = ${CONFIG_TJS_REFERENCE.marginT}/${CONFIG_TJS_REFERENCE.marginB}, ` +
+      `defaultFontSize = ${CONFIG_TJS_REFERENCE.defaultFontSize}, defaultLineSpacing = ${CONFIG_TJS_REFERENCE.defaultLineSpacing} ` +
+      `(→ interligne ${CONFIG_LINE_HEIGHT_PX}), defaultPitch = ${CONFIG_TJS_REFERENCE.defaultPitch}, ` +
+      `frameGraphic = "${CONFIG_TJS_REFERENCE.frameGraphic}". ` +
+      "La capture contredit partiellement ce modèle : les valeurs **appliquées** restent calibrées sur la capture " +
+      "(oracle), statut `hypothèse`, et la divergence est documentée, pas tranchée.",
+  );
+  lines.push("");
+  lines.push("| Paramètre | Appliqué (capture, px logiques) | Config.tjs (modèle, px logiques) | Écran (px) | Tolérance | Divergence |");
+  lines.push("|---|---|---|---|---|---|");
   for (const entry of report.layout) {
     lines.push(
-      `| ${mdCell(entry.parameter)} | ${entry.logicalPx} | ${entry.screenPx.toFixed(1)} | ${mdCell(entry.source)} | ` +
-        `${mdCell(entry.capture)} | ${mdCell(entry.tolerance)} | ${entry.status} |`,
+      `| ${mdCell(entry.parameter)} | **${entry.logicalPx}** | ${entry.configLogicalPx ?? "n/a"} | ${entry.screenPx.toFixed(1)} | ` +
+        `${mdCell(entry.tolerance)} | ${mdCell(entry.divergence)} |`,
     );
   }
+  lines.push("");
+  lines.push("Le détail de la source est dans `docs/TEXTE_DEBORDEMENT.md` ; aucune valeur n'est ajustée par scène.");
   lines.push("");
   if (report.validation) {
     const v = report.validation;
@@ -602,6 +661,9 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
     );
     lines.push(
       `| Lignes par page (p95) | config proposée | actuelle ${v.linesPerPage.currentP95.toFixed(1)} → proposée ${v.linesPerPage.proposedP95.toFixed(1)} | — |`,
+    );
+    lines.push(
+      `| Pitch du modèle (\`defaultPitch\`) | ${CONFIG_TJS_REFERENCE.defaultPitch} (pas d'un em) | pas mesuré ×${v.glyphPitch ? v.glyphPitch.ratio.toFixed(3) : "n/a"} | ${v.glyphPitch?.ok ? "✓" : "—"} |`,
     );
     lines.push("");
     lines.push(

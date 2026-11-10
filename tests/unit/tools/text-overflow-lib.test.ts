@@ -6,6 +6,8 @@ import {
   buildMarkdownReport,
   classifyMeasurement,
   compareFontSize,
+  CONFIG_LINE_HEIGHT_PX,
+  CONFIG_TJS_REFERENCE,
   LAYOUT_LOGICAL,
   LAYOUT_PROVENANCE,
   currentLeftMarginScreenPx,
@@ -79,7 +81,38 @@ describe("mise en page logique (#319)", () => {
       expect(entry.source.length).toBeGreaterThan(0);
       expect(entry.capture.length).toBeGreaterThan(0);
       expect(entry.screenPx).toBeCloseTo(entry.logicalPx * STAGE_SCALE, 5);
+      expect(entry.divergence.length).toBeGreaterThan(0);
     }
+  });
+
+  it("conserve les valeurs du modèle config.tjs et documente les écarts avec la capture", () => {
+    // Modèle : config.tjs local (non commité), empreinte fournie dans l'issue #321.
+    expect(CONFIG_TJS_REFERENCE.sha256).toHaveLength(64);
+    expect(CONFIG_TJS_REFERENCE.marginL).toBe(142);
+    expect(CONFIG_TJS_REFERENCE.marginR).toBe(142);
+    expect(CONFIG_TJS_REFERENCE.marginT).toBe(69);
+    expect(CONFIG_TJS_REFERENCE.marginB).toBe(69);
+    expect(CONFIG_TJS_REFERENCE.mw).toBe(1024);
+    expect(CONFIG_TJS_REFERENCE.mh).toBe(576);
+    expect(CONFIG_TJS_REFERENCE.defaultFontSize).toBe(26);
+    expect(CONFIG_TJS_REFERENCE.defaultLineSpacing).toBe(18);
+    expect(CONFIG_LINE_HEIGHT_PX).toBe(44);
+    expect(CONFIG_TJS_REFERENCE.defaultPitch).toBe(1);
+    expect(CONFIG_TJS_REFERENCE.frameGraphic).toBe("txtwindow01");
+
+    const [horizontal, font, lineHeight, vertical] = LAYOUT_PROVENANCE;
+    // Règle : config = modèle, capture = oracle → valeurs appliquées calibrées capture.
+    expect(horizontal!.logicalPx).toBe(69);
+    expect(horizontal!.configLogicalPx).toBe(142);
+    expect(horizontal!.divergence).toContain("non tranché");
+    expect(font!.logicalPx).toBe(26);
+    expect(font!.configLogicalPx).toBe(26);
+    expect(font!.divergence).toContain("Aucun écart");
+    expect(lineHeight!.logicalPx).toBeCloseTo(40.8, 5);
+    expect(lineHeight!.configLogicalPx).toBe(44);
+    expect(vertical!.logicalPx).toBeCloseTo(46.7, 5);
+    expect(vertical!.configLogicalPx).toBe(69);
+    expect(vertical!.divergence).toContain("non tranché");
   });
 });
 
