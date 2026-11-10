@@ -387,6 +387,10 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         nowait: args.nowait === "1",
         canskip: args.canskip !== "0",
         cond: args.cond,
+        // Moteur (tagex.tjs) : exchange=true par défaut ; `noback=1` supprime le backlay
+        // automatique de fin de transition bloquante (#253).
+        exchange: args.exchange === undefined ? true : parseKagBool(args.exchange),
+        noback: args.noback !== undefined && parseKagBool(args.noback),
       };
     case "fgact":
     case "partbgact": {
@@ -849,7 +853,13 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
     case "wait":
       return { kind: "wait", time: parseIntArg(args.time), skippable: args.canskip !== "0" };
     case "wt":
-      return { kind: "waitfor", what: "transition", skippable: args.canskip !== "0" };
+      return {
+        kind: "waitfor",
+        what: "transition",
+        skippable: args.canskip !== "0",
+        // Moteur (tagex.tjs) : après l'attente, backlay fore→back sauf `noback=1` (#253).
+        noback: args.noback !== undefined && parseKagBool(args.noback),
+      };
     case "wact":
       return { kind: "waitfor", what: "animation", skippable: args.canskip !== "0" };
     case "wm":

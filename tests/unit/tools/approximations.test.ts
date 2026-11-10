@@ -33,6 +33,7 @@ const EXPECTED_IDS = [
   "ruby-proportional",
   "s-click-wait",
   "shake-fullscreen",
+  "trans-nowait-timing",
   "staffrollsetting-bgcolor",
   "text-font-metrics",
   "text-overflow-clip",

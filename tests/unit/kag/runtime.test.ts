@@ -310,27 +310,27 @@ describe("Runtime", () => {
   });
 
   it("@trans conserve back (pas de vidage après trans)", () => {
-    // Critère d'acceptation issue #49 : après un @trans, back n'est pas vidé.
-    // On prépare back (bg+sprite), on trans (fore=back, back conserved),
-    // puis on ajoute un sprite sur back et on re-trans : le bg et le 1er sprite
-    // doivent toujours être là (back n'a pas été vidé par le 1er trans).
+    // Critère d'acceptation issue #49 : après un @trans bloquant (exchange + backlay,
+    // sémantique moteur #253), back n'est pas vidé : le 2e @trans réutilise la page affichée.
     const SRC = `
 *page0|
 @bg page=back storage=bgx
 @fg page=back storage=red center=512 vcenter=288 index=2000
-@trans time=100 nowait=1
+@trans time=100
 @fg page=back storage=blue center=400 vcenter=288 index=2100
 @trans time=100
 @pg
 `;
     const runtime = new Runtime(parse(lex(SRC)));
+    // 1er @trans bloquant (exchange + backlay) → waitFor transition.
+    expect(runtime.step().stop.kind).toBe("waitFor");
+    // Puis @fg page=back blue et 2e @trans bloquant.
     const step = runtime.step();
-    // Le 2e @trans (sans nowait) bloque.
     expect(step.stop.kind).toBe("waitFor");
     const scenes = step.events.filter((e): e is Extract<RenderEvent, { kind: "scene" }> => e.kind === "scene");
     const last = scenes[scenes.length - 1];
     expect(last).toBeDefined();
-    // back conservé : bg + red toujours présents après le 2e trans.
+    // back conservé : bg + red toujours présents après le 2e trans, + blue ajouté.
     expect(last.scene.bg).toBe("bgx");
     expect(last.scene.sprites.some((s) => s.storage === "red")).toBe(true);
     expect(last.scene.sprites.some((s) => s.storage === "blue")).toBe(true);
@@ -643,7 +643,7 @@ Deuxième ligne.
 @partbg storage=piece1 id=pb1 center=220 vcenter=288 index=1000 width=420 height=576
 @partbg storage=piece2 id=pb2 center=515 vcenter=288 index=2000 width=420 height=576
 @partbg storage=piece3 id=pb3 center=813 vcenter=288 index=3000 width=420 height=576
-@trans time=100 nowait=1
+@trans time=100
 @pg
 *page1|
 @clpartbg id=pb2
@@ -653,9 +653,10 @@ Deuxième ligne.
 @pg
 `;
     const runtime = new Runtime(parse(lex(SRC)));
-    runtime.step();
+    runtime.step(); // @trans bloquant → waitFor transition
     // Après le @trans : les trois fenêtres sont visibles ensemble (montage).
     expect(runtime.getSaveData().state.fore.layers.filter((l) => l.crop).map((l) => l.id)).toEqual(["pb1", "pb2", "pb3"]);
+    runtime.step(); // @pg de la page 0 → clic (fin de page)
     runtime.step(); // page 1
     // @clpartbg ne retire que la fenêtre ciblée.
     expect(runtime.getSaveData().state.back.layers.filter((l) => l.crop).map((l) => l.id)).toEqual(["pb1", "pb3"]);
@@ -1339,5 +1340,85 @@ describe("Runtime — commandes visuelles secondaires (#85)", () => {
     // Après la pose (premier événement), l'action est bien « swing ».
     const withAction = textboxEvents.find((e) => (e as { state: { action?: string } }).state.action === "swing");
     expect(withAction).toBeDefined();
+  });
+});
+
+// Registre des approximations (#295) — test figé :
+// approx:trans-nowait-timing — permutation exchange appliquée immédiatement pendant un nowait.
+describe("Runtime — @trans exchange/backlay (#253)", () => {
+  const setup = (transArgs: string) => `
+*page0|
+@bg page=fore storage=foreimg
+@bg page=back storage=backimg
+@trans time=100 rule=crossfade ${transArgs}
+@pg
+`;
+
+  it("bloquant (défaut) : fore = back préparé, back = ce même contenu après backlay automatique", () => {
+    const runtime = new Runtime(parse(lex(setup(""))));
+    // Une seule étape exécute les deux @bg puis le @trans bloquant, qui rend le stop.
+    const step = runtime.step();
+    expect(step.stop).toMatchObject({ kind: "waitFor", what: "transition" });
+    const state = runtime.getSaveData().state;
+    expect(state.fore.background).toBe("backimg");
+    expect(state.back.background).toBe("backimg");
+    // La dernière scène émise (transition) montre le contenu préparé (fore).
+    const scenes = step.events.filter((event): event is Extract<RenderEvent, { kind: "scene" }> => event.kind === "scene");
+    expect(scenes.at(-1)!.scene.bg).toBe("backimg");
+  });
+
+  it("bloquant + noback=1 : fore = back préparé, back = ANCIEN fore (pas de backlay)", () => {
+    const runtime = new Runtime(parse(lex(setup("noback=1"))));
+    expect(runtime.step().stop).toMatchObject({ kind: "waitFor", what: "transition" });
+    const state = runtime.getSaveData().state;
+    expect(state.fore.background).toBe("backimg");
+    expect(state.back.background).toBe("foreimg");
+  });
+
+  it("nowait : back = ancien fore, aucun @wt automatique ; @wt ultérieur exécute le backlay", () => {
+    const runtime = new Runtime(parse(lex(setup("nowait=1"))));
+    // nowait ne bloque pas : l'étape va jusqu'au @pg (clic).
+    const step = runtime.step();
+    expect(step.stop.kind).toBe("click");
+    expect(runtime.getSaveData().state.fore.background).toBe("backimg");
+    expect(runtime.getSaveData().state.back.background).toBe("foreimg");
+
+    // Cas symétrique : un @wt dans le script copie fore→back après l'attente.
+    const withWt = `
+*page0|
+@bg page=fore storage=foreimg
+@bg page=back storage=backimg
+@trans time=100 nowait=1
+@wt
+@pg
+`;
+    const runtime2 = new Runtime(parse(lex(withWt)));
+    const step2 = runtime2.step();
+    expect(step2.stop).toMatchObject({ kind: "waitFor", what: "transition" });
+    expect(runtime2.getSaveData().state.back.background).toBe("backimg");
+  });
+
+  it("nowait + @wt noback=1 : back conserve l'ancien affichage", () => {
+    const script = `
+*page0|
+@bg page=fore storage=foreimg
+@bg page=back storage=backimg
+@trans time=100 nowait=1
+@wt noback=1
+@pg
+`;
+    const runtime = new Runtime(parse(lex(script)));
+    expect(runtime.step().stop).toMatchObject({ kind: "waitFor", what: "transition" });
+    const state = runtime.getSaveData().state;
+    expect(state.fore.background).toBe("backimg");
+    expect(state.back.background).toBe("foreimg");
+  });
+
+  it("exchange=0 : comportement historique (fore = clone(back), back conservé)", () => {
+    const runtime = new Runtime(parse(lex(setup("exchange=0"))));
+    runtime.step();
+    const state = runtime.getSaveData().state;
+    expect(state.fore.background).toBe("backimg");
+    expect(state.back.background).toBe("backimg");
   });
 });

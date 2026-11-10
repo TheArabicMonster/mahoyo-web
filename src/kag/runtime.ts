@@ -229,6 +229,12 @@ export type RuntimeState = {
    * non sauvegardé (allowlist #295).
    */
   fallnote?: { active: boolean; rate: number } | null;
+  /**
+   * Transition explicite lancée avec `nowait` : un `@wt` ultérieur doit exécuter le backlay
+   * (copie fore→back) sauf `noback=1`. **Transitoire** (non sauvegardé, allowlist #295) : le
+   * moteur ne persiste pas les attentes de transition.
+   */
+  transitionBacklayPending?: boolean;
   /** Avance automatique suspendue (@pauseautomode) ; absent = non suspendue. */
   autoModePaused?: boolean;
   /** Saut au clic autorisé (@clickskip) ; absent = true (défaut moteur). */
@@ -328,6 +334,7 @@ export function createRuntimeState(): RuntimeState {
     messageLayer: 0,
     ployPaused: null,
     fallnote: null,
+    transitionBacklayPending: false,
     autoModePaused: false,
     clickSkipEnabled: true,
     effectSkipEnabled: true,
@@ -1960,14 +1967,47 @@ export class Runtime {
     return [];
   }
 
+  /** Copie fore → back (backlay) : le moteur l'exécute en fin de transition bloquante ou à `@wt`. */
+  private backlayFromFore(): void {
+    const backLayers = this.state.fore.layers.slice();
+    this.state.back = { ...bgFieldsOf(this.state.fore), layers: backLayers };
+  }
+
+  /**
+   * `@trans` explicite (#253, sémantique `override/tagex.tjs`) :
+   * - `exchange=true` par défaut : à la fin du fondu, **fore et back sont échangés** ;
+   * - transition **bloquante** : le `@wt` automatique du moteur fait ensuite un **backlay**
+   *   (fore→back) sauf `noback=1` ; l'état final est appliqué ici immédiatement (les commandes
+   *   suivantes ne s'exécutent qu'après l'attente) ;
+   * - transition **`nowait=1`** : pas de `@wt` automatique, donc `back` contient **l'ancien
+   *   affichage** ; un `@wt` ultérieur fera le backlay (sauf `noback=1`) — la permutation est
+   *   appliquée immédiatement (approximation d'ordonnancement documentée §2) ;
+   * - `exchange=0` : comportement historique du port (`fore = clone(back)`, back conservé).
+   */
   private applyTrans(instruction: Extract<Instruction, { kind: "trans" }>): { events: RenderEvent[]; stop?: StopReason } {
-    // fore = clone(back) ; back conservé (sémantique KAG exchange=false).
-    this.state.fore = { ...bgFieldsOf(this.state.back), layers: this.state.back.layers.slice() };
-    const events: RenderEvent[] = [this.emitScene(this.makeTransition(instruction.time, instruction.rule))];
-    if (!instruction.nowait) {
-      return { events, stop: { kind: "waitFor", what: "transition", skippable: instruction.canskip ?? true } };
+    const blocking = !instruction.nowait;
+    const exchange = instruction.exchange !== false;
+    if (exchange) {
+      const oldFore = this.state.fore;
+      const prepared = this.state.back;
+      this.state.fore = { ...bgFieldsOf(prepared), layers: prepared.layers.slice() };
+      this.state.back = oldFore;
+      if (blocking) {
+        // Le moteur insère un @wt automatique (noback transmis depuis @trans).
+        if (!instruction.noback) this.backlayFromFore();
+        this.state.transitionBacklayPending = false;
+      } else {
+        // nowait : pas de backlay automatique ; un @wt ultérieur le fera (sauf noback=1).
+        this.state.transitionBacklayPending = true;
+      }
+    } else {
+      // exchange=false : historique du port — fore = clone(back), back conservé.
+      this.state.fore = { ...bgFieldsOf(this.state.back), layers: this.state.back.layers.slice() };
+      this.state.transitionBacklayPending = blocking ? false : true;
     }
-    return { events };
+    const events: RenderEvent[] = [this.emitScene(this.makeTransition(instruction.time, instruction.rule))];
+    if (!blocking) return { events };
+    return { events, stop: { kind: "waitFor", what: "transition", skippable: instruction.canskip ?? true } };
   }
 
   private buildAudioEvent(action: AudioEvent["kind"], channel: AudioChannel, args: Omit<AudioEvent & { kind: typeof action }, "kind" | "channel">): AudioEvent {
@@ -2912,8 +2952,14 @@ export class Runtime {
         break;
       case "wait":
         return { events, stop: { kind: "wait", time: instruction.time, skippable: instruction.skippable ?? true } };
-      case "waitfor":
+      case "waitfor": {
+        // @wt (#253) : après une transition explicite nowait, backlay fore→back sauf noback=1.
+        if (instruction.what === "transition" && this.state.transitionBacklayPending) {
+          if (!instruction.noback) this.backlayFromFore();
+          this.state.transitionBacklayPending = false;
+        }
         return { events, stop: { kind: "waitFor", what: instruction.what, skippable: instruction.skippable ?? true } };
+      }
       case "text":
       case "break":
         // Traités dans step() car le texte peut s'arrêter sur [l].

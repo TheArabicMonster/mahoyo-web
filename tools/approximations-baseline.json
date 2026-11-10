@@ -18,6 +18,7 @@
     "staffrollsetting-bgcolor": 1,
     "text-font-metrics": 1,
     "text-overflow-clip": 1,
+    "trans-nowait-timing": 1,
     "xchgbgm-volume": 1
   }
 }

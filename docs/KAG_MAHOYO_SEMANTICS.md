@@ -37,9 +37,22 @@ Règles vérifiées dans les sources locales du moteur (`data/override/tagex.tjs
   L'attente `@wt` insère ensuite un **backlay** (copie fore → back), sauf `noback=1` : après une
   transition *bloquante*, back redevient identique à fore ; après une transition `nowait=1`,
   **back contient l'ancien affichage**.
-- **Écart connu du port** : `src/kag/runtime.ts` implémente `fore = clone(back)` avec back conservé
-  (exchange=false, pas de backlay). Le fore affiché est identique dans les cas simples, mais l'état
-  de back après un `@trans nowait=1` diffère : suivi dans une issue dédiée (voir §11).
+- **Modèle implémenté (#253)** : `src/kag/runtime.ts` applique `exchange=true` par défaut (fore et
+  back échangés) puis le backlay du moteur :
+  - `@trans` **bloquant** : `noback` absent/0 → backlay automatique (back redevient identique à
+    fore) ; `noback=1` → **back conserve l'ancien affichage** (829 occurrences du corpus) ;
+  - `@trans nowait=1` : pas de backlay automatique, back contient l'ancien fore ; un `@wt`
+    ultérieur copie fore→back (sauf `@wt noback=1`), `@trans exchange=0` restaure l'ancien modèle
+    du port (`fore = clone(back)`, back conservé).
+  - **Approximation d'ordonnancement** : la permutation est appliquée **immédiatement** à
+    l'exécution de `@trans` (le moteur l'applique à la fin du fondu). L'état final après une
+    transition bloquante ou après `@wt` est identique ; seule la fenêtre pendant un `nowait` peut
+    différer pour des commandes qui liraient back **avant** le `@wt`.
+  - Vérification trace (#253) : `1-0`, `1-1`, `4-3` conservent les **mêmes étapes/arrêts** et le
+    **fore affiché identique** partout, sauf la séquence page 6 de `1-1` où les calques périmés de
+    la scène précédente (conservés à tort par l'ancien modèle) disparaissent — conforme au moteur
+    (`@trans … noback=1` : back = ancien affichage). Le nombre de différences de back est attendu
+    (22/108 sur 1-0, 36/204 sur 1-1, 2/136 sur 4-3).
 - **Trans implicite** : une commande avec `time>0` et `rule=` mais sans `page=` (ex.
   `@bg time=1200 rule=crossfade storage=white`) passe par `dotrans` : la commande est appliquée sur
   back puis une transition est lancée. `nowait=1` → non bloquant. S'applique à `@bg`, `@partbg`,
