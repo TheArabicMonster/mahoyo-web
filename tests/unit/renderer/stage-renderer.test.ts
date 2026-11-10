@@ -623,28 +623,28 @@ describe("DomStageRenderer", () => {
     it("fait glisser le fond en ligne droite jusqu'à la position cible", async () => {
       await showPano();
       expect(bgEl().style.backgroundPosition).toBe("-99px -48px");
-      await renderer.apply([{ kind: "bgMove", left: -167, top: -48, time: 5000 }], { instant: false, signal: sig() });
+      await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 5000, keyframes: [{ time: 0 }, { time: 5000, left: -167, top: -48 }] } }], { instant: false, signal: sig() });
       expect(bgEl().style.transition).toBe("background-position 5000ms linear");
       expect(bgEl().style.backgroundPosition).toBe("-167px -48px");
     });
 
     it("en mode instantané (saut de la séquence), pose directement la position finale", async () => {
       await showPano();
-      await renderer.apply([{ kind: "bgMove", left: -167, top: -48, time: 5000 }], { instant: true, signal: sig() });
+      await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 5000, keyframes: [{ time: 0 }, { time: 5000, left: -167, top: -48 }] } }], { instant: true, signal: sig() });
       expect(bgEl().style.transition).toBe("none");
       expect(bgEl().style.backgroundPosition).toBe("-167px -48px");
     });
 
     it("panoramique accéléré : la transition porte l'accélération", async () => {
       await showPano();
-      await renderer.apply([{ kind: "bgMove", left: -48, top: -149, time: 14500, accel: 20 }], { instant: false, signal: sig() });
+      await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 14500, accel: 20, keyframes: [{ time: 0 }, { time: 14500, left: -48, top: -149 }] } }], { instant: false, signal: sig() });
       expect(bgEl().style.transition).toMatch(/^background-position 14500ms (linear\(0|ease-in)/);
     });
 
     it("un fondu en plein panoramique accéléré part de la position eased, pas de la linéaire", async () => {
       const now = vi.spyOn(performance, "now").mockReturnValue(0);
       await showPano();
-      await renderer.apply([{ kind: "bgMove", left: 1, top: -48, time: 1000, accel: 3 }], { instant: false, signal: sig() });
+      await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 1000, accel: 3, keyframes: [{ time: 0 }, { time: 1000, left: 1, top: -48 }] } }], { instant: false, signal: sig() });
       now.mockReturnValue(500);
       await renderer.apply(
         [{ kind: "scene", scene: { bg: "next", bgLeft: 0, bgTop: 0, sprites: [], effect: null }, transition: { method: "crossfade", time: 800 } }],
@@ -661,10 +661,10 @@ describe("DomStageRenderer", () => {
 
     it("zoom et rotation du fond : transform autour du centre ; un nouveau fond les remet à zéro", async () => {
       await showPano();
-      await renderer.apply([{ kind: "bgMove", left: -381, top: -613, time: 0, zoomx: 60, zoomy: 60, rotate: 315 }], { instant: false, signal: sig() });
+      await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 0, keyframes: [{ time: 0 }, { time: 0, left: -381, top: -613, zoomx: 60, zoomy: 60, rotate: 315 }] } }], { instant: false, signal: sig() });
       expect(bgEl().style.transform).toBe("rotate(315deg) scale(0.6, 0.6)");
       expect(bgEl().style.transformOrigin).toBe("512px 288px");
-      await renderer.apply([{ kind: "bgMove", left: -48, top: -48, time: 2000, accel: 3, zoomx: 100, zoomy: 100, rotate: 0 }], { instant: false, signal: sig() });
+      await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 2000, accel: 3, keyframes: [{ time: 0 }, { time: 2000, left: -48, top: -48, zoomx: 100, zoomy: 100, rotate: 0 }] } }], { instant: false, signal: sig() });
       expect(bgEl().style.transition).toMatch(/transform 2000ms (linear\(0|ease-in)/);
       expect(bgEl().style.transform).toBe("rotate(0deg) scale(1, 1)");
       await showPano();
@@ -674,7 +674,7 @@ describe("DomStageRenderer", () => {
     it("un fondu commencé en plein panoramique part de la position courante de l'ancien fond", async () => {
       const now = vi.spyOn(performance, "now").mockReturnValue(1000);
       await showPano();
-      await renderer.apply([{ kind: "bgMove", left: -167, top: -48, time: 5000 }], { instant: false, signal: sig() });
+      await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 5000, keyframes: [{ time: 0 }, { time: 5000, left: -167, top: -48 }] } }], { instant: false, signal: sig() });
       now.mockReturnValue(3500); // à mi-chemin
       await renderer.apply(
         [{ kind: "scene", scene: { bg: "next", bgLeft: -48, bgTop: -300, sprites: [], effect: null }, transition: { method: "crossfade", time: 2000 } }],
@@ -694,9 +694,10 @@ describe("DomStageRenderer", () => {
     const sig = () => new AbortController().signal;
     const layer = (over: Partial<TimelineLayerState> = {}): TimelineLayerState => ({ id: "L1", storage: "carton", x: 224, y: 217, opacity: 0, z: 3400, ...over });
     const layerEl = (id = "L1") => root.querySelector(`#stage-timeline [data-layer-id="${id}"]`) as HTMLElement | null;
+    const trackLayer = (l: TimelineLayerState, time: number, accel?: number): RenderEvent => ({ kind: "track", track: { target: l.id, prop: "transform", layer: l, duration: time, ...(accel === undefined ? {} : { accel }), keyframes: [{ time: 0 }, { time }] } });
 
     it("pose un calque centré sur (x, y), avec son ordre et son opacité, entre le fond et les sprites", async () => {
-      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer(), 0)], { instant: false, signal: sig() });
       const el = layerEl()!;
       expect(el.style.left).toBe("224px");
       expect(el.style.top).toBe("217px");
@@ -709,48 +710,48 @@ describe("DomStageRenderer", () => {
     });
 
     it("fondu : transition linéaire de l'opacité et de la position ; instantanée en cas de saut", async () => {
-      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
-      await renderer.apply([{ kind: "timelineLayer", layer: layer({ opacity: 1, x: 300 }), time: 1500 }], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer(), 0)], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer({ opacity: 1, x: 300 }), 1500)], { instant: false, signal: sig() });
       expect(layerEl()!.style.transition).toBe("left 1500ms linear, top 1500ms linear, opacity 1500ms linear, transform 1500ms linear");
       expect(layerEl()!.style.opacity).toBe("1");
       expect(layerEl()!.style.left).toBe("300px");
-      await renderer.apply([{ kind: "timelineLayer", layer: layer({ opacity: 0 }), time: 1000 }], { instant: true, signal: sig() });
+      await renderer.apply([trackLayer(layer({ opacity: 0 }), 1000)], { instant: true, signal: sig() });
       expect(layerEl()!.style.transition).toBe("none");
       expect(layerEl()!.style.opacity).toBe("0");
     });
 
     it("accélération : le même rythme pour la position, l'opacité et le zoom", async () => {
-      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
-      await renderer.apply([{ kind: "timelineLayer", layer: layer({ opacity: 1, y: 600 }), time: 14500, accel: 20 }], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer(), 0)], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer({ opacity: 1, y: 600 }), 14500, 20)], { instant: false, signal: sig() });
       const t = layerEl()!.style.transition;
       // `linear(…)` échantillonné (ou ease-in sans support) : jamais le `linear` simple.
       for (const prop of ["left", "top", "opacity", "transform"]) expect(t).toMatch(new RegExp(`${prop} 14500ms (linear\\(0|ease-in)`));
-      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 2000, accel: -3 }], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer(), 2000, -3)], { instant: false, signal: sig() });
       expect(layerEl()!.style.transition).toMatch(/top 2000ms (linear\(0|ease-out)/);
     });
 
     it("zoom, rotation et point d'ancrage : transform CSS autour de l'ancrage, centre par défaut", async () => {
-      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer(), 0)], { instant: false, signal: sig() });
       expect(layerEl()!.style.transform).toBe("translate(-50%, -50%) rotate(0deg) scale(1, 1)");
       expect(layerEl()!.style.transformOrigin).toBe("50% 50%");
-      await renderer.apply([{ kind: "timelineLayer", layer: layer({ zoomx: 60, zoomy: -80, rotate: 315, afx: 121.5, afy: 204 }), time: 0 }], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer({ zoomx: 60, zoomy: -80, rotate: 315, afx: 121.5, afy: 204 }), 0)], { instant: false, signal: sig() });
       expect(layerEl()!.style.transform).toBe("translate(-50%, -50%) rotate(315deg) scale(0.6, -0.8)");
       expect(layerEl()!.style.transformOrigin).toBe("121.5px 204px");
       // Une clé sans ces champs remet les valeurs par défaut.
-      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer(), 0)], { instant: false, signal: sig() });
       expect(layerEl()!.style.transform).toBe("translate(-50%, -50%) rotate(0deg) scale(1, 1)");
       expect(layerEl()!.style.transformOrigin).toBe("50% 50%");
     });
 
     it("pluie : classe dédiée tant que le calque la demande", async () => {
-      await renderer.apply([{ kind: "timelineLayer", layer: layer({ rain: true }), time: 0 }], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer({ rain: true }), 0)], { instant: false, signal: sig() });
       expect(layerEl()!.classList.contains("mh-stage-tl-rain")).toBe(true);
-      await renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }], { instant: false, signal: sig() });
+      await renderer.apply([trackLayer(layer(), 0)], { instant: false, signal: sig() });
       expect(layerEl()!.classList.contains("mh-stage-tl-rain")).toBe(false);
     });
 
     it("la fin de la séquence, clear() et restore() retirent les calques", async () => {
-      const add = () => renderer.apply([{ kind: "timelineLayer", layer: layer(), time: 0 }, { kind: "timelineLayer", layer: layer({ id: "L2" }), time: 0 }], { instant: false, signal: sig() });
+      const add = () => renderer.apply([trackLayer(layer(), 0), trackLayer(layer({ id: "L2" }), 0)], { instant: false, signal: sig() });
       await add();
       await renderer.apply([{ kind: "timelineLayerClear" }], { instant: false, signal: sig() });
       expect(root.querySelectorAll("#stage-timeline > *").length).toBe(0);

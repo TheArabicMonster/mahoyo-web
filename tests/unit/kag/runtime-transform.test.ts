@@ -133,6 +133,21 @@ texte inventé
     expect(scene).toMatchObject({ bg: "fond", bgLeft: -63, bgTop: -566, bgZoomX: 120, bgZoomY: 120 });
   });
 
+  it("save/load en plein panoramique : la sauvegarde contient la position finale (#317)", async () => {
+    const runtime = new Runtime(parse(lex(`
+@bg storage=fond time=0 page=fore
+@bgact page=fore props=-storage,left,top keys=(0,0,l,fond,0,0)(1000,,,,200,100) storage=fond
+texte inventé
+`)));
+    runtime.step();
+    const saved = runtime.getSaveData();
+    expect(saved.state.fore).toMatchObject({ bgLeft: 200, bgTop: 100 });
+    const parsed = parse(lex(`*page0|\n@pg\n`));
+    const loaded = new Runtime(parsed, "t.ks");
+    expect(await loaded.loadSaveData(saved, new Map([[saved.scriptName, parsed]]))).toBe(true);
+    expect(loaded.getSaveData().state.fore).toMatchObject({ bgLeft: 200, bgTop: 100 });
+  });
+
   it("sur fore : émet une piste `track` (pas de scène) ; l'état runtime est final", () => {
     const runtime = new Runtime(parse(lex(`
 @bg storage=fond time=0 page=fore

@@ -39,10 +39,10 @@ describe("DomStageRenderer — calques image (#283)", () => {
       instant: true,
       signal: sig(),
     });
-    await renderer.apply([{ kind: "bgMove", left: 50, top: 10, time: 0 }], { instant: false, signal: sig() });
+    await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 0, keyframes: [{ time: 0 }, { time: 0, left: 50, top: 10 }] } }], { instant: false, signal: sig() });
     expect(sprite().style.getPropertyValue("translate")).toBe("50px 10px");
     // Un deuxième panoramique cumule le décalage.
-    await renderer.apply([{ kind: "bgMove", left: 80, top: 10, time: 0 }], { instant: false, signal: sig() });
+    await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 0, keyframes: [{ time: 0 }, { time: 0, left: 80, top: 10 }] } }], { instant: false, signal: sig() });
     expect(sprite().style.getPropertyValue("translate")).toBe("80px 10px");
   });
 
@@ -51,7 +51,7 @@ describe("DomStageRenderer — calques image (#283)", () => {
       instant: true,
       signal: sig(),
     });
-    await renderer.apply([{ kind: "bgMove", left: 50, top: 10, time: 0 }], { instant: false, signal: sig() });
+    await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 0, keyframes: [{ time: 0 }, { time: 0, left: 50, top: 10 }] } }], { instant: false, signal: sig() });
     expect(sprite().style.getPropertyValue("translate")).toBe("");
   });
 
@@ -60,7 +60,7 @@ describe("DomStageRenderer — calques image (#283)", () => {
       instant: true,
       signal: sig(),
     });
-    await renderer.apply([{ kind: "bgMove", left: 50, top: 10, time: 0 }], { instant: false, signal: sig() });
+    await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 0, keyframes: [{ time: 0 }, { time: 0, left: 50, top: 10 }] } }], { instant: false, signal: sig() });
     expect(sprite().style.getPropertyValue("translate")).toBe("50px 10px");
     await renderer.apply(
       [{ kind: "scene", scene: scene({ bg: "white", bindChildren: true }), transition: { method: "none" } }],

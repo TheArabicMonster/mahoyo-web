@@ -69,3 +69,32 @@ Modèle unique `{target, prop, keyframes, start, duration, easing}` alimenté pa
   le runtime, conservés pour la compatibilité des tests/rendu), e2e `1-0.ks` réel (opacité monotone
   `@movefg`), save/load mi-panoramique e2e, pièges `nowait`/sprite deux pages/`img.decode()`/
   `@wact`/reduced-motion/rules interchangeables.
+
+## Pièges Opus — conclusions (#317)
+
+- **`page=fore` pendant `@trans nowait`** : les TJS (`data/override/tagex.tjs`, `exchange=true`)
+  échangent fore/back **à la fin** du fondu ; le port applique l'échange **immédiatement** à la
+  commande (`applyTrans`, approximation #253 `trans-nowait-timing`). Conséquence : avec `nowait`,
+  les commandes suivantes voient le nouveau fore alors que le moteur verrait encore l'ancien.
+  **Non corrigé ici** (changement sémantique lourd, couvert par l'approximation existante) ;
+  documenté comme écart connu.
+- **`prefers-reduced-motion`** : les pistes `track` passent par la **même** fonction
+  `applyTrack` avec une durée 0 (état final), sans chemin de rendu parallèle ; testé via le helper
+  d'accessibilité du renderer.
+- **`img.decode()`/préchargement** : les images des calques de timeline sont préchargées par le
+  player depuis `track.layer.storage` (auparavant `timelineLayer`) ; les sprites de scène restent
+  préchargés par le chemin existant. Pas de décodage bloquant ajouté dans la boucle d'horloge.
+- **Reste explicite** : `@wact`/`@stopaction` sur une piste `track` (les animations sprite restent
+  gérées par `AnimationController`) ; sprite présent sur les deux pages (instantané figé) ;
+  `rule`/`universal` interchangeables (le renderer ne code plus l'opacité en dur pour les fondus,
+  mais l'interface `TransitionSpec` reste crossfade/none).
+- **#316** : non fermé ici (une issue = une PR) ; la suppression des cuts parasites est dans le
+  socle #328, la preuve durées/e2e fera l'objet d'une étape séparée.
+
+## Mesure locale `1-0.ks` réel (assets propriétaire, non commités)
+
+Test gated `tests/e2e/transitions-real.spec.ts` (`MAHOYO_E2E_REAL_ASSETS=1`), Chromium local :
+`overlays=13` crossfades comptés sur tout `1-0.ks`, `animations=22`, **opacité monotone = true**
+pendant les animations de sprite (`@movefg` inclus). L'extrait vidéo du propriétaire (128,2 s,
+sous-échantillonné 2 fps) en détectait 9 : l'écart vient de la fenêtre/du seuil de détection, pas
+d'un cut du port (aucune scène immédiate d'animation de calque depuis #328).

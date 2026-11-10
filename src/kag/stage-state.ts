@@ -59,13 +59,15 @@ function applyEvent(state: StageState, event: RenderEvent): void {
       state.fore = { ...event.scene };
       break;
     }
-    case "bgMove": {
-      state.fore = { ...state.fore, bgLeft: event.left, bgTop: event.top };
+    case "track": {
+      if (event.track.target === "bg") {
+        const last = event.track.keyframes[event.track.keyframes.length - 1];
+        if (last?.left !== undefined || last?.top !== undefined) {
+          state.fore = { ...state.fore, ...(last.left === undefined ? {} : { bgLeft: last.left }), ...(last.top === undefined ? {} : { bgTop: last.top }) };
+        }
+      }
       break;
     }
-    case "track":
-      // Une piste de calque de timeline est transitoire : hors de l'état sauvegardé.
-      break;
     case "timelineLayerClear":
       break;
     case "animate": {

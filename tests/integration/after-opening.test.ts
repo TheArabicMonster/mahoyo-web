@@ -53,7 +53,7 @@ describe.skipIf(!hasTimelines)("Après l'ouverture (vrais assets)", () => {
   /** Calques de timeline à l'écran : posés par `timelineLayer`, retirés par `timelineLayerClear`. */
   const trackLayers = (live: Set<string>, events: readonly RenderEvent[]): void => {
     for (const e of events) {
-      if (e.kind === "timelineLayer") live.add(e.layer.id);
+      if (e.kind === "track" && e.track.layer) live.add(e.track.layer.id);
       else if (e.kind === "timelineLayerClear") live.clear();
     }
   };

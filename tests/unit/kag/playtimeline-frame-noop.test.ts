@@ -79,7 +79,7 @@ Texte après la variante de test.[l]
     expect(warnings.filter((message) => message.includes("playtimeline"))).toEqual([]);
     // Aucun arrêt/événement supplémentaire : le texte continue normalement.
     expect(events.some((event) => event.kind === "text")).toBe(true);
-    expect(events.some((event) => event.kind === "bgMove" || event.kind === "audio")).toBe(false);
+    expect(events.some((event) => event.kind === "audio" || (event.kind === "track" && event.track.target === "bg"))).toBe(false);
   });
 
   it("tolère aussi frame= avec textoff=false (gamemenu.ks, hors audit)", () => {

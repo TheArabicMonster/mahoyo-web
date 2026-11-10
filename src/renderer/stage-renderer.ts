@@ -1315,16 +1315,8 @@ export class DomStageRenderer implements StageRenderer {
         this.renderEffect();
         break;
       }
-      case "bgMove": {
-        this.moveBackground(event.left, event.top, opts.instant ? 0 : event.time, event);
-        break;
-      }
       case "track": {
         this.applyTrack(event.track, opts);
-        break;
-      }
-      case "timelineLayer": {
-        this.applyTimelineLayer(event.layer, opts.instant ? 0 : event.time, event.accel ?? 0);
         break;
       }
       case "timelineLayerClear": {
@@ -1684,6 +1676,13 @@ export class DomStageRenderer implements StageRenderer {
    * piste, `commitStyles()` fige l'état final.
    */
   private applyTrack(track: import("@/kag/events.js").TrackSpec, opts: RunOptions): void {
+    // Accessibilité : `prefers-reduced-motion` = état final immédiat, via le même chemin (pas de
+    // rendu parallèle) ; l'orchestrateur de pistes applique la durée 0.
+    const reducedMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const instant = opts.instant || reducedMotion;
     const key = `${track.target}:${track.prop}`;
     const previous = this.trackAnimations.get(key);
     if (previous) {
@@ -1699,7 +1698,18 @@ export class DomStageRenderer implements StageRenderer {
     if (track.layer) {
       // Calque de timeline (#317) : le renderer applique la piste via la transition CSS dédiée
       // (position/opacité/zoom/rotation + accel), sans scène ni cut.
-      this.applyTimelineLayer(track.layer, opts.instant ? 0 : track.duration, track.accel ?? 0);
+      this.applyTimelineLayer(track.layer, instant ? 0 : track.duration, track.accel ?? 0);
+      return;
+    }
+    // Un panoramique simple (2 keyframes) reste rendu par la transition CSS historique, qui gère
+    // aussi `@bindbg` et les fondus interrompus ; les pistes multi-keyframes passent par WAAPI.
+    if (track.target === "bg" && track.keyframes.length <= 2) {
+      this.moveBackground(lastValues?.left ?? 0, lastValues?.top ?? 0, instant ? 0 : track.duration, {
+        accel: track.accel,
+        zoomx: lastValues?.zoomx,
+        zoomy: lastValues?.zoomy,
+        rotate: lastValues?.rotate,
+      });
       return;
     }
     if (track.target === "bg") {
@@ -1713,7 +1723,7 @@ export class DomStageRenderer implements StageRenderer {
         ...(lastValues?.rotate === undefined ? {} : { bgRotate: lastValues.rotate }),
       };
       const el = this.bgEl;
-      if (!el || opts.instant || track.duration <= 0 || typeof el.animate !== "function") {
+      if (!el || instant || track.duration <= 0 || typeof el.animate !== "function") {
         this.renderScene(true);
         return;
       }
@@ -1746,7 +1756,7 @@ export class DomStageRenderer implements StageRenderer {
     if (!sprite) return;
     if (track.prop === "opacity") {
       const target = lastValues?.opacity ?? 1;
-      if (opts.instant || track.duration <= 0) {
+      if (instant || track.duration <= 0) {
         sprite.style.opacity = String(target);
         return;
       }

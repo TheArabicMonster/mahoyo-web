@@ -326,7 +326,7 @@ describe("Runtime — @playtimeline", () => {
     const src = "@if exp=cf.speffect\n@playtimeline scene=4\n@else\n@playtimeline scene=5\n@endif\n@pg\n";
     const { steps, warnings } = run(src);
     expect(timelineStop(steps).duration).toBe(9000);
-    expect(timelineStop(steps).schedule.some((e) => e.events.some((ev) => ev.kind === "bgMove"))).toBe(false);
+    expect(timelineStop(steps).schedule.some((e) => e.events.some((ev) => ev.kind === "track" && ev.track.target === "bg"))).toBe(false);
     expect(warnings.filter((w) => w.includes("eval failed"))).toEqual([]);
   });
 

@@ -334,13 +334,7 @@ export type RenderEvent =
    * autour du centre de son image. Le renderer remet le zoom à 100 et la rotation à 0 à
    * chaque nouveau fond ; un événement sans ces champs les laisse inchangés.
    */
-  | { kind: "bgMove"; left: number; top: number; time: Ms; accel?: number; zoomx?: number; zoomy?: number; rotate?: number }
   | { kind: "track"; track: TrackSpec }
-  /**
-   * Pose un calque de timeline (`time` = 0) ou le fait glisser jusqu'à cet état en `time` ms
-   * (position, opacité, zoom et rotation), en ligne droite ou avec l'accélération `accel`.
-   */
-  | { kind: "timelineLayer"; layer: TimelineLayerState; time: Ms; accel?: number }
   /** Retire tous les calques de timeline (fin de la séquence). */
   | { kind: "timelineLayerClear" }
   /** Lance une animation sur un sprite. */
