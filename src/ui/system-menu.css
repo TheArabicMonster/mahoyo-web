@@ -125,8 +125,8 @@
 /* Focus clavier visible : contour 2 px cyan, décalage 2 px (DESIGN §10). */
 .mh-sysmenu-entry:focus-visible,
 .mh-sysmenu-back:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* « Back » en bas à droite : encre de x = 1095 et de y = 666 à 687 @720. Les marges de glyphe du serif

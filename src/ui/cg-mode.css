@@ -103,8 +103,8 @@
 }
 
 .mh-cg-tab:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* ── Zone défilante : conteneur de requête pour la grille responsive (DESIGN §9.13) ── */
@@ -205,8 +205,8 @@
 
 /* Focus clavier visible (DESIGN §10) ; le bord épais de sélection est conservé en plus. */
 .mh-cg-tile:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 .mh-cg-thumb {
@@ -320,8 +320,8 @@
 }
 
 .mh-cg-back:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 /* ── Visionneuse plein écran : image au-dessus, barre d'actions en bas ── */
@@ -414,8 +414,8 @@
 }
 
 .mh-cg-viewer-button:focus-visible {
-  outline: 2px solid var(--mh-focus, #5fcfc5);
-  outline-offset: 2px;
+  outline: var(--mh-focus-width, 2px) solid var(--mh-focus, #5fcfc5);
+  outline-offset: var(--mh-focus-offset, 2px);
 }
 
 .mh-cg-viewer-prev,

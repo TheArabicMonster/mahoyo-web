@@ -24,7 +24,7 @@ describe("ui-manager.css : barre d'état", () => {
   it("une règle plus spécifique replace la barre d'état dans un coin", () => {
     const rules = declarations(".mh-ui-overlay > .mh-ui-status");
     expect(rules).toHaveLength(1);
-    expect(rules[0]).toMatch(/inset:\s*0\.5rem 0\.5rem auto auto/);
+    expect(rules[0]).toMatch(/inset:\s*var\(--mh-space-1\)\s+var\(--mh-space-1\)\s+auto auto/);
   });
 
   it("les badges ne s'étirent pas sur la hauteur de la barre", () => {

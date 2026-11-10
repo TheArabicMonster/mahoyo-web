@@ -81,7 +81,7 @@ describe("cg-mode.css : galerie CG (HUD-15)", () => {
     expect(marker).toMatch(/position:\s*absolute/);
     // Focus clavier visible (contour 2 px) en plus du bord de sélection.
     expect(ruleBody(css, ".mh-cg-tile:focus-visible")).toMatch(
-      /outline:\s*2px\s+solid\s+var\(--mh-focus/,
+      /outline:\s*var\(--mh-focus-width, 2px\)\s+solid\s+var\(--mh-focus/,
     );
   });
 

@@ -1058,6 +1058,71 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
   }
 }
 
+/**
+ * Aplatit les blocs `@if`/`@elsif`/`@else`/`@endif` en instructions + sauts d'index (#80).
+ *
+ * `conditional` disparaît de la sortie : chaque branche devient une séquence plate, précédée
+ * d'un `jumpIfNot` vers la branche suivante et suivie d'un `jumpIndex` vers la fin du bloc. Un
+ * `@call` au milieu d'une branche sauvegarde alors naturellement l'index de l'instruction
+ * **suivante**, et non l'index après `@endif`.
+ *
+ * Retourne aussi `map` : index d'instruction d'origine → index aplati (pour les labels).
+ */
+export function flattenControlFlow(instructions: Instruction[]): { instructions: Instruction[]; map: number[] } {
+  const out: Instruction[] = [];
+  const map: number[] = new Array(instructions.length);
+  const patch: Array<{ at: number; label: number; slot: number }> = [];
+  const labels: number[] = [];
+  const newLabel = (): number => {
+    labels.push(-1);
+    return labels.length - 1;
+  };
+  const mark = (label: number): void => {
+    labels[label] = out.length;
+  };
+  const jump = (targetLabel: number, cond?: string): void => {
+    const at = out.length;
+    out.push(cond === undefined ? { kind: "jumpIndex", target: -1 } : { kind: "jumpIfNot", cond, target: -1 });
+    patch.push({ at, label: targetLabel, slot: labels.length });
+  };
+
+  const emit = (list: Instruction[]): void => {
+    for (let i = 0; i < list.length; i++) {
+      const instruction = list[i]!;
+      map[i] = out.length;
+      if (instruction.kind === "conditional") {
+        const end = newLabel();
+        const branches = instruction.branches;
+        for (let b = 0; b < branches.length; b++) {
+          const branch = branches[b]!;
+          const next = newLabel();
+          if (branch.cond !== undefined) jump(b < branches.length - 1 ? next : end, branch.cond);
+          const body = flattenControlFlow(branch.instructions);
+          for (const nested of body.instructions) out.push(nested);
+          if (b < branches.length - 1) {
+            jump(end);
+            mark(next);
+          }
+        }
+        mark(end);
+      } else {
+        out.push(instruction);
+      }
+      // `map[i]` (posé avant l'émission) = première instruction plate de l'instruction d'origine.
+    }
+  };
+  emit(instructions);
+  // Les labels de branche non marqués (dernière branche conditionnelle) pointent la fin du bloc.
+  for (let i = 0; i < labels.length; i++) if (labels[i] === -1) labels[i] = out.length;
+  // Patch des cibles (labels → index absolus, en fin de séquence).
+  for (const p of patch) {
+    const target = labels[p.label]!;
+    const instruction = out[p.at] as { target: number };
+    instruction.target = target;
+  }
+  return { instructions: out, map };
+}
+
 export function parse(tokens: Token[]): ParsedScript {
   const pages: ParsedScript["pages"] = [];
   const labels: ParsedScript["labels"] = {};
@@ -1065,6 +1130,8 @@ export function parse(tokens: Token[]): ParsedScript {
   let current: { label?: string; instructions: Instruction[] } = { instructions: [] };
 
   const labelInstructionIndex: ParsedScript["labelInstructionIndex"] = {};
+  /** Positions de labels avant aplatissement, remappées au moment du push de page (#80). */
+  const pendingLabelPositions: Array<{ name: string; page: number; oldIndex: number }> = [];
 
   // Text accumulation with ruby support
   let pendingSegments: TextSegment[] = [];
@@ -1088,6 +1155,13 @@ export function parse(tokens: Token[]): ParsedScript {
   function pushPage() {
     flushText();
     if (current.instructions.length > 0 || current.label) {
+      const pageIndex = pages.length;
+      const flat = flattenControlFlow(current.instructions);
+      current.instructions = flat.instructions;
+      for (const position of pendingLabelPositions) {
+        if (position.page !== pageIndex) continue;
+        labelInstructionIndex[position.name] = Math.min(flat.map[position.oldIndex] ?? flat.instructions.length, flat.instructions.length);
+      }
       pages.push(current);
     }
     current = { instructions: [] };
@@ -1495,6 +1569,7 @@ export function parse(tokens: Token[]): ParsedScript {
         }
         labels[token.name] = pages.length;
         labelInstructionIndex[token.name] = current.instructions.length;
+        pendingLabelPositions.push({ name: token.name, page: pages.length, oldIndex: current.instructions.length });
         break;
       }
       case "text": {

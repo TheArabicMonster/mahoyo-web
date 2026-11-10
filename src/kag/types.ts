@@ -422,6 +422,10 @@ export type Instruction =
    */
   | { kind: "noop"; command: string; reason: string }
   | { kind: "conditional"; branches: Array<{ cond?: string; instructions: Instruction[] }> }
+  /** Saut inconditionnel vers un index d'instruction aplati (#80). */
+  | { kind: "jumpIndex"; target: number }
+  /** Saut conditionnel vers un index aplati si `cond` est faux (#80). */
+  | { kind: "jumpIfNot"; cond?: string; target: number }
   | { kind: "macrodef"; name: string; rawTokens: Token[] };
 
 export type Page = {

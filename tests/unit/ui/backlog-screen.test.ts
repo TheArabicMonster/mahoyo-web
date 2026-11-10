@@ -212,9 +212,9 @@ describe("backlog-screen.css", () => {
   });
 
   it("le focus clavier est visible (contour 2 px --mh-focus, décalage 2 px) sur la liste et les boutons", () => {
-    expect(code).toMatch(/\.mh-bl-scroll:focus-visible\s*\{[^}]*outline: 2px solid var\(--mh-focus/);
-    expect(code).toMatch(/\.mh-bl-btn:focus-visible\s*\{[^}]*outline: 2px solid var\(--mh-focus/);
-    expect(code).toMatch(/outline-offset: 2px/);
+    expect(code).toMatch(/\.mh-bl-scroll:focus-visible\s*\{[^}]*outline: var\(--mh-focus-width, 2px\) solid var\(--mh-focus/);
+    expect(code).toMatch(/\.mh-bl-btn:focus-visible\s*\{[^}]*outline: var\(--mh-focus-width, 2px\) solid var\(--mh-focus/);
+    expect(code).toMatch(/outline-offset: var\(--mh-focus-offset, 2px\)/);
   });
 
   it("la zone et les boutons sont placés en pourcentages du repère 1280x720", () => {

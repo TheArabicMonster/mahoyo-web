@@ -51,6 +51,24 @@
   --mh-toast-fill: #587888;
   --mh-focus: #5fcfc5;
 
+  /* Surfaces génériques des écrans superposés (E2, E31) — une seule source pour les voiles,
+     panneaux, boutons et ombres des composants communs (ui-manager.css). */
+  --mh-scrim: rgba(0, 0, 0, 0.75); /* voile derrière un écran superposé */
+  --mh-scrim-soft: rgba(0, 0, 0, 0.5); /* chargement, fond modal discret */
+  --mh-scrim-badge: rgba(0, 0, 0, 0.6); /* badges auto/skip */
+  --mh-ui-text: #eeeeee;
+  --mh-ui-panel-fill: rgba(20, 20, 30, 0.92);
+  --mh-ui-panel-border: #666677;
+  --mh-ui-button-fill: #222233;
+  --mh-ui-button-border: #888899;
+  --mh-ui-button-hover: #333355;
+  --mh-shadow-panel: 0 6px 24px rgba(7, 17, 27, 0.55);
+  --mh-shadow-toast: 0 4px 16px rgba(0, 0, 0, 0.45);
+
+  /* Focus visible : une seule géométrie pour tous les écrans (#211, #99). */
+  --mh-focus-width: 2px;
+  --mh-focus-offset: 2px;
+
   /* Typo */
   --mh-font-text: "Hiragino Mincho ProN", "Yu Mincho", "Shippori Mincho", "Noto Serif JP", "EB Garamond", Georgia, serif;
   --mh-font-title: "Cormorant Garamond", "EB Garamond", Georgia, serif;
@@ -71,6 +89,12 @@
   --mh-dur-scene-out: 1200ms;
   --mh-dur-scene-in: 850ms;
   --mh-ease: linear;
+  /* Courbes et durées des animations d'interface (#99) : fondu/entrée des écrans et listes.
+     Les transitions d'histoire (scène, dialogue) gardent --mh-ease et leurs durées mesurées. */
+  --mh-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --mh-dur-ui-in: 220ms; /* ouverture d'un panneau / écran superposé */
+  --mh-dur-ui-out: 180ms; /* fermeture (facultatif, symétrique) */
+  --mh-dur-stagger: 45ms; /* décalage entre deux entrées d'une liste */
 
   /* Espacement (échelle de 8 px@720) */
   --mh-space-1: 8px;
@@ -88,5 +112,29 @@
     --mh-dur-fade-in: 0ms;
     --mh-dur-scene-out: 0ms;
     --mh-dur-scene-in: 0ms;
+    --mh-dur-ui-in: 0ms;
+    --mh-dur-ui-out: 0ms;
+    --mh-dur-stagger: 0ms;
   }
 }
+
+/*
+ * Réduction des animations choisie dans le jeu (Config → Son/Effet → « Réduire les animations »,
+ * #99). L'attribut est posé sur <html> par le player. Il complète `prefers-reduced-motion` : les
+ * tokens de mouvement tombent à 0, les animations/transitions CSS d'interface sont neutralisées, et
+ * `scroll-behavior` redevient instantané. La frappe du texte et le défilement du jeu restent pilotés
+ * par le moteur (le réglage « Affichage final des pages » existe pour le texte).
+ */
+:root[data-reduce-motion="true"] {
+  --mh-dur-fast: 0ms;
+  --mh-dur-menu: 0ms;
+  --mh-dur-fade-out: 0ms;
+  --mh-dur-fade-in: 0ms;
+  --mh-dur-scene-out: 0ms;
+  --mh-dur-scene-in: 0ms;
+  --mh-dur-ui-in: 0ms;
+  --mh-dur-ui-out: 0ms;
+  --mh-dur-stagger: 0ms;
+}
+
+

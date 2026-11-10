@@ -144,7 +144,8 @@ describe("createConfigScreen", () => {
       expect(commands.updateSettings).toHaveBeenCalledWith({ audio: { ...base.audio, bgm: 0.5 } });
       q<HTMLInputElement>('input[type="radio"][name="instantEffects"][value="yes"]')!.click();
       expect(commands.updateSettings).toHaveBeenLastCalledWith({ display: { ...base.display, instantEffects: true } });
-      expect(qa('input[type="radio"]')).toHaveLength(8);
+      expect(qa('input[type="radio"]')).toHaveLength(10); // 4 réglages d'effets × Oui/Non + réduction (#99)
+      expect(q('input[name="reduceMotion"]')).not.toBeNull();
       q(".mh-ui-test-se")!.click();
       expect(commands.testSe).toHaveBeenCalled();
     });

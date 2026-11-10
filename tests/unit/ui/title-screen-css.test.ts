@@ -83,7 +83,7 @@ describe("title-screen.css : géométrie (ANALYSE_HUD_ORIGINAL §2.1, 1280x720)"
   });
 
   it("focus visible : contour de 2 px", () => {
-    expect(block(".mh-ui-title-entry:focus-visible")).toMatch(/outline:\s*2px solid var\(--mh-ink-hover\)/);
+    expect(block(".mh-ui-title-entry:focus-visible")).toMatch(/outline:\s*var\(--mh-focus-width, 2px\) solid var\(--mh-ink-hover\)/);
   });
 
   it("la mention de droits est centrée en bas, >= 10 px réels", () => {

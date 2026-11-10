@@ -41,9 +41,11 @@ export const fr = {
   "cg.tab.background": "Arrière-plan",
   "cg.locked": "image non affichée",
   "cg.lockedHint": "Image {n} non affichée : pas encore vue dans le jeu.",
+  "cg.lockedHintShort": "Image {n}, pas encore vue dans le jeu.",
   "cg.open": "Afficher l'image {n}",
   "cg.empty": "Aucune image disponible.",
   "cg.viewer.label": "Visionneuse d'image",
+  "cg.viewer.imageAlt": "Image de la galerie {n} sur {total}",
   "cg.viewer.prev": "Image précédente",
   "cg.viewer.next": "Image suivante",
   "cg.viewer.close": "Fermer la visionneuse",
@@ -285,6 +287,7 @@ export const fr = {
   "config.effects.stopAnimations": "Arrêt des animations en cours",
   "config.effects.clearText": "Effacement du texte au changement de page",
   "config.effects.special": "Affichage des effets spéciaux",
+  "config.effects.reduceMotion": "Réduire les animations de l'interface",
 
   // ── Configuration : Raccourcis ──
   "config.shortcuts.section": "Raccourcis clavier",

@@ -699,7 +699,15 @@ export function createConfigScreen(
       { value: "yes", label: t("common.yes") },
       { value: "no", label: t("common.no") },
     ] as const;
-    const effect = (key: "config.effects.instant" | "config.effects.stopAnimations" | "config.effects.clearText" | "config.effects.special", name: "instantEffects" | "stopAnimations" | "clearTextOnPageChange" | "specialEffects"): void => {
+    const effect = (
+      key:
+        | "config.effects.instant"
+        | "config.effects.stopAnimations"
+        | "config.effects.clearText"
+        | "config.effects.special"
+        | "config.effects.reduceMotion",
+      name: "instantEffects" | "stopAnimations" | "clearTextOnPageChange" | "specialEffects" | "reduceMotion",
+    ): void => {
       radios(effects, t(key), name, yesNo, display[name] ? "yes" : "no", (v) => {
         display[name] = v === "yes";
         pushDisplay();
@@ -709,6 +717,8 @@ export function createConfigScreen(
     effect("config.effects.stopAnimations", "stopAnimations");
     effect("config.effects.clearText", "clearTextOnPageChange");
     effect("config.effects.special", "specialEffects");
+    // Réduction des animations de l'interface (#99) : accessibilité/choix joueur, en plus de l'OS.
+    effect("config.effects.reduceMotion", "reduceMotion");
   }
 
   function renderShortcuts(wide: El): void {
