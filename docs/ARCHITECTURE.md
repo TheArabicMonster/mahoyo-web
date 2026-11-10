@@ -320,3 +320,5 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
 - Le moteur KAG est indépendant du DOM (testable en headless).
 - Le renderer est passif : aucune décision de flux.
 - Les assets originaux ne sont jamais versionnés.
+
+- **`state-oracle.ts`** (`npm run oracle:state`) : rejoue les scripts et hashe l'état logique à chaque événement `text` + compte les `scene` (#317) — preuve de non-régression de la refonte des pistes.
