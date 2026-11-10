@@ -32,6 +32,75 @@ export const NOMINAL_STAGE_PX = FRAME_TEXT_REM * 16;
 /** Taille nominale à l'écran (px) : 34 px attendus (docs/DESIGN.md §3). */
 export const NOMINAL_SCREEN_PX = stageToScreenPx(NOMINAL_STAGE_PX);
 
+/**
+ * Constantes de mise en page **logiques** (repère 1024×576) retenues après l'arbitrage Opus 5.5
+ * (#319) : marge horizontale 69 px, police 26 px, interligne 40,8 px, marge verticale 46,7 px.
+ * Provenance détaillée dans `LAYOUT_PROVENANCE` ; aucune valeur en rem ni en pourcentage en dur.
+ */
+export const LAYOUT_LOGICAL = {
+  horizontalMarginPx: 69,
+  fontPx: 26,
+  lineHeightPx: 40.8,
+  verticalMarginPx: 46.7,
+} as const;
+
+export type ProvenanceStatus = "hypothèse" | "mesuré";
+
+/** Une entrée de provenance de mise en page : valeur logique, source, mesure de capture, tolérance. */
+export type LayoutProvenanceEntry = {
+  parameter: string;
+  logicalPx: number;
+  screenPx: number;
+  source: string;
+  capture: string;
+  tolerance: string;
+  status: ProvenanceStatus;
+};
+
+/**
+ * Provenance des valeurs de mise en page. Les valeurs restent au statut **hypothèse** tant que le
+ * TJS de configuration (`MessageLayer_config`) n'est pas extrait du jeu : elles viennent soit d'une
+ * capture, soit d'une lecture à confirmer. Aucune valeur n'est ajustée par scène.
+ */
+export const LAYOUT_PROVENANCE: LayoutProvenanceEntry[] = [
+  {
+    parameter: "marge horizontale (gauche et droite)",
+    logicalPx: LAYOUT_LOGICAL.horizontalMarginPx,
+    screenPx: stageToScreenPx(LAYOUT_LOGICAL.horizontalMarginPx),
+    source: "MessageLayer_config « 142/142/69/69 » — les 4 valeurs ont probablement été lues dans le mauvais ordre (KAG = L/T/R/B)",
+    capture: "marge gauche mesurée 85,4 px écran / 1,25 = 68,3 ≈ 69 px logiques",
+    tolerance: "±2 %",
+    status: "hypothèse",
+  },
+  {
+    parameter: "taille de police nominale",
+    logicalPx: LAYOUT_LOGICAL.fontPx,
+    screenPx: stageToScreenPx(LAYOUT_LOGICAL.fontPx),
+    source: "MessageLayer_config : 26 px logiques × STAGE_SCALE = 32,5 px écran",
+    capture: "le pas des glyphes (≈ 1 em) et les caractères/ligne se déduisent de la taille em (26 px), pas de l'encre",
+    tolerance: "±2 % sur le pas des glyphes",
+    status: "hypothèse",
+  },
+  {
+    parameter: "interligne",
+    logicalPx: LAYOUT_LOGICAL.lineHeightPx,
+    screenPx: stageToScreenPx(LAYOUT_LOGICAL.lineHeightPx),
+    source: "capture #173 : interligne 51 px écran (77/1080) / 1,25",
+    capture: "51 px écran mesurés sur la capture d'origine",
+    tolerance: "±2 %",
+    status: "hypothèse",
+  },
+  {
+    parameter: "marge verticale (haut et bas)",
+    logicalPx: LAYOUT_LOGICAL.verticalMarginPx,
+    screenPx: stageToScreenPx(LAYOUT_LOGICAL.verticalMarginPx),
+    source: "capture #173 : haut de zone à 8,1 % × 576 px logiques",
+    capture: "8,1 % × 576 = 46,7 px logiques",
+    tolerance: "±2 %",
+    status: "hypothèse",
+  },
+];
+
 /** Hauteur disponible pour le texte dans le cadre image (px du stage). */
 export function textAreaHeightStagePx(stageHeight = STAGE_SIZE.height): number {
   return frameTextAreaHeight(stageHeight);
@@ -202,10 +271,10 @@ export function extractTextPages(
       }
     }
     if (step.stop.kind === "click") {
-      // `[l]` = attente de fin de ligne : la page continue, on ajoute un saut de ligne pour que la
-      // mesure reflète la ligne supplémentaire à l'écran. Les autres clics terminent la page.
-      if (step.stop.style === "line") runs.push({ text: "\n" });
-      else finalize();
+      // `[l]` = attente en cours de page : le renderer continue le texte **sur la même ligne** (seul
+      // l'événement `lineBreak`, produit par un saut de ligne du script ou `[r]`, ajoute un `\n`),
+      // donc on ne termine pas la page et on n'ajoute pas de saut ici.
+      if (step.stop.style !== "line") finalize();
     } else if (step.stop.kind === "choice") {
       finalize();
     }
@@ -321,8 +390,11 @@ export type NominalSceneAnalysis = {
 
 export type BrowserOverflowReport = {
   browser: string;
+  /** Config actuelle du port (marge 14 %, police 1,7 rem). */
   verdicts: PageVerdict[];
   summary: OverflowSummary;
+  /** Config logique proposée (marge 69 px, police 26 px), mesurée dans le même navigateur. */
+  proposed: { verdicts: PageVerdict[]; summary: OverflowSummary } | null;
 };
 
 /** Mesure de glyphes de référence (M, x, あ) à une taille de police donnée. */
@@ -334,6 +406,38 @@ export type GlyphProbe = {
   /** Taille à l'écran (px), stage × 1,25. */
   screenFontPx: number;
   entries: { char: string; ascentPx: number; descentPx: number; widthPx: number }[];
+};
+
+/** Mesures de validation de la mise en page logique (pas des glyphes, caractères/ligne, symétrie, lignes). */
+export type LayoutValidation = {
+  /** Pas des glyphes (1 em attendu = taille de police logique), mesuré à la police proposée. */
+  glyphPitch: {
+    fontLogicalPx: number;
+    expectedStagePx: number;
+    measuredStagePx: number;
+    ratio: number;
+    tolerance: number;
+    ok: boolean;
+  } | null;
+  /** Caractères par ligne : port actuel, config proposée, attente d'après la largeur logique. */
+  charsPerLine: {
+    currentPort: number;
+    proposed: number;
+    expectedOriginal: number;
+    widthCurrentStagePx: number;
+    widthProposedStagePx: number;
+  };
+  /** Symétrie des marges : x_min et W − x_max doivent être égaux. */
+  marginSymmetry: {
+    leftStagePx: number;
+    rightStagePx: number;
+    deltaStagePx: number;
+    ok: boolean;
+  };
+  /** Lignes par page (déduites de la hauteur mesurée / interligne logique). */
+  linesPerPage: { currentP95: number; proposedP95: number };
+  /** Écart d'encre (x-height/capitale) vs original : cosmétique, ne change pas la taille em. */
+  inkRatio: number;
 };
 
 export type TextOverflowReport = {
@@ -355,17 +459,12 @@ export type TextOverflowReport = {
   originalMarginScreenPx: number;
   /** Écart de marge gauche du port vs original (px écran). */
   marginDeltaScreenPx: number;
-  /** Formule et valeurs recommandées (dérivées des mesures de l'original, aucune constante par scène). */
-  recommended: {
-    /** Police nominale recommandée (rem) : `FRAME_TEXT_REM × ratio de glyphe mesuré`. */
-    nominalRem: number;
-    /** Taille écran correspondante (px). */
-    nominalScreenPx: number;
-    /** Marge gauche recommandée (fraction de la scène). */
-    leftFraction: number;
-    /** Conversion des tailles de script (px repère 1280 → px CSS stage). */
-    scriptSizeFactor: number;
-  };
+  /** Mise en page logique proposée et sa provenance (aucune constante par scène). */
+  layout: LayoutProvenanceEntry[];
+  /** Mesures de validation de la mise en page proposée. */
+  validation: LayoutValidation | null;
+  /** Snapshot versionné des pages restant en débordement avec la config proposée (si écrit). */
+  snapshot: { path: string; count: number } | null;
   warnings: string[];
 };
 
@@ -407,6 +506,12 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
       `${stageToScreenPx(report.box.leftMarginStagePx).toFixed(1)} px écran ; original mesuré ~` +
       `${report.originalMarginScreenPx.toFixed(1)} px écran → écart ${report.marginDeltaScreenPx.toFixed(1)} px`,
   );
+  lines.push(
+    `- Mise en page logique proposée : marge horizontale **${LAYOUT_LOGICAL.horizontalMarginPx} px logiques** ` +
+      `(${stageToScreenPx(LAYOUT_LOGICAL.horizontalMarginPx).toFixed(1)} px écran), police **${LAYOUT_LOGICAL.fontPx} px logiques** ` +
+      `(${stageToScreenPx(LAYOUT_LOGICAL.fontPx).toFixed(1)} px écran), interligne ${LAYOUT_LOGICAL.lineHeightPx} px logiques, ` +
+      `marge verticale ${LAYOUT_LOGICAL.verticalMarginPx} px logiques`,
+  );
   lines.push("");
   if (report.warnings.length > 0) {
     lines.push("## Avertissements");
@@ -417,16 +522,18 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
   for (const browser of report.browsers) {
     lines.push(`## Navigateur : ${browser.browser}`);
     lines.push("");
-    const s = browser.summary;
-    lines.push(`- Pages mesurées : **${s.pages}**`);
-    lines.push(`- Pages en débordement à la taille nominale : **${s.overflowing}** (${(s.overflowRatio * 100).toFixed(2)} %)`);
-    lines.push(`- Causes : hauteur ${s.byCause.hauteur}, largeur ${s.byCause.largeur}, les deux ${s.byCause["les-deux"]}`);
-    lines.push(`- p95 du taux de remplissage : ${(s.p95FillRatio * 100).toFixed(1)} % ; marge minimale : ${s.worstSafetyPx.toFixed(1)} px (stage)`);
+    const current = browser.summary;
+    lines.push("### Config actuelle du port (marge 14 %, police 1,7 rem)");
     lines.push("");
-    if (s.worstPages.length > 0) {
+    lines.push(`- Pages mesurées : **${current.pages}**`);
+    lines.push(`- Pages en débordement à la taille nominale : **${current.overflowing}** (${(current.overflowRatio * 100).toFixed(2)} %)`);
+    lines.push(`- Causes : hauteur ${current.byCause.hauteur}, largeur ${current.byCause.largeur}, les deux ${current.byCause["les-deux"]}`);
+    lines.push(`- p95 du taux de remplissage : ${(current.p95FillRatio * 100).toFixed(1)} % ; marge minimale : ${current.worstSafetyPx.toFixed(1)} px (stage)`);
+    lines.push("");
+    if (current.worstPages.length > 0) {
       lines.push("| Script | Page | Caractères | Remplissage | Marge (px stage) | Cause |");
       lines.push("|---|---|---|---|---|---|");
-      for (const v of s.worstPages) {
+      for (const v of current.worstPages) {
         lines.push(
           `| ${mdCell(v.page.script)} | ${v.page.page} | ${v.page.nonSpaceChars} | ${(v.fillRatio * 100).toFixed(1)} % | ` +
             `${v.safetyPx.toFixed(1)} | ${v.cause} |`,
@@ -434,71 +541,111 @@ export function buildMarkdownReport(report: TextOverflowReport): string {
       }
       lines.push("");
     }
-  }
-  lines.push("## Taille nominale : formule de conversion");
-  lines.push("");
-  lines.push("Repères : le moteur du jeu travaille en **1024×576** (docs/KAG_MAHOYO_SEMANTICS.md §1) et le");
-  lines.push("stage du port reprend ce repère, agrandi ×1,25 vers le viewport 1280×720. Une taille");
-  lines.push("`@font size=` écrite dans un script est donc déjà en px du repère 1024 : la taille CSS");
-  lines.push("du stage est la taille du script (identité), et la taille écran vaut ×1,25. L'hypothèse");
-  lines.push("alternative (repère 1280) donnerait ×0,8 ; elle n'est pas retenue pour le corpus actuel.");
-  lines.push("");
-  lines.push("Sur les pages narratives mesurées, **aucun `@font size=` n'est utilisé** : la seule taille");
-  lines.push("est la constante nominale `FRAME_TEXT_REM` (1,7 rem) du port. Le tableau ci-dessous compare");
-  lines.push("donc cette constante au ratio de glyphe mesuré sur l'original par le propriétaire (#314).");
-  lines.push("");
-  lines.push("| Script | Page | taille script (px) | attendu écran (px) | actuel écran (px) | ratio actuel | proposé écran (px) |");
-  lines.push("|---|---|---|---|---|---|---|");
-  for (const scene of report.nominal) {
-    for (const c of scene.comparisons) {
-      lines.push(
-        `| ${mdCell(scene.script)} | ${scene.page} | ${c.scriptPx} | ${c.expectedScreenPx.toFixed(1)} | ` +
-          `${c.currentScreenPx.toFixed(1)} | ×${c.currentRatio.toFixed(3)} | ${c.proposedScreenPx.toFixed(1)} |`,
-      );
+    if (browser.proposed) {
+      const proposed = browser.proposed.summary;
+      lines.push("### Config logique proposée (marge 69 px, police 26 px)");
+      lines.push("");
+      lines.push(`- Pages en débordement : **${proposed.overflowing}** (${(proposed.overflowRatio * 100).toFixed(2)} %)`);
+      lines.push(`- p95 du taux de remplissage : ${(proposed.p95FillRatio * 100).toFixed(1)} % ; marge minimale : ${proposed.worstSafetyPx.toFixed(1)} px (stage)`);
+      lines.push("");
+      const remaining = browser.proposed.verdicts.filter((v) => v.overflow);
+      if (remaining.length > 0) {
+        lines.push("| Script | Page | Caractères | Remplissage | Marge (px stage) | Lignes |");
+        lines.push("|---|---|---|---|---|---|");
+        for (const v of remaining) {
+          const linesCount = Math.max(1, Math.round(v.nominalHeightPx / 39));
+          lines.push(
+            `| ${mdCell(v.page.script)} | ${v.page.page} | ${v.page.nonSpaceChars} | ${(v.fillRatio * 100).toFixed(1)} % | ` +
+              `${v.safetyPx.toFixed(1)} | ${linesCount} |`,
+          );
+        }
+        lines.push("");
+      }
     }
   }
+
+  lines.push("## Mise en page logique proposée et provenance");
   lines.push("");
-  lines.push(
-    `La constante actuelle est ${FRAME_TEXT_REM} rem ≈ ${stageToScreenPx(FRAME_TEXT_REM * 16).toFixed(1)} px écran ; le ratio de glyphe du`,
-  );
-  lines.push("propriétaire (#314, port 22 px vs original 18,5 px) la recommande à ~1,43 rem (≈ 28,6 px écran).");
-  lines.push("Cette conversion est **globale** (aucune constante par scène) ; elle reste à valider par une");
-  lines.push("capture comparée de l'original avant correction du runtime (#314).");
+  lines.push("Aucune valeur en rem ni en pourcentage en dur : les marges et la police sont exprimées en");
+  lines.push("**unités logiques** du stage (repère 1024×576), converties à l'écran par `STAGE_SCALE`.");
   lines.push("");
-  if (report.recommended) {
+  lines.push("| Paramètre | Valeur logique (px) | Écran (px) | Source | Mesure de capture | Tolérance | Statut |");
+  lines.push("|---|---|---|---|---|---|---|");
+  for (const entry of report.layout) {
     lines.push(
-      `Recommandation : police nominale **${report.recommended.nominalRem.toFixed(2)} rem** ` +
-        `(${report.recommended.nominalScreenPx.toFixed(1)} px écran, facteur ×${(report.recommended.nominalRem / FRAME_TEXT_REM).toFixed(3)}), ` +
-        `marge gauche **${(report.recommended.leftFraction * 100).toFixed(2)} %** (mesure vidéo 114/1708), ` +
-        `conversion des tailles de script ×${report.recommended.scriptSizeFactor.toFixed(2)} si le repère du script est 1280.`,
+      `| ${mdCell(entry.parameter)} | ${entry.logicalPx} | ${entry.screenPx.toFixed(1)} | ${mdCell(entry.source)} | ` +
+        `${mdCell(entry.capture)} | ${mdCell(entry.tolerance)} | ${entry.status} |`,
+    );
+  }
+  lines.push("");
+  if (report.validation) {
+    const v = report.validation;
+    lines.push("## Mesures de validation");
+    lines.push("");
+    lines.push("| Contrôle | Attendu | Mesuré | Verdict |");
+    lines.push("|---|---|---|---|");
+    if (v.glyphPitch) {
+      lines.push(
+        `| Pas des glyphes (1 em) à ${v.glyphPitch.fontLogicalPx} px logiques | ` +
+          `${v.glyphPitch.expectedStagePx.toFixed(1)} px stage / ${stageToScreenPx(v.glyphPitch.expectedStagePx).toFixed(1)} px écran ±${(v.glyphPitch.tolerance * 100).toFixed(0)} % | ` +
+          `${v.glyphPitch.measuredStagePx.toFixed(1)} px stage (×${v.glyphPitch.ratio.toFixed(3)}) | ${v.glyphPitch.ok ? "✓" : "✗"} |`,
+      );
+    }
+    lines.push(
+      `| Caractères par ligne | proposé ${v.charsPerLine.proposed} (attendu original ${v.charsPerLine.expectedOriginal}) | ` +
+        `port actuel ${v.charsPerLine.currentPort} — largeurs ${v.charsPerLine.widthCurrentStagePx.toFixed(0)} / ` +
+        `${v.charsPerLine.widthProposedStagePx.toFixed(0)} px stage | ${v.charsPerLine.proposed === v.charsPerLine.expectedOriginal ? "✓" : "≈"} |`,
+    );
+    lines.push(
+      `| Symétrie des marges (x_min ≈ W − x_max) | ${v.marginSymmetry.leftStagePx.toFixed(1)} ≈ ${v.marginSymmetry.rightStagePx.toFixed(1)} px | ` +
+        `écart ${v.marginSymmetry.deltaStagePx.toFixed(2)} px | ${v.marginSymmetry.ok ? "✓" : "✗"} |`,
+    );
+    lines.push(
+      `| Lignes par page (p95) | config proposée | actuelle ${v.linesPerPage.currentP95.toFixed(1)} → proposée ${v.linesPerPage.proposedP95.toFixed(1)} | — |`,
+    );
+    lines.push("");
+    lines.push(
+      `Écart d'encre (x-height/capitale) port/original mesuré par le propriétaire : **×${v.inkRatio.toFixed(3)}** — ` +
+        "c'est un écart **cosmétique** (approximation `text-font-metrics`, `size-adjust` éventuel) ; il ne modifie ni la " +
+        "taille em ni le pas des glyphes, donc il ne justifie **pas** de réduire la police.",
     );
     lines.push("");
   }
-  if (report.glyphProbes.length > 0) {
-    lines.push("### Glyphes mesurés (mêmes caractères, tailles comparées)");
+
+  lines.push("## Taille nominale : écart d'encre vs taille em");
+  lines.push("");
+  lines.push("Le moteur du jeu travaille en **1024×576** (docs/KAG_MAHOYO_SEMANTICS.md §1) ; le stage du port");
+  lines.push("reprend ce repère, agrandi ×1,25. Une taille `@font size=` est donc en px logiques : la taille");
+  lines.push("CSS du stage est la taille du script (identité), la taille écran vaut ×1,25. Le corpus narratif");
+  lines.push("mesuré **n'utilise aucun `@font size=`** : la taille nominale est la constante du port");
+  lines.push(`(\`FRAME_TEXT_REM\` = 1,7 rem = ${(FRAME_TEXT_REM * 16).toFixed(1)} px logiques = ${stageToScreenPx(FRAME_TEXT_REM * 16).toFixed(1)} px écran).`);
+  lines.push("");
+  lines.push("Le ratio d'encre de ×1,19 mesuré sur les vidéos (port 22 px vs original 18,5 px) porte sur la");
+  lines.push("**hauteur d'encre** (x-height/capitale), pas sur la taille em : le pas des glyphes et les");
+  lines.push("caractères par ligne restent déterminés par la taille em. Réduire la police à ~1,43 rem");
+  lines.push("corrigerait l'encre mais **casserait le nombre de caractères par ligne** — piste écartée.");
+  if (report.nominal.some((scene) => scene.comparisons.length > 0)) {
     lines.push("");
-    lines.push("| Navigateur | Police résolue | Police CSS (stage px) | Écran (px) | Caractère | Hauteur mesurée (écran px) |");
-    lines.push("|---|---|---|---|---|---|");
-    for (const probe of report.glyphProbes) {
-      for (const entry of probe.entries) {
-        const h = (entry.ascentPx + entry.descentPx) * STAGE_SCALE;
+    lines.push("| Script | Page | taille script (px) | écran actuel (px) | ratio |");
+    lines.push("|---|---|---|---|---|");
+    for (const scene of report.nominal) {
+      for (const c of scene.comparisons) {
         lines.push(
-          `| ${mdCell(probe.browser)} | ${mdCell(probe.fontFamily)} | ${probe.stageFontPx.toFixed(1)} | ` +
-            `${probe.screenFontPx.toFixed(1)} | ${mdCell(entry.char)} | ${h.toFixed(1)} |`,
+          `| ${mdCell(scene.script)} | ${scene.page} | ${c.scriptPx} | ${c.currentScreenPx.toFixed(1)} | ×${c.currentRatio.toFixed(3)} |`,
         );
       }
     }
-    lines.push("");
   }
-  lines.push("## Marge gauche");
   lines.push("");
-  lines.push(
-    `` +
-      `Le port place le texte à ${(FRAME_TEXT_AREA.left * 100).toFixed(2)} % de la largeur du stage. La mesure vidéo de l'original ` +
-      `(#319) donne ~${report.originalMarginScreenPx.toFixed(1)} px écran (114/1708×1280), soit ` +
-      `${((report.originalMarginScreenPx / ORIGINAL_SIZE.width) * 100).toFixed(2)} % : la zone du port réduit la largeur ` +
-      `utile et provoque des retours à la ligne supplémentaires.`,
-  );
+  lines.push("## Pagination (pas d'autoshrink)");
+  lines.push("");
+  lines.push("Les pages qui restent en débordement avec la mise en page logique doivent être **paginées**");
+  lines.push("(découpage aux limites de phrase, comme `@cm`/pages du moteur d'origine), jamais rétrécies :");
+  lines.push("la police reste constante et la zone de texte ne défile pas en cours de lecture.");
+  if (report.snapshot) {
+    lines.push("");
+    lines.push(`Snapshot versionné des pages restantes : \`${report.snapshot.path}\` (${report.snapshot.count} page(s)).`);
+  }
   lines.push("");
   lines.push("## Aucun texte du jeu");
   lines.push("");

@@ -6,6 +6,8 @@ import {
   buildMarkdownReport,
   classifyMeasurement,
   compareFontSize,
+  LAYOUT_LOGICAL,
+  LAYOUT_PROVENANCE,
   currentLeftMarginScreenPx,
   currentPortFontCssPx,
   extractTextPages,
@@ -54,13 +56,42 @@ describe("conversions de repères (#319)", () => {
   });
 });
 
+describe("mise en page logique (#319)", () => {
+  it("expose les constantes logiques et leur conversion écran ×1,25", () => {
+    expect(LAYOUT_LOGICAL.horizontalMarginPx).toBe(69);
+    expect(LAYOUT_LOGICAL.fontPx).toBe(26);
+    expect(LAYOUT_LOGICAL.lineHeightPx).toBeCloseTo(40.8, 5);
+    expect(LAYOUT_LOGICAL.verticalMarginPx).toBeCloseTo(46.7, 5);
+    expect(stageToScreenPx(LAYOUT_LOGICAL.horizontalMarginPx)).toBeCloseTo(86.25, 5);
+    expect(stageToScreenPx(LAYOUT_LOGICAL.fontPx)).toBeCloseTo(32.5, 5);
+  });
+
+  it("documente la provenance des 4 paramètres, tous en statut hypothèse", () => {
+    expect(LAYOUT_PROVENANCE).toHaveLength(4);
+    expect(LAYOUT_PROVENANCE.map((entry) => entry.parameter)).toEqual([
+      "marge horizontale (gauche et droite)",
+      "taille de police nominale",
+      "interligne",
+      "marge verticale (haut et bas)",
+    ]);
+    expect(LAYOUT_PROVENANCE.every((entry) => entry.status === "hypothèse")).toBe(true);
+    for (const entry of LAYOUT_PROVENANCE) {
+      expect(entry.source.length).toBeGreaterThan(0);
+      expect(entry.capture.length).toBeGreaterThan(0);
+      expect(entry.screenPx).toBeCloseTo(entry.logicalPx * STAGE_SCALE, 5);
+    }
+  });
+});
+
 describe("extractTextPages", () => {
-  it("regroupe le texte par page et conserve les sauts [l]", () => {
-    const pages = extractTextPages("*start|\nBonjour[l]\nle monde.[p]\nDeuxième page.[p]\n@return\n", "t.ks");
+  it("regroupe le texte par page ; [l] ne coupe pas la ligne (comportement du renderer)", () => {
+    const pages = extractTextPages("*start|\nBonjour[l]le monde.[p]\nDeuxième page.[p]\n@return\n", "t.ks");
     expect(pages).toHaveLength(2);
     expect(pages[0]!.page).toBe(0);
+    // Port actuel : `[l]` n'insère pas de saut de ligne (le renderer continue le texte), seul un
+    // `lineBreak` du script (saut de source / `[r]`) en ajoute un.
     expect(pages[0]!.text).toContain("Bonjour");
-    expect(pages[0]!.text).toContain("\n");
+    expect(pages[0]!.text).not.toContain("\n");
     expect(pages[0]!.text).toContain("le monde.");
     expect(pages[1]!.text).toContain("Deuxième page.");
     expect(pages[0]!.scriptSizes).toEqual([]);
@@ -153,19 +184,36 @@ describe("buildMarkdownReport", () => {
       scripts: 1,
       pages: 1,
       measuredPages: 1,
-      browsers: [{ browser: "chromium", verdicts: [verdict], summary: summarizeVerdicts([verdict]) }],
+      browsers: [
+        {
+          browser: "chromium",
+          verdicts: [verdict],
+          summary: summarizeVerdicts([verdict]),
+          proposed: { verdicts: [verdict], summary: summarizeVerdicts([verdict]) },
+        },
+      ],
       nominal: [{ script: "scene.ks", page: 3, scriptSizes: [], comparisons: [compareFontSize(24)] }],
       glyphProbes: [],
       box: { nominalFontPx: 27.2, lineHeight: 40.8, areaHeightPx: 480, leftMarginStagePx: FRAME_TEXT_AREA.left * STAGE_SIZE.width },
       originalMarginScreenPx: 85.4,
       marginDeltaScreenPx: 93.8,
-      recommended: { nominalRem: 1.43, nominalScreenPx: 28.6, leftFraction: 0.0667, scriptSizeFactor: 0.8 },
+      layout: LAYOUT_PROVENANCE,
+      validation: {
+        glyphPitch: { fontLogicalPx: 26, expectedStagePx: 26, measuredStagePx: 26.1, ratio: 1.004, tolerance: 0.02, ok: true },
+        charsPerLine: { currentPort: 28, proposed: 34, expectedOriginal: 34, widthCurrentStagePx: 788, widthProposedStagePx: 886 },
+        marginSymmetry: { leftStagePx: 69, rightStagePx: 69, deltaStagePx: 0, ok: true },
+        linesPerPage: { currentP95: 5.4, proposedP95: 4.1 },
+        inkRatio: 1.19,
+      },
+      snapshot: { path: "reports/snapshot.json", count: 1 },
       warnings: ["rapport partiel"],
     };
     const markdown = buildMarkdownReport(report);
     expect(markdown).toContain("Débordement du texte");
     expect(markdown).toContain("scene.ks");
-    expect(markdown).toContain("1.43");
+    expect(markdown).toContain("69");
+    expect(markdown).toContain("26");
+    expect(markdown).toContain("hypothèse");
     expect(markdown).not.toContain("TEXTE-ORIGINAL-A-NE-PAS-FUITER");
     expect(markdown).toContain("rapport partiel");
   });

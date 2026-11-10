@@ -26,9 +26,11 @@ import { dirname, join, resolve } from "path";
 import { chromium, firefox, type BrowserType } from "playwright";
 import { listCorpus } from "./audit-lib.js";
 import { generateFullReadCorpus } from "../tests/e2e/placeholders.js";
-import { FRAME_TEXT_AREA, FRAME_TEXT_LINE_HEIGHT, FRAME_TEXT_REM } from "../src/renderer/text-fit.js";
+import { FRAME_TEXT_AREA, FRAME_TEXT_LINE_HEIGHT } from "../src/renderer/text-fit.js";
 import {
   GAME_TEXT_FONT_STACK,
+  LAYOUT_LOGICAL,
+  LAYOUT_PROVENANCE,
   NOMINAL_STAGE_PX,
   STAGE_SCALE,
   STAGE_SIZE,
@@ -45,6 +47,7 @@ import {
   type BrowserOverflowReport,
   type NominalSceneAnalysis,
   type GlyphProbe,
+  type LayoutValidation,
   type PageVerdict,
   type TextOverflowReport,
   type TextPage,
@@ -54,15 +57,29 @@ const ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_REPORT_JSON = join(ROOT, "reports", "text-overflow.json");
 const DEFAULT_REPORT_MD = join(ROOT, "reports", "text-overflow.md");
 
-/** Ratio de glyphe mesuré par le propriétaire (#314) : port 22 px vs original 18,5 px (vidéos). */
-const REFERENCE_GLYPH_RATIO = 18.5 / 22;
 /** Marge gauche de l'original d'après la mesure vidéo de #319 : 114 px sur 1708 px. */
 const REFERENCE_LEFT_MARGIN = { left: 114, width: 1708 };
 
-/** Police nominale recommandée : la constante du port multipliée par le ratio de glyphe mesuré. */
-const RECOMMENDED_NOMINAL_REM = FRAME_TEXT_REM * REFERENCE_GLYPH_RATIO;
-/** Marge gauche recommandée (fraction de la scène), issue de la mesure vidéo de l'original. */
-const RECOMMENDED_LEFT = REFERENCE_LEFT_MARGIN.left / REFERENCE_LEFT_MARGIN.width;
+/** Écart d'encre (x-height/capitale) mesuré par le propriétaire (#314) : port 22 px vs original 18,5 px. */
+const INK_RATIO = 22 / 18.5;
+
+/** Config actuelle du port : dérivée des fractions et du rem actuels, exprimée en px logiques. */
+const CURRENT_LAYOUT = {
+  leftLogicalPx: FRAME_TEXT_AREA.left * STAGE_SIZE.width,
+  rightLogicalPx: FRAME_TEXT_AREA.right * STAGE_SIZE.width,
+  topLogicalPx: FRAME_TEXT_AREA.top * STAGE_SIZE.height,
+  fontLogicalPx: NOMINAL_STAGE_PX,
+  lineHeightLogicalPx: NOMINAL_STAGE_PX * FRAME_TEXT_LINE_HEIGHT,
+};
+
+/** Config logique proposée (arbitrage Opus 5.5) : marges 69 px, police 26 px, interligne 40,8 px. */
+const PROPOSED_LAYOUT = {
+  leftLogicalPx: LAYOUT_LOGICAL.horizontalMarginPx,
+  rightLogicalPx: LAYOUT_LOGICAL.horizontalMarginPx,
+  topLogicalPx: LAYOUT_LOGICAL.verticalMarginPx,
+  fontLogicalPx: LAYOUT_LOGICAL.fontPx,
+  lineHeightLogicalPx: LAYOUT_LOGICAL.lineHeightPx,
+};
 
 const CHARS = ["M", "x", "あ"];
 
@@ -74,6 +91,7 @@ type Cli = {
   assetsDir: string | null;
   jsonPath: string;
   mdPath: string;
+  snapshotPath: string | null;
 };
 
 function parseArgs(argv: readonly string[]): Cli {
@@ -85,6 +103,7 @@ function parseArgs(argv: readonly string[]): Cli {
     assetsDir: process.env.MAHOYO_ASSETS_DIR?.trim() || null,
     jsonPath: DEFAULT_REPORT_JSON,
     mdPath: DEFAULT_REPORT_MD,
+    snapshotPath: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -95,8 +114,9 @@ function parseArgs(argv: readonly string[]): Cli {
     else if (arg === "--assets") cli.assetsDir = resolve(argv[++i] ?? "");
     else if (arg === "--json") cli.jsonPath = resolve(argv[++i] ?? cli.jsonPath);
     else if (arg === "--md") cli.mdPath = resolve(argv[++i] ?? cli.mdPath);
+    else if (arg === "--snapshot") cli.snapshotPath = resolve(argv[++i] ?? "");
     else if (arg === "--help") {
-      console.log("Usage : npm run text:overflow -- [--placeholders] [--browsers chromium,firefox] [--max-pages N] [--max-scripts N] [--assets <dir>] [--json <f>] [--md <f>]");
+      console.log("Usage : npm run text:overflow -- [--placeholders] [--browsers chromium,firefox] [--max-pages N] [--max-scripts N] [--assets <dir>] [--json <f>] [--md <f>] [--snapshot <f>]");
       process.exit(0);
     } else console.warn(`[text-overflow] argument ignoré : ${arg}`);
   }
@@ -141,48 +161,54 @@ function pageHtml(page: TextPage, convertScriptSizes: boolean): string {
     .join("");
 }
 
-type Config = { id: "current" | "proposed"; left: number; right: number; top: number; basePx: number; convertScriptSizes: boolean; label: string };
+type Config = {
+  id: "current" | "proposed";
+  leftLogicalPx: number;
+  rightLogicalPx: number;
+  topLogicalPx: number;
+  fontLogicalPx: number;
+  lineHeightLogicalPx: number;
+  convertScriptSizes: boolean;
+  label: string;
+};
 
 const CONFIGS: Config[] = [
   {
     id: "current",
-    left: FRAME_TEXT_AREA.left,
-    right: FRAME_TEXT_AREA.right,
-    top: FRAME_TEXT_AREA.top,
-    basePx: NOMINAL_STAGE_PX,
+    ...CURRENT_LAYOUT,
     convertScriptSizes: false,
-    label: "config actuelle du port",
+    label: "config actuelle du port (marge 14 %, police 1,7 rem)",
   },
   {
     id: "proposed",
-    left: RECOMMENDED_LEFT,
-    right: FRAME_TEXT_AREA.right,
-    top: FRAME_TEXT_AREA.top,
-    basePx: RECOMMENDED_NOMINAL_REM * 16,
-    convertScriptSizes: true,
-    label: "config proposée (marge 6,67 %, police ~1,43 rem, conversion ×0,8)",
+    ...PROPOSED_LAYOUT,
+    convertScriptSizes: false,
+    label: "config logique proposée (marge 69 px, police 26 px)",
   },
 ];
 
-/** Page de mesure autonome : stage 1024×576 agrandi ×1,25, cadre image du port (constantes importées). */
+/** Page de mesure autonome : stage 1024×576 agrandi ×1,25, marges logiques en px. */
 function measureDocument(): string {
   const config = CONFIGS[0]!;
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     html, body { margin: 0; background: #000; }
     #stage { position: relative; width: ${STAGE_SIZE.width}px; height: ${STAGE_SIZE.height}px;
              transform: scale(${STAGE_SCALE}); transform-origin: 0 0; }
-    #text { position: absolute; left: ${config.left * 100}%; right: ${config.right * 100}%; top: ${config.top * 100}%;
-            font-family: ${GAME_TEXT_FONT_STACK}; font-size: ${config.basePx}px;
-            line-height: ${FRAME_TEXT_LINE_HEIGHT}; letter-spacing: 0.06em; white-space: pre-wrap; color: #fff; }
+    #text { position: absolute; left: ${config.leftLogicalPx}px; right: ${config.rightLogicalPx}px; top: ${config.topLogicalPx}px;
+            font-family: ${GAME_TEXT_FONT_STACK}; font-size: ${config.fontLogicalPx}px;
+            line-height: ${config.lineHeightLogicalPx}px; letter-spacing: 0.06em; white-space: pre-wrap; color: #fff; }
   </style></head><body><div id="stage"><div id="text"></div></div></body></html>`;
 }
 
 type ProbeResult = { label: string; char: string; cssSize: number; ascent: number; descent: number; width: number };
+type PitchResult = { label: string; cssSize: number; pitch: number };
 
 type BrowserMeasurement = {
   /** Hauteur mesurée par page et par config (px du stage), + débordement horizontal. */
   pages: { height: number[]; widthOverflow: boolean[] }[];
   probes: ProbeResult[];
+  /** Pas des glyphes (largeur moyenne de あ répété / 10) par taille mesurée. */
+  pitches: PitchResult[];
   fontFamily: string;
   notoLoaded: boolean;
 };
@@ -203,23 +229,29 @@ async function measureInBrowser(
 
     const payload = {
       fontStack: GAME_TEXT_FONT_STACK,
-      configs: CONFIGS.map((c) => ({ id: c.id, left: c.left, right: c.right, top: c.top, basePx: c.basePx })),
-      pages: pages.map((p) => ({
-        current: pageHtml(p, false),
-        proposed: pageHtml(p, true),
+      configs: CONFIGS.map((c) => ({
+        id: c.id,
+        left: c.leftLogicalPx,
+        right: c.rightLogicalPx,
+        top: c.topLogicalPx,
+        font: c.fontLogicalPx,
+        lineHeight: c.lineHeightLogicalPx,
       })),
+      pages: pages.map((p) => ({ current: pageHtml(p, false), proposed: pageHtml(p, true) })),
       probes: probeSizes.flatMap((probe) => CHARS.map((char) => ({ label: probe.label, char, cssSize: probe.cssPx }))),
+      pitchSizes: probeSizes.map((probe) => ({ label: probe.label, cssSize: probe.cssPx })),
     };
     const result = (await page.evaluate(`(() => {
       const payload = ${JSON.stringify(payload)};
       const text = document.getElementById("text");
-      const out = { configs: [], probes: [], fontFamily: "", notoLoaded: false };
+      const out = { configs: [], probes: [], pitches: [], fontFamily: "", notoLoaded: false };
       const pairs = payload.configs.map((c) => [c, Object.fromEntries(payload.pages.map((p, i) => [i, p[c.id]]))]);
       for (const [config, htmlById] of pairs) {
-        text.style.left = (config.left * 100) + "%";
-        text.style.right = (config.right * 100) + "%";
-        text.style.top = (config.top * 100) + "%";
-        text.style.fontSize = config.basePx + "px";
+        text.style.left = config.left + "px";
+        text.style.right = config.right + "px";
+        text.style.top = config.top + "px";
+        text.style.fontSize = config.font + "px";
+        text.style.lineHeight = config.lineHeight + "px";
         const heights = [];
         const widthOverflow = [];
         for (let i = 0; i < payload.pages.length; i++) {
@@ -238,10 +270,16 @@ async function measureInBrowser(
         const m = ctx.measureText(probe.char);
         out.probes.push({ label: probe.label, char: probe.char, cssSize: probe.cssSize, ascent: m.actualBoundingBoxAscent, descent: m.actualBoundingBoxDescent, width: m.width });
       }
+      for (const size of payload.pitchSizes) {
+        ctx.font = "400 " + size.cssSize + "px " + payload.fontStack;
+        const m = ctx.measureText("ああああああああああ");
+        out.pitches.push({ label: size.label, cssSize: size.cssSize, pitch: m.width / 10 });
+      }
       return out;
     })()`)) as {
       configs: { id: string; heights: number[]; widthOverflow: boolean[] }[];
       probes: BrowserMeasurement["probes"];
+      pitches: PitchResult[];
       fontFamily: string;
       notoLoaded: boolean;
     };
@@ -255,7 +293,13 @@ async function measureInBrowser(
       };
     });
     console.log(`[text-overflow] ${browserName} : ${pages.length} pages mesurées (police résolue : ${result.fontFamily})`);
-    return { pages: pagesOut, probes: result.probes, fontFamily: result.fontFamily, notoLoaded: result.notoLoaded };
+    return {
+      pages: pagesOut,
+      probes: result.probes,
+      pitches: result.pitches,
+      fontFamily: result.fontFamily,
+      notoLoaded: result.notoLoaded,
+    };
   } catch (err) {
     console.warn(`[text-overflow] ${browserName} indisponible : ${err instanceof Error ? err.message : String(err)}`);
     return null;
@@ -265,7 +309,8 @@ async function measureInBrowser(
 }
 
 function verdictsFor(measurement: BrowserMeasurement, pages: readonly TextPage[], configIndex: 0 | 1): PageVerdict[] {
-  const areaHeightPx = textAreaHeightStagePx();
+  const config = CONFIGS[configIndex]!;
+  const areaHeightPx = STAGE_SIZE.height - 2 * config.topLogicalPx;
   return pages.map((page, index) =>
     classifyMeasurement(page, {
       nominalHeightPx: measurement.pages[index]!.height[configIndex]!,
@@ -273,6 +318,82 @@ function verdictsFor(measurement: BrowserMeasurement, pages: readonly TextPage[]
       widthOverflow: measurement.pages[index]!.widthOverflow[configIndex]!,
     }),
   );
+}
+
+/** Mesures de validation de la mise en page logique proposée (pas des glyphes, caractères/ligne, symétrie). */
+function computeValidation(measurement: BrowserMeasurement, verdictsCurrent: readonly PageVerdict[], verdictsProposed: readonly PageVerdict[]): LayoutValidation {
+  const proposedPitch = measurement.pitches.find((p) => p.label === "nominal-propose");
+  const expectedStagePx = LAYOUT_LOGICAL.fontPx;
+  const measuredStagePx = proposedPitch?.pitch ?? 0;
+  const tolerance = 0.02;
+  const ratio = expectedStagePx > 0 ? measuredStagePx / expectedStagePx : 0;
+  const widthCurrent = STAGE_SIZE.width - CURRENT_LAYOUT.leftLogicalPx - CURRENT_LAYOUT.rightLogicalPx;
+  const widthProposed = STAGE_SIZE.width - PROPOSED_LAYOUT.leftLogicalPx - PROPOSED_LAYOUT.rightLogicalPx;
+  const lines = (verdicts: readonly PageVerdict[]): number[] => verdicts.map((v) => v.nominalHeightPx / LAYOUT_LOGICAL.lineHeightPx);
+  const p95 = (values: number[]): number => {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const index = (sorted.length - 1) * 0.95;
+    const lo = Math.floor(index);
+    const hi = Math.ceil(index);
+    return lo === hi ? sorted[lo]! : sorted[lo]! * (hi - index) + sorted[hi]! * (index - lo);
+  };
+  return {
+    glyphPitch:
+      proposedPitch === undefined
+        ? null
+        : {
+            fontLogicalPx: expectedStagePx,
+            expectedStagePx,
+            measuredStagePx,
+            ratio,
+            tolerance,
+            ok: Math.abs(ratio - 1) <= tolerance,
+          },
+    charsPerLine: {
+      currentPort: Math.floor(widthCurrent / CURRENT_LAYOUT.fontLogicalPx),
+      proposed: Math.floor(widthProposed / LAYOUT_LOGICAL.fontPx),
+      expectedOriginal: Math.floor(widthProposed / LAYOUT_LOGICAL.fontPx),
+      widthCurrentStagePx: widthCurrent,
+      widthProposedStagePx: widthProposed,
+    },
+    marginSymmetry: {
+      leftStagePx: PROPOSED_LAYOUT.leftLogicalPx,
+      rightStagePx: PROPOSED_LAYOUT.rightLogicalPx,
+      deltaStagePx: Math.abs(PROPOSED_LAYOUT.leftLogicalPx - PROPOSED_LAYOUT.rightLogicalPx),
+      ok: Math.abs(PROPOSED_LAYOUT.leftLogicalPx - PROPOSED_LAYOUT.rightLogicalPx) <= 1,
+    },
+    linesPerPage: { currentP95: p95(lines(verdictsCurrent)), proposedP95: p95(lines(verdictsProposed)) },
+    inkRatio: INK_RATIO,
+  };
+}
+
+/** Snapshot versionnable des pages restant en débordement avec la config proposée (aucun texte). */
+export type OverflowSnapshot = {
+  generatedAt: string;
+  mode: "assets" | "placeholders";
+  config: string;
+  count: number;
+  pages: { script: string; page: number; nonSpaceChars: number; fillRatio: number; safetyPx: number; lines: number }[];
+};
+
+function buildSnapshot(verdicts: readonly PageVerdict[], mode: "assets" | "placeholders"): OverflowSnapshot {
+  return {
+    generatedAt: new Date().toISOString(),
+    mode,
+    config: "logique : marge 69 px, police 26 px, interligne 40,8 px",
+    count: verdicts.filter((v) => v.overflow).length,
+    pages: verdicts
+      .filter((v) => v.overflow)
+      .map((v) => ({
+        script: v.page.script,
+        page: v.page.page,
+        nonSpaceChars: v.page.nonSpaceChars,
+        fillRatio: Math.round(v.fillRatio * 1000) / 1000,
+        safetyPx: Math.round(v.safetyPx * 10) / 10,
+        lines: Math.max(1, Math.round(v.nominalHeightPx / LAYOUT_LOGICAL.lineHeightPx)),
+      })),
+  };
 }
 
 /** Scènes (3 max) pour l'analyse de taille nominale : pages avec `@font size=` en priorité. */
@@ -291,7 +412,7 @@ function nominalScenes(
   }));
   const probeSizes: { label: string; cssPx: number }[] = [
     { label: "nominal-actuel", cssPx: NOMINAL_STAGE_PX },
-    { label: "nominal-propose", cssPx: RECOMMENDED_NOMINAL_REM * 16 },
+    { label: "nominal-propose", cssPx: LAYOUT_LOGICAL.fontPx },
     ...scriptSizes.flatMap((size) => [
       { label: `script-${size}`, cssPx: size },
       { label: `script-${size}-converti`, cssPx: size * (STAGE_SIZE.width / 1280) },
@@ -349,6 +470,7 @@ async function main(): Promise<void> {
 
   const browserReports: BrowserOverflowReport[] = [];
   const glyphProbes: GlyphProbe[] = [];
+  let validation: LayoutValidation | null = null;
   for (const name of cli.browsers) {
     const type = name === "firefox" ? firefox : name === "chromium" ? chromium : null;
     if (!type) {
@@ -365,13 +487,28 @@ async function main(): Promise<void> {
       }
       group.entries.push({ char: probe.char, ascentPx: probe.ascent, descentPx: probe.descent, widthPx: probe.width });
     }
-    // Rapport principal : config actuelle ; la config proposée est résumée à part.
-    browserReports.push({ browser: name, verdicts: verdictsFor(measurement, pages, 0), summary: summarizeVerdicts(verdictsFor(measurement, pages, 0)) });
-    const proposedSummary = summarizeVerdicts(verdictsFor(measurement, pages, 1));
+    const verdictsCurrent = verdictsFor(measurement, pages, 0);
+    const verdictsProposed = verdictsFor(measurement, pages, 1);
+    browserReports.push({
+      browser: name,
+      verdicts: verdictsCurrent,
+      summary: summarizeVerdicts(verdictsCurrent),
+      proposed: { verdicts: verdictsProposed, summary: summarizeVerdicts(verdictsProposed) },
+    });
+    if (validation === null) validation = computeValidation(measurement, verdictsCurrent, verdictsProposed);
     warnings.push(
-      `[${name}] config proposée : ${proposedSummary.overflowing}/${proposedSummary.pages} pages en débordement ` +
-        `(actuelle : ${browserReports.at(-1)!.summary.overflowing}/${browserReports.at(-1)!.summary.pages}).`,
+      `[${name}] config logique (marge 69, police 26) : ${verdictsProposed.filter((v) => v.overflow).length}/${pages.length} pages en débordement ` +
+        `(config actuelle : ${verdictsCurrent.filter((v) => v.overflow).length}/${pages.length}).`,
     );
+  }
+
+  let snapshotInfo: TextOverflowReport["snapshot"] = null;
+  if (cli.snapshotPath && browserReports[0]?.proposed) {
+    const snapshot = buildSnapshot(browserReports[0].proposed.verdicts, mode);
+    mkdirSync(dirname(cli.snapshotPath), { recursive: true });
+    writeFileSync(cli.snapshotPath, JSON.stringify(snapshot, null, 2), "utf-8");
+    snapshotInfo = { path: cli.snapshotPath, count: snapshot.count };
+    console.log(`[text-overflow] snapshot : ${snapshot.count} page(s) en débordement → ${cli.snapshotPath}`);
   }
 
   const box = {
@@ -394,12 +531,9 @@ async function main(): Promise<void> {
     box,
     originalMarginScreenPx: originalMargin,
     marginDeltaScreenPx: currentLeftMarginScreenPx() - originalMargin,
-    recommended: {
-      nominalRem: RECOMMENDED_NOMINAL_REM,
-      nominalScreenPx: stageToScreenPx(RECOMMENDED_NOMINAL_REM * 16),
-      leftFraction: RECOMMENDED_LEFT,
-      scriptSizeFactor: STAGE_SIZE.width / 1280,
-    },
+    layout: LAYOUT_PROVENANCE,
+    validation,
+    snapshot: snapshotInfo,
     glyphProbes,
     warnings,
   };
@@ -411,6 +545,13 @@ async function main(): Promise<void> {
       ...b,
       verdicts: b.verdicts.map((v) => ({ ...v, page: pageMeta(v.page) })),
       summary: { ...b.summary, worstPages: b.summary.worstPages.map((v) => ({ ...v, page: pageMeta(v.page) })) },
+      proposed: b.proposed && {
+        verdicts: b.proposed.verdicts.map((v) => ({ ...v, page: pageMeta(v.page) })),
+        summary: {
+          ...b.proposed.summary,
+          worstPages: b.proposed.summary.worstPages.map((v) => ({ ...v, page: pageMeta(v.page) })),
+        },
+      },
     })),
     nominal: scenes,
     glyphProbes,
@@ -427,7 +568,18 @@ async function main(): Promise<void> {
     console.log(`Pages : ${s.pages} — débordent à la taille nominale : ${s.overflowing} (${(s.overflowRatio * 100).toFixed(2)} %)`);
     console.log(`p95 remplissage : ${(s.p95FillRatio * 100).toFixed(1)} % ; marge minimale : ${s.worstSafetyPx.toFixed(1)} px (stage)`);
     console.log(`Marge gauche : ${currentLeftMarginScreenPx().toFixed(1)} px écran (port) vs ${originalMargin.toFixed(1)} px (original) → +${report.marginDeltaScreenPx.toFixed(1)} px`);
-    console.log(`Police nominale : ${box.nominalFontPx.toFixed(1)} px stage / ${stageToScreenPx(box.nominalFontPx).toFixed(1)} px écran ; recommandée ~${RECOMMENDED_NOMINAL_REM.toFixed(2)} rem (${stageToScreenPx(RECOMMENDED_NOMINAL_REM * 16).toFixed(1)} px écran)`);
+    console.log(
+      `Config logique proposée : marge ${LAYOUT_LOGICAL.horizontalMarginPx} px logiques (${stageToScreenPx(LAYOUT_LOGICAL.horizontalMarginPx).toFixed(1)} px écran), ` +
+        `police ${LAYOUT_LOGICAL.fontPx} px logiques (${stageToScreenPx(LAYOUT_LOGICAL.fontPx).toFixed(1)} px écran)`,
+    );
+    if (validation) {
+      console.log(
+        `Validation : pas des glyphes ×${validation.glyphPitch?.ratio.toFixed(3) ?? "n/a"} (attendu 1 ±2 %), ` +
+          `caractères/ligne ${validation.charsPerLine.currentPort} → ${validation.charsPerLine.proposed}, ` +
+          `marges symétriques écart ${validation.marginSymmetry.deltaStagePx} px`,
+      );
+    }
+    console.log(`Écart d'encre ×${INK_RATIO.toFixed(3)} : cosmétique (approximation text-font-metrics), ne justifie pas de réduire la police`);
   } else {
     console.log("Aucune mesure navigateur disponible (navigateur absent ?).");
   }
