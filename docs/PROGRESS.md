@@ -16,7 +16,7 @@
 | Milestone | Fermées | Ouvertes | Total | Progression | État |
 |---|---|---|---|---|---|
 | v1.0 | 101 | 0 | 101 | [██████████] 100 % | 🟢 Terminé |
-| v1.1 | 43 | 19 | 62 | [███████░░░] 69 % | 🟡 En cours |
+| v1.1 | 67 | 7 | 74 | [█████████░] 91 % | 🟡 En cours |
 
 ## Légende
 
@@ -24,4 +24,4 @@
 - 🟡 En cours : travail actif.
 - ⚪ Non commencé : aucune issue fermée ou milestone vide.
 
-_Généré le 2026-11-09._
+_Généré le 2026-11-10._

@@ -319,6 +319,17 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
 - CI : rapport placeholders **non bloquant** dans le job `e2e (chromium)` ; le vrai corpus se mesure
   en local avec `MAHOYO_ASSETS_DIR`.
 
+### Validation visuelle (#347)
+
+- `tools/validate-visual.ts` (`npm run validate:visual`) : capture reproductible du player avec les
+  **assets réels locaux** (démarrage forcé sur `1-2.ks`, avancée jusqu'au plan rapproché du
+  professeur) puis mesures dans Chromium — alignement sprite↔décor par corrélation de modèle
+  (nœud de cravate, critère ≤ 1 %), durées des animations de transition (WAAPI `time=`) vs durées
+  observées, fondus et cuts parasites comparés à l'enregistrement de référence.
+- Les captures, la frame de référence et le rapport restent **hors dépôt** (`/tmp/mahoyo-visual`) :
+  aucun asset/texte original commité ; l'outil est local (assets réels requis, pas en CI).
+- Méthode, seuils, résultats mesurés et limites : [`VALIDATION_VISUELLE.md`](VALIDATION_VISUELLE.md).
+
 ## Principes
 
 - Le moteur KAG est indépendant du DOM (testable en headless).
