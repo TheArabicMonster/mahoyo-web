@@ -175,22 +175,29 @@ test("pas des glyphes = 1 em (26 px logiques) et 34 caractères pleine chasse pa
   expect(run!.firstLineCount).toBe(34); // floor((1024-2*69)/26) = 34
 });
 
-test("le wrap est identique à 1280×720, 1920×1080 et en portrait (layout logique constant) (#320)", async ({ page }) => {
+test("le wrap est identique à 1280×720 et 1920×1080 ; en portrait la mise en page est propre (#320/#325)", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 720 });
   await reachLongPageEnd(page);
   const base = await lineSignature(page);
   expect(base.length).toBeGreaterThanOrEqual(6); // page longue multi-lignes
 
-  for (const viewport of [
-    { width: 1920, height: 1080 },
-    { width: 820, height: 1180 }, // portrait
-  ]) {
-    await page.setViewportSize(viewport);
-    await page.reload();
-    await reachLongPageEnd(page);
-    expect(await lineSignature(page)).toEqual(base);
-  }
+  // Paysage : même repère logique, seule l'échelle change → retours à la ligne identiques.
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.reload();
+  await reachLongPageEnd(page);
+  expect(await lineSignature(page)).toEqual(base);
+
+  // Portrait (#325) : la zone de texte est dans le dock, de largeur réelle : le wrap peut différer,
+  // mais le texte complet est identique (somme des caractères) et la police reste constante.
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.reload();
+  await reachLongPageEnd(page);
+  const portrait = await lineSignature(page);
+  expect(portrait.length).toBeGreaterThanOrEqual(6);
+  expect(portrait.reduce((sum, count) => sum + count, 0)).toBe(base.reduce((sum, count) => sum + count, 0));
+  const fontSize = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector<HTMLElement>(".mh-stage-text")!).fontSize));
+  expect(fontSize).toBeCloseTo(26, 3);
 });
 
 
@@ -218,17 +225,23 @@ async function collectFivePageSignatures(page: Page): Promise<number[][]> {
   return signatures;
 }
 
-test("golden 5 pages : retours à la ligne identiques à 1280×720, 1920×1080 et portrait (#320)", async ({ page }) => {
+test("golden 5 pages : retours à la ligne identiques en paysage, texte identique en portrait (#320/#325)", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1280, height: 720 });
   const reference = await collectFivePageSignatures(page);
   expect(reference).toHaveLength(5);
-  for (const viewport of [
-    { width: 1920, height: 1080 },
-    { width: 820, height: 1180 },
-  ]) {
-    await page.setViewportSize(viewport);
-    await page.reload();
-    expect(await collectFivePageSignatures(page)).toEqual(reference);
-  }
+  // Paysage : signatures identiques.
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.reload();
+  expect(await collectFivePageSignatures(page)).toEqual(reference);
+
+  // Portrait (#325) : le wrap peut différer (zone de texte dans le dock), mais chaque page porte
+  // exactement le même nombre de caractères visibles.
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.reload();
+  const portrait = await collectFivePageSignatures(page);
+  expect(portrait).toHaveLength(5);
+  expect(portrait.map((lines) => lines.reduce((sum, count) => sum + count, 0))).toEqual(
+    reference.map((lines) => lines.reduce((sum, count) => sum + count, 0)),
+  );
 });
