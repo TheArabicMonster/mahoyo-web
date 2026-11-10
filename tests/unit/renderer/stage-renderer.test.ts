@@ -4,7 +4,7 @@ import { FRAME_TEXT_LINE_HEIGHT, FRAME_TEXT_REM } from "@/renderer/text-fit.js";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import { compileAction } from "@/renderer/action-compiler.js";
 import { partbgInnerTransform } from "@/renderer/transform-helpers.js";
-import type { RenderEvent, StageSnapshot, TimelineLayerState } from "@/kag/events.js";
+import type { RenderEvent, SceneState, StageSnapshot, TimelineLayerState } from "@/kag/events.js";
 import { DEFAULT_DISPLAY_SETTINGS, type DisplaySettings } from "@/renderer/types.js";
 
 const display = (o: Partial<DisplaySettings> = {}): DisplaySettings => ({ ...DEFAULT_DISPLAY_SETTINGS, ...o });
@@ -1586,6 +1586,7 @@ describe("DomStageRenderer", () => {
 });
 
 describe("Texte — accessibilité et typographie (#314)", () => {
+describe("Sprites — dimensions réservées et clip partbgid (#315)", () => {
   let root: HTMLElement;
   let renderer: ReturnType<typeof createDomStageRenderer>;
 
@@ -1593,6 +1594,15 @@ describe("Texte — accessibilité et typographie (#314)", () => {
     root = document.createElement("div");
     document.body.appendChild(root);
     renderer = createDomStageRenderer({ resolver: createAssetResolver() });
+    renderer = createDomStageRenderer({
+      resolver: createAssetResolver(),
+      // Manifeste des dimensions (généré au build) : placement avant décodage.
+      imageDimensions: {
+        perso: { width: 200, height: 100 },
+        grand: { width: 800, height: 600 },
+        bgwin: { width: 400, height: 300 },
+      },
+    });
     renderer.mount(root);
     renderer.setSettings(DEFAULT_DISPLAY_SETTINGS);
   });
@@ -1603,6 +1613,8 @@ describe("Texte — accessibilité et typographie (#314)", () => {
 
   const apply = (text: string) =>
     renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text }] }], {
+  const applyScene = (sprites: SceneState["sprites"]) =>
+    renderer.apply([{ kind: "scene", scene: { bg: null, sprites, effect: null }, transition: { method: "none" } }], {
       instant: true,
       signal: new AbortController().signal,
     });
@@ -1647,5 +1659,42 @@ describe("Texte — accessibilité et typographie (#314)", () => {
     await pending;
     expect(root.querySelectorAll(".mh-text-unit")).toHaveLength(wrappers.length);
     expect(root.querySelectorAll(".mh-text-unit-hidden")).toHaveLength(0);
+  it("réserve la taille native avant décodage et ancre au centre (plus de boîte 0×0)", async () => {
+    await applyScene([{ id: "p1", storage: "perso", x: 512, y: 288, z: 1, opacity: 1 }]);
+    const img = root.querySelector<HTMLImageElement>('[data-sprite-id="p1"]')!;
+    expect(img.style.width).toBe("200px");
+    expect(img.style.height).toBe("100px");
+    expect(img.style.left).toBe("512px");
+    expect(img.style.top).toBe("288px");
+    // Le CSS de base centre la boîte réservée : rect attendu = resolvePlacement({center:512,vcenter:288}).
+    expect(img.className).toContain("mh-stage-sprite");
+  });
+
+  // Registre des approximations (#295) — test figé :
+  // approx:sprite-clip-bbox — clip par insets sur la boîte non transformée.
+  it("applique le clip absolu d'un sprite partbgid (aucun débordement du partbg)", async () => {
+    await applyScene([
+      {
+        id: "win",
+        storage: "bgwin",
+        x: 512,
+        y: 288,
+        z: 1,
+        opacity: 1,
+        crop: { width: 300, height: 200, srcLeft: 0, srcTop: 0, srcZoomX: 100, srcZoomY: 100 },
+      },
+      { id: "char", storage: "grand", x: 512, y: 288, z: 2, opacity: 1, partbgId: "win" },
+    ]);
+    const img = root.querySelector<HTMLImageElement>('[data-sprite-id="char"]')!;
+    // Image 800×600 centrée : boîte x=112,y=-12 ; clip partbg (362,188,300,200) → inset 200/250/200/250.
+    expect(img.style.clipPath).toBe("inset(200px 250px 200px 250px)");
+    expect(img.style.width).toBe("800px");
+    expect(img.style.height).toBe("600px");
+  });
+
+  it("sans partbgid, aucun clip n'est appliqué", async () => {
+    await applyScene([{ id: "p2", storage: "perso", x: 512, y: 288, z: 1, opacity: 1 }]);
+    const img = root.querySelector<HTMLImageElement>('[data-sprite-id="p2"]')!;
+    expect(img.style.clipPath).toBe("");
   });
 });

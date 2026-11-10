@@ -44,6 +44,7 @@
     "text:overflow": "tsx tools/text-overflow.ts",
     "oracle:state": "tsx tools/state-oracle.ts",
     "assets:dimensions": "tsx tools/image-dimensions.ts"
+    "assets:dimensions": "tsx tools/image-dimensions.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

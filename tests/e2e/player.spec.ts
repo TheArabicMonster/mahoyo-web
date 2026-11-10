@@ -143,3 +143,40 @@ test.describe("Player e2e", () => {
     expect(overlapHeight).toBeGreaterThanOrEqual(PLACEHOLDER_OPENING.height - 1);
   });
 });
+
+/**
+ * #315 : le manifeste des dimensions est servi, et le `@partbg` de l'ouverture est positionné en
+ * pixels absolus (boîte réservée) sans attendre le décodage de l'image.
+ */
+test("partbg : dimensions réservées avant décodage et position absolue (#315)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+  await page.locator(".mh-ui-new-game").click();
+  await expect(page.locator("#text")).toContainText(/\S{5}/, { timeout: 15000 });
+  await expect(page.locator(".mh-stage-partbg").first()).toBeVisible({ timeout: 15000 });
+
+  const dims = await page.evaluate(async () => {
+    const response = await fetch("/assets/image-dimensions.json");
+    return response.ok ? ((await response.json()) as { dimensions: Record<string, unknown> }).dimensions : null;
+  });
+  expect(dims).not.toBeNull();
+  expect(Object.keys(dims!).length).toBeGreaterThan(0);
+
+  const metrics = await page.evaluate(() => {
+    const stage = document.querySelector<HTMLElement>(".mh-stage")!;
+    const scale = stage.getBoundingClientRect().width / stage.offsetWidth;
+    const wrapper = document.querySelector<HTMLElement>(".mh-stage-partbg")!;
+    const wrapperRect = wrapper.getBoundingClientRect();
+    return {
+      wrapperLeft: (wrapperRect.left - stage.getBoundingClientRect().left) / scale,
+      wrapperTop: (wrapperRect.top - stage.getBoundingClientRect().top) / scale,
+      wrapperWidth: wrapperRect.width / scale,
+      wrapperHeight: wrapperRect.height / scale,
+    };
+  });
+  // Opening #70 : @partbg center=748 width=522 height=576 → x=487, y=0 en repère 1024×576.
+  expect(metrics.wrapperLeft).toBeCloseTo(487, 0);
+  expect(metrics.wrapperTop).toBeCloseTo(0, 0);
+  expect(metrics.wrapperWidth).toBeCloseTo(522, 0);
+  expect(metrics.wrapperHeight).toBeCloseTo(576, 0);
+});
