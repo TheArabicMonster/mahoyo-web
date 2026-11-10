@@ -40,7 +40,8 @@
     "perf": "tsx tools/perf-measure.ts",
     "journal:capture": "tsx tools/journal-capture.ts",
     "journal:compare": "tsx tools/journal-compare.ts",
-    "diag:transitions": "tsx tools/diagnose-transitions.ts"
+    "diag:transitions": "tsx tools/diagnose-transitions.ts",
+    "text:overflow": "tsx tools/text-overflow.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
