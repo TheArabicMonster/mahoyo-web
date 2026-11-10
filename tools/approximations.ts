@@ -188,6 +188,7 @@ export const APPROXIMATIONS: readonly Approximation[] = [
     test: "tests/unit/renderer/stage-renderer.test.ts",
     compteur: 1,
   },
+  {
     id: "trans-nowait-timing",
     ecart:
       "@trans nowait=1 : le moteur n'échange fore/back qu'à la fin du fondu ; le port applique la " +
