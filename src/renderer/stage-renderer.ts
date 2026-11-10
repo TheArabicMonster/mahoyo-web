@@ -546,7 +546,8 @@ export class DomStageRenderer implements StageRenderer {
       this.container.style.removeProperty("transform");
       this.dockEl.style.display = "none";
       this.container.append(this.textboxEl, this.waitEl);
-      this.fitText(this.buildTextUnits(), this.typedUnits);
+      // #320 : plus d'autoshrink — on remet en page le texte de la page à la taille constante.
+      this.relayoutText();
     }
     this.applyTextbox();
   }
@@ -570,7 +571,8 @@ export class DomStageRenderer implements StageRenderer {
     this.dockEl.style.display = "block";
     if (this.textboxEl.parentElement !== this.dockEl) this.dockEl.append(this.textboxEl);
     if (this.waitEl.parentElement !== this.dockEl) this.dockEl.append(this.waitEl);
-    this.fitText(this.buildTextUnits(), this.typedUnits);
+    // #320 : plus d'autoshrink — on remet en page le texte de la page à la taille constante.
+    this.relayoutText();
   }
 
   async apply(events: readonly RenderEvent[], opts: RunOptions): Promise<void> {
