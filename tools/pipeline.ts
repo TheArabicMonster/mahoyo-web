@@ -36,6 +36,7 @@
  *                        après la conversion ; un échec réseau n'est qu'un avertissement)
  */
 import { mkdir } from "fs/promises";
+import { generateImageDimensions } from "./image-dimensions.js";
 import { existsSync } from "fs";
 import { spawnSync } from "child_process";
 import { join, resolve } from "path";
@@ -292,6 +293,9 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineReport
   const manifestPath = join(outputDir, "asset-manifest.json");
   writeManifest(manifest, manifestPath);
   console.log(`[pipeline] Manifest écrit: ${manifestPath}`);
+  // Dimensions des images (#315) : placements sprites en pixels absolus dès la première frame.
+  generateImageDimensions(outputDir);
+  console.log("[pipeline] Manifeste des dimensions d'images écrit: image-dimensions.json");
   console.log(`[pipeline]   ${Object.keys(manifest.images).length} images, ${Object.keys(manifest.audio).length} audio, ${Object.keys(manifest.scenarios).length} scénarios`);
 
   // 6. Vérifier les références.

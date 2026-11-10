@@ -15,6 +15,7 @@
     "ruby-proportional": 1,
     "s-click-wait": 1,
     "shake-fullscreen": 1,
+    "sprite-clip-bbox": 1,
     "staffrollsetting-bgcolor": 1,
     "text-font-metrics": 1,
     "text-overflow-clip": 1,

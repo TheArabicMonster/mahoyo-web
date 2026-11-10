@@ -10,6 +10,7 @@ import type { SaveTransferActions } from "./ui/save-load-screen.js";
 import { Player } from "./ui/player.js";
 import { HistoryRouter } from "./ui/router.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
+import type { ImageDimensionsManifest } from "@/core/image-dimensions.js";
 import { parseEnvColor, type EnvColorTable } from "@/kag/envcolor.js";
 import { parseStoryChain, type StoryChain } from "@/core/story-chain.js";
 import { chaptersToScripts } from "./ui/chapter-list.js";
@@ -24,6 +25,18 @@ const ASSET_BASE = "/assets";
 const MANIFEST_URL = `${ASSET_BASE}/asset-manifest.json`;
 /** Données du moteur installées par le pipeline (effets d'ambiance `effect=屋外深夜`…). */
 const ENV_COLOR_URL = `${ASSET_BASE}/data/others/envcolor.ksc`;
+
+/** Charge le manifeste des dimensions d'images généré au build (#315) ; absent = pas bloquant. */
+async function loadImageDimensions(): Promise<Record<string, { width: number; height: number }>> {
+  try {
+    const response = await fetch(`${ASSET_BASE}/image-dimensions.json`);
+    if (!response.ok) return {};
+    const manifest = (await response.json()) as ImageDimensionsManifest;
+    return manifest.dimensions ?? {};
+  } catch {
+    return {};
+  }
+}
 
 /** Charge le manifest d'assets généré par le pipeline. */
 async function loadManifest(): Promise<AssetManifest | undefined> {
@@ -70,7 +83,7 @@ async function loadChain(resolver: AssetResolver): Promise<StoryChain | null> {
 }
 
 async function main() {
-  const manifest = await loadManifest();
+  const [manifest, imageDimensions] = await Promise.all([loadManifest(), loadImageDimensions()]);
   const settingsStore = createLocalSettingsStore();
   // Suivi des CG vues (HUD-15, #208) : progression persistée, enveloppe le résolveur pour marquer
   // chaque image réellement demandée par le rendu.
@@ -111,7 +124,7 @@ async function main() {
     root: viewport,
     resolver,
     // Effets d'ambiance `envcolor.ksc` (données installées par le pipeline).
-    createStageRenderer: (deps) => createDomStageRenderer({ ...deps, envEffects }),
+    createStageRenderer: (deps) => createDomStageRenderer({ ...deps, envEffects, imageDimensions }),
     createUIManager: () =>
       new DomUIManager({
         resolver,

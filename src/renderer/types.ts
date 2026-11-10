@@ -171,6 +171,8 @@ export type RunOptions = {
 /** Dépendances injectées dans StageRenderer. */
 export type StageRendererDeps = {
   resolver: AssetResolver;
+  /** Manifeste des dimensions d'images (#315), chargé au démarrage ; absent = décodage à la volée. */
+  imageDimensions?: Record<string, { width: number; height: number }>;
   /**
    * Effets d'ambiance `envcolor.ksc` (`effect=屋外深夜`…), chargés par le player quand les
    * données du jeu sont installées. Absent : ces effets ne sont pas appliqués (avertissement).

@@ -207,6 +207,17 @@ export const APPROXIMATIONS: readonly Approximation[] = [
     test: "tests/unit/kag/clock-state.test.ts",
     compteur: 1,
   },
+  {
+    id: "sprite-clip-bbox",
+    ecart:
+      "Le clip d'un sprite `partbgid` est appliqué par `clip-path: inset(...)` sur la boîte non " +
+      "transformée du sprite. Pour un sprite zoomé/rotationné, le clip suit la transformation au lieu " +
+      "de rester dans le repère du partbg : l'intersection reste bornée au partbg, mais peut être " +
+      "légèrement décalée sur les cas transformés (aucune occurrence critique mesurée).",
+    issue: APPROXIMATIONS_ISSUE,
+    test: "tests/unit/renderer/stage-renderer.test.ts",
+    compteur: 1,
+  },
 ];
 
 /** Charge la baseline des compteurs (`tools/approximations-baseline.json`). */

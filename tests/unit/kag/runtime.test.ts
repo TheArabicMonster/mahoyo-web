@@ -1422,3 +1422,72 @@ describe("Runtime — @trans exchange/backlay (#253)", () => {
     expect(state.back.background).toBe("backimg");
   });
 });
+
+describe("@chgfg — sélection moteur et position (#315)", () => {
+  const run = (src: string) => new Runtime(parse(lex(src)));
+
+  it("sans page, sélectionne le calque du personnage sur fore et le copie sur back avec la nouvelle image", () => {
+    const runtime = run(`
+*page0|
+@bg page=fore time=0 storage=bg
+@fg page=fore storage=青子01 center=300 vcenter=200 index=1000
+@chgfg storage=青子02
+@pg
+`);
+    runtime.step();
+    const state = runtime.getSaveData().state;
+    expect(state.fore!.layers.find((layer) => layer.id === "青子01")).toMatchObject({ storage: "青子01", center: 300 });
+    // Même personnage (préfixe non ASCII), nouvelle image : copie sur back à la même position.
+    expect(state.back!.layers.find((layer) => layer.id === "青子01")).toMatchObject({
+      storage: "青子02",
+      center: 300,
+      vcenter: 200,
+    });
+  });
+
+  it("applique center/vcenter explicites au calque existant", () => {
+    const runtime = run(`
+*page0|
+@bg page=fore time=0 storage=bg
+@fg page=fore storage=青子01 center=512 vcenter=288 index=1000
+@chgfg page=fore storage=青子02 center=300 vcenter=200
+@pg
+`);
+    runtime.step();
+    const fore = runtime.getSaveData().state.fore!;
+    expect(fore.layers.find((layer) => layer.id === "青子01")).toMatchObject({
+      storage: "青子02",
+      center: 300,
+      vcenter: 200,
+    });
+  });
+
+  it("conserve la position quand center/vcenter sont absents", () => {
+    const runtime = run(`
+*page0|
+@bg page=fore time=0 storage=bg
+@fg page=fore storage=青子01 center=420 vcenter=250 index=1000
+@chgfg page=fore storage=青子02
+@pg
+`);
+    runtime.step();
+    const fore = runtime.getSaveData().state.fore!;
+    expect(fore.layers.find((layer) => layer.id === "青子01")).toMatchObject({ storage: "青子02", center: 420, vcenter: 250 });
+  });
+
+  it("crée un orphelin à center/vcenter fournis (et non à 512/288 par défaut)", () => {
+    const runtime = run(`
+*page0|
+@bg page=fore time=0 storage=bg
+@chgfg page=fore id=orphan storage=perso center=200 vcenter=150
+@pg
+`);
+    runtime.step();
+    const fore = runtime.getSaveData().state.fore!;
+    expect(fore.layers.find((layer) => layer.id === "orphan")).toMatchObject({
+      storage: "perso",
+      center: 200,
+      vcenter: 150,
+    });
+  });
+});
