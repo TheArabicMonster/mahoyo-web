@@ -330,6 +330,19 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
   aucun asset/texte original commité ; l'outil est local (assets réels requis, pas en CI).
 - Méthode, seuils, résultats mesurés et limites : [`VALIDATION_VISUELLE.md`](VALIDATION_VISUELLE.md).
 
+### Diagnostic de l'ouverture (#352)
+
+- `tools/diag-opening.ts` (`npm run diag:opening`) : joue l'ouverture complète (script `opening.ks`
+  forcé, assets réels locaux) jusqu'au retour au titre, avec images ~10 Hz et échantillons DOM
+  (fond, calques de timeline, animations WAAPI, journal audio).
+- Mesures : **flash blanc** (luminance, pic, durée, ratio), **panoramique final** (position du fond
+  et des calques vs `timelines.json` : keyframes, `moves`, interpolation `accel`), **synchro**
+  (changements de fond et lancements audio observés vs `at` du modèle), **ouverture → titre**
+  (durée, phases, coupures).
+- Mode `--reference <video>` (ffmpeg requis) : extraction d'images de la vidéo OP du propriétaire,
+  alignement temporel par corrélation et comparaison flash. Captures/rapports **hors dépôt** ;
+  aucun asset commité. Méthode et chiffres : [`DIAG_OUVERTURE.md`](DIAG_OUVERTURE.md).
+
 ## Principes
 
 - Le moteur KAG est indépendant du DOM (testable en headless).
