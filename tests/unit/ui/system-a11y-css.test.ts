@@ -55,6 +55,19 @@ describe("focus visible global (DESIGN §10)", () => {
     expect(code).toMatch(/outline-offset:\s*2px/);
   });
 
+  it("dessine l'anneau de repli des focus programmatiques (#257)", () => {
+    expect(code).toMatch(/\[data-focus-ring="true"\]:focus/);
+    expect(code).toMatch(/outline:\s*2px solid var\(--mh-focus/);
+    const title = stripComments(read("src/ui/title-screen.css"));
+    // Écran titre sur fond clair : la couleur sombre documentée est conservée sur le repli.
+    expect(title).toMatch(/\[data-focus-ring="true"\]:focus[^{]*\{[^}]*outline-color:\s*var\(--mh-ink-hover/);
+  });
+
+  it("le module de modalité d'entrée est branché au démarrage et documenté", () => {
+    expect(read("src/main.ts")).toMatch(/installFocusRingFallback\(\)/);
+    expect(read("src/ui/focus-modality.ts")).toMatch(/data-focus-ring/);
+  });
+
   it("n'utilise pas `outline: none` comme style de focus", () => {
     expect(stripComments(uiManager)).not.toMatch(/outline:\s*none/);
   });

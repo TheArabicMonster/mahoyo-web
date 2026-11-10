@@ -53,6 +53,9 @@ src/renderer/ + src/ui/  ── rendu navigateur
   `ui-manager.css` porte le **focus visible global** (`:where(button, input, select, textarea, a[href], [tabindex])`:focus-visible`,
   contour 2 px `--mh-focus`, décalage 2 px) : filet de sécurité pour les contrôles sans règle dédiée, chaque écran pouvant
   surcharger la couleur (WEB-06 / #211). Les écrans superposés sont des `role="dialog"` + `aria-modal` nommés.
+- **`focus-modality.ts`** : suivi de la modalité d'entrée (clavier/pointeur) et repli de focus visible
+  `data-focus-ring` pour les focus programmatiques, que Firefox n'associe pas à `:focus-visible`
+  (BUG #257) ; installé une fois au démarrage (`main.ts`), styles dans `ui-manager.css`.
 - **`toast.ts`**, **`toast.css`** : composant `ToastStack` des messages éphémères (cadre sarcelle bas droite, 3 au plus, `aria-live="polite"`) ; `DomUIManager.toast()` y délègue.
 - **`confirm-dialog.ts`** / **`confirm-dialog.css`** : boîte de confirmation au design d'origine (HUD-05, #190), composant
   autonome en CSS pur. `openConfirmDialog(parent, { message, yesLabel, noLabel, defaultButton? })` renvoie
