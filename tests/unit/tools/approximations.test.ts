@@ -34,6 +34,8 @@ const EXPECTED_IDS = [
   "s-click-wait",
   "shake-fullscreen",
   "staffrollsetting-bgcolor",
+  "text-font-metrics",
+  "text-overflow-clip",
   "xchgbgm-volume",
 ] as const;
 

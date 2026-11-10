@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09",
+  "generatedAt": "2026-11-10",
   "note": "Compteurs des approximations documentées (#295). Non croissants : mise à jour explicite dans la PR.",
   "issue": "#296",
   "counters": {
@@ -16,6 +16,8 @@
     "s-click-wait": 1,
     "shake-fullscreen": 1,
     "staffrollsetting-bgcolor": 1,
+    "text-font-metrics": 1,
+    "text-overflow-clip": 1,
     "xchgbgm-volume": 1
   }
 }
