@@ -26,20 +26,23 @@ export type TextStyle = {
 
 /** Segment de texte avec annotation ruby et style optionnels */
 export type TextSegment =
-  | { text: string; ruby?: undefined; style?: TextStyle }
-  | { text: string; ruby: string; style?: TextStyle }
+  | { text: string; ruby?: undefined; rubyGroup?: undefined; style?: TextStyle }
+  | { text: string; ruby: string; rubyGroup?: number; style?: TextStyle }
   | { pause: true }
   /**
    * Image inline dans le flux de texte (`[graph storage=… alt=…]`, KAG3). `storage` est la clé
    * d'asset résolue par l'`AssetResolver` ; `alt` sert de repli accessible et si l'image manque.
+   * `ruby`/`rubyGroup` : annotation ruby posée sur l'image (#300). Le moteur compte l'image comme
+   * un caractère de base (`messagelayer.tjs` `putGraph` incrémente `rubyCharCount` et dessine le
+   * ruby au-dessus de l'image), donc le ruby s'attache au graph, pas au texte suivant.
    */
-  | { graph: { storage: string; alt?: string } }
+  | { graph: { storage: string; alt?: string; ruby?: string; rubyGroup?: number } }
   /**
    * Marqueur interne des macros emoji de `macro.tjs` (`[heart]`, `[ageage]`…) : le runtime le
    * convertit en segment `graph` avec `storage = base + fontSize courant` au moment de l'affichage.
    * Il ne doit jamais atteindre le rendu ni l'état persisté.
    */
-  | { emoji: { base: string; alt: string } };
+  | { emoji: { base: string; alt: string; ruby?: string; rubyGroup?: number } };
 
 /** Métadonnées de crop pour un calque partbg (@partbg). */
 export type CropSpec = {

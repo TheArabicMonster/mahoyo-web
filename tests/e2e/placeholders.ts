@@ -113,6 +113,8 @@ export const PLACEHOLDER_EMOJI_MARKER = "Page emoji — texte original avec un c
 
 /** Marqueur de la page de test « texte long » (#314) : frappe sans reflow et police constante. */
 export const PLACEHOLDER_LONG_TEXT_MARKER = "Page longue — le texte ne doit ni se réagencer ni rétrécir";
+/** Marqueur de la page de test ruby + emoji (#300) : ruby posé sur l'image inline. */
+export const PLACEHOLDER_RUBY_EMOJI_MARKER = "Page ruby-emoji — texte original avec lecture sur l'image";
 
 /** Textes distinctifs des scripts, pour vérifier dans le DOM quel chapitre est joué. */
 export const PLACEHOLDER_SCRIPT_MARKERS = {
@@ -225,6 +227,10 @@ function emojiPage(): string {
  * assez pour dépasser la zone de message (~10 lignes) → vérifie la police constante et la
  * stabilité des retours à la ligne pendant la frappe.
  */
+function rubyEmojiPage(): string {
+  return `${PLACEHOLDER_RUBY_EMOJI_MARKER} : [ruby text=ハート char=1][heart]、fin.[p]`;
+}
+
 function longTextPage(): string {
   const lines = Array.from(
     { length: 14 },
@@ -241,7 +247,7 @@ function placeholderScripts(): Record<string, string> {
   return {
     // Page de test @cm (#86) insérée après les deux premières pages « normales » : la numérotation
     // et les assertions existantes sur « page 01 »/« page 02 » restent valides.
-    "1-0.ks": `${prologueOpening()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, 2)}\n${cmPage()}\n${emojiPage()}\n${longTextPage()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES - 2, 2)}\n@return\n`,
+    "1-0.ks": `${prologueOpening()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, 2)}\n${cmPage()}\n${emojiPage()}\n${longTextPage()}\n${rubyEmojiPage()}\n${pageBodies(PLACEHOLDER_SCRIPT_MARKERS.prologue, PLACEHOLDER_SCENARIO_PAGES - 3, 2)}\n@return\n`,
     "1-1a.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieA, PLACEHOLDER_CHAPTER_PAGES),
     "1-1b.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.voieB, PLACEHOLDER_CHAPTER_PAGES),
     "2-0.ks": pagesFor(PLACEHOLDER_SCRIPT_MARKERS.chapitre2, PLACEHOLDER_CHAPTER_PAGES),

@@ -90,7 +90,10 @@ type TextUnit = {
   css?: Record<string, string>;
   /** Image inline `[graph]` (emoji) : une seule unité de frappe, rendue en `<img>`. */
   graph?: { storage: string; alt?: string };
-  /** Indice du segment d'origine : les caractères d'un même ruby partagent un groupe. */
+  /**
+   * Groupe d'annotation ruby : les unités d'un même groupe (caractères et/ou image) sont réunies
+   * dans un seul élément `<ruby>` — le moteur dessine le ruby au-dessus de l'image (#300).
+   */
   group: number;
 };
 
@@ -2577,19 +2580,38 @@ export class DomStageRenderer implements StageRenderer {
    */
   private buildTextUnits(): TextUnit[] {
     const units: TextUnit[] = [];
-    this.text.forEach((seg, group) => {
+    this.text.forEach((seg, segmentIndex) => {
+      // Groupe ruby partagé entre graph et caractères (#300) ; sinon le segment fait groupe.
+      // Le ruby peut être porté par le segment texte ou par le sous-objet graph/emoji.
+      const rubyGroup =
+        "rubyGroup" in seg && seg.rubyGroup !== undefined
+          ? seg.rubyGroup
+          : "graph" in seg
+            ? seg.graph.rubyGroup
+            : "emoji" in seg
+              ? seg.emoji.rubyGroup
+              : undefined;
+      const ruby =
+        "ruby" in seg && seg.ruby !== undefined
+          ? seg.ruby
+          : "graph" in seg
+            ? seg.graph.ruby
+            : "emoji" in seg
+              ? seg.emoji.ruby
+              : undefined;
+      const group = ruby !== undefined ? (rubyGroup ?? segmentIndex) : segmentIndex;
       if ("graph" in seg) {
-        // Image inline : une seule unité (la frappe ne la coupe jamais au milieu).
-        units.push({ char: "", graph: seg.graph, group });
+        // Image inline : une seule unité (la frappe ne la coupe jamais au milieu). Le ruby
+        // éventuel s'applique à l'image (le moteur la compte comme un caractère de base).
+        units.push({ char: "", graph: seg.graph, ruby: seg.graph.ruby, group });
         return;
       }
       if ("emoji" in seg) {
         // Marqueur interne : le runtime doit l'avoir converti en graph ; repli textuel sinon.
-        units.push({ char: seg.emoji.alt, group });
+        units.push({ char: seg.emoji.alt, ruby: seg.emoji.ruby, group });
         return;
       }
       if (!("text" in seg)) return; // pause
-      const ruby = "ruby" in seg ? seg.ruby : undefined;
       const css = seg.style ? textStyleToCss(seg.style) : undefined;
       for (const char of Array.from(seg.text)) {
         units.push({ char, ruby, css, group });
@@ -2672,26 +2694,46 @@ export class DomStageRenderer implements StageRenderer {
       }
       const wrapper = makeWrapper(i, parent);
       let node: Node;
-      if (u.graph) {
+      if (u.ruby) {
+        // Un ruby couvre une ou plusieurs unités : une seule balise <ruby>, la lecture posée une
+        // fois sur le groupe. La base peut mêler texte et image inline (`[ruby…][graph]`, #300).
+        const ruby = document.createElement("ruby");
+        // Les caractères de texte consécutifs sont regroupés dans un seul nœud (comme avant
+        // #300) ; une image inline interrompt le texte et s'insère à sa place dans la base.
+        let buffer = "";
+        const flushBuffer = (): void => {
+          if (buffer.length > 0) {
+            ruby.appendChild(document.createTextNode(buffer));
+            buffer = "";
+          }
+        };
+        while (true) {
+          const unit = units[i]!;
+          if (unit.graph) {
+            flushBuffer();
+            const img = document.createElement("img");
+            img.className = "mh-stage-graph";
+            img.alt = unit.graph.alt ?? "";
+            img.src = this.resolver.image(unit.graph.storage);
+            ruby.appendChild(img);
+          } else {
+            buffer += unit.char;
+          }
+          const next = i + 1 < limit ? units[i + 1] : undefined;
+          if (!next || next.ruby === undefined || next.group !== u.group) break;
+          i++;
+        }
+        flushBuffer();
+        const rt = document.createElement("rt");
+        rt.textContent = u.ruby;
+        ruby.appendChild(rt);
+        node = ruby;
+      } else if (u.graph) {
         const img = document.createElement("img");
         img.className = "mh-stage-graph";
         img.alt = u.graph.alt ?? "";
         img.src = this.resolver.image(u.graph.storage);
         node = img;
-      } else if (u.ruby) {
-        // Un ruby couvre plusieurs caractères : une seule balise <ruby> (la frappe révèle le
-        // groupe d'un coup, comme la couche de glyphes du moteur).
-        let base = u.char;
-        while (i + 1 < limit && units[i + 1]!.ruby && units[i + 1]!.group === u.group) {
-          i++;
-          base += units[i]!.char;
-        }
-        const ruby = document.createElement("ruby");
-        ruby.textContent = base;
-        const rt = document.createElement("rt");
-        rt.textContent = u.ruby;
-        ruby.appendChild(rt);
-        node = ruby;
       } else if (hasCss || swing) {
         const span = document.createElement("span");
         span.textContent = typographicChar(i);
