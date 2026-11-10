@@ -14,6 +14,7 @@ import {
   buildServiceWorkerSource,
   collectPwaPrecache,
   computeServiceWorkerVersion,
+  ensureShellFilesInDist,
   writePwaServiceWorker,
 } from "../../../tools/pwa-sw.js";
 
@@ -35,7 +36,7 @@ const MANIFEST = {
 };
 
 /** Faux `dist/` complet : manifeste Vite + fichiers de coquille + un asset du jeu. */
-function makeDist(options: { omit?: string } = {}): string {
+function makeDist(options: { omit?: string | string[] } = {}): string {
   const dist = mkdtempSync(join(tmpdir(), "mahoyo-pwa-dist-"));
   tempDirs.push(dist);
   mkdirSync(join(dist, ".vite"), { recursive: true });
@@ -50,8 +51,9 @@ function makeDist(options: { omit?: string } = {}): string {
     "assets/index-abc123.css",
     "assets/logo-def456.svg",
   ];
+  const omitted = options.omit === undefined ? [] : Array.isArray(options.omit) ? options.omit : [options.omit];
   for (const file of files) {
-    if (file === options.omit) continue;
+    if (omitted.includes(file)) continue;
     writeFileSync(join(dist, file), `contenu de ${file}`, "utf-8");
   }
   // Un asset du jeu (copié depuis public/assets) ne doit PAS être précaché.
@@ -77,9 +79,12 @@ describe("collectPwaPrecache", () => {
     expect(precache.some((url) => url.endsWith(".map"))).toBe(false);
   });
 
-  it("échoue clairement si un fichier de coquille manque", () => {
+  it("échoue clairement si un fichier de coquille manque partout", () => {
     const dist = makeDist({ omit: "icon-512.png" });
-    expect(() => collectPwaPrecache(dist)).toThrow(/Fichiers de coquille manquants.*icon-512\.png/);
+    // Source canonique volontairement vide : ni le build ni public/ ne fournissent l'icône.
+    expect(() => collectPwaPrecache(dist, { repoPublicDir: join(dist, "public-absent") })).toThrow(
+      /Fichiers de coquille manquants.*icon-512\.png/,
+    );
   });
 
   it("échoue clairement si le manifeste de build est absent", () => {
@@ -112,5 +117,58 @@ describe("buildServiceWorkerSource / writePwaServiceWorker", () => {
     expect(source).toContain("MAX_RUNTIME_ENTRIES");
     expect(precache).toContain("/index.html");
     expect(buildServiceWorkerSource(dist)).toBe(source);
+  });
+});
+
+describe("publicDir externe — coquille copiée depuis public/ (#336)", () => {
+  /** Source canonique factice (public/ du dépôt). */
+  function makeRepoPublic(files: Record<string, string>): string {
+    const dir = mkdtempSync(join(tmpdir(), "mahoyo-pwa-public-"));
+    tempDirs.push(dir);
+    for (const [name, content] of Object.entries(files)) {
+      mkdirSync(join(dir, name, ".."), { recursive: true });
+      writeFileSync(join(dir, name), content, "utf-8");
+    }
+    return dir;
+  }
+
+  it("copie manifeste et icônes absents de dist (build avec MAHOYO_E2E_ASSETS)", () => {
+    // Build avec publicDir externe : dist n'a que index.html et les bundles.
+    const dist = makeDist({ omit: ["manifest.json", "icon-192.png", "icon-512.png"] });
+    const repoPublic = makeRepoPublic({
+      "manifest.json": "manifeste-public",
+      "icon-192.png": "icone-192-publique",
+      "icon-512.png": "icone-512-publique",
+    });
+
+    const copied = ensureShellFilesInDist(dist, repoPublic);
+    expect(copied.sort()).toEqual(["/icon-192.png", "/icon-512.png", "/manifest.json"].sort());
+    expect(readFileSync(join(dist, "manifest.json"), "utf-8")).toBe("manifeste-public");
+    expect(readFileSync(join(dist, "icon-512.png"), "utf-8")).toBe("icone-512-publique");
+
+    // La liste précachée contient bien toute la coquille.
+    const precache = collectPwaPrecache(dist, { repoPublicDir: repoPublic });
+    for (const url of STATIC_PRECACHE) expect(precache).toContain(url);
+
+    // Et le service worker est généré (pas d'échec du build placeholders).
+    const { serviceWorkerPath } = writePwaServiceWorker(dist, { repoPublicDir: repoPublic });
+    const source = readFileSync(serviceWorkerPath, "utf-8");
+    expect(source).toContain('"/manifest.json"');
+    expect(source).toContain('"/icon-192.png"');
+  });
+
+  it("ne modifie pas les fichiers déjà présents (build normal inchangé)", () => {
+    const dist = makeDist();
+    const repoPublic = makeRepoPublic({
+      "manifest.json": "manifeste-public",
+      "icon-192.png": "icone-publique",
+      "icon-512.png": "icone-publique",
+    });
+    const before = readFileSync(join(dist, "manifest.json"), "utf-8");
+
+    const copied = ensureShellFilesInDist(dist, repoPublic);
+    expect(copied).toEqual([]);
+    expect(readFileSync(join(dist, "manifest.json"), "utf-8")).toBe(before);
+    expect(collectPwaPrecache(dist, { repoPublicDir: repoPublic })).toContain("/manifest.json");
   });
 });

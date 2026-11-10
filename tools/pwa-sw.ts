@@ -11,15 +11,46 @@
  * build, le manifeste PWA et les icônes.
  */
 import { createHash } from "crypto";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { renderServiceWorker } from "../src/pwa/sw-source.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
+/** Source canonique des fichiers de coquille (indépendante du `publicDir` effectif). */
+export const REPO_PUBLIC_DIR = join(REPO_ROOT, "public");
 
 /** Fichiers publics toujours précachés (coquille PWA). */
 export const STATIC_PRECACHE = ["/index.html", "/manifest.json", "/icon-192.png", "/icon-512.png"] as const;
+
+/**
+ * Garantit la présence des fichiers de coquille dans `dist/`.
+ *
+ * `vite build` copie le `publicDir` dans `dist`. Quand `publicDir` est remplacé
+ * (ex. `MAHOYO_E2E_ASSETS` pour les builds placeholders), le manifeste PWA et les
+ * icônes — qui vivent dans `public/` du dépôt — n'arrivent pas dans `dist` et la
+ * génération du service worker échouait (#336). On les copie donc depuis la source
+ * canonique `public/`, **uniquement s'ils sont absents** (le build normal, qui les
+ * a déjà copiés, n'est pas modifié).
+ *
+ * @returns les URLs de coquille qui ont été copiées.
+ */
+export function ensureShellFilesInDist(
+  distDir: string,
+  repoPublicDir: string = REPO_PUBLIC_DIR,
+): string[] {
+  const copied: string[] = [];
+  for (const url of STATIC_PRECACHE) {
+    const relative = url.replace(/^\/+/, "");
+    const target = join(distDir, relative);
+    if (existsSync(target)) continue;
+    const source = join(repoPublicDir, relative);
+    if (!existsSync(source)) continue; // signalé comme fichier manquant par collectPwaPrecache
+    copyFileSync(source, target);
+    copied.push(url);
+  }
+  return copied;
+}
 
 type ViteManifestEntry = {
   file?: string;
@@ -46,8 +77,16 @@ export function readViteManifest(distDir: string): Record<string, ViteManifestEn
 /**
  * Liste déterministe des URLs de la coquille à précacher : statiques + bundles du
  * build (entrées, CSS, assets importés), sans sourcemaps ni assets du jeu.
+ *
+ * Les fichiers statiques manquants (manifeste/icônes) sont copiés depuis
+ * `public/` du dépôt avant validation — indispensable quand `publicDir` est
+ * remplacé (`MAHOYO_E2E_ASSETS`, #336) — sans toucher au build normal.
  */
-export function collectPwaPrecache(distDir: string): string[] {
+export function collectPwaPrecache(
+  distDir: string,
+  options: { repoPublicDir?: string } = {},
+): string[] {
+  ensureShellFilesInDist(distDir, options.repoPublicDir ?? REPO_PUBLIC_DIR);
   const manifest = readViteManifest(distDir);
   const urls = new Set<string>(STATIC_PRECACHE);
 
@@ -62,8 +101,10 @@ export function collectPwaPrecache(distDir: string): string[] {
   const sorted = [...urls].sort();
   const missing = sorted.filter((url) => !existsSync(join(distDir, url.replace(/^\//, ""))));
   if (missing.length > 0) {
+    const repoPublicDir = options.repoPublicDir ?? REPO_PUBLIC_DIR;
     throw new Error(
-      `Fichiers de coquille manquants dans ${distDir} : ${missing.join(", ")}. Vérifier publicDir (manifeste/icônes) et le build.`,
+      `Fichiers de coquille manquants dans ${distDir} : ${missing.join(", ")}. ` +
+        `Absents du build ET de la source canonique ${repoPublicDir}. Vérifier public/ et le build.`,
     );
   }
   return sorted;
@@ -75,19 +116,25 @@ export function computeServiceWorkerVersion(precache: readonly string[]): string
 }
 
 /** Lit l'état du build et retourne le code source du service worker. */
-export function buildServiceWorkerSource(distDir: string): string {
-  const precache = collectPwaPrecache(distDir);
+export function buildServiceWorkerSource(
+  distDir: string,
+  options: { repoPublicDir?: string } = {},
+): string {
+  const precache = collectPwaPrecache(distDir, options);
   const version = computeServiceWorkerVersion(precache);
   return renderServiceWorker({ precache, version });
 }
 
 /** Écrit `dist/sw.js` ; retourne la version et la liste précachée. */
-export function writePwaServiceWorker(distDir: string): {
+export function writePwaServiceWorker(
+  distDir: string,
+  options: { repoPublicDir?: string } = {},
+): {
   version: string;
   precache: string[];
   serviceWorkerPath: string;
 } {
-  const precache = collectPwaPrecache(distDir);
+  const precache = collectPwaPrecache(distDir, options);
   const version = computeServiceWorkerVersion(precache);
   const serviceWorkerPath = join(distDir, "sw.js");
   writeFileSync(serviceWorkerPath, renderServiceWorker({ precache, version }), "utf-8");
