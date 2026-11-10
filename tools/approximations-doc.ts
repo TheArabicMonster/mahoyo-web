@@ -50,6 +50,7 @@ export const APPROXIMATION_LABELS: Readonly<Record<string, string>> = {
   "s-click-wait": "`@s` (attente de sélection)",
   "shake-fullscreen": "`@shake`/`@swing`",
   "staffrollsetting-bgcolor": "`@staffrollsetting bgcolor=`",
+  "sprite-clip-bbox": "Clip des sprites `partbgid` (boîte non transformée)",
   "text-font-metrics": "Police du texte (métriques de glyphes)",
   "trans-nowait-timing": "`@trans nowait=1` (échange fore/back)",
   "text-overflow-clip": "Texte trop long (découpe au lieu de pagination)",

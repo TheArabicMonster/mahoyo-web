@@ -1586,7 +1586,6 @@ describe("DomStageRenderer", () => {
 });
 
 describe("Texte — accessibilité et typographie (#314)", () => {
-describe("Sprites — dimensions réservées et clip partbgid (#315)", () => {
   let root: HTMLElement;
   let renderer: ReturnType<typeof createDomStageRenderer>;
 
@@ -1594,15 +1593,6 @@ describe("Sprites — dimensions réservées et clip partbgid (#315)", () => {
     root = document.createElement("div");
     document.body.appendChild(root);
     renderer = createDomStageRenderer({ resolver: createAssetResolver() });
-    renderer = createDomStageRenderer({
-      resolver: createAssetResolver(),
-      // Manifeste des dimensions (généré au build) : placement avant décodage.
-      imageDimensions: {
-        perso: { width: 200, height: 100 },
-        grand: { width: 800, height: 600 },
-        bgwin: { width: 400, height: 300 },
-      },
-    });
     renderer.mount(root);
     renderer.setSettings(DEFAULT_DISPLAY_SETTINGS);
   });
@@ -1613,8 +1603,6 @@ describe("Sprites — dimensions réservées et clip partbgid (#315)", () => {
 
   const apply = (text: string) =>
     renderer.apply([{ kind: "clearText" }, { kind: "text", segments: [{ text }] }], {
-  const applyScene = (sprites: SceneState["sprites"]) =>
-    renderer.apply([{ kind: "scene", scene: { bg: null, sprites, effect: null }, transition: { method: "none" } }], {
       instant: true,
       signal: new AbortController().signal,
     });
@@ -1659,6 +1647,39 @@ describe("Sprites — dimensions réservées et clip partbgid (#315)", () => {
     await pending;
     expect(root.querySelectorAll(".mh-text-unit")).toHaveLength(wrappers.length);
     expect(root.querySelectorAll(".mh-text-unit-hidden")).toHaveLength(0);
+  });
+});
+
+describe("Sprites — dimensions réservées et clip partbgid (#315)", () => {
+  let root: HTMLElement;
+  let renderer: ReturnType<typeof createDomStageRenderer>;
+
+  beforeEach(() => {
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    renderer = createDomStageRenderer({
+      resolver: createAssetResolver(),
+      // Manifeste des dimensions (généré au build) : placement avant décodage.
+      imageDimensions: {
+        perso: { width: 200, height: 100 },
+        grand: { width: 800, height: 600 },
+        bgwin: { width: 400, height: 300 },
+      },
+    });
+    renderer.mount(root);
+    renderer.setSettings(DEFAULT_DISPLAY_SETTINGS);
+  });
+  afterEach(() => {
+    renderer.dispose();
+    root.remove();
+  });
+
+  const applyScene = (sprites: SceneState["sprites"]) =>
+    renderer.apply([{ kind: "scene", scene: { bg: null, sprites, effect: null }, transition: { method: "none" } }], {
+      instant: true,
+      signal: new AbortController().signal,
+    });
+
   it("réserve la taille native avant décodage et ancre au centre (plus de boîte 0×0)", async () => {
     await applyScene([{ id: "p1", storage: "perso", x: 512, y: 288, z: 1, opacity: 1 }]);
     const img = root.querySelector<HTMLImageElement>('[data-sprite-id="p1"]')!;
