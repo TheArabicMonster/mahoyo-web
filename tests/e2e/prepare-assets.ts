@@ -19,6 +19,7 @@ import { copyFileSync, existsSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { generatePlaceholderAssets } from "./placeholders.js";
+import { generateImageDimensions } from "../../tools/image-dimensions.js";
 
 /** Fichiers de la coquille PWA (public/) nécessaires au build e2e hors ligne (#96). */
 const PWA_SHELL_FILES = ["manifest.json", "icon-192.png", "icon-512.png"] as const;
@@ -68,6 +69,8 @@ export function prepareE2eAssets(): { publicDir: string; mode: E2eAssetsMode } {
 
   generatePlaceholderAssets(publicDir);
   copyPwaShellFiles(publicDir);
+  // Manifeste des dimensions (#315) : placements sprites en pixels absolus dès la première frame.
+  generateImageDimensions(join(publicDir, "assets"));
   return { publicDir, mode: "placeholders" };
 }
 

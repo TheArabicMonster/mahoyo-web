@@ -299,6 +299,9 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
         id: args.id,
         index: args.index !== undefined ? parseIntArg(args.index) : undefined,
         page: parsePageLayer(args.page),
+        // `center`/`vcenter` ne sont appliqués que s'ils sont précisés (sinon position conservée).
+        center: args.center !== undefined ? parseIntArg(args.center) : args.left !== undefined ? parseIntArg(args.left) : undefined,
+        vcenter: args.vcenter !== undefined ? parseIntArg(args.vcenter) : args.top !== undefined ? parseIntArg(args.top) : undefined,
         time: parseIntArg(args.time),
         rule: args.rule,
         nowait: args.nowait === "1",

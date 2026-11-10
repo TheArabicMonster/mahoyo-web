@@ -210,7 +210,7 @@ export type Instruction =
   | ({ kind: "bg"; storage: string; time: number; rule?: string; page?: PageLayer; left?: number; top?: number; noclear?: boolean; nowait?: boolean; canskip?: boolean } & TransformArgs & AppearanceArgs)
   | ({ kind: "bgact"; storage: string; page?: PageLayer; keyframes: AnimKeyframe[] })
   | ({ kind: "fg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; partbgId?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs & AppearanceArgs)
-  | ({ kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs & AppearanceArgs)
+  | ({ kind: "chgfg"; storage: string; id?: string; index?: number; page?: PageLayer; center?: number; vcenter?: number; time?: number; rule?: string; nowait?: boolean; canskip?: boolean } & TransformArgs & AppearanceArgs)
   | ({ kind: "partbg"; storage: string; center: number; vcenter: number; index: number; opacity?: number; page?: PageLayer; id?: string; noclear?: boolean; bgstorage?: string; time?: number; rule?: string; nowait?: boolean; canskip?: boolean; crop: CropSpec } & AppearanceArgs)
   | { kind: "animate"; def: AnimationDef }
   | {

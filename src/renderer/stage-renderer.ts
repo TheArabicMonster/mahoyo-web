@@ -24,6 +24,8 @@ import {
 import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
 import { sampleTrack } from "./easing-track.js";
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
+import { partbgClipRect, resolvePlacement, type ImageSize, type Rect } from "./sprite-placement.js";
+import { storageKey } from "@/core/storage-key.js";
 import {
   applyAppearance,
   feBlendModeForLayerType,
@@ -117,8 +119,13 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 const BG_BOTTOM_MARGIN = 48;
 
+/** Repère logique du stage (référence des placements sprites, #315). */
+const STAGE_SIZE = { width: 1024, height: 576 } as const;
+
 export class DomStageRenderer implements StageRenderer {
   private resolver: AssetResolver;
+  /** Dimensions natives des images (manifeste généré au build, #315) ; clé = storage normalisé. */
+  private imageDimensions: Record<string, ImageSize>;
   private root: HTMLElement | null = null;
 
   private container: HTMLElement | null = null;
@@ -260,6 +267,7 @@ export class DomStageRenderer implements StageRenderer {
 
   constructor(deps: StageRendererDeps) {
     this.resolver = deps.resolver;
+    this.imageDimensions = deps.imageDimensions ?? {};
     this.envEffects = deps.envEffects;
     this.filterRegistry = {
       monoFilter: (color) => this.svgFilter(`mono:${color}`, (filter) => {
@@ -1400,6 +1408,37 @@ export class DomStageRenderer implements StageRenderer {
    * survivent entre deux scènes. Les sprites absents de la nouvelle scène
    * sont retirés ; les nouveaux sont créés et insérés dans l'ordre z.
    */
+  /** Dimensions natives connues avant décodage (manifeste), sinon null. */
+  private imageSizeOf(storage: string): ImageSize | null {
+    return this.imageDimensions[storageKey(storage)] ?? null;
+  }
+
+  /**
+   * Rectangle de clip d'un sprite `partbgid` : celui de son partbg parent (#315). Les sprites
+   * partbgid étaient positionnés sans clip (605 hors fenêtre) ; on intersecte avec le stage.
+   */
+  private partbgClipFor(sprite: { partbgId?: string }): Rect | null {
+    if (!sprite.partbgId) return null;
+    const parent = this.currentScene.sprites.find(
+      (candidate) => candidate.id === sprite.partbgId && candidate.crop,
+    );
+    if (!parent?.crop) return null;
+    return partbgClipRect({ center: parent.x, vcenter: parent.y, crop: parent.crop });
+  }
+
+  /** Applique le clip calculé au sprite (inset relatif à sa boîte, en px du stage). */
+  private applySpriteClip(el: HTMLElement, placement: { x: number; y: number; width: number; height: number; clip: Rect | null }): void {
+    if (!placement.clip) {
+      el.style.removeProperty("clip-path");
+      return;
+    }
+    const top = Math.max(0, placement.clip.y - placement.y);
+    const left = Math.max(0, placement.clip.x - placement.x);
+    const right = Math.max(0, placement.x + placement.width - (placement.clip.x + placement.clip.width));
+    const bottom = Math.max(0, placement.y + placement.height - (placement.clip.y + placement.clip.height));
+    el.style.clipPath = `inset(${top}px ${right}px ${bottom}px ${left}px)`;
+  }
+
   private renderScene(instant: boolean): void {
     if (!this.bgEl || !this.spritesEl) return;
     const bg = this.currentScene.bg;
@@ -1516,6 +1555,19 @@ export class DomStageRenderer implements StageRenderer {
           innerImg.style.position = "absolute";
           innerImg.style.left = "0";
           innerImg.style.top = "0";
+          // Réserve la taille native connue (manifeste #315) avant décodage : la transform source
+          // (pivot 50 %) reste juste dès la première frame.
+          const size = this.imageSizeOf(s.storage);
+          if (size) {
+            innerImg.style.width = `${size.width}px`;
+            innerImg.style.height = `${size.height}px`;
+          } else {
+            innerImg.style.removeProperty("width");
+            innerImg.style.removeProperty("height");
+            if (!innerImg.complete) {
+              innerImg.addEventListener("load", () => this.renderScene(true), { once: true });
+            }
+          }
           innerImg.style.transform = partbgInnerTransform({
             srcleft: crop.srcLeft,
             srctop: crop.srcTop,
@@ -1541,6 +1593,37 @@ export class DomStageRenderer implements StageRenderer {
         // Mise à jour src (peut changer via @chgfg).
         const src = this.resolver.image(s.storage);
         if (img.src !== src && !img.src.endsWith(src)) img.src = src;
+        // Dimensions natives : manifeste (#315) sinon décodage. La boîte est TOUJOURS réservée avant
+        // décodage (plus de boîte 0×0 ni de translate(-50%) sur un point) ; le placement absolu et le
+        // clip partbgid sont calculés par `resolvePlacement`.
+        const size = this.imageSizeOf(s.storage) ?? (img.complete && img.naturalWidth > 0 ? { width: img.naturalWidth, height: img.naturalHeight } : null);
+        if (size) {
+          const placement = resolvePlacement(
+            {
+              center: s.x,
+              vcenter: s.y,
+              zoomx: s.zoomx,
+              zoomy: s.zoomy,
+              rotate: s.rotate,
+              afx: s.afx,
+              afy: s.afy,
+              clipRect: this.partbgClipFor(s),
+            },
+            size,
+            STAGE_SIZE,
+          );
+          img.style.width = `${size.width}px`;
+          img.style.height = `${size.height}px`;
+          this.applySpriteClip(img, placement);
+        } else {
+          // Taille inconnue : ne pas figer une boîte 0×0, re-rendre après décodage.
+          img.style.removeProperty("width");
+          img.style.removeProperty("height");
+          img.style.removeProperty("clip-path");
+          if (!img.complete) {
+            img.addEventListener("load", () => this.renderScene(true), { once: true });
+          }
+        }
         img.style.left = `${s.x}px`;
         img.style.top = `${s.y}px`;
         img.style.opacity = String(s.opacity);

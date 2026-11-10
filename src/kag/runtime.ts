@@ -1301,33 +1301,62 @@ export class Runtime {
   private applyChgfg(instruction: Extract<Instruction, { kind: "chgfg" }>): { events: RenderEvent[]; stop?: StopReason } {
     const page = this.resolvePage("chgfg", instruction.page);
     const target = this.getPageState(page);
-    const key = instruction.id ?? instruction.storage;
-    let found = false;
-    target.layers = target.layers.map((l) => {
-      if (l.id !== key && (instruction.id === undefined || l.storage !== key)) return l;
-      found = true;
-      const changed: Layer = { ...l, storage: instruction.storage, id: instruction.id ?? l.id };
-      patchTransform(changed, instruction);
-      // `@chgfg` change l'image mais conserve position/z/opacité : les attributs d'apparence
-      // ne sont remplacés que s'ils sont précisés (contrairement à `@fg`, nouvelle image).
-      patchAppearance(changed, instruction);
-      return changed;
-    });
-    if (!found) {
-      // Calque inexistant : on en crée un par défaut (centré).
-      const id = instruction.id ?? instruction.storage;
-      const created: Layer = {
-        id,
+    // Moteur (fgplugin.tjs chgfg) : `.page = "back"` par défaut, et la **sélection** du calque se fait
+    // sur la page opposée (`searchpage`) ; l'image est ensuite posée sur la page demandée. C'est ce qui
+    // permet à un `@chgfg` sans `id` de conserver la position d'un personnage déjà affiché (au lieu de
+    // créer un orphelin centré : cause du décalage du plan rapproché, #315).
+    const searchPage = page === "back" ? "fore" : "back";
+    const search = this.getPageState(searchPage);
+    const prefix = /^([^0-9a-z]+)/.exec(instruction.storage)?.[1] ?? null;
+    const sameCharacter = (layer: Layer): boolean =>
+      prefix !== null && layer.visible !== false && layer.storage.startsWith(prefix);
+
+    const matches = (layers: readonly Layer[]): Layer | undefined => {
+      if (instruction.id !== undefined) {
+        return layers.find((layer) => layer.id === instruction.id);
+      }
+      // Ponctuation exacte sur l'id (historique du port) puis même personnage (moteur).
+      return layers.find((layer) => layer.id === instruction.storage) ?? layers.find(sameCharacter);
+    };
+
+    let source = matches(target.layers) ?? matches(search.layers);
+    let created = false;
+    if (!source) {
+      // Calque inexistant : repli tolérant du port (le moteur lèverait une exception), centré ou à
+      // la position explicitement demandée.
+      source = {
+        id: instruction.id ?? instruction.storage,
         storage: instruction.storage,
-        center: 512,
-        vcenter: 288,
+        center: instruction.center ?? 512,
+        vcenter: instruction.vcenter ?? 288,
         index: instruction.index ?? 1,
         opacity: 1,
       };
-      patchTransform(created, instruction);
-      clearAppearance(created);
-      patchAppearance(created, instruction);
-      target.layers.push(created);
+      created = true;
+    }
+
+    const changed: Layer = {
+      ...source,
+      storage: instruction.storage,
+      id: instruction.id ?? source.id,
+      ...(instruction.center === undefined ? {} : { center: instruction.center }),
+      ...(instruction.vcenter === undefined ? {} : { vcenter: instruction.vcenter }),
+      ...(instruction.index === undefined ? {} : { index: instruction.index }),
+      // Conserve crop/partbgId/apparence du calque source (même personnage, autre image).
+    };
+    patchTransform(changed, instruction);
+    // `@chgfg` change l'image mais conserve position/z/opacité : les attributs d'apparence
+    // ne sont remplacés que s'ils sont précisés.
+    patchAppearance(changed, instruction);
+
+    if (created) {
+      clearAppearance(changed);
+      target.layers.push(changed);
+    } else {
+      // Le calque source peut être sur la page opposée : on le copie sur la page cible au même id.
+      const idx = target.layers.findIndex((layer) => layer.id === changed.id);
+      if (idx >= 0) target.layers[idx] = changed;
+      else target.layers.push(changed);
     }
     return this.revealLayerChange(page, instruction);
   }
