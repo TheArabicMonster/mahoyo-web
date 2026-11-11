@@ -288,6 +288,12 @@ export interface AudioPlayer {
 
   restore(snapshot: AudioSnapshot): void;
 
+  /**
+   * Abonnement à la fin naturelle d'un canal (ou erreur) : le player libère le canal SE du pool
+   * du runtime (#358). Retourne la fonction de désabonnement.
+   */
+  onChannelEnded?(listener: (channel: AudioChannel) => void): () => void;
+
   stopAll(fadeOut?: Ms): void;
 
   /** Bip synthétique de test au volume SE courant (aucun asset requis). */

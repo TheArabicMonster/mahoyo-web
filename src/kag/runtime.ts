@@ -34,6 +34,7 @@ import {
 } from "./journal.js";
 import { lookupTimeline, type TimelineBg, type TimelineData } from "@/core/timeline.js";
 import type { AnimationDef, PageLayer } from "./types.js";
+import { isVoiceStorage, SE_CHANNEL_COUNT, seChannel } from "./events.js";
 import type {
   AudioChannel,
   AudioEvent,
@@ -44,6 +45,7 @@ import type {
   RenderEvent,
   SceneState,
   ScreenShakeSpec,
+  SeChannelState,
   SpriteState,
   StaffrollState,
   Step,
@@ -178,7 +180,10 @@ export type RuntimeState = {
   bgm: string | null;
   /** La BGM est en pause (@playpause) : une reprise (@playresume) la relance. */
   bgmPaused?: boolean;
+  /** Dernier SE lancé (compatibilité) ; l'activité réelle est dans `seChannels`. */
   se: string | null;
+  /** Canaux SE/voix actifs (pool multi-canaux, #358) : sauvegardé pour reprendre les ambiances. */
+  seChannels?: SeChannelState[];
   /**
    * Variables KAG organisées en portées :
    * - f : variables de jeu (persistantes entre scènes, resets au new game)
@@ -384,6 +389,12 @@ export class Runtime {
   /** Compteur d'occurrences par commande (alignement par événement, #318). */
   private journalCounts = new Map<string, number>();
 
+  /** Ordre de lancement par canal SE (réutilisation du plus ancien one-shot, #358). */
+  private seStartedAt = new Map<AudioChannel, number>();
+  private seSequence = 0;
+  /** Dernier canal SE lancé par @playtimeline (cible des actions `volume` sans storage). */
+  private lastTimelineSeChannel: AudioChannel | null = null;
+
   /** Macros définies par @macro/@endmacro. */
   private macros: Map<string, Token[]> = new Map();
 
@@ -394,8 +405,8 @@ export class Runtime {
   private kagProxy = {
     con: { crashAction: "" },
     flags: {},
-    /** Un SE est-il en cours ? Approximation : le dernier SE lancé n'a pas été arrêté. */
-    isplayingse: (storage: string): boolean => this.state.se === storage,
+    /** Un SE (ou une voix routée) est-il en cours sur un canal du pool ? (#358) */
+    isplayingse: (storage: string): boolean => this.isPlayingSe(storage),
   };
 
   /**
@@ -2076,6 +2087,7 @@ export class Runtime {
 
     const entries: { at: number; order: number; events: RenderEvent[] }[] = [];
     let order = 0;
+    this.lastTimelineSeChannel = null;
 
     // Si le fond a un zoom ou une rotation quelque part, chaque plan les (re)pose explicitement.
     const bgTransformed = scene.bg.some((b) => b.zoomx !== undefined || b.zoomy !== undefined || b.rotate !== undefined);
@@ -2197,16 +2209,23 @@ export class Runtime {
     for (const effect of unsupportedEffects) this.onWarning(`effet de calque non pris en charge : ${effect}`);
 
     for (const a of scene.audio) {
-      const channel = a.channel === "bgm" ? "bgm" : "se:0";
       let event: AudioEvent;
       if (a.action === "play" && a.storage) {
         if (a.channel === "bgm") {
           this.state.bgm = a.storage;
+          event = { kind: "play", channel: "bgm", storage: a.storage, loop: a.loop, volume: a.volume };
         } else {
-          this.state.se = a.storage;
+          // Même pool que @se (#358) : une ambiance de timeline ne coupe pas un one-shot.
+          const channel = isVoiceStorage(a.storage) ? "voice" : this.allocateSeChannel(a.storage, a.loop);
+          this.recordSeChannel(channel, a.storage, a.loop, a.volume);
+          this.lastTimelineSeChannel = channel;
+          event = { kind: "play", channel, storage: a.storage, loop: a.loop, volume: a.volume };
         }
-        event = { kind: "play", channel, storage: a.storage, loop: a.loop, volume: a.volume };
+      } else if (a.channel === "bgm") {
+        event = { kind: "fade", channel: "bgm", volume: a.volume, time: 0 };
       } else {
+        const channel = this.lastTimelineSeChannel;
+        if (!channel) continue;
         event = { kind: "fade", channel, volume: a.volume, time: 0 };
       }
       entries.push({ at: a.at, order: order++, events: [{ kind: "audio", event }] });
@@ -2269,8 +2288,84 @@ export class Runtime {
     return events;
   }
 
-  private applyAudio(instruction: Instruction): RenderEvent | null {
-    let event: AudioEvent | null = null;
+  /** Canaux SE/voix actifs de l'état courant. */
+  private activeSeChannels(): SeChannelState[] {
+    if (!this.state.seChannels) this.state.seChannels = [];
+    return this.state.seChannels;
+  }
+
+  /** Un SE/une voix de ce storage est-il encore en cours sur un canal ? */
+  private isPlayingSe(storage: string): boolean {
+    return this.activeSeChannels().some((entry) => entry.storage === storage);
+  }
+
+  /**
+   * Alloue un canal pour un SE (#358) :
+   * - boucle : canal dédié au storage, réutilisé si la même boucle est relancée ;
+   * - one-shot : premier canal libre du pool, sinon le one-shot le plus ancien (jamais une boucle) ;
+   * - pool saturé de boucles : canal d'extension `se:8+` pour ne jamais couper une ambiance.
+   */
+  private allocateSeChannel(storage: string, loop: boolean): AudioChannel {
+    const entries = this.activeSeChannels().filter((entry) => entry.channel.startsWith("se:"));
+    if (loop) {
+      const same = entries.find((entry) => entry.loop && entry.storage === storage);
+      if (same) return same.channel;
+    }
+    const used = new Set(entries.map((entry) => entry.channel));
+    for (let i = 0; i < SE_CHANNEL_COUNT; i++) {
+      const channel = seChannel(i);
+      if (!used.has(channel)) return channel;
+    }
+    const oneShots = entries.filter((entry) => !entry.loop);
+    if (oneShots.length > 0) {
+      // Le plus ancien one-shot (ordre de lancement), jamais une boucle d'ambiance.
+      let oldest = oneShots[0]!;
+      for (const entry of oneShots) {
+        if ((this.seStartedAt.get(entry.channel) ?? 0) < (this.seStartedAt.get(oldest.channel) ?? 0)) oldest = entry;
+      }
+      return oldest.channel;
+    }
+    let index = SE_CHANNEL_COUNT;
+    while (used.has(seChannel(index))) index++;
+    return seChannel(index);
+  }
+
+  /** Enregistre/actualise l'occupation d'un canal (pool + voix). */
+  private recordSeChannel(channel: AudioChannel, storage: string, loop: boolean, volume: number): void {
+    const entries = this.activeSeChannels();
+    const existing = entries.find((entry) => entry.channel === channel);
+    if (existing) {
+      existing.storage = storage;
+      existing.loop = loop;
+      existing.volume = volume;
+    } else {
+      entries.push({ channel, storage, loop, volume });
+    }
+    this.seStartedAt.set(channel, ++this.seSequence);
+    this.state.se = storage;
+  }
+
+  /**
+   * Libère un canal SE à la fin de lecture (callback du player). Idempotent : utilisé aussi par
+   * `@sestop` et la restauration.
+   */
+  releaseSeChannel(channel: AudioChannel): void {
+    const entries = this.activeSeChannels();
+    const index = entries.findIndex((entry) => entry.channel === channel);
+    if (index >= 0) entries.splice(index, 1);
+    this.seStartedAt.delete(channel);
+    if (this.state.se !== null && !entries.some((entry) => entry.storage === this.state.se)) {
+      this.state.se = entries.length > 0 ? entries[entries.length - 1]!.storage : null;
+    }
+  }
+
+  /** Canaux actifs d'un storage (SE natif ou voix), pour @sestop/@fadese par storage. */
+  private seChannelsOfStorage(storage: string): AudioChannel[] {
+    return this.activeSeChannels().filter((entry) => entry.storage === storage).map((entry) => entry.channel);
+  }
+
+  private applyAudio(instruction: Instruction): RenderEvent[] {
+    const events: AudioEvent[] = [];
     switch (instruction.kind) {
       case "xchgbgm": {
         // Traité par applyXchgbgm (plusieurs événements audio) ; ce cas ne devrait pas arriver.
@@ -2279,38 +2374,38 @@ export class Runtime {
       case "play": {
         this.state.bgm = instruction.storage;
         this.state.bgmPaused = false;
-        event = {
+        events.push({
           kind: "play",
           channel: "bgm",
           storage: instruction.storage,
           loop: true,
           volume: (instruction.volume ?? 100) / 100,
-        };
+        });
         break;
       }
       case "playstop": {
         this.state.bgm = null;
         this.state.bgmPaused = false;
-        event = { kind: "stop", channel: "bgm", fadeOut: instruction.time };
+        events.push({ kind: "stop", channel: "bgm", fadeOut: instruction.time });
         break;
       }
       case "playpause": {
         // Sans BGM en cours, ou déjà en pause : sans effet.
         if (this.state.bgm === null || this.state.bgmPaused) break;
         this.state.bgmPaused = true;
-        event = { kind: "pause", channel: "bgm", fadeOut: instruction.time };
+        events.push({ kind: "pause", channel: "bgm", fadeOut: instruction.time });
         break;
       }
       case "playresume": {
         const volume = instruction.volume / 100;
         if (this.state.bgm !== null) {
           this.state.bgmPaused = false;
-          event = { kind: "resume", channel: "bgm", volume, fadeIn: instruction.time };
+          events.push({ kind: "resume", channel: "bgm", volume, fadeIn: instruction.time });
         } else if (instruction.storage) {
           // Rien à reprendre mais la piste est nommée : on la lance en fondu.
           this.state.bgm = instruction.storage;
           this.state.bgmPaused = false;
-          event = { kind: "play", channel: "bgm", storage: instruction.storage, loop: true, volume, fadeIn: instruction.time };
+          events.push({ kind: "play", channel: "bgm", storage: instruction.storage, loop: true, volume, fadeIn: instruction.time });
         }
         break;
       }
@@ -2318,61 +2413,62 @@ export class Runtime {
         // Ne pas nullifier state.bgm : on fonde le volume, la BGM continue
         // de jouer (silencieuse si volume=0) et reste préservée pour
         // reduceAudio/sauvegarde (doc §9 : fade vers volume cible).
-        event = {
-          kind: "fade",
-          channel: "bgm",
-          volume: (instruction.volume ?? 0) / 100,
-          time: instruction.time,
-        };
+        events.push({ kind: "fade", channel: "bgm", volume: (instruction.volume ?? 0) / 100, time: instruction.time });
         break;
       }
-      case "se": {
-        this.state.se = instruction.storage;
-        event = {
-          kind: "play",
-          channel: "se:0",
-          storage: instruction.storage,
-          loop: instruction.loop ?? false,
-          volume: (instruction.volume ?? 100) / 100,
-          delay: instruction.delay,
-        };
-        break;
-      }
+      case "se":
       case "seact": {
-        // @seact = SE avec délai et fondu
-        // On utilise se:0 pour l'instant (même limitation que @se).
-        this.state.se = instruction.storage;
-        event = {
+        const storage = instruction.storage;
+        const loop = instruction.kind === "se" ? (instruction.loop ?? false) : instruction.loop;
+        const volume = (instruction.kind === "se" ? (instruction.volume ?? 100) : instruction.volume) / 100;
+        const delay = instruction.delay;
+        const fadeIn = instruction.kind === "se" ? undefined : instruction.fadeIn;
+        // #358 : une voix Steam passe par `voice` (volume voix, pas de coupure d'ambiance).
+        const channel: AudioChannel = isVoiceStorage(storage) ? "voice" : this.allocateSeChannel(storage, loop);
+        this.recordSeChannel(channel, storage, loop, volume);
+        events.push({
           kind: "play",
-          channel: "se:0",
-          storage: instruction.storage,
-          loop: instruction.loop,
-          volume: instruction.volume / 100,
-          fadeIn: instruction.fadeIn,
-          delay: instruction.delay,
-        };
+          channel,
+          storage,
+          loop,
+          volume,
+          ...(delay !== undefined ? { delay } : {}),
+          ...(fadeIn !== undefined ? { fadeIn } : {}),
+        });
         break;
       }
       case "sestop": {
-        this.state.se = null;
-        event = {
-          kind: "stop",
-          channel: instruction.storage ? ("se:0" as AudioChannel) : "allSe",
-          fadeOut: instruction.time,
-        };
+        if (instruction.storage) {
+          // KAG : stoppe le(s) buffer(s) correspondant au storage ; aucun si introuvable.
+          const channels = this.seChannelsOfStorage(instruction.storage);
+          for (const channel of channels) {
+            events.push({ kind: "stop", channel, fadeOut: instruction.time });
+            this.releaseSeChannel(channel);
+          }
+        } else {
+          // KAG : sans buf ni storage, arrête tous les SE.
+          events.push({ kind: "stop", channel: "allSe", fadeOut: instruction.time });
+          for (const channel of this.activeSeChannels().map((entry) => entry.channel)) this.seStartedAt.delete(channel);
+          this.state.seChannels = [];
+          this.state.se = null;
+        }
         break;
       }
       case "fadese": {
-        event = {
-          kind: "fade",
-          channel: "se:0",
-          volume: instruction.volume / 100,
-          time: instruction.time,
-        };
+        if (instruction.storage) {
+          // KAG : `getsebuf` par storage ; introuvable = sans effet.
+          const channel = this.seChannelsOfStorage(instruction.storage)[0];
+          if (channel) {
+            events.push({ kind: "fade", channel, volume: instruction.volume / 100, time: instruction.time });
+            const entry = this.activeSeChannels().find((candidate) => candidate.channel === channel);
+            if (entry) entry.volume = instruction.volume / 100;
+          }
+        }
+        // Sans storage, le moteur ne trouve pas de buffer (`se[void]`) : sans effet.
         break;
       }
     }
-    return event ? { kind: "audio", event } : null;
+    return events.map((event): RenderEvent => ({ kind: "audio", event }));
   }
 
   private applyQuake(instruction: Extract<Instruction, { kind: "quake" }>): RenderEvent {
@@ -2838,8 +2934,7 @@ export class Runtime {
       case "seact":
       case "sestop":
       case "fadese": {
-        const ev = this.applyAudio(instruction);
-        if (ev) events.push(ev);
+        events.push(...this.applyAudio(instruction));
         break;
       }
       case "playtimeline": {
@@ -3391,6 +3486,7 @@ export class Runtime {
         bgm: this.state.bgm,
         bgmPaused: this.state.bgmPaused ?? false,
         se: this.state.se,
+        seChannels: this.state.seChannels ? structuredClone(this.state.seChannels) : [],
         variables: structuredClone(this.state.variables),
         evalGlobal: structuredClone(this.state.evalGlobal),
         textbox: this.state.textbox ? { ...this.state.textbox } : undefined,
@@ -3437,6 +3533,7 @@ export class Runtime {
 
     this.state = {
       ...data.state,
+      seChannels: data.state.seChannels?.map((entry) => ({ ...entry })) ?? [],
       fore: structuredClone(data.state.fore),
       back: structuredClone(data.state.back),
       variables: normalizedVars,
@@ -3452,6 +3549,11 @@ export class Runtime {
         ? structuredClone(data.state.staffroll)
         : undefined,
     };
+    // La séquence de lancement est reconstruite depuis l'ordre sauvegardé (réutilisation du
+    // plus ancien one-shot après un load).
+    this.seStartedAt = new Map();
+    this.seSequence = 0;
+    for (const entry of this.state.seChannels ?? []) this.seStartedAt.set(entry.channel, ++this.seSequence);
 
     // Restore the call stack with resolved script objects.
     this.callStack = data.callStack

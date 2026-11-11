@@ -29,6 +29,7 @@ const PERSISTED_STATE_KEYS = [
   "bgm",
   "bgmPaused",
   "se",
+  "seChannels",
   "variables",
   "evalGlobal",
   "textbox",
