@@ -61,10 +61,12 @@ Rapport : `reports/perf-scenes.json` (ignoré par git). Aucun asset ni capture c
 | `heapUsedMB` | tas JS après la passe (CDP `Performance.getMetrics`) |
 | `decodedCacheMB` | estimation du cache décodé des images chargées (`w×h×4`) |
 
-## Baseline avant correction
+## Baseline
 
-Mesure du 2026-11-11 sur `v1.1`, assets réels locaux, script `1-2.ks`, 6 changements de scène,
-macOS arm64, Chromium via Playwright :
+### Avant correction (#362)
+
+Mesure du 2026-11-11 sur `v1.1` (`1086f7f`, avant le merge de #362), assets réels locaux, script
+`1-2.ks`, 6 changements de scène, macOS arm64, Chromium via Playwright :
 
 | Profil | Passe | p50 `scene-ready` | p95 `scene-ready` | lookahead | réutilisation | blocages > 50 ms | INP | tas JS | cache décodé |
 |---|---|---|---|---|---|---|---|---|---|
@@ -80,6 +82,23 @@ Changements de scène mesurés (desktop, froid) : fond d'ouverture `bg02学校01
 Lecture : le **décodage/peinture** domine (~60–70 ms par scène même en cache local, jusqu'à ~1,3 s
 en mobile pour une image de 4 Mo sous 10 Mbps), **le lookahead est à 0 %** (aucun préchargement des
 fonds), et les blocages > 50 ms sont nuls sur ce segment. C'est la référence « avant #362 ».
+
+### Après correction (#362 / #365, même banc)
+
+Mesure du 2026-11-11 sur `v1.1` (`ded61e0`, fond décodé avant la transition + sonde `?perf=1` #360),
+mêmes conditions :
+
+| Profil | Passe | p50 `scene-ready` | p95 `scene-ready` | Évolution p50 vs avant |
+|---|---|---|---|---|
+| desktop | froid | **49 ms** | 73 ms | −17 ms |
+| desktop | chaud | **50 ms** | 64 ms | −8 ms |
+| mobile (CPU ×4, 10 Mbps) | froid | 66 ms | 1 329 ms | ≈ (p95 : un fond de 4 Mo sous 10 Mbps) |
+| mobile (CPU ×4, 10 Mbps) | chaud | **50 ms** | 1 291 ms | −17 ms |
+
+Le p50 progresse de ~8–17 ms sur desktop et mobile chaud (décodage avant transition) ; le p95 mobile
+reste dominé par le transfert/décodage d'un fond de 4 Mo à 10 Mbps (attendu : le correctif évite le
+freeze, pas le coût réseau). La sonde `?perf=1` (#360) fournit les mêmes marqueurs à l'exécution ;
+ce banc reste la mesure Playwright équivalente, disponible sans instrumentation.
 
 ### Mode CI : placeholders lourds
 
