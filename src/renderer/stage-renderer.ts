@@ -27,6 +27,7 @@ import { sampleTrack } from "./easing-track.js";
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { partbgClipRect, resolvePlacement, spriteAnchorSize, type ImageSize, type Rect } from "./sprite-placement.js";
 import { storageKey } from "@/core/storage-key.js";
+import { DECODED_CACHE_LIMIT, ensureDecoded, type DecodableImage } from "./image-decode.js";
 import {
   applyAppearance,
   feBlendModeForLayerType,
@@ -218,6 +219,10 @@ export class DomStageRenderer implements StageRenderer {
   private bgTransformEnd = 0;
   /** Tailles des images de fond déjà chargées (pivot du zoom/rotation), par URL. */
   private bgSizes = new Map<string, { w: number; h: number }>();
+  /** Références des images préchargées/décodées (plafonnées), pour ne pas perdre le décodage. */
+  private decodedImages = new Map<string, DecodableImage>();
+  /** Attente de décodage en cours : un clic/skip l'abandonne (transition non retardée). */
+  private pendingDecodeAbort: AbortController | null = null;
 
   private animations = new Map<string, AnimationController>();
   /**
@@ -658,6 +663,9 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   hurry(): void {
+    // #362 : un clic/skip annule l'attente de décodage d'image et laisse partir la transition.
+    this.pendingDecodeAbort?.abort();
+    this.pendingDecodeAbort = null;
     // Typewriter : non-sticky. Si le typewriter tourne, on le termine
     // immédiatement (rendu complet + resolve) sans laisser de flag persistant.
     if (this.typewriterResolve) {
@@ -786,6 +794,13 @@ export class DomStageRenderer implements StageRenderer {
         (url, i) =>
           new Promise<void>((resolve) => {
             const img = new Image();
+            img.decoding = "async";
+            img.fetchPriority = "low";
+            this.decodedImages.set(url, img as unknown as DecodableImage);
+            if (this.decodedImages.size > DECODED_CACHE_LIMIT) {
+              const oldest = this.decodedImages.keys().next().value;
+              if (oldest !== undefined) this.decodedImages.delete(oldest);
+            }
             img.onload = () => resolve();
             img.onerror = () => {
               this.resolver.reportMissing("image", assets[i]!);
@@ -1278,6 +1293,23 @@ export class DomStageRenderer implements StageRenderer {
     document.head.appendChild(style);
   }
 
+  /** Attend le décodage du fond (1 s max) avant la transition, annulable par clic/skip (#362). */
+  private async waitForBackgroundDecoded(storage: string, signal: AbortSignal): Promise<void> {
+    const url = this.resolver.background(storage);
+    if (signal.aborted) return;
+    this.pendingDecodeAbort?.abort();
+    const controller = new AbortController();
+    this.pendingDecodeAbort = controller;
+    const forwardAbort = () => controller.abort();
+    signal.addEventListener("abort", forwardAbort, { once: true });
+    try {
+      await ensureDecoded(url, controller.signal, { cache: this.decodedImages, timeoutMs: 1000 });
+    } finally {
+      signal.removeEventListener("abort", forwardAbort);
+      if (this.pendingDecodeAbort === controller) this.pendingDecodeAbort = null;
+    }
+  }
+
   private async applyEvent(event: RenderEvent, opts: RunOptions): Promise<void> {
     switch (event.kind) {
       case "scene": {
@@ -1300,6 +1332,12 @@ export class DomStageRenderer implements StageRenderer {
         this.currentScene = event.scene;
         if (event.transitionId !== undefined) this.lastTransitionId = event.transitionId;
         const transitionTime = event.transition.method === "none" ? 0 : event.transition.time;
+        // #362 : attendre le décodage de la nouvelle image de fond AVANT de démarrer la transition
+        // (1 s max, abandonnée par un clic/skip). L'ancienne image reste affichée pendant l'attente.
+        if (!opts.instant && transitionTime > 0 && event.scene.bg && event.scene.bg !== oldScene.bg) {
+          await this.waitForBackgroundDecoded(event.scene.bg, opts.signal);
+          if (opts.signal.aborted) return;
+        }
         // Non-bloquant : on démarre la transition et on rend la main.
         // waitFor("transition") permettra au player d'attendre sa fin.
         this.startTransition(oldScene, event.scene, transitionTime, opts);
@@ -1604,6 +1642,7 @@ export class DomStageRenderer implements StageRenderer {
         if (!img || img.tagName !== "IMG") {
           img = document.createElement("img");
           img.className = "mh-stage-sprite";
+          img.decoding = "async";
           img.alt = "";
           img.dataset.spriteId = s.id;
           if (s.partbgId) img.dataset.partbgId = s.partbgId;
