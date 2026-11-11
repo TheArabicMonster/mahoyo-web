@@ -1,0 +1,400 @@
+/**
+ * Sonde de performance « scene-ready » (PERF-01 / #360, docs/PERF_PLAN_OPUS.md §1).
+ *
+ * Instrumentation **désactivée par défaut** : sans `?perf=1` dans l'URL, ce module ne pose aucun
+ * marqueur, aucun `PerformanceObserver` et n'écrit rien sur `window` : il renvoie un objet no-op
+ * partagé (coût nul pour le reste du player).
+ *
+ * Avec `?perf=1` :
+ * - `performance.mark` `mh:img:request|fetched|decoded|painted` par image de scène ;
+ * - `fetched` lit Resource Timing (`transferSize`, `workerStart`) pour classer **cache chaud/froid**
+ *   et `preloaded` (via `markPreloaded`) ;
+ * - `fetched → painted` donne la métrique `scene-ready` ;
+ * - blocages : `PerformanceObserver` sur `long-animation-frame` (repli `longtask`), entrées > 50 ms ;
+ * - INP : `PerformanceObserver` sur `event` (durée des interactions) ;
+ * - mémoire : `measureUserAgentSpecificMemory()` si disponible + estimation w×h×4 quand les
+ *   dimensions sont fournies (`noteDimensions`) ;
+ * - tout est agrégé dans un tampon circulaire exposé sur `window.__mhPerf` (Playwright).
+ *
+ * Module pur : aucun accès au DOM en dehors de `window`/`performance`, testable en jsdom.
+ */
+
+/** Nombre maximal d'entrées conservées par tampon circulaire (marqueurs, blocages, événements). */
+export const PERF_BUFFER_LIMIT = 2000;
+/** Seuil des blocages retenus (ms), plan §1. */
+export const LONG_FRAME_MS = 50;
+
+export type PerfImageRecord = {
+  url: string;
+  request: number | null;
+  fetched: number | null;
+  decoded: number | null;
+  painted: number | null;
+  /** request → painted (ms), la métrique clé du plan. */
+  sceneReady: number | null;
+  /** true/false si Resource Timing est exploitable, null sinon. */
+  cached: boolean | null;
+  preloaded: boolean;
+  /** transferSize / workerStart de Resource Timing quand disponibles. */
+  transferSize: number | null;
+  workerStart: number | null;
+  /** Estimation mémoire w×h×4 (octets) si les dimensions sont connues. */
+  bytes: number | null;
+  /** Classification `preloaded-cache` | `preloaded` | `cold-cache` | `cold`. */
+  kind: "preloaded-cache" | "preloaded" | "cold-cache" | "cold" | null;
+};
+
+export type PerfLongFrame = {
+  startTime: number;
+  duration: number;
+  blockingDuration?: number;
+  source: "long-animation-frame" | "longtask";
+};
+
+export type PerfEventEntry = { name: string; startTime: number; duration: number };
+
+export type PerfSummary = {
+  enabled: boolean;
+  images: number;
+  sceneReady: { count: number; p50: number | null; p95: number | null; max: number | null };
+  kinds: Record<string, number>;
+  longFrames: number;
+  events: number;
+  inp: number | null;
+};
+
+/** Contenu public exposé sur `window.__mhPerf` (lu par Playwright). */
+export type PerfGlobal = {
+  readonly enabled: true;
+  readonly limit: number;
+  readonly images: PerfImageRecord[];
+  readonly longFrames: PerfLongFrame[];
+  readonly events: PerfEventEntry[];
+  memory: { bytes: number | null; supported: boolean } | null;
+  summary(): PerfSummary;
+};
+
+export type PerfProbeEnv = {
+  /** `location.search` à la place de l'URL réelle (tests). */
+  readonly search?: string;
+  /** Horloge (ms), défaut `performance.now`. */
+  readonly now?: () => number;
+  /** Deux rAF (tests : synchrone). */
+  readonly nextFrame?: (fn: () => void) => void;
+  /** Entrée Resource Timing pour une URL (tests : injectable). */
+  readonly resourceEntry?: (url: string) => { transferSize?: number; workerStart?: number } | undefined;
+  /** Taille du tampon circulaire (tests). */
+  readonly limit?: number;
+};
+
+export interface PerfProbe {
+  readonly enabled: boolean;
+  /** À appeler quand la scène applique une image (bg, sprite, calque de timeline). */
+  markRequest(url: string): void;
+  markFetched(url: string): void;
+  markDecoded(url: string): void;
+  markPainted(url: string): void;
+  /** Image déjà préchargée par le lookahead (classification). */
+  markPreloaded(url: string): void;
+  /** Dimensions natives pour l'estimation mémoire w×h×4 (image-dimensions.json). */
+  noteDimensions(url: string, width: number, height: number): void;
+  /**
+   * Marque la requête puis suit l'image : `<img>` existant (sprite/calque, pas de requête
+   * supplémentaire) ou, à défaut, une image de sonde créée pour un fond CSS.
+   */
+  trackImage(url: string, img?: HTMLImageElement): void;
+  /** Résumé calculé (même objet que `window.__mhPerf.summary()`). */
+  summary(): PerfSummary;
+}
+
+/** Sonde inerte : aucune marque, aucun observer, aucun accès à `window`. */
+const NOOP: PerfProbe = Object.freeze({
+  enabled: false,
+  markRequest: () => {},
+  markFetched: () => {},
+  markDecoded: () => {},
+  markPainted: () => {},
+  markPreloaded: () => {},
+  noteDimensions: () => {},
+  trackImage: () => {},
+  summary: () => EMPTY_SUMMARY,
+});
+
+const EMPTY_SUMMARY: PerfSummary = {
+  enabled: false,
+  images: 0,
+  sceneReady: { count: 0, p50: null, p95: null, max: null },
+  kinds: {},
+  longFrames: 0,
+  events: 0,
+  inp: null,
+};
+
+const NOOP_PROBE = NOOP;
+
+/** Vrai si l'URL demande la sonde (`?perf=1`), sinon false. */
+export function perfEnabled(search: string): boolean {
+  try {
+    return new URLSearchParams(search).get("perf") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function defaultSearch(): string {
+  return typeof window !== "undefined" && typeof window.location?.search === "string" ? window.location.search : "";
+}
+
+function defaultNextFrame(fn: () => void): void {
+  if (typeof requestAnimationFrame !== "function") return fn();
+  requestAnimationFrame(() => requestAnimationFrame(fn));
+}
+
+function percentile(values: readonly number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return Math.round(sorted[index]! * 100) / 100;
+}
+
+/** Pousse dans un tampon circulaire (garde les `limit` dernières entrées). */
+function pushCircular<T>(buffer: T[], value: T, limit: number): void {
+  buffer.push(value);
+  if (buffer.length > limit) buffer.splice(0, buffer.length - limit);
+}
+
+/**
+ * Crée la sonde. Retourne le no-op partagé si `?perf=1` est absent.
+ * Aucun observer n'est installé dans ce cas (exigence #360).
+ */
+export function createPerfProbe(env: PerfProbeEnv = {}): PerfProbe {
+  const search = env.search ?? defaultSearch();
+  if (!perfEnabled(search)) return NOOP_PROBE;
+
+  const now = env.now ?? (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
+  const nextFrame = env.nextFrame ?? defaultNextFrame;
+  const limit = env.limit ?? PERF_BUFFER_LIMIT;
+  const resourceEntry =
+    env.resourceEntry ??
+    ((url: string) => {
+      if (typeof performance === "undefined" || typeof performance.getEntriesByName !== "function") return undefined;
+      const entries = performance.getEntriesByName(url, "resource") as PerformanceResourceTiming[];
+      return entries[entries.length - 1];
+    });
+
+  const records = new Map<string, PerfImageRecord>();
+  const images: PerfImageRecord[] = [];
+  const longFrames: PerfLongFrame[] = [];
+  const events: PerfEventEntry[] = [];
+  const dimensions = new Map<string, { width: number; height: number }>();
+  const preloaded = new Set<string>();
+  let memory: { bytes: number | null; supported: boolean } | null = null;
+
+  const mark = (name: string, url: string): number => {
+    const time = now();
+    try {
+      if (typeof performance !== "undefined" && typeof performance.mark === "function") {
+        performance.mark(name, { detail: { url } });
+      }
+    } catch {
+      // jsdom / vieux navigateurs : le tampon ci-dessous reste la source de vérité.
+    }
+    return time;
+  };
+
+  const recordFor = (url: string): PerfImageRecord => {
+    let record = records.get(url);
+    if (record) return record;
+    record = {
+      url,
+      request: null,
+      fetched: null,
+      decoded: null,
+      painted: null,
+      sceneReady: null,
+      cached: null,
+      preloaded: preloaded.has(url),
+      transferSize: null,
+      workerStart: null,
+      bytes: null,
+      kind: null,
+    };
+    records.set(url, record);
+    pushCircular(images, record, limit);
+    return record;
+  };
+
+  const classify = (record: PerfImageRecord): void => {
+    const dims = dimensions.get(record.url);
+    if (dims) record.bytes = dims.width * dims.height * 4;
+    record.preloaded = record.preloaded || preloaded.has(record.url);
+    if (record.cached === null && record.kind === null) return;
+    if (record.preloaded && record.cached) record.kind = "preloaded-cache";
+    else if (record.preloaded) record.kind = "preloaded";
+    else if (record.cached) record.kind = "cold-cache";
+    else record.kind = "cold";
+  };
+
+  const touchGlobal = (): void => {
+    if (typeof window === "undefined") return;
+    (window as unknown as { __mhPerf?: PerfGlobal }).__mhPerf = global;
+  };
+
+  const summary = (): PerfSummary => {
+    const ready = images.map((r) => r.sceneReady).filter((v): v is number => typeof v === "number");
+    const kinds: Record<string, number> = {};
+    for (const record of images) if (record.kind) kinds[record.kind] = (kinds[record.kind] ?? 0) + 1;
+    const inp = events.reduce((max, e) => Math.max(max, e.duration), 0);
+    return {
+      enabled: true,
+      images: images.length,
+      sceneReady: { count: ready.length, p50: percentile(ready, 50), p95: percentile(ready, 95), max: ready.length ? Math.round(Math.max(...ready) * 100) / 100 : null },
+      kinds,
+      longFrames: longFrames.length,
+      events: events.length,
+      inp: events.length ? Math.round(inp * 100) / 100 : null,
+    };
+  };
+
+  const global: PerfGlobal = {
+    enabled: true,
+    limit,
+    images,
+    longFrames,
+    events,
+    memory,
+    summary,
+  };
+
+  // ── PerformanceObserver : blocages + INP ──
+
+  const observe = (type: string, onEntry: (entry: PerformanceEntry) => void): void => {
+    if (typeof PerformanceObserver !== "function") return;
+    try {
+      const observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) onEntry(entry);
+      });
+      observer.observe({ type, buffered: false } as PerformanceObserverInit);
+    } catch {
+      // Type non supporté par ce navigateur : repli géré par l'appelant.
+    }
+  };
+
+  observe("long-animation-frame", (entry) => {
+    const loaf = entry as PerformanceEntry & { blockingDuration?: number };
+    if (entry.duration <= LONG_FRAME_MS) return;
+    pushCircular(longFrames, { startTime: entry.startTime, duration: entry.duration, blockingDuration: loaf.blockingDuration, source: "long-animation-frame" }, limit);
+    touchGlobal();
+  });
+  // Repli si `long-animation-frame` n'est pas supporté (Firefox/Safari) : ne double pas Chromium
+  // (le premier observer reçoit les entrées, le second reste inerte).
+  if (typeof PerformanceObserver !== "function" || !("supportedEntryTypes" in PerformanceObserver) || !PerformanceObserver.supportedEntryTypes.includes("long-animation-frame")) {
+    observe("longtask", (entry) => {
+      if (entry.duration <= LONG_FRAME_MS) return;
+      pushCircular(longFrames, { startTime: entry.startTime, duration: entry.duration, source: "longtask" }, limit);
+      touchGlobal();
+    });
+  }
+  observe("event", (entry) => {
+    const name = (entry as PerformanceEntry & { name: string }).name;
+    pushCircular(events, { name, startTime: entry.startTime, duration: entry.duration }, limit);
+    touchGlobal();
+  });
+
+  // Mémoire : API Chromium expérimentale, seulement si le flag est actif.
+  if (typeof performance !== "undefined" && typeof (performance as Performance & { measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }> }).measureUserAgentSpecificMemory === "function") {
+    (performance as Performance & { measureUserAgentSpecificMemory: () => Promise<{ bytes: number }> })
+      .measureUserAgentSpecificMemory()
+      .then((result) => {
+        memory = { bytes: result.bytes, supported: true };
+        global.memory = memory;
+        touchGlobal();
+      })
+      .catch(() => {
+        memory = { bytes: null, supported: false };
+        global.memory = memory;
+        touchGlobal();
+      });
+  }
+
+  const probe: PerfProbe = {
+    enabled: true,
+    markRequest(url) {
+      const record = recordFor(url);
+      if (record.request !== null) return; // une seule requête par image suivie
+      record.request = mark("mh:img:request", url);
+      touchGlobal();
+    },
+    markFetched(url) {
+      const record = recordFor(url);
+      if (record.fetched !== null) return;
+      record.fetched = mark("mh:img:fetched", url);
+      const rt = resourceEntry(url);
+      if (rt) {
+        record.transferSize = typeof rt.transferSize === "number" ? rt.transferSize : null;
+        record.workerStart = typeof rt.workerStart === "number" ? rt.workerStart : null;
+        record.cached = record.transferSize === 0;
+      }
+      classify(record);
+      touchGlobal();
+    },
+    markDecoded(url) {
+      const record = recordFor(url);
+      if (record.decoded !== null) return;
+      record.decoded = mark("mh:img:decoded", url);
+      touchGlobal();
+    },
+    markPainted(url) {
+      const record = recordFor(url);
+      if (record.painted !== null) return;
+      record.painted = mark("mh:img:painted", url);
+      if (record.request !== null) record.sceneReady = Math.round((record.painted - record.request) * 100) / 100;
+      classify(record);
+      touchGlobal();
+    },
+    markPreloaded(url) {
+      preloaded.add(url);
+      const record = records.get(url);
+      if (record) record.preloaded = true;
+    },
+    noteDimensions(url, width, height) {
+      dimensions.set(url, { width, height });
+      const record = records.get(url);
+      if (record) {
+        record.bytes = width * height * 4;
+        classify(record);
+        touchGlobal();
+      }
+    },
+    trackImage(url, elem) {
+      probe.markRequest(url);
+      const img = elem ?? (typeof Image === "function" ? new Image() : null);
+      if (!img) {
+        // Pas de DOM (tests) : on marque ce qui est observable sans image.
+        probe.markFetched(url);
+        probe.markDecoded(url);
+        nextFrame(() => probe.markPainted(url));
+        return;
+      }
+      const finish = (): void => {
+        probe.markFetched(url);
+        const done = (): void => {
+          probe.markDecoded(url);
+          nextFrame(() => probe.markPainted(url));
+        };
+        if (typeof img.decode === "function") img.decode().then(done).catch(done);
+        else done();
+      };
+      if (img.complete && img.naturalWidth > 0) finish();
+      else if (elem) img.addEventListener("load", finish, { once: true });
+      else {
+        img.addEventListener("load", finish, { once: true });
+        img.src = url;
+      }
+    },
+    summary,
+  };
+
+  touchGlobal();
+  return probe;
+}
