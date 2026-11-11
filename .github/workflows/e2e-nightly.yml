@@ -1,0 +1,59 @@
+name: E2E nightly
+
+# Complète la gate légère de `main` (#371) : la CI des PRs et la gate `main` ne lancent l'e2e que
+# sur les chemins UI/e2e (et sur push `v1.1`), donc `main` peut évoluer sans e2e bloquant. Ce
+# workflow exécute **la suite e2e complète** (Chromium + Firefox, shards) une fois par nuit sur
+# `main`, et peut être déclenché manuellement (`workflow_dispatch`) ou sur un tag de release.
+on:
+  schedule:
+    # tous les jours à 03:00 UTC (05:00 heure de Paris en été)
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: e2e nuit (${{ matrix.browser }} ${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
+        shard: [1, 2]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser (${{ matrix.browser }})
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Generate e2e placeholders and run the full suite (${{ matrix.browser }} ${{ matrix.shard }}/2)
+        run: npm run test:e2e -- --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/2
+        env:
+          MAHOYO_E2E_ASSETS: ${{ runner.temp }}/mahoyo-e2e-nightly
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-playwright-results-${{ matrix.browser }}-${{ matrix.shard }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
