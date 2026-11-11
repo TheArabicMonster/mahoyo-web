@@ -27,7 +27,8 @@ import { sampleTrack } from "./easing-track.js";
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { partbgClipRect, resolvePlacement, spriteAnchorSize, type ImageSize, type Rect } from "./sprite-placement.js";
 import { storageKey } from "@/core/storage-key.js";
-import { DECODED_CACHE_LIMIT, ensureDecoded, type DecodableImage } from "./image-decode.js";
+import { ensureDecoded } from "./image-decode.js";
+import { DecodedImageCache, decodedCacheLimitBytes } from "./image-cache.js";
 import {
   applyAppearance,
   feBlendModeForLayerType,
@@ -220,7 +221,10 @@ export class DomStageRenderer implements StageRenderer {
   /** Tailles des images de fond déjà chargées (pivot du zoom/rotation), par URL. */
   private bgSizes = new Map<string, { w: number; h: number }>();
   /** Références des images préchargées/décodées (plafonnées), pour ne pas perdre le décodage. */
-  private decodedImages = new Map<string, DecodableImage>();
+  /** Cache décodé LRU borné en octets (PERF-05 / #368) ; conserve les décodages entre scènes. */
+  private readonly decodedImages = new DecodedImageCache({
+    limitBytes: decodedCacheLimitBytes(),
+  });
   /** Attente de décodage en cours : un clic/skip l'abandonne (transition non retardée). */
   private pendingDecodeAbort: AbortController | null = null;
 
@@ -277,6 +281,8 @@ export class DomStageRenderer implements StageRenderer {
   constructor(deps: StageRendererDeps) {
     this.resolver = deps.resolver;
     this.imageDimensions = deps.imageDimensions ?? {};
+    // Stats du cache décodé dans window.__mhPerf.summary() (#368) : no-op sans ?perf=1.
+    this.perf.setImageCacheStats(() => this.decodedImages.stats());
     this.envEffects = deps.envEffects;
     this.filterRegistry = {
       monoFilter: (color) => this.svgFilter(`mono:${color}`, (filter) => {
@@ -796,11 +802,9 @@ export class DomStageRenderer implements StageRenderer {
             const img = new Image();
             img.decoding = "async";
             img.fetchPriority = "low";
-            this.decodedImages.set(url, img as unknown as DecodableImage);
-            if (this.decodedImages.size > DECODED_CACHE_LIMIT) {
-              const oldest = this.decodedImages.keys().next().value;
-              if (oldest !== undefined) this.decodedImages.delete(oldest);
-            }
+            const size = this.imageSizeOf(assets[i]!);
+            if (size) this.decodedImages.noteDimensions(url, size.width, size.height);
+            this.decodedImages.set(url, img);
             img.onload = () => resolve();
             img.onerror = () => {
               this.resolver.reportMissing("image", assets[i]!);
@@ -1294,9 +1298,37 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   /** Attend le décodage du fond (1 s max) avant la transition, annulable par clic/skip (#362). */
+  /**
+   * Retient le décodage d'une image affichée (fond, sprite, calque) dans le cache LRU (#368).
+   * Fire-and-forget et **sans attendre** : en skip/instantané, aucune transition n'est bloquée
+   * (#362) ; une image déjà en cache est servie sans re-décodage (hit).
+   * - `element` fourni (sprite/calque déjà dans le DOM) : on garde la référence de l'élément ;
+   * - sinon (fond CSS) : une image de référence est créée pour conserver le décodage.
+   */
+  private cacheDecodedForDisplay(url: string, storage?: string, element?: HTMLImageElement): void {
+    if (!url) return;
+    const size = storage ? this.imageSizeOf(storage) : null;
+    if (size) this.decodedImages.noteDimensions(url, size.width, size.height);
+    if (this.decodedImages.has(url)) {
+      this.decodedImages.get(url); // hit + réordonne la LRU
+      return;
+    }
+    const img = element ?? (typeof Image === "function" ? new Image() : null);
+    if (!img) return;
+    if (!element) {
+      img.decoding = "async";
+      img.src = url;
+    }
+    this.decodedImages.set(url, img);
+    // Référence conservée : `decode()` garantit que le décodage est fait sans bloquer le rendu.
+    if (typeof img.decode === "function") void img.decode().catch(() => {});
+  }
+
   private async waitForBackgroundDecoded(storage: string, signal: AbortSignal): Promise<void> {
     const url = this.resolver.background(storage);
     if (signal.aborted) return;
+    const size = this.imageSizeOf(storage);
+    if (size) this.decodedImages.noteDimensions(url, size.width, size.height);
     this.pendingDecodeAbort?.abort();
     const controller = new AbortController();
     this.pendingDecodeAbort = controller;
@@ -1504,6 +1536,8 @@ export class DomStageRenderer implements StageRenderer {
       this.perfBgUrl = sceneBgUrl;
       this.perf.trackImage(sceneBgUrl);
     }
+    // Cache décodé LRU (#368) : référence conservée, sans bloquer le rendu (même en instantané).
+    if (sceneBgUrl && bg) this.cacheDecodedForDisplay(sceneBgUrl, bg);
     this.bgImgEl?.remove();
     this.bgImgEl = null;
     this.bgEl.style.backgroundImage = bg && !transformedBg ? cssUrl(this.resolver.background(bg)) : "none";
@@ -1655,6 +1689,7 @@ export class DomStageRenderer implements StageRenderer {
         if (img.src !== src && !img.src.endsWith(src)) {
           img.src = src;
           if (this.perf.enabled) this.perf.trackImage(src, img); // sonde #360
+          this.cacheDecodedForDisplay(src, s.storage, img); // cache décodé LRU (#368)
         }
         // Dimensions natives : manifeste (#315) sinon décodage. La boîte est TOUJOURS réservée avant
         // décodage (plus de boîte 0×0 ni de translate(-50%) sur un point) ; le placement absolu et le
@@ -2154,6 +2189,7 @@ export class DomStageRenderer implements StageRenderer {
     if (img.getAttribute("src") !== src) {
       img.src = src;
       if (this.perf.enabled) this.perf.trackImage(src, img); // sonde #360
+      this.cacheDecodedForDisplay(src, layer.storage, img); // cache décodé LRU (#368)
     }
     el.style.zIndex = String(layer.z);
     el.classList.toggle("mh-stage-tl-rain", layer.rain === true);

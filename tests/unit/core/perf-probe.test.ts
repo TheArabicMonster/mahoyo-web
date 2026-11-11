@@ -45,6 +45,8 @@ describe("sonde inactive (sans ?perf=1)", () => {
     expect(performance.getEntriesByName("mh:img:request").length).toBe(before);
     expect(globals()).toBeUndefined();
     expect(a.summary().enabled).toBe(false);
+    a.setImageCacheStats(() => ({ entries: 1, bytes: 1, limitBytes: 1, hits: 0, misses: 0, evictions: 0 }));
+    expect(a.summary().imageCache).toBeNull(); // no-op sans ?perf=1
   });
 });
 
@@ -146,6 +148,14 @@ describe("sonde active (?perf=1)", () => {
     expect(record.request).not.toBeNull();
     expect(record.decoded).not.toBeNull();
     expect(record.painted).not.toBeNull();
+  });
+
+  it("expose les stats du cache décodé (#368) dans summary()", () => {
+    const probe = createPerfProbe({ search: "?perf=1", nextFrame: (fn) => fn() });
+    expect(globals()!.summary().imageCache).toBeNull();
+    const stats = { entries: 2, bytes: 4096, limitBytes: 192 * 1024 * 1024, hits: 3, misses: 1, evictions: 0 };
+    probe.setImageCacheStats(() => stats);
+    expect(globals()!.summary().imageCache).toEqual(stats);
   });
 
   it("le seuil des blocages vaut 50 ms (plan §1)", () => {

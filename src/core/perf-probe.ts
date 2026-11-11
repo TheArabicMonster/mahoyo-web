@@ -53,6 +53,16 @@ export type PerfLongFrame = {
 
 export type PerfEventEntry = { name: string; startTime: number; duration: number };
 
+/** Stats du cache décodé LRU (PERF-05 / #368), injectées par le renderer. */
+export type PerfImageCacheStats = {
+  entries: number;
+  bytes: number;
+  limitBytes: number;
+  hits: number;
+  misses: number;
+  evictions: number;
+};
+
 export type PerfSummary = {
   enabled: boolean;
   images: number;
@@ -61,6 +71,8 @@ export type PerfSummary = {
   longFrames: number;
   events: number;
   inp: number | null;
+  /** Stats du cache décodé (#368) quand le renderer l'a branché, sinon null. */
+  imageCache: PerfImageCacheStats | null;
 };
 
 /** Contenu public exposé sur `window.__mhPerf` (lu par Playwright). */
@@ -103,6 +115,8 @@ export interface PerfProbe {
    * supplémentaire) ou, à défaut, une image de sonde créée pour un fond CSS.
    */
   trackImage(url: string, img?: HTMLImageElement): void;
+  /** Branche les stats du cache décodé (no-op sans `?perf=1`, aucun coût). */
+  setImageCacheStats(getter: () => PerfImageCacheStats | null): void;
   /** Résumé calculé (même objet que `window.__mhPerf.summary()`). */
   summary(): PerfSummary;
 }
@@ -117,6 +131,7 @@ const NOOP: PerfProbe = Object.freeze({
   markPreloaded: () => {},
   noteDimensions: () => {},
   trackImage: () => {},
+  setImageCacheStats: () => {},
   summary: () => EMPTY_SUMMARY,
 });
 
@@ -128,6 +143,7 @@ const EMPTY_SUMMARY: PerfSummary = {
   longFrames: 0,
   events: 0,
   inp: null,
+  imageCache: null,
 };
 
 const NOOP_PROBE = NOOP;
@@ -189,6 +205,7 @@ export function createPerfProbe(env: PerfProbeEnv = {}): PerfProbe {
   const dimensions = new Map<string, { width: number; height: number }>();
   const preloaded = new Set<string>();
   let memory: { bytes: number | null; supported: boolean } | null = null;
+  let imageCacheStats: (() => PerfImageCacheStats | null) | null = null;
 
   const mark = (name: string, url: string): number => {
     const time = now();
@@ -253,6 +270,7 @@ export function createPerfProbe(env: PerfProbeEnv = {}): PerfProbe {
       longFrames: longFrames.length,
       events: events.length,
       inp: events.length ? Math.round(inp * 100) / 100 : null,
+      imageCache: imageCacheStats ? imageCacheStats() : null,
     };
   };
 
@@ -365,6 +383,10 @@ export function createPerfProbe(env: PerfProbeEnv = {}): PerfProbe {
         classify(record);
         touchGlobal();
       }
+    },
+    setImageCacheStats(getter) {
+      imageCacheStats = getter;
+      touchGlobal();
     },
     trackImage(url, elem) {
       probe.markRequest(url);

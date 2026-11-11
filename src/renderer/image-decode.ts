@@ -17,11 +17,22 @@ export type DecodableImage = {
   decode?: () => Promise<void>;
 };
 
+/** Contrat minimal de cache accepté : une `Map` simple ou le LRU borné en octets (#368). */
+export interface DecodeCacheLike {
+  readonly size: number;
+  /** Vrai si le cache gère lui-même son éviction (LRU en octets) : pas de plafond en nombre. */
+  readonly evicts?: boolean;
+  get(url: string): DecodableImage | object | undefined;
+  set(url: string, image: DecodableImage | object): unknown;
+  delete(url: string): boolean;
+  keys(): Iterable<string>;
+}
+
 export type EnsureDecodedOptions = {
   /** Délai maximal d'attente (défaut : 1 s). */
   timeoutMs?: number;
   /** Cache des images décodées (référence conservée, bornée par l'appelant). */
-  cache?: Map<string, DecodableImage>;
+  cache?: DecodeCacheLike;
   /** Fabrique d'image (tests) ; défaut : `new Image()`. */
   createImage?: () => DecodableImage;
 };
@@ -41,7 +52,7 @@ export function ensureDecoded(
 ): Promise<void> {
   if (!url || signal?.aborted) return Promise.resolve();
   const cache = options.cache;
-  const cached = cache?.get(url);
+  const cached = cache?.get(url) as DecodableImage | undefined;
   if (cached) {
     // LRU simplifiée : réinsérer la clé la place en fin.
     cache!.delete(url);
@@ -55,8 +66,9 @@ export function ensureDecoded(
   img.decoding = "async";
   img.fetchPriority = "high";
   cache?.set(url, img);
-  if (cache && cache.size > DECODED_CACHE_LIMIT) {
-    const oldest = cache.keys().next().value;
+  // Le LRU en octets (#368) évince lui-même ; une `Map` simple garde l'ancien plafond en nombre.
+  if (cache && !cache.evicts && cache.size > DECODED_CACHE_LIMIT) {
+    const oldest = [...cache.keys()][0];
     if (oldest !== undefined) cache.delete(oldest);
   }
 

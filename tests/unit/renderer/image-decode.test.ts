@@ -1,6 +1,7 @@
 /** Attente de décodage d'image (#362). */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { ensureDecoded, DECODED_CACHE_LIMIT, type DecodableImage } from "@/renderer/image-decode.js";
+import { DecodedImageCache } from "@/renderer/image-cache.js";
 
 class FakeImage implements DecodableImage {
   src = "";
@@ -85,5 +86,34 @@ describe("ensureDecoded (#362)", () => {
       await ensureDecoded(`/assets/bg/${i}.webp`, undefined, { createImage: () => new FakeImage(() => Promise.resolve()), cache });
     }
     expect(cache.size).toBe(DECODED_CACHE_LIMIT);
+  });
+});
+
+describe("ensureDecoded + cache décodé LRU (#368)", () => {
+  it("sert un hit sans recréer ni re-décoder l'image", async () => {
+    const cache = new DecodedImageCache({ limitBytes: 64 * 1024 * 1024 });
+    let created = 0;
+    const factory = (): DecodableImage => {
+      created += 1;
+      const image: DecodableImage = {
+        src: "",
+        complete: false,
+        onload: null,
+        onerror: null,
+        decode: () => Promise.resolve(),
+        set srcValue(_v: string) {},
+      } as unknown as DecodableImage;
+      Object.defineProperty(image, "src", {
+        get: () => "/assets/bg/cache.webp",
+        set: () => {
+          queueMicrotask(() => image.onload?.());
+        },
+      });
+      return image;
+    };
+    await ensureDecoded("/assets/bg/cache.webp", undefined, { cache, createImage: factory });
+    await ensureDecoded("/assets/bg/cache.webp", undefined, { cache, createImage: factory });
+    expect(created).toBe(1); // deuxième appel = hit
+    expect(cache.stats()).toMatchObject({ hits: 1, entries: 1 });
   });
 });
