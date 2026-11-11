@@ -587,6 +587,20 @@ describe("DomStageRenderer", () => {
   });
 
   it("la transition est non-bloquante et waitFor la résout", async () => {
+    // jsdom n'implémente pas le chargement d'images : on simule un décodage immédiat (#362).
+    class InstantImage {
+      src = "";
+      decoding?: string;
+      fetchPriority?: string;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      decode(): Promise<void> {
+        this.onload?.();
+        return Promise.resolve();
+      }
+    }
+    vi.stubGlobal("Image", InstantImage);
+    try {
     const sig = () => new AbortController().signal;
     await renderer.apply(
       [{ kind: "scene", scene: { bg: "old", sprites: [], effect: null }, transition: { method: "none" } }],
@@ -607,6 +621,9 @@ describe("DomStageRenderer", () => {
     await renderer.waitFor("transition", undefined, ctrl.signal);
     // Pas d'overlay résiduel après la transition.
     expect(root.querySelectorAll(".mh-stage-bg-overlay").length).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   describe("panoramique du fond (bgMove, #135)", () => {
