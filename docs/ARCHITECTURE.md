@@ -39,7 +39,7 @@ src/renderer/ + src/ui/  ── rendu navigateur
   brume, attente, boîte de texte) — WEB-06 / #211.
 - **`text-fit.ts`** : calculs purs de la police, de la zone de texte et de l'atténuation du texte lu.
 - **`text-frame.ts`** : choix du cadre de message, opacité, glyphes `linebreak_a`/`pagebreak_a` et position de l'indicateur.
-- **`audio-manager.ts`** : implémentation web de `AudioPlayer` (BGM, SE, voix, fondus, volumes et mutes par canal).
+- **`audio-manager.ts`** : implémentation web de `AudioPlayer` (BGM, SE, voix, fondus, volumes et mutes par canal). Le runtime route actuellement **tous les SE sur le canal unique `se:0`** (`@se`, `@sestop`, `seact`…), donc un SE coupe le précédent et une ambiance en boucle peut être interrompue ; limite et état audio complets dans [`AUDIO.md`](AUDIO.md).
 - **`action-compiler.ts`**, **`transform-helpers.ts`**, **`css-url.ts`** : compilation des animations, géométrie des calques et URLs CSS.
 
 ### `src/ui/` — interface utilisateur

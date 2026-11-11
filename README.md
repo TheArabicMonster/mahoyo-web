@@ -25,6 +25,7 @@ Voir [`docs/PROGRESS.md`](docs/PROGRESS.md) pour le détail par milestone.
 - **Interface** : écran titre avec sous-menu Extra (Archive, CG mode, Sound mode), menu système, historique, chargement/sauvegarde, configuration au design d'origine, flowchart interactif (pan, zoom, volet de détails), routes d'URL, toasts et confirmations.
 - **CG mode** : galerie des illustrations vues, visionneuse plein écran et navigation clavier ; vignettes calculées à l'exécution depuis les assets de l'utilisateur (aucune miniature commitée).
 - **Sound mode** : galerie BGM avec lecture/pause, répétition, aléatoire, volume et progression ; titres et compositeurs fournis par l'utilisateur dans le manifeste.
+- **Audio** : BGM 2012 (60 pistes) et 810 sons SE joués ; les **voix sont absentes des assets 2012** (doublage du remaster 2022/2023 uniquement) et les SE partagent un **canal unique** — état complet, chiffres et procédure dans [`docs/AUDIO.md`](docs/AUDIO.md).
 - **Transitions** : rideaux plein écran entre titre, chargement et jeu (HUD-14), sans animation sous `prefers-reduced-motion`.
 - **Accessibilité** : flowchart utilisable au clavier et au lecteur d'écran (navigation par arêtes, équivalent liste, portrait) et audité par axe-core (WCAG A/AA) ; `prefers-reduced-motion` respecté sur les transitions et les écrans. Conformité WCAG AA globale suivie en v1.1 (#97).
 - **Tactile** : appui long = menu système, balayage vers le haut = historique, barre d'actions rapides (Q.Save, Q.Load, Auto, Skip, Historique, Plein écran) sur appareil tactile uniquement, cibles de 48 px réels ; la souris et le clavier ne changent pas.
@@ -386,6 +387,10 @@ restent suivis en v1.1 (voir les approximations documentées dans [`docs/APPROXI
 - **Assets absents** : seul le son `bgm101` (générique de fin) manque au corpus japonais — le générique se
   joue sans musique ; la traduction française référence en plus 43 images propres à la version Steam,
   absentes de l'archive 2012 et tolérées par un avertissement unique (#110, #155). Aucun asset n'est substitué.
+- **Voix et sons d'ambiance Steam** : les assets PC 2012 **ne contiennent aucune voix** (doublage du remaster
+  2022/2023 uniquement) ; la traduction FR (scripts Steam) ajoute des réfs `@se` de voix/ambiance absentes,
+  muettes avec un avertissement unique par asset. Les 810 SE 2012 jouent mais partagent le **canal unique
+  `se:0`** (un SE coupe le précédent). État, chiffres et procédure pour fournir les voix : [`docs/AUDIO.md`](docs/AUDIO.md).
 - **`@trans`** : `exchange=true` et `backlay` après `@wt` ne sont pas implémentés (#253, v1.1).
 - **Accessibilité** : le flowchart est couvert par axe-core (WCAG A/AA) et le clavier ; il reste l'anneau de
   focus du menu système sous Firefox (#257, v1.1) et la conformité WCAG AA globale (#97, v1.1).
@@ -403,6 +408,7 @@ restent suivis en v1.1 (voir les approximations documentées dans [`docs/APPROXI
 | Recette visuelle v1.1 (propriétaire) | [`docs/TEST_VISUEL_V1_1.md`](docs/TEST_VISUEL_V1_1.md) |
 | Captures complémentaires (HUD-17) | [`docs/GUIDE_CAPTURES.md`](docs/GUIDE_CAPTURES.md) |
 | Approximations documentées (suivi v1.1, registre #295) | [`docs/APPROXIMATIONS.md`](docs/APPROXIMATIONS.md) |
+| État audio : BGM, voix, ambiances, procédure | [`docs/AUDIO.md`](docs/AUDIO.md) |
 | Roadmap et épics | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
 | Architecture et contrats | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Design system du HUD | [`docs/DESIGN.md`](docs/DESIGN.md) |
