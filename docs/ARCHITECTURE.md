@@ -343,6 +343,16 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
   alignement temporel par corrélation et comparaison flash. Captures/rapports **hors dépôt** ;
   aucun asset commité. Méthode et chiffres : [`DIAG_OUVERTURE.md`](DIAG_OUVERTURE.md).
 
+### Banc des scènes (#361)
+
+- `tools/perf-scenes.ts` (`npm run perf:scenes`) : rejoue N changements de scène d'un script réel
+  sur `vite preview` (jamais le dev server), en deux profils (desktop, mobile CPU ×4 + 10 Mbps) et
+  deux passes (cache froid/chaud) ; mesure `scene-ready` (requête → paint, ou déclenchement → paint
+  si lookahead/réutilisation), lookahead, blocages > 50 ms, INP, tas JS et cache décodé estimé.
+- Mode `--placeholders-heavy` : PNG de bruit synthétiques originaux (1024×576 / 2048×1152) pour un
+  coût de décodage réaliste sans aucun asset du jeu ; rapport `reports/perf-scenes.json` (ignoré).
+- Baseline et limites : [`PERF_BENCH.md`](PERF_BENCH.md).
+
 ## Principes
 
 - Le moteur KAG est indépendant du DOM (testable en headless).

@@ -89,6 +89,13 @@ Mesure du 2026-11-09, avec placeholders, build Vite 5.4.21 :
 Le rapport JSON complet (métriques + budgets + statut de chaque contrôle) est écrit dans
 `reports/perf.json` à chaque exécution.
 
+## Banc des scènes (#361)
+
+`npm run perf:scenes` mesure les temps de chargement entre scènes sur `vite preview` (profils
+desktop / mobile CPU ×4 + 10 Mbps, passes cache froid/chaud) : `scene-ready` p50/p95, lookahead,
+réutilisation d'image, blocages > 50 ms, INP, mémoire. La baseline avant correction et le mode
+placeholders lourds (CI, sans asset) sont documentés dans [`PERF_BENCH.md`](PERF_BENCH.md).
+
 ## CI
 
 Le job `build-and-test` exécute, **après le build**, une mesure **statique non bloquante** des
