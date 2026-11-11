@@ -245,3 +245,83 @@ describe("AssetResolver — énumération des sons (galerie sonore, HUD-16)", ()
     expect(createAssetResolver().audioEntries()).toEqual([]);
   });
 });
+
+describe("AssetResolver — audio : extension/casse sans ambiguïté (#354)", () => {
+  const audioManifest: AssetManifest = {
+    version: 1,
+    generatedAt: "2026-01-01T00:00:00Z",
+    images: {},
+    audio: {
+      m19: { url: "bgm/m19.ogg", source: "bgm/m19.ogg", kind: "bgm" },
+      m39: { url: "bgm/m39.ogg", source: "bgm/m39.ogg", kind: "bgm" },
+      m50: { url: "bgm/m50.ogg", source: "bgm/m50.ogg", kind: "bgm" },
+    },
+    scenarios: {},
+  };
+  const audio = (manifest: AssetManifest) => {
+    const missing: string[] = [];
+    return { resolver: createAssetResolver({ manifest, onMissing: (_k, n) => missing.push(n) }), missing };
+  };
+
+  it("résout la casse (M19→m19, M39→m39)", () => {
+    const { resolver, missing } = audio(audioManifest);
+    expect(resolver.bgm("M19")).toBe("/assets/bgm/m19.ogg");
+    expect(resolver.bgm("M39")).toBe("/assets/bgm/m39.ogg");
+    expect(missing).toEqual([]);
+  });
+
+  it("résout l'extension retirée (m50.ogg→m50)", () => {
+    const { resolver, missing } = audio(audioManifest);
+    expect(resolver.bgm("m50.ogg")).toBe("/assets/bgm/m50.ogg");
+    expect(resolver.se("m50.OGG")).toBe("/assets/bgm/m50.ogg");
+    expect(missing).toEqual([]);
+  });
+
+  it("rapproche aussi une clé de manifeste qui porte l'extension", () => {
+    const manifest: AssetManifest = {
+      ...audioManifest,
+      audio: { "m50.ogg": { url: "bgm/m50.ogg", source: "bgm/m50.ogg", kind: "bgm" } },
+    };
+    const { resolver } = audio(manifest);
+    expect(resolver.bgm("m50")).toBe("/assets/bgm/m50.ogg");
+    expect(resolver.bgm("M50.ogg")).toBe("/assets/bgm/m50.ogg");
+  });
+
+  it("bgm101.ogg réellement absent : repli convention + un seul avertissement", () => {
+    const { resolver, missing } = audio(audioManifest);
+    expect(resolver.bgm("bgm101.ogg")).toBe("/assets/bgm/bgm101.ogg");
+    resolver.bgm("bgm101.ogg");
+    resolver.bgm("bgm101");
+    expect(missing).toEqual(["bgm101"]);
+  });
+
+  it("collision : la correspondance exacte est prioritaire", () => {
+    const manifest: AssetManifest = {
+      ...audioManifest,
+      audio: {
+        M19: { url: "bgm/M19.ogg", source: "bgm/M19.ogg", kind: "bgm" },
+        m19: { url: "bgm/m19.ogg", source: "bgm/m19.ogg", kind: "bgm" },
+      },
+    };
+    const { resolver, missing } = audio(manifest);
+    expect(resolver.bgm("M19")).toBe("/assets/bgm/M19.ogg");
+    expect(resolver.bgm("m19")).toBe("/assets/bgm/m19.ogg");
+    expect(resolver.bgm("m19.ogg")).toBe("/assets/bgm/m19.ogg");
+    expect(missing).toEqual([]);
+  });
+
+  it("ambiguïté sans exact : ne choisit pas au hasard et signale l'absence une fois", () => {
+    const manifest: AssetManifest = {
+      ...audioManifest,
+      audio: {
+        "M19.ogg": { url: "bgm/M19.ogg", source: "bgm/M19.ogg", kind: "bgm" },
+        "m19.wav": { url: "bgm/m19.ogg", source: "bgm/m19.wav", kind: "bgm" },
+      },
+    };
+    const { resolver, missing } = audio(manifest);
+    expect(resolver.bgm("m19.mp3")).toBe("/assets/bgm/m19.ogg");
+    expect(missing).toEqual(["m19"]);
+    // Une requête exacte reste résolue sans ambiguïté.
+    expect(resolver.bgm("M19.ogg")).toBe("/assets/bgm/M19.ogg");
+  });
+});

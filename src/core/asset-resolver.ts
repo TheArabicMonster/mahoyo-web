@@ -20,10 +20,10 @@ import type {
   AssetManifest,
 } from "./asset-manifest.js";
 import {
+  foldKey,
   listAudio,
   listImages,
   lookupImage as lookupImg,
-  lookupAudio as lookupAud,
   lookupScenario as lookupScn,
 } from "./asset-manifest.js";
 
@@ -146,9 +146,47 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
     return `${baseUrl}/${kind}/${key}.${ext}`;
   }
 
+  /**
+   * Repli audio ordonné (#354), sans ambiguïté :
+   * 1. clé exacte (casse comprise, telle que fournie) ;
+   * 2. extension audio retirée (`.ogg`, `.wav`, `.mp3`, `.opus`) ;
+   * 3. casse/NFKC/espaces (comme les images), en comptant les correspondances : une seule → OK,
+   *    plusieurs → on **ne choisit pas au hasard** (absence signalée, exact prioritaire car testé
+   *    avant).
+   * Les clés de manifeste portant elles-mêmes une extension audio sont également rapprochées.
+   */
+  function resolveAudioUrl(storage: string): string | null {
+    if (!manifest) return null;
+    const audio = manifest.audio;
+    const raw = storage.trim().replace(/^["']|["']$/g, "");
+    const stripExt = (value: string): string => value.replace(/\.(ogg|wav|mp3|opus)$/i, "");
+
+    // 1–2. Clé exacte, puis extension retirée.
+    for (const attempt of [raw, stripExt(raw)]) {
+      if (audio[attempt]?.url) return audio[attempt]!.url;
+    }
+
+    // 3. Repli casse/NFKC/espaces, avec comptage des candidats.
+    const wanted = new Set([foldKey(raw), foldKey(stripExt(raw))]);
+    const matches: { key: string; url: string }[] = [];
+    for (const [key, entry] of Object.entries(audio)) {
+      if (!entry?.url) continue;
+      const folded = foldKey(key);
+      const foldedNoExt = foldKey(stripExt(key));
+      if (wanted.has(folded) || wanted.has(foldedNoExt)) matches.push({ key, url: entry.url });
+    }
+    if (matches.length === 1) return matches[0]!.url;
+    if (matches.length > 1) {
+      // Ambiguïté : priorité à l'exact, déjà testée ci-dessus ; on ne choisit pas au hasard et
+      // l'appelant signale l'absence (un seul avertissement via `reportMissing`).
+      return null;
+    }
+    return null;
+  }
+
   function resolveAudio(storage: string, kind: "bgm" | "se", ext: string): string {
     const key = storageKey(storage);
-    const url = lookupAud(manifest, key);
+    const url = resolveAudioUrl(storage);
     if (url) return `${baseUrl}/${url}`;
     if (manifest) reportMissing("audio", storage);
     return `${baseUrl}/${kind}/${key}.${ext}`;
