@@ -139,13 +139,16 @@ sans aucun skip** ; les seules exclusions concernent Firefox :
   l'anneau de focus clavier du menu n'apparaît donc pas — écart d'accessibilité réel suivi hors de ce
   lot (fichier propriété de #231).
 
-La CI comporte **4 jobs** : `build-and-test` (`npm ci`, lint, contrôle anti-assets, `npm run build`,
-tests unitaires, tests d'intégration en skip propre sur checkout nu, puis corpus de placeholders et
-lecture complète des 221 scripts, Prettier non bloquant), la matrice `e2e (chromium)` / `e2e (firefox)`
-(`fail-fast: false`) avec placeholders, et `pwa (offline)` (build de production + service worker,
-manifeste et relecture hors ligne vérifiés dans Chromium). Les jobs e2e tournent en parallèle pour garder
-un temps de mur d'un seul navigateur, au prix de deux runners — choix documenté dans
-`.github/workflows/ci.yml`.
+La CI est **filtrée par chemins** (#371, détail dans [`docs/CI.md`](docs/CI.md)) : le job `changes`
+(`dorny/paths-filter`) décide quels jobs tournent. `build-and-test` (lint, anti-assets, marqueurs de
+conflit, build, tests unitaires/intégration, corpus de placeholders, lecture complète des 221
+scripts, audit zéro strict, `check:generated`) tourne toujours (~2 min) ; `e2e` (matrice
+`chromium`/`firefox` × 2 shards : `e2e (chromium 1/2)`, `e2e (firefox 2/2)`…) ne tourne que si des
+chemins UI/renderer/player/kag/e2e changent — et **toujours** sur push `v1.1` (porte d'intégration) ;
+`pwa (offline)` ne tourne que si des chemins PWA changent. Sur `main`, la gate est légère
+(`build-and-test` seul) ; l'e2e complet tourne chaque nuit (`e2e-nightly.yml`) et un merge train
+automatique promeut `v1.1` → `main` (`merge-train.yml`). Une PR docs/outils seule ne lance donc que
+`build-and-test`.
 
 > Environnements restreints (sandbox macOS d'un agent, conteneurs) : Firefox imbrique son propre
 > sandbox, que certains sandboxes d'exécution refusent (`sandbox_init() failed`). Pour la
