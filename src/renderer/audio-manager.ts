@@ -228,6 +228,8 @@ export class WebAudioPlayer implements AudioPlayer {
   private readonly voices = new Map<AudioChannel, Voice>();
   /** Voix détachées de leur canal, en fondu de sortie. */
   private readonly fading = new Set<Voice>();
+  /** Auditeurs de fin de canal (libération du pool SE du runtime, #358). */
+  private readonly endedListeners = new Set<(channel: AudioChannel) => void>();
   /** Timers de délai avant lecture (paramètre delay des events play). */
   private readonly delayTimers = new Map<AudioChannel, ReturnType<typeof setTimeout>>();
   private settings: AudioSettings = { ...DEFAULT_SETTINGS };
@@ -269,7 +271,9 @@ export class WebAudioPlayer implements AudioPlayer {
       case "stop":
         if (event.channel === "allSe") {
           for (const channel of Array.from(this.voices.keys())) {
-            if (channel.startsWith("se:")) this.stop(channel, instant ? 0 : (event.fadeOut ?? 0));
+            // Les voix Steam passent par des @se (routées `voice`) : le « tous les SE » du moteur
+            // les arrête aussi.
+            if (channel.startsWith("se:") || channel === "voice") this.stop(channel, instant ? 0 : (event.fadeOut ?? 0));
           }
         } else {
           this.stop(event.channel, instant ? 0 : (event.fadeOut ?? 0));
@@ -335,6 +339,11 @@ export class WebAudioPlayer implements AudioPlayer {
   private wakeFadeWaiters(voice: Voice): void {
     for (const wake of Array.from(voice.fadeWaiters)) wake();
     voice.fadeWaiters.clear();
+  }
+
+  onChannelEnded(listener: (channel: AudioChannel) => void): () => void {
+    this.endedListeners.add(listener);
+    return () => this.endedListeners.delete(listener);
   }
 
   restore(snapshot: AudioSnapshot): void {
@@ -506,6 +515,10 @@ export class WebAudioPlayer implements AudioPlayer {
   private finish(channel: AudioChannel, voice: Voice): void {
     this.release(voice);
     if (this.voices.get(channel) === voice) this.voices.delete(channel);
+    // Libération du pool SE côté runtime (uniquement les canaux SE/voix ; le BGM n'est pas poolé).
+    if (channel.startsWith("se:") || channel === "voice") {
+      for (const listener of [...this.endedListeners]) listener(channel);
+    }
   }
 
   private release(voice: Voice): void {

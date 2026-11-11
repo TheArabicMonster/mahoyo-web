@@ -75,6 +75,8 @@ export interface RuntimeLike {
   evaluateCondition?(expression: string): boolean;
   /** Timelines d'animation pour @playtimeline (absentes : la commande est sans effet). */
   timelines?: TimelineData | null;
+  /** Libère un canal SE du pool à la fin de lecture (callback audio, #358). */
+  releaseSeChannel?(channel: AudioChannel): void;
 }
 
 export type PlayerState =
@@ -284,6 +286,8 @@ export class Player implements PlayerCommands {
   private abort = new AbortController();
   private loop: Promise<void> = Promise.resolve();
   private runtime: RuntimeLike | null = null;
+  /** Désabonnement du callback de fin de canal audio (#358). */
+  private stopAudioEnded: (() => void) | null = null;
   private scriptFile = "";
   private scriptCache = new Map<string, ParsedScript>();
   private stageSnap: StageSnapshot = { scene: { bg: null, sprites: [], effect: null }, textbox: { visible: true, frame: true }, text: [], staffroll: null };
@@ -914,6 +918,8 @@ export class Player implements PlayerCommands {
     this.stage.setClickIndicator(null);
     await this.loop;
     this.abort = new AbortController();
+    this.stopAudioEnded?.();
+    this.stopAudioEnded = null;
     this.onAdvance = null;
     this.rearm = null;
     this.applying = false;
@@ -1428,6 +1434,11 @@ export class Player implements PlayerCommands {
     const runtime = this.deps.createRuntime(script, name);
     runtime.scriptLoader = (storage) => this.getScript(storage);
     runtime.timelines = this.timelines;
+    // Fin de lecture d'un canal SE/voix : libère le pool du runtime courant (#358).
+    this.stopAudioEnded?.();
+    this.stopAudioEnded = this.audio.onChannelEnded?.((channel) => {
+      if (this.runtime === runtime) runtime.releaseSeChannel?.(channel);
+    }) ?? null;
     return runtime;
   }
 

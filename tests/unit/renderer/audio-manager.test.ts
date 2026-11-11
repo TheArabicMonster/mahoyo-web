@@ -95,6 +95,27 @@ describe("WebAudioPlayer", () => {
     expect(created.map((a) => a.paused)).toEqual([true, true]);
   });
 
+  it("notifie la fin de canal SE/voix (libération du pool runtime, #358)", () => {
+    const ended: string[] = [];
+    const off = player.onChannelEnded((channel) => ended.push(channel));
+    player.apply(play("se:0", "a", false), { instant: false });
+    created[0]!.emit("ended");
+    player.apply(play("voice", "A10_5A_8_0002", false), { instant: false });
+    created[1]!.emit("ended");
+    expect(ended).toEqual(["se:0", "voice"]);
+    off();
+    player.apply(play("se:1", "b", false), { instant: false });
+    created[2]!.emit("ended");
+    expect(ended).toEqual(["se:0", "voice"]);
+  });
+
+  it("allSe arrête aussi le canal voice (voix routées, #358)", () => {
+    player.apply(play("voice", "A10_5A_8_0002", false), { instant: false });
+    player.apply(play("se:0", "a", true), { instant: false });
+    player.apply({ kind: "stop", channel: "allSe" }, { instant: false });
+    expect(created.every((audio) => audio.paused)).toBe(true);
+  });
+
   it("fade ramène le volume vers la cible", () => {
     player.apply(play("bgm", "m01", true), { instant: false });
     player.apply({ kind: "fade", channel: "bgm", volume: 0, time: 2000 }, { instant: false });
