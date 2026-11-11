@@ -114,7 +114,10 @@ describe("buildServiceWorkerSource / writePwaServiceWorker", () => {
     const source = readFileSync(serviceWorkerPath, "utf-8");
     expect(source).toContain(`const VERSION = ${JSON.stringify(version)};`);
     expect(source).toContain("mahoyo-shell-");
-    expect(source).toContain("MAX_RUNTIME_ENTRIES");
+    expect(source).toContain("MAX_ASSETS_ENTRIES");
+    expect(source).toContain("ASSETS_CACHE_PREFIX");
+    expect(source).toContain("readAssetsVersion");
+    expect(source).toContain("trimCache");
     expect(precache).toContain("/index.html");
     expect(buildServiceWorkerSource(dist)).toBe(source);
   });
