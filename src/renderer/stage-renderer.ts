@@ -1,3 +1,4 @@
+import { createPerfProbe } from "@/core/perf-probe.js";
 import type { AssetResolver } from "@/core/asset-resolver.js";
 import type {
   AssetRef,
@@ -143,6 +144,9 @@ export class DomStageRenderer implements StageRenderer {
   /** Zone de texte dédiée sous la scène en portrait (#210, décision propriétaire 4). */
   private dockEl: HTMLElement | null = null;
   private portraitLayout = false;
+  /** Sonde scene-ready (#360) : no-op sauf `?perf=1`. */
+  private readonly perf = createPerfProbe();
+  private perfBgUrl: string | null = null;
   /** Échelle courante de la scène (1.25 en paysage, largeur réelle/1024 en portrait). */
   private sceneScale = STAGE_SCALE;
   private readonly onViewportResize = (): void => this.applyLayout();
@@ -1456,6 +1460,12 @@ export class DomStageRenderer implements StageRenderer {
     // Fond zoomé ou tourné : l'image est un <img> enfant (voir `renderTransformedBg`).
     const { bgZoomX = 100, bgZoomY = 100, bgRotate = 0 } = this.currentScene;
     const transformedBg = bg !== null && (bgZoomX !== 100 || bgZoomY !== 100 || bgRotate !== 0);
+    // Sonde scene-ready (#360) : marqueurs uniquement, aucune modification du chargement/rendu.
+    const sceneBgUrl = bg ? this.resolver.background(bg) : null;
+    if (this.perf.enabled && sceneBgUrl && sceneBgUrl !== this.perfBgUrl) {
+      this.perfBgUrl = sceneBgUrl;
+      this.perf.trackImage(sceneBgUrl);
+    }
     this.bgImgEl?.remove();
     this.bgImgEl = null;
     this.bgEl.style.backgroundImage = bg && !transformedBg ? cssUrl(this.resolver.background(bg)) : "none";
@@ -1603,7 +1613,10 @@ export class DomStageRenderer implements StageRenderer {
         }
         // Mise à jour src (peut changer via @chgfg).
         const src = this.resolver.image(s.storage);
-        if (img.src !== src && !img.src.endsWith(src)) img.src = src;
+        if (img.src !== src && !img.src.endsWith(src)) {
+          img.src = src;
+          if (this.perf.enabled) this.perf.trackImage(src, img); // sonde #360
+        }
         // Dimensions natives : manifeste (#315) sinon décodage. La boîte est TOUJOURS réservée avant
         // décodage (plus de boîte 0×0 ni de translate(-50%) sur un point) ; le placement absolu et le
         // clip partbgid sont calculés par `resolvePlacement`.
@@ -2099,7 +2112,10 @@ export class DomStageRenderer implements StageRenderer {
     }
     const img = el.firstElementChild as HTMLImageElement;
     const src = this.resolver.image(layer.storage);
-    if (img.getAttribute("src") !== src) img.src = src;
+    if (img.getAttribute("src") !== src) {
+      img.src = src;
+      if (this.perf.enabled) this.perf.trackImage(src, img); // sonde #360
+    }
     el.style.zIndex = String(layer.z);
     el.classList.toggle("mh-stage-tl-rain", layer.rain === true);
     if (time > 0) {
