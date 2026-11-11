@@ -1,16 +1,77 @@
 name: CI
 
+# Flux #371 (docs/CI.md) :
+# - PR → `v1.1` ou `main` : `changes` (filtre de chemins) puis `build-and-test` (toujours),
+#   `e2e` shardé seulement si un chemin UI/renderer/player/kag/e2e/config change, `pwa` seulement si
+#   un chemin PWA change. Une PR docs/outils ne lance donc que `build-and-test` (~2 min).
+# - push `v1.1` (porte d'intégration) : `build-and-test` + **e2e shardé obligatoire** (4 jobs) + pwa
+#   si chemins PWA.
+# - push `main` (gate légère) : `build-and-test` seul (+ `pwa` si chemins PWA) — l'e2e n'est pas
+#   bloquant sur `main` ; il tourne la nuit (`e2e-nightly.yml`) et sur `v1.1`.
 on:
   push:
-    # `v1.1` est la branche d'intégration du train de vagues : les PRs y ciblent
-    # `v1.1` puis `v1.1` → `main` une fois par vague (#342).
     branches: [main, v1.1]
   pull_request:
     branches: [main, v1.1]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  build-and-test:
+  # Calcule les filtres de chemins. Pour une PR, l'action compare la PR à sa base via l'API ;
+  # pour un push, on compare au commit précédent (`github.event.before`, merge de vague).
+  changes:
+    name: changes (filtre de chemins)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      e2e: ${{ steps.filter.outputs.e2e }}
+      pwa: ${{ steps.filter.outputs.pwa }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # nécessaire pour que `dorny/paths-filter` puisse faire le diff sur les pushs
+          fetch-depth: 0
+
+      - name: Filtre de chemins (e2e, pwa)
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          base: ${{ github.event_name == 'push' && github.event.before || '' }}
+          filters: |
+            e2e:
+              - 'src/renderer/**'
+              - 'src/ui/**'
+              - 'src/player/**'
+              - 'src/kag/**'
+              - 'tests/e2e/**'
+              - 'vite.config.ts'
+              - 'playwright.config.ts'
+              - 'playwright.pwa.config.ts'
+              - 'index.html'
+              - 'public/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/ci.yml'
+            pwa:
+              - 'public/**'
+              - 'src/pwa/**'
+              - 'tools/pwa-sw.ts'
+              - 'src/main.ts'
+              - 'vite.config.ts'
+              - 'playwright.pwa.config.ts'
+              - 'tests/e2e/pwa.spec.ts'
+              - 'package.json'
+              - 'package-lock.json'
+
+  # Gates existants inchangés (lint, assets, marqueurs de conflit, build, unit, intégration,
+  # full read, audit zéro strict, check:generated). Toujours exécuté, y compris sur push `main`.
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -96,8 +157,11 @@ jobs:
   # (le SW n'est enregistré qu'en production). Chromium uniquement : l'installation PWA n'est pas
   # standardisée sur Firefox/Linux ; le manifeste, le service worker, les caches et la relecture
   # hors ligne (`context.setOffline`) sont vérifiés dans Chromium, navigateur de référence PWA.
+  # Conditionnel : ne tourne que si un chemin PWA change (#371).
   pwa:
     name: pwa (offline)
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.pwa == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -126,19 +190,26 @@ jobs:
   # table d'enchaînement et les images sont générés par `tests/e2e/prepare-assets.ts` avant le
   # démarrage de Vite.
   #
-  # Matrice chromium + firefox (#94). Choix documenté : deux jobs en parallèle plutôt qu'un job
-  # séquentiel. Le temps de mur reste celui d'un seul navigateur (~3-4 min, tôt dans la PR) au lieu
-  # de la somme des deux (~6-7 min) ; le coût est de deux runners au lieu d'un, ce qui est le
-  # compromis retenu pour garder la CI rapide. `fail-fast: false` pour que les deux navigateurs
-  # s'exécutent toujours (un échec Firefox ne masque pas le résultat Chromium).
+  # Shards (#371) : chaque navigateur est coupé en 2 shards (`--shard=1/2`, `2/2`), donc 4 jobs
+  # parallèles (~3-4 min chacun au lieu de ~9-12 min pour un navigateur entier). `fail-fast: false`
+  # pour que tous les shards s'exécutent toujours. Les shards ne changent pas la couverture : la
+  # somme des tests des deux shards = la suite complète du projet.
+  #
+  # Conditionnel : chemins e2e/UI/config uniquement, MAIS obligatoire sur push `v1.1` (porte
+  # d'intégration) quel que soit le diff. Jamais sur push `main` (gate légère : build-and-test seul).
   e2e:
-    name: e2e (${{ matrix.browser }})
+    name: e2e (${{ matrix.browser }} ${{ matrix.shard }}/2)
+    needs: changes
+    if: >-
+      needs.changes.result == 'success' && (needs.changes.outputs.e2e == 'true' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/v1.1'))
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         browser: [chromium, firefox]
+        shard: [1, 2]
 
     steps:
       - name: Checkout
@@ -156,16 +227,19 @@ jobs:
       - name: Install Playwright browser (${{ matrix.browser }})
         run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      - name: Generate e2e placeholders and run the suite
-        run: npm run test:e2e -- --project=${{ matrix.browser }}
+      # Le `--grep-invert` éventuel est porté par le projet Playwright (playwright.config.ts), donc
+      # `--project` le conserve automatiquement.
+      - name: Generate e2e placeholders and run the suite (${{ matrix.browser }} ${{ matrix.shard }}/2)
+        run: npm run test:e2e -- --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/2
         env:
           MAHOYO_E2E_ASSETS: ${{ runner.temp }}/mahoyo-e2e-assets
 
       # Mesure du débordement du texte (#319) : outil de diagnostic, volontairement non bloquant.
       # Mode placeholders (aucun asset du jeu) → rapport PARTIEL qui vérifie l'outil ; la mesure du
       # vrai corpus se fait en local avec MAHOYO_ASSETS_DIR (voir docs/TEXTE_DEBORDEMENT.md).
+      # Lancé une seule fois (Chromium, shard 1/2) pour ne pas dupliquer le rapport.
       - name: Text overflow report (placeholders, non-blocking)
-        if: matrix.browser == 'chromium'
+        if: matrix.browser == 'chromium' && matrix.shard == 1
         continue-on-error: true
         run: npm run text:overflow -- --placeholders --browsers chromium --max-pages 400
 
@@ -173,7 +247,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results-${{ matrix.browser }}
+          name: playwright-results-${{ matrix.browser }}-${{ matrix.shard }}
           path: |
             test-results/
             playwright-report/

@@ -98,6 +98,23 @@ placeholders lourds (CI, sans asset) sont documentés dans [`PERF_BENCH.md`](PER
 
 ## CI
 
+### Budgets de durée des workflows (#371)
+
+Le flux **SHIP v2** (#371, voir [`CI.md`](CI.md)) vise une livraison `main` en 15-30 min. Les durées
+cibles des workflows (suivies dans l'onglet GitHub Actions) :
+
+| Gate | Cible | Mesure de référence |
+|---|---|---|
+| `build-and-test` | **≤ 3 min** | ~2 min (lint, assets, marqueurs de conflit, build, tests unitaires/intégration, full read, audit zéro strict, `check:generated`) |
+| e2e **par shard** (Chromium ou Firefox, 1/2 ou 2/2) | **≤ 6 min** | ~3-4 min (moitié de la suite + installation du navigateur) |
+| Gate `main` (push) | **≤ 4 min** | `changes` + `build-and-test` (~2 min), + `pwa` si chemins PWA |
+
+La gate `main` est volontairement légère : l'e2e complet n'y est pas bloquant (il tourne sur `v1.1`
+à chaque vague et chaque nuit sur `main` via `e2e-nightly.yml`). Une PR docs/outils ne lance que
+`build-and-test`.
+
+### Budgets de bundle (mesure statique)
+
 Le job `build-and-test` exécute, **après le build**, une mesure **statique non bloquante** des
 budgets de bundle :
 
