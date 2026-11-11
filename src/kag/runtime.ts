@@ -475,6 +475,123 @@ export class Runtime {
   }
 
   /**
+   * Assets visuels à venir depuis la position courante (#367, PERF-04).
+   *
+   * Parcourt environ `budget` commandes en suivant les `jump`/`call` internes, **les deux
+   * branches** des `if` aplatis (`jumpIfNot`), et les pages suivantes ; en fin de script, continue
+   * dans `nextScript` s'il est fourni (premières images du script d'enchaînement). Ne modifie
+   * aucun état : utilisé par le player pour précharger pendant les temps morts.
+   */
+  peekAssets(
+    budget = 40,
+    nextScript?: ParsedScript,
+  ): {
+    assets: { kind: "bg" | "image"; storage: string }[];
+    audio: { kind: "bgm" | "se"; storage: string }[];
+    atEnd: boolean;
+  } {
+    const assets: { kind: "bg" | "image"; storage: string }[] = [];
+    const audio: { kind: "bgm" | "se"; storage: string }[] = [];
+    const seenAssets = new Set<string>();
+    const visited = new Set<string>();
+    type Cursor = { script: ParsedScript; page: number; index: number; name: string; next: boolean };
+    const queue: Cursor[] = [
+      { script: this.context.script, page: this.context.pc, index: this.context.instructionIndex, name: this.context.scriptName, next: false },
+    ];
+    let scanned = 0;
+    let atEnd = false;
+
+    const collect = (instruction: Instruction): void => {
+      if (instruction.kind === "bg" || instruction.kind === "image" || instruction.kind === "fg") {
+        const storage = instruction.storage;
+        if (!storage) return;
+        const kind = instruction.kind === "bg" ? "bg" : "image";
+        const id = `${kind}:${storage}`;
+        if (!seenAssets.has(id)) {
+          seenAssets.add(id);
+          assets.push({ kind, storage });
+        }
+      } else if (instruction.kind === "raw" && instruction.command === "ev") {
+        const storage = instruction.args.storage;
+        if (storage && !seenAssets.has(`image:${storage}`)) {
+          seenAssets.add(`image:${storage}`);
+          assets.push({ kind: "image", storage });
+        }
+      } else if (instruction.kind === "play" || instruction.kind === "se" || instruction.kind === "seact") {
+        if (!instruction.storage) return;
+        const kind = instruction.kind === "play" ? "bgm" : "se";
+        const id = `audio:${kind}:${instruction.storage}`;
+        if (!seenAssets.has(id)) {
+          seenAssets.add(id);
+          audio.push({ kind, storage: instruction.storage });
+        }
+      }
+    };
+
+    const followLabel = (cursor: Cursor, label: string | undefined): Cursor | null => {
+      if (!label) return null;
+      const page = cursor.script.labels[label];
+      if (page === undefined) return null;
+      return { ...cursor, page, index: cursor.script.labelInstructionIndex[label] ?? 0 };
+    };
+
+    while (queue.length > 0 && scanned < budget) {
+      const cursor = queue.shift()!;
+      if (visited.has(`${cursor.name}:${cursor.page}:${cursor.index}`)) continue;
+      visited.add(`${cursor.name}:${cursor.page}:${cursor.index}`);
+
+      if (cursor.page >= cursor.script.pages.length) {
+        atEnd = true;
+        if (!cursor.next && nextScript) {
+          queue.push({ script: nextScript, page: 0, index: 0, name: "next", next: true });
+        }
+        continue;
+      }
+
+      const page = cursor.script.pages[cursor.page]!;
+      let index = cursor.index;
+      let jumped = false;
+      while (index < page.instructions.length && scanned < budget) {
+        const instruction = page.instructions[index]!;
+        scanned++;
+        collect(instruction);
+        if (instruction.kind === "jumpIndex") {
+          queue.unshift({ ...cursor, index: instruction.target });
+          jumped = true;
+          break;
+        }
+        if (instruction.kind === "jumpIfNot") {
+          // Les deux branches : la cible et la suite linéaire (flatten #80).
+          queue.unshift({ ...cursor, index: instruction.target });
+        }
+        if (instruction.kind === "jump" || instruction.kind === "call") {
+          const target = followLabel(cursor, instruction.target);
+          if (target) {
+            queue.unshift(target);
+            if (instruction.kind === "jump") {
+              jumped = true;
+              break;
+            }
+          }
+        }
+        if (instruction.kind === "return") {
+          jumped = true;
+          break;
+        }
+        index++;
+      }
+      if (!jumped) {
+        // Suite de la page, puis page suivante, puis script d'enchaînement.
+        if (index >= page.instructions.length) {
+          queue.push({ ...cursor, page: cursor.page + 1, index: 0 });
+        }
+      }
+    }
+
+    return { assets, audio, atEnd };
+  }
+
+  /**
    * Copie de l'état des pages fore/back (diagnostic : outil de trace visuelle,
    * `tools/trace-visual.ts`). Ne modifie rien.
    */

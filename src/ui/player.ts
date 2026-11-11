@@ -77,6 +77,12 @@ export interface RuntimeLike {
   timelines?: TimelineData | null;
   /** Libère un canal SE du pool à la fin de lecture (callback audio, #358). */
   releaseSeChannel?(channel: AudioChannel): void;
+  /** Assets visuels/audio à venir depuis la position courante (#367, lookahead). */
+  peekAssets?(budget?: number, nextScript?: ParsedScript): {
+    assets: { kind: "bg" | "image"; storage: string }[];
+    audio: { kind: "bgm" | "se"; storage: string }[];
+    atEnd: boolean;
+  };
 }
 
 export type PlayerState =
@@ -288,6 +294,11 @@ export class Player implements PlayerCommands {
   private runtime: RuntimeLike | null = null;
   /** Désabonnement du callback de fin de canal audio (#358). */
   private stopAudioEnded: (() => void) | null = null;
+  /** Préchargement lookahead (#367) : contrôleur d'annulation et références bornées. */
+  private lookaheadController: AbortController | null = null;
+  private lookaheadRunning = false;
+  private lookaheadImages = new Map<string, HTMLImageElement>();
+  private lookaheadAudio = new Map<string, HTMLAudioElement>();
   private scriptFile = "";
   private scriptCache = new Map<string, ParsedScript>();
   private stageSnap: StageSnapshot = { scene: { bg: null, sprites: [], effect: null }, textbox: { visible: true, frame: true }, text: [], staffroll: null };
@@ -526,6 +537,7 @@ export class Player implements PlayerCommands {
   setMode(mode: PlayMode): void {
     if (this.state === "title" || this.state === "loading") return;
     this.mode = mode;
+    if (mode === "skip") this.cancelLookahead();
     if (mode === "skip" && this.applying) this.stage.hurry();
     this.pushStatus();
     this.rearm?.();
@@ -661,6 +673,8 @@ export class Player implements PlayerCommands {
       this.stage.clear();
       this.audio.stopAll();
       this.enterGame();
+      // #367 : premier lookahead dès que le runtime est prêt (avant le premier changement de scène).
+      this.scheduleLookahead();
       this.startLoop();
       // L'écran de chargement cède la place au rideau avant l'apparition de la scène.
       this.ui.setInputEnabled(true);
@@ -912,6 +926,7 @@ export class Player implements PlayerCommands {
 
   /** Annule la session courante et attend la fin de la boucle avant de toucher aux renderers. */
   private async endSession(): Promise<void> {
+    this.cancelLookahead();
     this.abort.abort();
     this.pendingChoice?.(-1);
     this.ui.hideChoices();
@@ -997,6 +1012,8 @@ export class Player implements PlayerCommands {
   /** Retourne false si la boucle doit s'arrêter. */
   private async handleStop(step: Step, record: boolean, signal: AbortSignal): Promise<boolean> {
     const { stop, position } = step;
+    // #367 : préparer les images suivantes pendant tous les temps d'attente (pas seulement les clics).
+    if (stop.kind !== "loadScript") this.scheduleLookahead();
     switch (stop.kind) {
       case "click": {
         const entry = record ? this.recordPoint(step) : null;
@@ -1007,6 +1024,7 @@ export class Player implements PlayerCommands {
         // @effectskip enabled=0 (scènes de démonstration) neutralise ce réglage.
         if (this.settings.display.instantEffects && this.effectSkipEnabled) this.stage.hurry();
         this.stage.setClickIndicator(stop.style);
+        this.scheduleLookahead();
         this.setState("waiting-click");
         await this.waitUser(signal, {
           clickable: true,
@@ -1428,6 +1446,141 @@ export class Player implements PlayerCommands {
     }
     if (script) this.scriptCache.set(cacheKey, script);
     return script;
+  }
+
+  /** Budget du lookahead (#367) : commandes parcourues, images et audio conservés. */
+  private static readonly LOOKAHEAD_BUDGET = 40;
+  private static readonly LOOKAHEAD_MAX_IMAGES = 16;
+  private static readonly LOOKAHEAD_MAX_AUDIO = 8;
+  private static readonly LOOKAHEAD_CONCURRENCY = 2;
+
+  /** Annule le préchargement lookahead (skip, chargement, saut de flowchart, fin de session). */
+  private cancelLookahead(): void {
+    this.lookaheadController?.abort();
+    this.lookaheadController = null;
+  }
+
+  /**
+   * Précharge en temps mort les assets à venir (#367, PERF-04) : au plus 2 images à la fois,
+   * priorités basses, références conservées ; respecte `navigator.connection.saveData`.
+   */
+  private scheduleLookahead(): void {
+    if (this.lookaheadRunning || this.lookaheadController) return;
+    if (!this.runtime?.peekAssets) return;
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+    if (connection?.saveData) return;
+    const controller = new AbortController();
+    this.lookaheadController = controller;
+    void this.runLookahead(controller);
+  }
+
+  private async runLookahead(controller: AbortController): Promise<void> {
+    this.lookaheadRunning = true;
+    const signal = controller.signal;
+    try {
+      await this.whenIdle();
+      const runtime = this.runtime;
+      if (!runtime?.peekAssets || signal.aborted) return;
+      const peek = runtime.peekAssets(Player.LOOKAHEAD_BUDGET);
+      let images = peek.assets;
+      if (peek.atEnd && this.chain) {
+        const evalCondition = runtime.evaluateCondition
+          ? (expr: string) => runtime.evaluateCondition!(expr)
+          : undefined;
+        const next = resolveNext(this.chain, this.scriptFile, evalCondition);
+        if (next.kind === "script") {
+          const script = await this.getScript(next.file);
+          if (script && !signal.aborted) {
+            images = images.concat(runtime.peekAssets(Player.LOOKAHEAD_BUDGET, script).assets);
+          }
+        }
+      }
+      if (signal.aborted) return;
+
+      this.preloadAudio(peek.audio);
+      const urls: string[] = [];
+      const seen = new Set<string>();
+      for (const asset of images) {
+        const url = asset.kind === "bg" ? this.deps.resolver.background(asset.storage) : this.deps.resolver.image(asset.storage);
+        if (seen.has(url)) continue;
+        seen.add(url);
+        urls.push(url);
+        if (urls.length >= Player.LOOKAHEAD_MAX_IMAGES) break;
+      }
+
+      let cursor = 0;
+      const worker = async (): Promise<void> => {
+        while (!signal.aborted && cursor < urls.length) {
+          const url = urls[cursor++]!;
+          await this.preloadImage(url, signal);
+        }
+      };
+      await Promise.all(Array.from({ length: Player.LOOKAHEAD_CONCURRENCY }, worker));
+    } catch {
+      // Préchargement opportuniste : jamais bloquant pour la lecture.
+    } finally {
+      if (this.lookaheadController === controller) this.lookaheadController = null;
+      this.lookaheadRunning = false;
+    }
+  }
+
+  private whenIdle(): Promise<void> {
+    return new Promise((resolve) => {
+      const win = window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number };
+      if (typeof win.requestIdleCallback === "function") {
+        win.requestIdleCallback(() => resolve(), { timeout: 200 });
+      } else {
+        setTimeout(resolve, 0);
+      }
+    });
+  }
+
+  private preloadImage(url: string, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return Promise.resolve();
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.fetchPriority = "low";
+      this.lookaheadImages.set(url, img);
+      if (this.lookaheadImages.size > Player.LOOKAHEAD_MAX_IMAGES) {
+        const oldest = this.lookaheadImages.keys().next().value;
+        if (oldest !== undefined) this.lookaheadImages.delete(oldest);
+      }
+      let settled = false;
+      const timer = setTimeout(done, 5000);
+      const onAbort = () => done();
+      function done(): void {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal.removeEventListener("abort", onAbort);
+        img.onload = null;
+        img.onerror = null;
+        resolve();
+      }
+      img.onload = done;
+      img.onerror = done;
+      signal.addEventListener("abort", onAbort, { once: true });
+      img.src = url;
+    });
+  }
+
+  private preloadAudio(audio: readonly { kind: "bgm" | "se"; storage: string }[]): void {
+    for (const entry of audio) {
+      const url = entry.kind === "bgm" ? this.deps.resolver.bgm(entry.storage) : this.deps.resolver.se(entry.storage);
+      if (this.lookaheadAudio.has(url)) continue;
+      try {
+        const el = new Audio(url);
+        el.preload = "auto";
+        this.lookaheadAudio.set(url, el);
+        if (this.lookaheadAudio.size > Player.LOOKAHEAD_MAX_AUDIO) {
+          const oldest = this.lookaheadAudio.keys().next().value;
+          if (oldest !== undefined) this.lookaheadAudio.delete(oldest);
+        }
+      } catch {
+        // Audio indisponible : le préchargement audio est opportuniste.
+      }
+    }
   }
 
   private makeRuntime(script: ParsedScript, name: string): RuntimeLike {
