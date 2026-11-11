@@ -76,6 +76,7 @@ npm run preview
 | `npm run validate:visual` | validation visuelle locale des sprites/transitions sur assets réels (voir [`docs/VALIDATION_VISUELLE.md`](docs/VALIDATION_VISUELLE.md)) |
 | `npm run diag:opening` | diagnostic de l'ouverture : flash blanc, panoramique final, synchro musique (voir [`docs/DIAG_OUVERTURE.md`](docs/DIAG_OUVERTURE.md)) |
 | `npm run perf` | budgets de performance chiffrés : bundle, premier rendu, fluidité, mémoire (voir [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)) |
+| `npm run perf:scenes` | banc des temps de chargement entre scènes (vite preview, profils desktop/mobile, cache froid/chaud ; voir [`docs/PERF_BENCH.md`](docs/PERF_BENCH.md)) |
 | `npm run text:overflow` | mesure du débordement du texte du corpus et de la taille nominale (voir [`docs/TEXTE_DEBORDEMENT.md`](docs/TEXTE_DEBORDEMENT.md)) |
 
 ### Lecture complète (placeholders en CI)
@@ -421,6 +422,7 @@ restent suivis en v1.1 (voir les approximations documentées dans [`docs/APPROXI
 | Ouverture et timelines | [`docs/TIMELINES.md`](docs/TIMELINES.md) |
 | Lecture complète du corpus | [`docs/LECTURE_COMPLETE.md`](docs/LECTURE_COMPLETE.md) |
 | Budgets et mesures de performance | [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) |
+| Banc des transitions de scènes | [`docs/PERF_BENCH.md`](docs/PERF_BENCH.md) |
 | Débordement du texte et taille nominale | [`docs/TEXTE_DEBORDEMENT.md`](docs/TEXTE_DEBORDEMENT.md) |
 | Validation visuelle (sprites, transitions) | [`docs/VALIDATION_VISUELLE.md`](docs/VALIDATION_VISUELLE.md) |
 | Diagnostic de l'ouverture (flash, pan, synchro) | [`docs/DIAG_OUVERTURE.md`](docs/DIAG_OUVERTURE.md) |
