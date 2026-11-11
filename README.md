@@ -328,9 +328,12 @@ Une fois `public/assets/` généré et le site servi en **HTTPS** (ou sur `local
 - **Service worker généré au build** (`npm run build` → `dist/sw.js`, source `tools/pwa-sw.ts`) :
   - **pré-cache de la coquille** (HTML, JS/CSS hachés du build, manifeste, icônes) dans un cache
     versionné `mahoyo-shell-<hash>` : l'application démarre hors ligne dès le premier chargement ;
-  - **cache runtime borné** des assets du jeu (`/assets/**` : images, audio, scripts, manifeste,
-    données) — au plus 400 entrées, les plus anciennes sont évincées ; ils ne sont **jamais**
-    pré-cachés (plusieurs Go) ;
+  - **cache d'assets versionné** (#372) : nommé `mahoyo-assets-<assetsVersion>` d'après le hash du
+    manifeste écrit par le pipeline ; les anciens caches sont **purgés à l'activation** du service
+    worker (plus de vidage/remplissage en boucle entre deux versions) ; borné à 2 000 entrées avec
+    trim **différé** (`cache.keys()` un `put` sur 25) en attendant un versionnage complet ; les
+    assets ne sont **jamais** pré-cachés (plusieurs Go) ; `asset-manifest.json` et
+    `image-dimensions.json` sont servis en stale-while-revalidate ;
   - **navigation network-first** (une nouvelle version déployée est vue dès qu'on est en ligne, repli
     sur la coquille hors ligne), assets **cache-first** ; les requêtes cross-origin (polices), `Range`
     et `/api/` ne sont pas mises en cache.
@@ -339,7 +342,8 @@ Une fois `public/assets/` généré et le site servi en **HTTPS** (ou sur `local
   jusqu'à un passage en ligne (le player tolère l'asset absent, il n'y a pas de blocage).
 - **Mise à jour** : un nouveau build change le hash de la coquille ; le nouveau service worker est
   installé puis activé sur message `SKIP_WAITING`, et la page est **rechargée une seule fois**
-  (garde-fou de session anti-boucle). L'ancien cache `mahoyo-shell-*` est supprimé à l'activation.
+  (garde-fou de session anti-boucle). Les anciens caches `mahoyo-shell-*` et `mahoyo-assets-*` sont
+  supprimés à l'activation.
 - **Installation** : bouton « Installer » dans Chrome/Edge ; Safari iOS via Partager → « Sur l'écran
   d'accueil ». Firefox ne propose pas l'installation PWA de bureau sous Linux (limite du navigateur).
 - **Vérification automatisée** : `npm run test:e2e:pwa` (Chromium) construit avec placeholders, sert

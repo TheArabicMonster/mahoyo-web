@@ -7,6 +7,7 @@
  */
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
+import { createHash } from "crypto";
 import { writeFileSync } from "fs";
 import { dirname } from "path";
 import { mkdirSync } from "fs";
@@ -288,12 +289,29 @@ export function buildManifestFromResults(
 }
 
 /**
- * Écrit le manifest en JSON de façon atomique.
+ * Version déterministe du **contenu** du manifeste (#372) : SHA-256 tronqué à 16 hex.
+ * Exclut `generatedAt` (volatile d'un run à l'autre) et `assetsVersion` (le hash lui-même)
+ * pour qu'un pipeline relancé sans changement d'assets produise la même version — c'est ce
+ * qui rend le cache service worker « chaud » stable tant que les assets ne changent pas.
+ */
+export function computeAssetsVersion(manifest: AssetManifest): string {
+  const { generatedAt: _generatedAt, assetsVersion: _assetsVersion, ...content } = manifest;
+  const canonical = JSON.stringify(content);
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 16);
+}
+
+/** Retourne une copie du manifeste avec `assetsVersion` calculée (n'écrase pas un manifeste vide). */
+export function withAssetsVersion(manifest: AssetManifest): AssetManifest {
+  return { ...manifest, assetsVersion: computeAssetsVersion(manifest) };
+}
+
+/**
+ * Écrit le manifest en JSON de façon atomique, avec sa `assetsVersion` (#372).
  */
 export function writeManifest(manifest: AssetManifest, outputPath: string): void {
   mkdirSync(dirname(outputPath), { recursive: true });
   const tmpPath = `${outputPath}.tmp`;
-  writeFileSync(tmpPath, JSON.stringify(manifest, null, 2), "utf-8");
+  writeFileSync(tmpPath, JSON.stringify(withAssetsVersion(manifest), null, 2), "utf-8");
   renameSync(tmpPath, outputPath);
 }
 
