@@ -1,0 +1,87 @@
+name: Merge train (v1.1 → main)
+
+# Train de vagues (#371) : toutes les 45 minutes, si `v1.1` est en avance sur `main` ET que la CI de
+# la tête `v1.1` est verte, le train merge `v1.1` dans `main` en `--no-ff` et pousse. Objectif :
+# livrer sur `main` en 15-30 min au lieu d'attendre une orchestration manuelle.
+#
+# Garde-fous anti-boucle :
+# - déclenché uniquement par `schedule`/`workflow_dispatch` (pas de trigger sur push) : un push de
+#   `main` ne relance jamais le train ;
+# - ne fait rien si `v1.1` n'est pas en avance, ou si la CI de sa tête n'est pas `success` au même
+#   sha (comparaison `headSha` de `gh run list` avec `git rev-parse origin/v1.1`) ;
+# - après le merge, `v1.1` n'est plus en avance : la prochaine exécution est un no-op.
+on:
+  schedule:
+    # toutes les 45 minutes (heure UTC)
+    - cron: "*/45 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: merge-train-v1-1
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: v1.1 → main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main (historique complet)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Récupérer main et v1.1
+        run: git fetch --no-tags --prune origin main v1.1
+
+      - name: Avance de v1.1 sur main
+        id: advance
+        run: |
+          ahead=$(git rev-list --count origin/main..origin/v1.1)
+          echo "ahead=$ahead" >> "$GITHUB_OUTPUT"
+          echo "v1.1 est en avance de $ahead commit(s) sur main."
+          if [ "$ahead" -eq 0 ]; then
+            echo "Rien à merger : main est à jour."
+          fi
+
+      - name: Vérifier la CI de la tête v1.1
+        id: ci
+        if: steps.advance.outputs.ahead != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          head_sha=$(git rev-parse origin/v1.1)
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          run_json=$(gh run list --branch v1.1 --limit 1 --json status,conclusion,headSha)
+          status=$(echo "$run_json" | jq -r '.[0].status // "none"')
+          conclusion=$(echo "$run_json" | jq -r '.[0].conclusion // "none"')
+          run_sha=$(echo "$run_json" | jq -r '.[0].headSha // ""')
+          echo "CI de la tête v1.1 : status=$status conclusion=$conclusion head=$run_sha (attendu=$head_sha)"
+          if [ "$status" != "completed" ] || [ "$conclusion" != "success" ] || [ "$run_sha" != "$head_sha" ]; then
+            echo "::notice::Pas de merge : la CI de la tête v1.1 n'est pas verte (status=$status, conclusion=$conclusion, head=$run_sha)."
+            echo "green=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "green=true" >> "$GITHUB_OUTPUT"
+
+      - name: Merge --no-ff de v1.1 dans main et push
+        if: steps.advance.outputs.ahead != '0' && steps.ci.outputs.green == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "merge-train[bot]"
+          git config user.email "merge-train[bot]@users.noreply.github.com"
+          git merge --no-ff origin/v1.1 -m "chore(merge-train): v1.1 → main (automatique, CI v1.1 verte)
+
+          Merge automatique du train de vagues v1.1 (#371) : v1.1 était en avance de ${{ steps.advance.outputs.ahead }} commit(s) sur main et la CI de sa tête était verte."
+          if ! git push origin HEAD:main; then
+            echo "::warning::Push refusé (main a peut-être avancé) — rebase sur origin/main puis nouvelle tentative."
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+          echo "::notice::Merge train OK : v1.1 → main poussé ($(git rev-parse --short HEAD))."
