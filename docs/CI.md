@@ -99,6 +99,13 @@ onglet Actions → « E2E nightly » → *Run workflow*, ou `gh workflow run e2e
 Garde-fou anti-boucle : pas de trigger sur `push` (un merge de `main` ne relance pas le train) ;
 après le merge, `v1.1` n'est plus en avance, la prochaine exécution est un no-op.
 
+> **Activation** : GitHub ne planifie les workflows que depuis la **branche par défaut** (`main`).
+> `merge-train.yml` et `e2e-nightly.yml` deviennent donc actifs après leur premier passage sur
+> `main` (et pour le train : après le premier merge `v1.1` → `main`, qui reste déclenché
+> manuellement / par `gh pr merge` pour cette première fois). En attendant, on peut tester le train
+> à la main avec `gh workflow run merge-train.yml --ref v1.1` (ou depuis l'onglet Actions en
+> sélectionnant la branche).
+
 ## Automerge des PR
 
 Le dépôt a `allow_auto_merge=true` et `main` n'est pas protégée. Une fois la CI de la PR verte
