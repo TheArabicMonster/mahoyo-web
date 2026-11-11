@@ -359,7 +359,8 @@ Les noms de fichiers peuvent contenir des parenthèses :
   occurrences (96 au total) sont dans des scripts système jamais exécutés.
 - `@seloop storage=… time=… volume=…` est un SE en boucle avec fondu d'entrée (`time`) ; il accepte
   `cond=`. `1-2.ks` l'emploie avec `cond=!kag.isplayingse('se01004')` pour la pluie d'ambiance.
-- `kag.isplayingse(storage)` est approximé par « le dernier SE lancé n'a pas été arrêté ».
+- `kag.isplayingse(storage)` teste l'occupation réelle du pool SE (et du canal voix pour les réfs
+  Steam), pas seulement le dernier SE lancé (#358).
 
 ### `@lockquickmenu`, `@pauseautomode`, `@resumeautomode`
 
@@ -502,9 +503,22 @@ sur la **page entière** avant la frappe, donc sans changement de taille en cour
 - `@playstop time=10000 nowait=1` : arrêt fondu sur 10 s, non bloquant.
 - `@fadebgm time=5000 volume=100` : fondu vers le volume cible (et **non** vers
   0). `volume=0` = fondu silencieux.
-- `@se loop=1` : SE en boucle (aujourd'hui ignoré).
-- `@se delay=2000 …` : délai de démarrage.
-- `@sestop time=5000 nowait=1` : arrêt fondu des SE.
+- **Pool de canaux SE** (#358) : `se:0` … `se:7` (constante `SE_CHANNEL_COUNT` dans
+  `src/kag/events.ts`). Les SE **bouclés** (`@seloop`, `@se loop=1`, `@seact` loop) reçoivent un
+  canal dédié par `storage` (réutilisé si la même boucle est relancée) ; les one-shots prennent le
+  premier canal libre, sinon le **plus ancien one-shot** (jamais une boucle d'ambiance). Au-delà de
+  8 (cas anormal), les canaux `se:8+` sont utilisés pour ne jamais couper une boucle.
+- `@se loop=1` : SE en boucle (pool dédié).
+- `@se delay=2000 …` : délai de démarrage, par canal.
+- `@se storage=…` avec un nom de **voix Steam** normalisé (`a10_…`, `c80_…`, `f70_…` : une lettre,
+  deux chiffres, `_`) est routé vers le canal `voice` : le volume voix s'applique et une voix ne
+  coupe pas l'ambiance. Les assets de voix sont absents des données 2012 (remaster uniquement,
+  voir `docs/AUDIO.md`) : le routage est prêt mais silencieux sans eux.
+- `@sestop` **sans** `storage` : arrête **tous** les SE (`allSe`, voix Steam incluse) ; **avec**
+  `storage` : arrête le(s) canal(aux) correspondant(s), et ne fait rien si le son n'est pas en cours
+  (sémantique `getseSoundBufferFromStorage` de `tagex.tjs`).
+- `@fadese storage=… time=… volume=…` : fond le volume du/des canal(aux) du storage ; sans
+  `storage`, le moteur ne trouve pas de buffer et la commande est sans effet (pas de fondu global).
 - L'audio d'un step part **avant** le visuel ; un `@se` placé après un
   `@trans` bloquant sort trop tôt. À adresser avec les transitions non
   bloquantes.

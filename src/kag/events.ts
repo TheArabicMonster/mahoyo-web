@@ -261,6 +261,35 @@ export type StaffrollState = {
 
 export type AudioChannel = "bgm" | "voice" | `se:${number}`;
 
+/** Nombre de canaux SE du pool natif (`@se`/`@seloop`/`@sestop`), constantes centralisées. */
+export const SE_CHANNEL_COUNT = 8;
+
+/** Canal SE d'index donné (`se:0` … `se:7`). */
+export function seChannel(index: number): AudioChannel {
+  return `se:${index}` as AudioChannel;
+}
+
+/** Canaux SE du pool (hors voix et BGM). */
+export const SE_CHANNELS: readonly AudioChannel[] = Array.from({ length: SE_CHANNEL_COUNT }, (_, i) => seChannel(i));
+
+/**
+ * Référence de **voix** du remaster Steam, normalisée en minuscules (`storageKey`) : lettre de
+ * locuteur + 2 chiffres + `_`, ex. `a10_5a_8_0002`, `c80_1_0_0000`, `f70_…`. Les SE natifs 2012
+ * (`se01019`, `b60_1_2_0005`, …) ne correspondent pas ; les voix sont routées vers `voice` pour
+ * que le volume voix s'applique et qu'elles ne coupent pas une ambiance.
+ */
+export function isVoiceStorage(storage: string): boolean {
+  return /^[a-z]\d{2}_/.test(storage);
+}
+
+/** État sérialisable d'un canal SE/voix actif (sauvegarde). */
+export type SeChannelState = {
+  channel: AudioChannel;
+  storage: string;
+  loop: boolean;
+  volume: number;
+};
+
 export type AudioEvent =
   | { kind: "play"; channel: AudioChannel; storage: AssetRef; loop: boolean; volume: number; fadeIn?: Ms; delay?: Ms }
   | { kind: "stop"; channel: AudioChannel | "allSe"; fadeOut?: Ms }
