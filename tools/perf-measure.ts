@@ -22,15 +22,16 @@
  * Aucun asset sous copyright n'est lu : les placeholders sont générés par `tests/e2e/placeholders.ts`.
  */
 import { spawn, spawnSync } from "child_process";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { createServer } from "net";
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
 import { chromium, type Browser } from "playwright";
 import { generatePlaceholderAssets } from "../tests/e2e/placeholders.js";
-import { PERF_BUDGETS } from "./perf-budgets.js";
+import { PERF_BUDGETS, PERF_SCENE_BUDGETS } from "./perf-budgets.js";
 import {
   checkBudgets,
+  checkSceneBudgets,
   collectBundleMetrics,
   collectManifestMetrics,
   formatBytes,
@@ -39,6 +40,8 @@ import {
   type BrowserMetrics,
   type BudgetUnit,
   type PerfMetrics,
+  type SceneBudgetCheck,
+  type SceneRunSummary,
 } from "./perf-lib.js";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -52,6 +55,8 @@ type Cli = {
   assetsDir: string;
   manifestPath: string | null;
   jsonPath: string;
+  scenesReport: string;
+  strictScenes: boolean;
 };
 
 function parseArgs(argv: readonly string[]): Cli {
@@ -62,6 +67,8 @@ function parseArgs(argv: readonly string[]): Cli {
     assetsDir: process.env.MAHOYO_E2E_ASSETS?.trim() || join(tmpdir(), "mahoyo-perf-assets"),
     manifestPath: null,
     jsonPath: REPORT_PATH,
+    scenesReport: join(ROOT, "reports", "perf-scenes.json"),
+    strictScenes: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -71,8 +78,10 @@ function parseArgs(argv: readonly string[]): Cli {
     else if (arg === "--assets") cli.assetsDir = resolve(argv[++i] ?? cli.assetsDir);
     else if (arg === "--manifest") cli.manifestPath = resolve(argv[++i] ?? "");
     else if (arg === "--json") cli.jsonPath = resolve(argv[++i] ?? cli.jsonPath);
+    else if (arg === "--scenes-report") cli.scenesReport = resolve(argv[++i] ?? cli.scenesReport);
+    else if (arg === "--strict-scenes") cli.strictScenes = true;
     else if (arg === "--help") {
-      console.log("Usage : npm run perf -- [--static-only] [--no-build] [--warn-only] [--assets <dir>] [--manifest <fichier>] [--json <fichier>]");
+      console.log("Usage : npm run perf -- [--static-only] [--no-build] [--warn-only] [--assets <dir>] [--manifest <fichier>] [--json <fichier>] [--scenes-report <fichier>] [--strict-scenes]");
       process.exit(0);
     } else {
       console.warn(`[perf] argument ignoré : ${arg}`);
@@ -273,9 +282,71 @@ function printReport(metrics: PerfMetrics): boolean {
   return ok;
 }
 
-function writeReport(metrics: PerfMetrics, checks: ReturnType<typeof checkBudgets>, path: string): void {
+/** Charge les passes du banc `perf:scenes` (rapport JSON) ; null si absent/illisible. */
+export function loadSceneRuns(path: string): SceneRunSummary[] | null {
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as { runs?: unknown };
+    if (!Array.isArray(parsed.runs)) return null;
+    const runs: SceneRunSummary[] = [];
+    for (const run of parsed.runs as { profile?: unknown; pass?: unknown; summary?: unknown }[]) {
+      if (run.profile !== "desktop" && run.profile !== "mobile") continue;
+      const summary = run.summary as Partial<SceneRunSummary> | undefined;
+      if (!summary || typeof summary.sceneReadyP95 !== "number") continue;
+      runs.push({
+        profile: run.profile,
+        pass: run.pass === "warm" ? "warm" : "cold",
+        sceneReadyP50: Number(summary.sceneReadyP50 ?? 0),
+        sceneReadyP95: summary.sceneReadyP95,
+        lookaheadRatio: Number(summary.lookaheadRatio ?? 0),
+        imageReuseRatio: Number(summary.imageReuseRatio ?? 0),
+        cacheHitRatio: Number(summary.cacheHitRatio ?? 0),
+        longTasksOver50: Number(summary.longTasksOver50 ?? 0),
+        inpMs: typeof summary.inpMs === "number" ? summary.inpMs : null,
+        heapUsedMB: typeof summary.heapUsedMB === "number" ? summary.heapUsedMB : null,
+        decodedCacheMB: Number(summary.decodedCacheMB ?? 0),
+      });
+    }
+    return runs;
+  } catch {
+    return null;
+  }
+}
+
+/** Affiche les budgets `scene-ready` (warn explicite s'ils ne sont pas mesurables). */
+function printSceneBudgets(checks: readonly SceneBudgetCheck[], runs: number): boolean {
+  const unit = (value: number, u: BudgetUnit): string =>
+    u === "bytes" ? formatBytes(value) : u === "ms" ? formatMs(value) : `${value}`;
+  console.log("\nBudgets scene-ready (#375) :");
+  if (runs === 0) {
+    console.warn("  … aucune passe perf:scenes trouvée — lancer `npm run perf:scenes` (non bloquant en CI)");
+    return true;
+  }
+  let ok = true;
+  for (const check of checks) {
+    const symbol = check.skipped ? "…" : check.ok ? "✓" : "✗";
+    const measured = check.measured === null ? "n/a" : unit(check.measured, check.unit);
+    const margin = check.margin === null ? "" : ` (marge ${(check.margin * 100).toFixed(1)} %)`;
+    const note = check.note ? ` — ${check.note}` : "";
+    console.log(`  ${symbol} ${check.label.padEnd(46)} ${measured.padStart(12)} / ≤ ${unit(check.budget, check.unit)}${margin}${note}`);
+    if (!check.skipped && !check.ok) ok = false;
+  }
+  console.log("");
+  return ok;
+}
+
+function writeReport(
+  metrics: PerfMetrics,
+  checks: ReturnType<typeof checkBudgets>,
+  path: string,
+  scenes: { runs: SceneRunSummary[]; checks: SceneBudgetCheck[] } | null,
+): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify({ metrics, budgets: PERF_BUDGETS, checks }, null, 2), "utf-8");
+  writeFileSync(
+    path,
+    JSON.stringify({ metrics, budgets: PERF_BUDGETS, checks, sceneBudgets: scenes && { budgets: PERF_SCENE_BUDGETS, ...scenes } }, null, 2),
+    "utf-8",
+  );
   console.log(`[perf] rapport JSON : ${path}`);
 }
 
@@ -315,8 +386,17 @@ async function main(): Promise<void> {
   };
   const ok = printReport(metrics);
   const checks = checkBudgets(metrics, PERF_BUDGETS);
-  writeReport(metrics, checks, cli.jsonPath);
+  // Budgets `scene-ready` (#375) : lus depuis le banc local `npm run perf:scenes` ; absence =
+  // avertissement non bloquant (la CI n'exécute pas le banc faute d'assets réels).
+  const sceneRuns = loadSceneRuns(cli.scenesReport);
+  const sceneChecks = sceneRuns ? checkSceneBudgets(sceneRuns, PERF_SCENE_BUDGETS) : [];
+  const scenesOk = printSceneBudgets(sceneChecks, sceneRuns?.length ?? 0);
+  writeReport(metrics, checks, cli.jsonPath, sceneRuns ? { runs: sceneRuns, checks: sceneChecks } : null);
 
+  if (cli.strictScenes && !scenesOk) {
+    console.error("[perf] budget(s) scene-ready dépassé(s) (--strict-scenes) — voir docs/PERFORMANCE.md");
+    process.exitCode = 1;
+  }
   if (!ok) {
     const message = "[perf] budget(s) dépassé(s) — voir le tableau ci-dessus et docs/PERFORMANCE.md";
     if (cli.warnOnly) {

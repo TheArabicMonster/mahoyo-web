@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import {
   checkBudgets,
+  checkSceneBudgets,
   collectBundleMetrics,
   collectManifestMetrics,
   formatBytes,
@@ -12,6 +13,8 @@ import {
   percentile,
   type PerfBudgets,
   type PerfMetrics,
+  type SceneBudgets,
+  type SceneRunSummary,
 } from "../../../tools/perf-lib.js";
 
 const dirs: string[] = [];
@@ -181,5 +184,105 @@ describe("percentile", () => {
     expect(percentile([1, 2, 3, 4], 0.5)).toBe(2.5);
     expect(percentile([10, 20], 0)).toBe(10);
     expect(percentile([10, 20], 1)).toBe(20);
+  });
+});
+
+const sceneBudgets: SceneBudgets = {
+  coldP95Ms: { desktop: 100, mobile: 250 },
+  preloadedP95Ms: { desktop: 16, mobile: 33 },
+  longTasksOver50: { desktop: 0, mobile: 1 },
+  inpMs: { desktop: 100, mobile: 200 },
+  decodedCacheBytes: { desktop: 192 * 1024 * 1024, mobile: 64 * 1024 * 1024 },
+};
+
+function sceneRun(overrides: Partial<SceneRunSummary> = {}): SceneRunSummary {
+  return {
+    profile: "desktop",
+    pass: "cold",
+    sceneReadyP50: 40,
+    sceneReadyP95: 60,
+    lookaheadRatio: 0,
+    imageReuseRatio: 0,
+    cacheHitRatio: 0,
+    longTasksOver50: 0,
+    inpMs: 40,
+    heapUsedMB: 6,
+    decodedCacheMB: 40,
+    ...overrides,
+  };
+}
+
+describe("budgets scene-ready (#375)", () => {
+  it("valide les passes conformes aux seuils du plan", () => {
+    const runs: SceneRunSummary[] = [
+      sceneRun(),
+      sceneRun({ profile: "mobile", sceneReadyP95: 200 }),
+      sceneRun({ pass: "warm", sceneReadyP95: 12, lookaheadRatio: 1 }),
+      sceneRun({ profile: "mobile", pass: "warm", sceneReadyP95: 30, lookaheadRatio: 1 }),
+    ];
+    const checks = checkSceneBudgets(runs, sceneBudgets);
+    expect(checks).toHaveLength(10);
+    expect(checks.every((check) => check.ok && !check.skipped)).toBe(true);
+    expect(checks.find((check) => check.id === "scene-ready:cold:desktop")!.measured).toBe(60);
+    expect(checks.find((check) => check.id === "scene-ready:preloaded:mobile")!.measured).toBe(30);
+  });
+
+  it("signale un dépassement de p95 au premier affichage (desktop et mobile)", () => {
+    const runs = [sceneRun({ sceneReadyP95: 150 }), sceneRun({ profile: "mobile", sceneReadyP95: 300 })];
+    const checks = checkSceneBudgets(runs, sceneBudgets);
+    expect(checks.find((check) => check.id === "scene-ready:cold:desktop")!.ok).toBe(false);
+    expect(checks.find((check) => check.id === "scene-ready:cold:mobile")!.ok).toBe(false);
+    expect(checks.find((check) => check.id === "scene-ready:cold:desktop")!.margin).toBeCloseTo(-0.5, 5);
+  });
+
+  it("n'évalue le seuil préchargé que si le lookahead/réutilisation est effectif", () => {
+    const skipped = checkSceneBudgets([sceneRun({ pass: "warm", sceneReadyP95: 60 })], sceneBudgets);
+    const preloaded = skipped.find((check) => check.id === "scene-ready:preloaded:desktop")!;
+    expect(preloaded.skipped).toBe(true);
+    expect(preloaded.note).toContain("préchargement insuffisant");
+    // Avec préchargement effectif (≥ 50 %), le même p95 devient un échec (60 > 16).
+    const evaluated = checkSceneBudgets([sceneRun({ pass: "warm", sceneReadyP95: 60, lookaheadRatio: 1 })], sceneBudgets);
+    expect(evaluated.find((check) => check.id === "scene-ready:preloaded:desktop")!.ok).toBe(false);
+    expect(evaluated.find((check) => check.id === "scene-ready:preloaded:desktop")!.skipped).toBe(false);
+  });
+
+  it("marque les passes absentes comme skippées, sans échec", () => {
+    const checks = checkSceneBudgets([sceneRun()], sceneBudgets);
+    expect(checks.filter((check) => check.id.startsWith("scene-ready:") && check.profile === "mobile").every((check) => check.skipped)).toBe(true);
+    expect(checks.find((check) => check.id === "longtasks" && check.profile === "mobile")!.skipped).toBe(true);
+    expect(checks.filter((check) => !check.skipped).map((check) => check.id)).toEqual([
+      "scene-ready:cold:desktop",
+      "longtasks",
+      "inp",
+      "decoded-cache",
+    ]);
+  });
+
+  it("contrôle les blocages > 50 ms, l'INP et le cache décodé (pire passe par profil)", () => {
+    const runs = [
+      sceneRun({ longTasksOver50: 1, inpMs: 150, decodedCacheMB: 200 }),
+      sceneRun({ pass: "warm", longTasksOver50: 0, inpMs: 90, decodedCacheMB: 180, lookaheadRatio: 1 }),
+      sceneRun({ profile: "mobile", longTasksOver50: 1, inpMs: 180, decodedCacheMB: 60 }),
+      sceneRun({ profile: "mobile", pass: "warm", longTasksOver50: 2, inpMs: 210, decodedCacheMB: 70, lookaheadRatio: 1 }),
+    ];
+    const checks = checkSceneBudgets(runs, sceneBudgets);
+    expect(checks.find((check) => check.id === "longtasks" && check.profile === "desktop")!.ok).toBe(false);
+    expect(checks.find((check) => check.id === "longtasks" && check.profile === "mobile")!.ok).toBe(false);
+    expect(checks.find((check) => check.id === "inp" && check.profile === "desktop")!.ok).toBe(false);
+    expect(checks.find((check) => check.id === "inp" && check.profile === "mobile")!.ok).toBe(false);
+    expect(checks.find((check) => check.id === "decoded-cache" && check.profile === "desktop")!.ok).toBe(false);
+    expect(checks.find((check) => check.id === "decoded-cache" && check.profile === "mobile")!.ok).toBe(false);
+  });
+
+  it("expose les seuils du plan et formate les mesures", () => {
+    const checks = checkSceneBudgets([sceneRun()], sceneBudgets);
+    const cold = checks.find((check) => check.id === "scene-ready:cold:desktop")!;
+    expect(cold.unit).toBe("ms");
+    expect(cold.budget).toBe(100);
+    expect(formatMs(cold.measured!)).toBe("60 ms");
+    const cache = checks.find((check) => check.id === "decoded-cache" && check.profile === "desktop")!;
+    expect(cache.budget).toBe(192 * 1024 * 1024);
+    expect(formatBytes(cache.measured!)).toBe("40.00 Mo");
+    expect(sceneBudgets.preloadedP95Ms).toEqual({ desktop: 16, mobile: 33 });
   });
 });

@@ -218,6 +218,151 @@ export function checkBudgets(metrics: PerfMetrics, budgets: PerfBudgets): Budget
   ];
 }
 
+// ── Budgets `scene-ready` (#375, PERF-09) ────────────────────────────────────
+
+export type SceneProfile = "desktop" | "mobile";
+export type ScenePass = "cold" | "warm";
+
+/** Résumé d'une passe du banc `npm run perf:scenes` (sous-ensemble de `reports/perf-scenes.json`). */
+export type SceneRunSummary = {
+  profile: SceneProfile;
+  pass: ScenePass;
+  sceneReadyP50: number;
+  sceneReadyP95: number;
+  lookaheadRatio: number;
+  imageReuseRatio?: number;
+  cacheHitRatio: number;
+  longTasksOver50: number;
+  inpMs: number | null;
+  heapUsedMB: number | null;
+  decodedCacheMB: number;
+};
+
+/** Seuils `scene-ready` du plan (plafonds), par profil. */
+export type SceneBudgets = {
+  /** p95 `scene-ready` au premier affichage, assets locaux, sans préchargement. */
+  coldP95Ms: { desktop: number; mobile: number };
+  /** p95 `scene-ready` avec image préchargée par le lookahead + cache chaud. */
+  preloadedP95Ms: { desktop: number; mobile: number };
+  /** Blocages > 50 ms pendant une transition. */
+  longTasksOver50: { desktop: number; mobile: number };
+  /** INP au clic/touche d'avance. */
+  inpMs: { desktop: number; mobile: number };
+  /** Cache décodé estimé (octets). */
+  decodedCacheBytes: { desktop: number; mobile: number };
+};
+
+export type SceneBudgetCheck = {
+  id: string;
+  label: string;
+  profile: SceneProfile;
+  pass: ScenePass | "any";
+  unit: BudgetUnit;
+  budget: number;
+  measured: number | null;
+  ok: boolean;
+  skipped: boolean;
+  margin: number | null;
+  /** Raison du contrôle « skippé » (passe absente, lookahead inexistant…). */
+  note: string | null;
+};
+
+function sceneCheck(
+  id: string,
+  label: string,
+  profile: SceneProfile,
+  pass: ScenePass | "any",
+  unit: BudgetUnit,
+  budget: number,
+  measured: number | null,
+  note: string | null = null,
+): SceneBudgetCheck {
+  if (measured === null || !Number.isFinite(measured)) {
+    return { id, label, profile, pass, unit, budget, measured: null, ok: true, skipped: true, margin: null, note };
+  }
+  return {
+    id,
+    label,
+    profile,
+    pass,
+    unit,
+    budget,
+    measured,
+    ok: measured <= budget,
+    skipped: false,
+    // Budget 0 (blocages desktop) : marge définie seulement à 0 mesure (sinon -1), pas de NaN.
+    margin: budget > 0 ? (budget - measured) / budget : measured === 0 ? 0 : -1,
+    note,
+  };
+}
+
+/**
+ * Compare les passes du banc `perf:scenes` aux budgets `scene-ready` : premier affichage (passe
+ * froide), préchargé+cache chaud (passe chaude, seulement si le lookahead est effectif), blocages,
+ * INP et cache décodé (pire passe par profil). Les passes absentes ou non mesurables sont
+ * « skippées » avec une note explicite, jamais considérées comme un échec.
+ */
+export function checkSceneBudgets(runs: readonly SceneRunSummary[], budgets: SceneBudgets): SceneBudgetCheck[] {
+  const byKey = new Map<string, SceneRunSummary>();
+  for (const run of runs) byKey.set(`${run.profile}:${run.pass}`, run);
+  const checks: SceneBudgetCheck[] = [];
+  const profiles: SceneProfile[] = ["desktop", "mobile"];
+  for (const profile of profiles) {
+    const cold = byKey.get(`${profile}:cold`) ?? null;
+    checks.push(
+      sceneCheck(
+        `scene-ready:cold:${profile}`,
+        `scene-ready p95 au premier affichage (${profile})`,
+        profile,
+        "cold",
+        "ms",
+        budgets.coldP95Ms[profile],
+        cold?.sceneReadyP95 ?? null,
+        cold ? null : "passe froide absente : lancer npm run perf:scenes avec --passes cold",
+      ),
+    );
+    const warm = byKey.get(`${profile}:warm`) ?? null;
+    // Le seuil « préchargé + cache chaud » n'est évaluable que si le lookahead est réellement actif
+    // (≥ 50 % des scènes de la passe chaude) ; un simple reliquat ne suffit pas.
+    const preloadedApplicable = warm !== null && warm.lookaheadRatio >= 0.5;
+    checks.push(
+      sceneCheck(
+        `scene-ready:preloaded:${profile}`,
+        `scene-ready p95 préchargé + cache chaud (${profile})`,
+        profile,
+        "warm",
+        "ms",
+        budgets.preloadedP95Ms[profile],
+        preloadedApplicable ? warm.sceneReadyP95 : null,
+        !warm
+          ? "passe chaude absente : lancer npm run perf:scenes avec --passes warm"
+          : preloadedApplicable
+            ? null
+            : `préchargement insuffisant (${Math.round(warm.lookaheadRatio * 100)} % de lookahead) : seuil préchargé non évaluable sur cette passe`,
+      ),
+    );
+    const runsForProfile = [byKey.get(`${profile}:cold`), byKey.get(`${profile}:warm`)].filter((run): run is SceneRunSummary => run !== undefined);
+    const worstLongTasks = runsForProfile.length > 0 ? Math.max(...runsForProfile.map((run) => run.longTasksOver50)) : null;
+    checks.push(
+      sceneCheck("longtasks", `Blocages > 50 ms pendant les transitions (${profile})`, profile, "any", "count", budgets.longTasksOver50[profile], worstLongTasks),
+    );
+    const inps = runsForProfile.map((run) => run.inpMs).filter((value): value is number => value !== null);
+    checks.push(sceneCheck("inp", `INP au clic d'avance (${profile})`, profile, "any", "ms", budgets.inpMs[profile], inps.length > 0 ? Math.max(...inps) : null));
+    checks.push(
+      sceneCheck(
+        "decoded-cache",
+        `Cache décodé estimé (${profile})`,
+        profile,
+        "any",
+        "bytes",
+        budgets.decodedCacheBytes[profile],
+        runsForProfile.length > 0 ? Math.max(...runsForProfile.map((run) => run.decodedCacheMB)) * 1024 * 1024 : null,
+      ),
+    );
+  }
+  return checks;
+}
+
 /** Percentile (interpolation linéaire) d'une liste de nombres ; 0 si vide. */
 export function percentile(values: readonly number[], p: number): number {
   if (values.length === 0) return 0;
