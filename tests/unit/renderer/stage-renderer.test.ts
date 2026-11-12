@@ -753,12 +753,29 @@ describe("DomStageRenderer", () => {
       const sprite = { id: "s1", storage: "ancien-calque", x: 100, y: 120, z: 100, opacity: 1 };
       await renderer.apply([scene({ bg: "un", sprites: [sprite] as never })], { instant: true, signal: sig() });
       await renderer.apply([scene({ bg: "deux" }, { method: "crossfade", time: 500 })], { instant: false, signal: sig() });
-      const overlay = root.querySelector<HTMLElement>(".mh-stage-bg-overlay")!;
-      const snapshot = overlay.querySelector<HTMLImageElement>(".mh-stage-sprite");
+      const layersOverlay = root.querySelector<HTMLElement>(".mh-stage-bg-overlay-layers")!;
+      const snapshot = layersOverlay.querySelector<HTMLImageElement>(".mh-stage-sprite");
       expect(snapshot).not.toBeNull();
       expect(snapshot!.getAttribute("src")).toContain("ancien-calque");
       renderer.hurry();
       expect(root.querySelector(".mh-stage-bg-overlay")).toBeNull();
+    });
+
+    it("#410 : le filtre du fond n'est pas appliqué une seconde fois aux calques de l'ancienne scène", async () => {
+      const sprite = { id: "s2", storage: "calque-flou", x: 200, y: 150, z: 100, opacity: 1, blurx: 1, blury: 1 };
+      await renderer.apply([scene({ bg: "un", bgEffect: "monocro", sprites: [sprite] as never })], { instant: true, signal: sig() });
+      const source = root.querySelector<HTMLImageElement>('#stage-sprites img[data-sprite-id="s2"]')!;
+      const sourceFilter = source.style.filter;
+      await renderer.apply([scene({ bg: "deux" }, { method: "crossfade", time: 500 })], { instant: false, signal: sig() });
+      const bgOverlay = root.querySelector<HTMLElement>(".mh-stage-bg-overlay")!;
+      const layersOverlay = root.querySelector<HTMLElement>(".mh-stage-bg-overlay-layers")!;
+      // Le fond ancien porte bien son filtre…
+      expect(bgOverlay.style.filter).toContain("grayscale");
+      // …mais le calque ancien n'est pas dans cet élément filtré : son filtre reste le sien (une fois).
+      expect(layersOverlay.contains(layersOverlay.querySelector('[data-sprite-id="s2"]'))).toBe(true);
+      expect(layersOverlay.style.filter).toBe("");
+      expect(layersOverlay.querySelector<HTMLImageElement>('[data-sprite-id="s2"]')!.style.filter).toBe(sourceFilter);
+      renderer.hurry();
     });
   });
 
