@@ -687,6 +687,30 @@ describe("DomStageRenderer", () => {
       expect(bgLayer()!.style.transform).toBe("");
     });
 
+    it("régression #397 : un track bg déplace la position effective du fond (calque ou conteneur)", async () => {
+      await showPano();
+      const effective = (): { position: string; transition: string } => {
+        const layers = [...root.querySelectorAll<HTMLImageElement>("#stage-bg > .mh-stage-bg-layer")];
+        const layer = layers.find((el) => el.style.display !== "none");
+        const container = root.querySelector("#stage-bg") as HTMLElement;
+        // #373 : fond en calques <img> (object-position) ; repli sur le conteneur (background-position).
+        return layer
+          ? { position: layer.style.objectPosition, transition: layer.style.transition }
+          : { position: container.style.backgroundPosition, transition: container.style.transition };
+      };
+      const before = effective();
+      expect(before.position).toContain("-99px");
+      await renderer.apply(
+        [{ kind: "track", track: { target: "bg", prop: "transform", duration: 1000, keyframes: [{ time: 0 }, { time: 1000, left: -167, top: -149 }] } }],
+        { instant: false, signal: sig() },
+      );
+      const after = effective();
+      // Sans animation de fond, la position resterait figée et ce test échouerait (#397).
+      expect(after.position).not.toBe(before.position);
+      expect(after.position).toContain("-167px");
+      expect(after.transition).toMatch(/^(object-position|background-position) 1000ms/);
+    });
+
     it("un fondu commencé en plein panoramique part de la position courante de l'ancien fond", async () => {
       const now = vi.spyOn(performance, "now").mockReturnValue(1000);
       await showPano();
