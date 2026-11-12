@@ -74,6 +74,7 @@ npm run preview
 | `npm run test:e2e` | Playwright, player dans un vrai navigateur (voir ci-dessous) |
 | `npm run lint` | ESLint 9 (flat config) sur `src/`, `tools/`, `tests/` et les configs (voir [`docs/LINT.md`](docs/LINT.md)) |
 | `npm run validate:visual` | validation visuelle locale des sprites/transitions sur assets réels (voir [`docs/VALIDATION_VISUELLE.md`](docs/VALIDATION_VISUELLE.md)) |
+| `npm run review` | mode revue in-game (flags F2/F3/F4) + lanceur navigateur visible (voir [`docs/REVIEW.md`](docs/REVIEW.md)) |
 | `npm run diag:opening` | diagnostic de l'ouverture : flash blanc, panoramique final, synchro musique (voir [`docs/DIAG_OUVERTURE.md`](docs/DIAG_OUVERTURE.md)) |
 | `npm run perf` | budgets de performance chiffrés : bundle, premier rendu, fluidité, mémoire (voir [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)) |
 | `npm run perf:scenes` | banc des temps de chargement entre scènes (vite preview, profils desktop/mobile, cache froid/chaud ; voir [`docs/PERF_BENCH.md`](docs/PERF_BENCH.md)) |
@@ -432,6 +433,7 @@ restent suivis en v1.1 (voir les approximations documentées dans [`docs/APPROXI
 | Banc des transitions de scènes | [`docs/PERF_BENCH.md`](docs/PERF_BENCH.md) |
 | Débordement du texte et taille nominale | [`docs/TEXTE_DEBORDEMENT.md`](docs/TEXTE_DEBORDEMENT.md) |
 | Validation visuelle (sprites, transitions) | [`docs/VALIDATION_VISUELLE.md`](docs/VALIDATION_VISUELLE.md) |
+| Mode revue : flags en jeu et session JSON | [`docs/REVIEW.md`](docs/REVIEW.md) |
 | Diagnostic de l'ouverture (flash, pan, synchro) | [`docs/DIAG_OUVERTURE.md`](docs/DIAG_OUVERTURE.md) |
 | Traduction française | [`docs/TRADUCTION.md`](docs/TRADUCTION.md) |
 | Layout DOM et z-index | [`docs/layout.md`](docs/layout.md) |
