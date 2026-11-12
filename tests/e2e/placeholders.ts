@@ -311,7 +311,9 @@ export function generatePlaceholderAssets(publicDir: string): number {
   );
   // Cadre de la fenêtre de message par défaut (#182) : sans lui, le player retombe sur l'ancienne
   // boîte. Vrai PNG, résolu par le manifeste (`txtwindow02` → `image/txtwindow02.png`).
-  writePng(join(assets, "image", "txtwindow02.png"), 1, 1, 0, 0, 0);
+  // Couleur volontairement distincte du noir du fond (bleu nuit) pour que les tests de capture
+  // (#415) puissent vérifier que le cadre CSS-background est bien rendu.
+  writePng(join(assets, "image", "txtwindow02.png"), 1, 1, 28, 44, 84);
   // Emoji `[heart]` (#284) : PNG 26×26 comme les assets réels `heart26`.
   writePng(join(assets, "image", "heart26.png"), 26, 26, 255, 90, 140);
   // Bandes d'animation des indicateurs d'attente (`linebreak_a`, `pagebreak_a`) : 40 vignettes.
