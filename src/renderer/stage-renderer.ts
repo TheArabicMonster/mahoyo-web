@@ -2057,6 +2057,18 @@ export class DomStageRenderer implements StageRenderer {
     // Termine une transition précédente éventuelle (clear timer + overlays).
     this.finishTransition();
     this.transitionInfo = { method: "crossfade", timeMs: Math.max(0, time), startedAt: Date.now() };
+    // #409 : l'overlay doit reprendre l'apparence de **l'ancienne** scène (filtre `monocro`,
+    // `effect`, luminosité/contraste, opacité). On capture son style AVANT `renderScene`, qui
+    // applique l'apparence de la nouvelle scène sur le conteneur : la copier après faisait
+    // hériter à l'ancien fond le filtre du nouveau (transition monochrome d'un coup, flash).
+    const fromBgCssText = this.bgEl?.style.cssText ?? "";
+    // #409 : la transition crossfade doit aussi emporter les **calques de l'ancienne scène**
+    // (sprites, partbg, calques de timeline) : sans cela ils disparaissent d'un coup au début du
+    // fondu (transition « pas propre », éléments doublés/flashs). On clone leur état inline avant
+    // `renderScene` ; le clone est figé (les animations WAAPI ne sont pas dupliquées) puis s'efface
+    // avec l'overlay.
+    const fromSpriteNodes = this.spritesEl ? [...this.spritesEl.children].map((el) => el.cloneNode(true) as HTMLElement) : [];
+    const fromTimelineNodes = this.timelineEl ? [...this.timelineEl.children].map((el) => el.cloneNode(true) as HTMLElement) : [];
     // Position de l'ancien fond à cet instant (il peut être en plein panoramique).
     const fromPos = this.bgPositionNow(from);
     // #373 : l'ancien fond normal vit dans un calque <img> ; on capture son URL/placement avant
@@ -2119,7 +2131,7 @@ export class DomStageRenderer implements StageRenderer {
     if (oldBg) {
       const overlay = document.createElement("div");
       overlay.className = "mh-stage-bg mh-stage-bg-overlay";
-      overlay.style.cssText = this.bgEl.style.cssText;
+      overlay.style.cssText = fromBgCssText;
       if (fromImg) {
         overlay.style.backgroundImage = "none";
         overlay.appendChild(fromImg);
@@ -2134,8 +2146,10 @@ export class DomStageRenderer implements StageRenderer {
         : fromLayer.position ?? "50% 50%";
       overlay.style.transform = fromTransform?.transform ?? "";
       overlay.style.transformOrigin = fromTransform?.origin ?? "";
-      overlay.style.zIndex = "5";
+      overlay.style.zIndex = "999999"; // au-dessus des calques/effets, sous la boîte de texte
       overlay.style.opacity = "1";
+      for (const node of fromSpriteNodes) overlay.appendChild(node);
+      for (const node of fromTimelineNodes) overlay.appendChild(node);
       this.bgEl.parentElement?.appendChild(overlay);
       this.bgOverlays.push(overlay);
 
