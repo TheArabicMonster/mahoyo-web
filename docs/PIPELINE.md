@@ -153,12 +153,53 @@ Options :
 | `--keep-originals` | Conserve les `.wav`/`.png` d'origine (utile pour comparer). |
 | `--no-audio` / `--no-webp` | Désactive une des deux optimisations. |
 | `--webp-lossy` | WebP avec perte q90 + SSIM ≥ 0,99 (bg/ et image/ev* uniquement). |
-| `--force` | Autorise un dossier sans `asset-manifest.json` ou non ignoré par git. |
+| `--repair` | Répare un manifeste incohérent : pour chaque URL absente, bascule vers l'extension alternative **existante** (`.png` → `.webp`, `.wav` → `.ogg`) ; rapporte les réparations et vérifie la cohérence. |
+| `--check` | Vérifie que chaque entrée du manifeste a son fichier ; **code 1** si des entrées manquent (sauf `--force`). |
+| `--manifest-flush-every <n>` | Réécrit le manifeste (atomiquement) tous les `n` conversions (défaut 25 ; 0 = à la fin). |
+| `--force` | Autorise un dossier sans `asset-manifest.json` ou non ignoré par git ; tolère des entrées manquantes en `--check`. |
 | `--dry-run` | Simule sans écrire. |
 
 Garde-fous : le dossier doit être une installation d'assets (`asset-manifest.json`) et **ignoré par
 git** (`public/assets/` l'est), sinon il faut `--force` — rien n'est jamais commité. Le script ne
 touche ni aux scripts `.ks`, ni à `lang/`, ni aux tables (`story-chain.json`, etc.).
+
+### Crash-safety et fidélité pixel (#398)
+
+- **Manifeste incrémental/atomique** : il est réécrit (`writeManifest`, fichier `.tmp` + rename) tous
+  les `--manifest-flush-every` conversions, et **les originaux (`.wav`/`.png`) ne sont supprimés
+  qu'après l'écriture finale du manifeste**. Un run interrompu (Ctrl-C, crash) laisse donc toujours
+  des fichiers **référencés par le manifeste** — au pire des `.webp`/`.ogg` non référencés en plus,
+  sans 404.
+- **Garde de fidélité** : en mode **sans perte**, l'identité pixel PNG ↔ WebP est vérifiée
+  (hash des pixels RGBA décodés via ffmpeg) **avant** toute suppression ; si elle n'est pas prouvée,
+  la conversion est **refusée**, le PNG est conservé et un avertissement est émis. (Le mode
+  `--webp-lossy` garde son garde-fou SSIM ≥ 0,99.)
+
+### Réparer une installation incohérente
+
+Si une exécution précédente a laissé des entrées pointant vers des fichiers absents (cas réel #398 :
+806 entrées audio `.wav` supprimés, 1 109 entrées images `.png` supprimés) :
+
+```bash
+npm run assets:optimize -- --assets public/assets --check   # diagnostic : liste les MANQUANT, code 1
+npm run assets:optimize -- --assets public/assets --repair  # bascule vers .webp/.ogg existants
+npm run assets:optimize -- --assets public/assets --check   # doit afficher « 0 entrée manquante »
+```
+
+`--repair` réécrit le manifeste (`assetsVersion` recalculée) et régénère `image-dimensions.json`.
+
+### Restaurer une installation fidèle (si les images converties ne sont pas identiques)
+
+Si le doute subsiste sur la fidélité (ancien script avec perte, échantillon non pixel-identique) :
+
+1. Régénérer les assets **depuis les sources du jeu** avec le pipeline :
+   `npm run pipeline -- --input <dossier_jeu> --output ./public/assets ...` (voir
+   « Parcours complet E1 ») — les `.tlg` sources ne sont pas altérés par l'optimisation.
+2. Relancer l'optimisation **durcie** : `npm run assets:optimize -- --assets public/assets`
+   (identité pixel vérifiée avant chaque suppression) ;
+3. Vérifier : `npm run assets:optimize -- --assets public/assets --check` doit sortir **0 entrée
+   manquante**, puis smoke test navigateur (`?perf=1`) — **0 réponse 404** attendue pour
+   `asset-manifest.json`/`image-dimensions.json` et les assets.
 
 **Gains de référence** (mesurés sur l'installation réelle, 806 SE WAV + échantillon d'images) :
 SE **591,8 Mo → 35,9 Mo (−94 %)** ; `se13010` 2,93 Mo → 181 Ko ; WebP sans perte des PNG de
