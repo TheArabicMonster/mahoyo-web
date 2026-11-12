@@ -175,3 +175,22 @@ peuvent être surveillés à chaque PR sans coût (quelques secondes, aucun navi
   part (tableau ci-dessus).
 - Pas de Lighthouse (pas de nouvelle dépendance lourde) : les métriques utiles sont lues via la
   Performance API dans Chromium.
+
+## Sonde `?perf=1` (mesures chez le propriétaire)
+
+Pour mesurer sur l'appareil réel sans console (marqueurs boot/attente/audio, bouton
+« Copier le rapport perf »), ouvrir :
+
+- **URL recommandée** : `/?perf=1#/title` (le flag est dans la query **avant** le hash, préservé
+  par le routeur) ;
+- **variante** : `/#/title?perf=1` (flag après le hash : accepté depuis #391, sans casser
+  `parseRoute`) ;
+- **après un redirect ou un reload** : la sonde reste active via `sessionStorage` (`mh:perf=1`),
+  même si l'URL perd le paramètre ;
+- **désactiver** : `/?perf=0#/title` (ou `#/title?perf=0`) — la persistance `mh:perf` est nettoyée ;
+- **sans flag** : aucun marqueur, aucun `window.__mhPerf`, aucun bouton (coût nul).
+
+Si un ancien service worker/PWA sert une coquille en cache, la sonde peut ne pas apparaître :
+désenregistrer le SW (DevTools → Application → *Unregister*) et vider le cache storage, ou
+utiliser une fenêtre privée. En local sans réseau, préférer `vite preview` (jamais `npm run dev`)
+pour des chiffres représentatifs.
