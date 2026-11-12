@@ -162,6 +162,10 @@ async function main(): Promise<void> {
 
     const disconnected = new Promise<void>((done) => browser!.once("disconnected", () => done()));
     await page.goto(url, { waitUntil: "domcontentloaded" }).catch((error) => logLine(`[review] navigation : ${String(error)}`));
+    // Donne le focus à la page pour que F2/F3/F4 fonctionnent sans clic préalable de l'utilisateur.
+    await page.bringToFront().catch(() => undefined);
+    await page.mouse.click(6, 6).catch(() => undefined);
+    logLine("[review] focus page donné (si aucune touche ne répond : cliquez une fois dans la page)");
     await Promise.race([disconnected, page.waitForEvent("close").catch(() => undefined)]);
     clearInterval(poll);
   } finally {
@@ -196,6 +200,13 @@ async function main(): Promise<void> {
   };
   writeFileSync(join(options.outDir, "review-session.json"), JSON.stringify(report, null, 2), "utf-8");
   logLine(`[review] session terminée : ${summarizeReviewSession({ flags })}`);
+  if (flags.length === 0) {
+    logLine("[review] AUCUN FLAG — aide :");
+    logLine("  1. démarrez une partie (Start) ou chargez une sauvegarde ;");
+    logLine("  2. cliquez une fois dans la page si les touches ne répondent pas (focus fenêtre) ;");
+    logLine("  3. F2 → catégorie (1-7) → note → Entrée ; F3 exporte, F4 copie ;");
+    logLine("  4. fermez le navigateur pour terminer la session et récupérer les flags.");
+  }
   logLine(`[review] ${join(options.outDir, "review-session.json")} (+ ${shots} capture(s) dans ${shotsDir})`);
   logLine(`[review] journal : ${options.consoleLog ? consoleLogPath : "désactivé"}`);
 }
