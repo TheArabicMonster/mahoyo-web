@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   REVIEW_CATEGORIES,
   buildSessionExport,
+  captureGeometry,
   categoryFromKey,
   categoryLabel,
   isReviewMode,
@@ -121,5 +122,22 @@ describe("mode revue (#400) — sérialisation et export", () => {
     expect(summary).toContain("1-0.ks");
     expect(summary).toContain("2-0.ks");
     expect(summarizeFlags([])).toBe("Aucun flag posé.");
+  });
+});
+
+describe("mode revue (#415) — géométrie de capture", () => {
+  it("produit une image 16:9 plein cadre (960×540, échelle 0.9375)", () => {
+    const geometry = captureGeometry();
+    expect(geometry).toEqual({ width: 960, height: 540, scale: 0.9375 });
+    expect(geometry.width / geometry.height).toBeCloseTo(16 / 9, 5);
+  });
+
+  it("reste 16:9 pour d'autres largeurs maximales", () => {
+    for (const maxWidth of [320, 480, 1024]) {
+      const geometry = captureGeometry(maxWidth);
+      expect(geometry.width / geometry.height).toBeCloseTo(16 / 9, 2);
+      expect(geometry.width).toBeLessThanOrEqual(1024);
+    }
+    expect(captureGeometry(480)).toEqual({ width: 480, height: 270, scale: 480 / 1024 });
   });
 });
