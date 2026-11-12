@@ -133,7 +133,8 @@ gh pr checks <numéro> --watch              # suivre les checks
 | e2e **par shard** | **≤ 6 min** | ~3-4 min (shard = moitié de la suite, installation du navigateur incluse) |
 | Gate `main` (push) | **≤ 4 min** | `changes` + `build-and-test` (~2 min) + pwa si chemins PWA |
 
-Les budgets de bundle et la mesure locale restent dans [`PERFORMANCE.md`](PERFORMANCE.md) et
+Les budgets de bundle, les budgets `scene-ready` (#375, mesure locale via `npm run perf:scenes`,
+non bloquants) et la mesure locale restent dans [`PERFORMANCE.md`](PERFORMANCE.md) et
 [`tools/perf-budgets.ts`](../tools/perf-budgets.ts) ; les budgets ci-dessus sont des durées de
 workflow, suivies dans l'onglet Actions.
 
