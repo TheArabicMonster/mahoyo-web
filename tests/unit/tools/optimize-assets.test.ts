@@ -14,10 +14,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   assertOptimizableAssetsDir,
   categoryOf,
+  checkAssetsInstallation,
   formatOptimizeReport,
   isGitIgnoredOrOutsideRepo,
   optimizeAssets,
+  pixelsIdentical,
+  repairManifest,
 } from "../../../tools/optimize-assets.js";
+import { encodePngToWebp } from "../../../tools/webp.js";
 import { detectWebpTooling } from "../../../tools/webp.js";
 import { pngSolid } from "../../e2e/placeholders.js";
 import type { AssetManifest } from "../../../src/core/asset-manifest.js";
@@ -201,5 +205,146 @@ describe("optimizeAssets — WebP", () => {
     const before = readFileSync(join(dir, "asset-manifest.json"), "utf-8");
     await optimizeAssets({ assetsDir: dir, noWebp: true, noAudio: true });
     expect(readFileSync(join(dir, "asset-manifest.json"), "utf-8")).toBe(before);
+  });
+});
+
+describe("réparation de manifeste (#398)", () => {
+  /** Manifeste minimal cohérent avec un audio `.wav` et une image `.png` attendus. */
+  function makeBrokenManifest(dir: string, expected: { audio?: string; image?: string }): void {
+    for (const sub of ["bg", "se"]) mkdirSync(join(dir, sub), { recursive: true });
+    const manifest: AssetManifest = {
+      version: 1,
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      images: expected.image ? { img: { url: expected.image, source: "bg/a.tlg", kind: "bg" } } : {},
+      audio: expected.audio ? { snd: { url: expected.audio, source: "se/se01.wav", kind: "se" } } : {},
+      scenarios: {},
+    };
+    writeFileSync(join(dir, "asset-manifest.json"), JSON.stringify(manifest, null, 2));
+  }
+
+  it("répare une URL audio .wav → .ogg quand seul le .ogg existe", () => {
+    const dir = makeTempDir("mahoyo-repair-audio-");
+    makeBrokenManifest(dir, { audio: "se/se01.wav" });
+    writeFileSync(join(dir, "se", "se01.ogg"), "dummy-ogg");
+    expect(checkAssetsInstallation(dir, readManifest(dir)).ok).toBe(false);
+    const { report, remaining } = repairManifest(dir, readManifest(dir));
+    expect(report.audio).toBe(1);
+    expect(report.images).toBe(0);
+    expect(remaining.ok).toBe(true);
+  });
+
+  it("répare une URL image .png → .webp quand seul le .webp existe", () => {
+    const dir = makeTempDir("mahoyo-repair-image-");
+    makeBrokenManifest(dir, { image: "bg/a.png" });
+    writeFileSync(join(dir, "bg", "a.webp"), "dummy-webp");
+    const { report, remaining } = repairManifest(dir, readManifest(dir));
+    expect(report.images).toBe(1);
+    expect(report.details[0]).toContain("bg/a.png → bg/a.webp");
+    expect(remaining.ok).toBe(true);
+  });
+
+  it("repair mixte : audio + image, manifeste réécrit avec assetsVersion + dimensions régénérées", async () => {
+    const dir = makeTempDir("mahoyo-repair-mixte-");
+    makeBrokenManifest(dir, { audio: "se/se01.wav", image: "bg/a.png" });
+    writeFileSync(join(dir, "se", "se01.ogg"), "dummy-ogg");
+    writeFileSync(join(dir, "bg", "a.webp"), "dummy-webp");
+    const report = await optimizeAssets({ assetsDir: dir, repair: true });
+    expect(report.repairs?.audio).toBe(1);
+    expect(report.repairs?.images).toBe(1);
+    expect(report.check?.ok).toBe(true);
+    const manifest = readManifest(dir);
+    expect(manifest.audio["snd"].url).toBe("se/se01.ogg");
+    expect(manifest.images["img"].url).toBe("bg/a.webp");
+    expect(manifest.assetsVersion).toBeDefined();
+    expect(existsSync(join(dir, "image-dimensions.json"))).toBe(true);
+    expect(formatOptimizeReport(report)).toContain("Réparation");
+  });
+
+  it("--check échoue (code 1) si des entrées manquent, code 0 avec --force (CLI)", () => {
+    const dir = makeTempDir("mahoyo-check-missing-");
+    makeBrokenManifest(dir, { audio: "se/se01.wav", image: "bg/a.png" });
+    const tsxBin = join(process.cwd(), "node_modules", ".bin", "tsx");
+    const run = (extra: string[]) =>
+      spawnSync(tsxBin, ["tools/optimize-assets.ts", "--assets", dir, "--check", ...extra], {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+      });
+    const withoutForce = run([]);
+    expect(withoutForce.status).toBe(1);
+    expect(`${withoutForce.stdout}${withoutForce.stderr}`).toContain("MANQUANT");
+    const withForce = run(["--force"]);
+    expect(withForce.status).toBe(0);
+  });
+});
+
+describe("crash-safety (#398)", () => {
+  const skipIfNoWebpConversion = HAS_WEBP ? it : it.skip;
+
+  skipIfNoWebpConversion("run interrompu : les originaux restent (suppression différée) et le manifeste reste cohérent", async () => {
+    const dir = makeAssetsFixture({ wav: false });
+    let conversions = 0;
+    await expect(
+      optimizeAssets({
+        assetsDir: dir,
+        noAudio: true,
+        onConverted: () => {
+          conversions += 1;
+          if (conversions === 1) throw new Error("interruption simulée");
+        },
+      }),
+    ).rejects.toThrow("interruption simulée");
+
+    // Aucun original supprimé (suppression reportée après l'écriture finale).
+    for (const png of ["bg/a.png", "image/cg01.png", "image/ev01.png", "rule/r.png"]) {
+      expect(existsSync(join(dir, png))).toBe(true);
+    }
+    // Manifeste encore lisible et cohérent : chaque URL a bien son fichier.
+    const manifest = readManifest(dir);
+    for (const entry of Object.values(manifest.images)) {
+      expect(existsSync(join(dir, entry.url))).toBe(true);
+    }
+  });
+
+  it("écrit le manifeste tous les N conversions (flush atomique) sans casser la cohérence", async () => {
+    const dir = makeAssetsFixture({ pngs: false, wav: false });
+    writeFileSync(join(dir, "bg", "a.webp"), "dummy");
+    const report = await optimizeAssets({ assetsDir: dir, noAudio: true, noWebp: true, manifestFlushEvery: 1 });
+    expect(report.check ?? { ok: true }).toBeTruthy();
+    // no-op : rien n'a été converti, le manifeste n'a pas été réécrit inutilement.
+    expect(readManifest(dir).assetsVersion).toBeUndefined();
+  });
+});
+
+describe("garde de fidélité pixel (#398)", () => {
+  const skipIfNoWebpConversion = HAS_WEBP ? it : it.skip;
+
+  skipIfNoWebpConversion("refuse la conversion sans perte si les pixels diffèrent (PNG conservé)", async () => {
+    const dir = makeAssetsFixture({ wav: false });
+    const report = await optimizeAssets({
+      assetsDir: dir,
+      noAudio: true,
+      pixelIdentityCheck: async () => false,
+    });
+    // Conversion refusée : webp supprimé, PNG conservé, URL inchangée, avertissement clair.
+    expect(existsSync(join(dir, "bg", "a.webp"))).toBe(false);
+    expect(existsSync(join(dir, "bg", "a.png"))).toBe(true);
+    const manifest = readManifest(dir);
+    expect(manifest.images["bgA"].url).toBe("bg/a.png");
+    expect(report.webp.files).toBe(0);
+    expect(report.warnings.some((warning) => warning.includes("identité pixel"))).toBe(true);
+    expect(formatOptimizeReport(report)).toContain("identité pixel");
+  });
+
+  skipIfNoWebpConversion("pixelsIdentical : vrai pour un WebP sans perte, faux pour une autre image", async () => {
+    const dir = makeTempDir("mahoyo-fidelity-");
+    const png = join(dir, "a.png");
+    const same = join(dir, "same.webp");
+    const other = join(dir, "other.webp");
+    writeFileSync(png, pngSolid(64, 64, 200, 30, 30));
+    writeFileSync(join(dir, "b.png"), pngSolid(64, 64, 30, 200, 30));
+    await encodePngToWebp(png, same, { lossless: true, quality: 90 }, tooling.encoder!);
+    await encodePngToWebp(join(dir, "b.png"), other, { lossless: true, quality: 90 }, tooling.encoder!);
+    expect(await pixelsIdentical(png, same)).toBe(true);
+    expect(await pixelsIdentical(png, other)).toBe(false);
   });
 });

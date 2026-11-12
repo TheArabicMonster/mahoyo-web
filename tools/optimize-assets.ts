@@ -15,9 +15,11 @@
  *   et un dossier d'un dépôt git non ignoré (jamais commiter d'assets) sans `--force` ;
  * - ne commit rien : les assets convertis restent ignorés par git (`public/assets/`).
  */
-import { execFileSync } from "child_process";
+import { execFile, execFileSync } from "child_process";
+import { createHash } from "crypto";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "fs";
 import { basename, join, resolve } from "path";
+import { promisify } from "util";
 import { fileURLToPath } from "url";
 import type { AssetManifest } from "../src/core/asset-manifest.js";
 import { convertAudioFile, DURATION_TOLERANCE_MS } from "./convert-audio.js";
@@ -45,6 +47,29 @@ export type OptimizeAssetsOptions = {
   force?: boolean;
   /** Simule sans écrire. */
   dryRun?: boolean;
+  /** Répare un manifeste incohérent (URL `.wav`/`.png` absente → extension alternative présente). */
+  repair?: boolean;
+  /** Vérifie la cohérence manifeste/fichiers et échoue (code 1) si des entrées manquent. */
+  check?: boolean;
+  /** Réécrit le manifeste tous les N conversions (crash-safety, défaut 25 ; 0 = à la fin seulement). */
+  manifestFlushEvery?: number;
+  /** Hook de progression (tests/flush) appelé après chaque conversion réussie. */
+  onConverted?: () => void;
+  /** Vérification d'identité pixel pour le mode sans perte (injectable pour les tests). */
+  pixelIdentityCheck?: (pngPath: string, webpPath: string) => Promise<boolean | null>;
+};
+
+/** Réparations appliquées par `--repair`. */
+export type RepairReport = {
+  images: number;
+  audio: number;
+  details: string[];
+};
+
+/** Résultat du mode `--check`. */
+export type CheckReport = {
+  ok: boolean;
+  missing: string[];
 };
 
 export type CategoryStats = {
@@ -65,6 +90,10 @@ export type OptimizeReport = {
   totalAfterBytes: number;
   assetsVersion?: string;
   warnings: string[];
+  /** Renseigné en mode `--repair`. */
+  repairs?: RepairReport;
+  /** Renseigné en mode `--check`. */
+  check?: CheckReport;
 };
 
 /** Taille d'un fichier en octets (0 si absent). */
@@ -141,15 +170,104 @@ export function assertOptimizableAssetsDir(assetsDir: string, force: boolean): v
   }
 }
 
+const execFileAsync = promisify(execFile);
+
+/** Extensions alternatives acceptées par `--repair` (URL absente → extension présente). */
+export const ALTERNATIVE_EXTENSIONS: Record<string, readonly string[]> = {
+  ".png": [".webp", ".jpg", ".jpeg"],
+  ".webp": [".png"],
+  ".wav": [".ogg"],
+  ".ogg": [".wav"],
+  ".jpg": [".webp", ".png"],
+  ".jpeg": [".webp", ".png"],
+};
+
+/** Hash des pixels décodés d'une image (RGBA brut via ffmpeg) — comparaison d'identité. */
+export async function decodedPixelHash(filePath: string): Promise<string> {
+  const { stdout } = await execFileAsync(
+    "ffmpeg",
+    ["-v", "error", "-i", filePath, "-f", "rawvideo", "-pix_fmt", "rgba", "-"],
+    { encoding: "buffer", maxBuffer: 512 * 1024 * 1024 },
+  );
+  return createHash("sha256").update(stdout).digest("hex");
+}
+
 /**
- * Convertit les WAV des SE en Opus/Ogg en place, met à jour le manifeste et supprime les
- * originaux (sauf `keepOriginals`).
+ * Identité pixel entre un PNG source et le WebP produit (#398) : même décodage RGBA via ffmpeg,
+ * hash comparés. `null` si la vérification est impossible (ffmpeg absent, fichier illisible).
+ */
+export async function pixelsIdentical(pngPath: string, webpPath: string): Promise<boolean | null> {
+  try {
+    const [pngHash, webpHash] = await Promise.all([decodedPixelHash(pngPath), decodedPixelHash(webpPath)]);
+    return pngHash === webpHash;
+  } catch {
+    return null;
+  }
+}
+
+/** Chemin disque d'une URL de manifeste (`bg/x.webp`, `/assets/bg/x.webp`…). */
+function fileForUrl(assetsDir: string, url: string): string {
+  return join(assetsDir, url.replace(/^\/?assets\//, ""));
+}
+
+/**
+ * Vérifie la cohérence d'une installation : chaque entrée du manifeste doit avoir son fichier.
+ * Utilisé par `--check` et après `--repair`.
+ */
+export function checkAssetsInstallation(assetsDir: string, manifest: AssetManifest): CheckReport {
+  const missing: string[] = [];
+  for (const entry of Object.values(manifest.images ?? {})) {
+    if (!existsSync(fileForUrl(assetsDir, entry.url))) missing.push(`image:${entry.url}`);
+  }
+  for (const entry of Object.values(manifest.audio ?? {})) {
+    if (!existsSync(fileForUrl(assetsDir, entry.url))) missing.push(`audio:${entry.url}`);
+  }
+  for (const entry of Object.values(manifest.scenarios ?? {})) {
+    if (!existsSync(fileForUrl(assetsDir, entry.url))) missing.push(`scenario:${entry.url}`);
+  }
+  return { ok: missing.length === 0, missing };
+}
+
+/**
+ * Répare un manifeste incohérent (#398) : pour chaque URL absente, bascule vers l'extension
+ * alternative existante (`.png` → `.webp`, `.wav` → `.ogg`, etc.). Les entrées restantes
+ * manquantes sont signalées (le mode `--check` échoue alors).
+ */
+export function repairManifest(assetsDir: string, manifest: AssetManifest): { report: RepairReport; remaining: CheckReport } {
+  const report: RepairReport = { images: 0, audio: 0, details: [] };
+  const repairEntries = (
+    entries: Record<string, { url: string }>,
+    kind: "image" | "audio",
+  ): void => {
+    for (const entry of Object.values(entries)) {
+      if (existsSync(fileForUrl(assetsDir, entry.url))) continue;
+      const extension = entry.url.slice(entry.url.lastIndexOf(".")).toLowerCase();
+      const base = entry.url.slice(0, entry.url.lastIndexOf("."));
+      const alternative = (ALTERNATIVE_EXTENSIONS[extension] ?? []).find((candidate) =>
+        existsSync(fileForUrl(assetsDir, `${base}${candidate}`)),
+      );
+      if (!alternative) continue;
+      const before = entry.url;
+      entry.url = `${base}${alternative}`;
+      report.details.push(`${kind}:${before} → ${entry.url}`);
+      if (kind === "image") report.images += 1;
+      else report.audio += 1;
+    }
+  };
+  repairEntries(manifest.images ?? {}, "image");
+  repairEntries(manifest.audio ?? {}, "audio");
+  return { report, remaining: checkAssetsInstallation(assetsDir, manifest) };
+}
+
+/**
+ * Convertit les WAV des SE en Opus/Ogg en place. Les originaux ne sont **pas** supprimés ici :
+ * la suppression est différée après l'écriture finale du manifeste (crash-safety, #398).
  */
 export async function optimizeAudioFiles(
   assetsDir: string,
   manifest: AssetManifest,
-  options: Pick<OptimizeAssetsOptions, "keepOriginals" | "dryRun">,
-): Promise<{ stats: OptimizeReport["audio"]; warnings: string[] }> {
+  options: Pick<OptimizeAssetsOptions, "keepOriginals" | "dryRun" | "onConverted">,
+): Promise<{ stats: OptimizeReport["audio"]; warnings: string[]; pendingDeletes: string[] }> {
   const stats: OptimizeReport["audio"] = {
     files: 0,
     beforeBytes: 0,
@@ -158,8 +276,9 @@ export async function optimizeAudioFiles(
     kept: 0,
   };
   const warnings: string[] = [];
+  const pendingDeletes: string[] = [];
   const seDir = join(assetsDir, "se");
-  if (!existsSync(seDir)) return { stats, warnings };
+  if (!existsSync(seDir)) return { stats, warnings, pendingDeletes };
 
   const wavFiles = readdirSync(seDir).filter((file) => file.toLowerCase().endsWith(".wav"));
   for (const file of wavFiles) {
@@ -175,6 +294,7 @@ export async function optimizeAudioFiles(
       stats.files += 1;
       continue;
     }
+    let convertedOk = false;
     try {
       const result = await convertAudioFile(input, output, { format: "opus" });
       if (result.durationDeltaMs !== null && Math.abs(result.durationDeltaMs) > DURATION_TOLERANCE_MS) {
@@ -183,23 +303,34 @@ export async function optimizeAudioFiles(
       }
       if (manifestEntry) manifestEntry.url = outputUrl;
       if (options.keepOriginals) stats.kept += 1;
-      else rmSync(input, { force: true });
+      else pendingDeletes.push(input);
       stats.files += 1;
       stats.beforeBytes += before;
       stats.afterBytes += sizeOf(output);
+      convertedOk = true;
     } catch (err) {
       warnings.push(`${relativeUrl} : conversion échouée (${err instanceof Error ? err.message : String(err)})`);
     }
+    // Hook hors du try/catch : une interruption (test/SIGINT) doit se propager, pas être avalée.
+    if (convertedOk) options.onConverted?.();
   }
-  return { stats, warnings };
+  return { stats, warnings, pendingDeletes };
 }
 
 /** Convertit les PNG convertibles en WebP (sans perte, ou avec perte bg/ev) en place. */
 export async function optimizeImages(
   assetsDir: string,
   manifest: AssetManifest,
-  options: Pick<OptimizeAssetsOptions, "keepOriginals" | "noWebp" | "webpLossy" | "dryRun">,
-): Promise<{ stats: OptimizeReport["webp"]; warnings: string[]; categories: Record<string, CategoryStats> }> {
+  options: Pick<
+    OptimizeAssetsOptions,
+    "keepOriginals" | "noWebp" | "webpLossy" | "dryRun" | "onConverted" | "pixelIdentityCheck"
+  >,
+): Promise<{
+  stats: OptimizeReport["webp"];
+  warnings: string[];
+  categories: Record<string, CategoryStats>;
+  pendingDeletes: string[];
+}> {
   const stats: OptimizeReport["webp"] = {
     files: 0,
     beforeBytes: 0,
@@ -211,12 +342,13 @@ export async function optimizeImages(
   };
   const warnings: string[] = [];
   const categories: Record<string, CategoryStats> = {};
-  if (options.noWebp) return { stats, warnings, categories };
+  const pendingDeletes: string[] = [];
+  if (options.noWebp) return { stats, warnings, categories, pendingDeletes };
   const { encoder } = await detectWebpTooling();
   stats.encoder = encoder;
   if (!encoder) {
     warnings.push("Aucun encodeur WebP (sharp/cwebp) : PNG laissés tels quels.");
-    return { stats, warnings, categories };
+    return { stats, warnings, categories, pendingDeletes };
   }
 
   for (const [key, entry] of Object.entries(manifest.images ?? {})) {
@@ -239,6 +371,7 @@ export async function optimizeImages(
       else stats.lossless += 1;
       continue;
     }
+    let convertedOk = false;
     try {
       await encodePngToWebp(input, output, { lossless: !lossy, quality: 90 }, encoder);
       let usedLossy = lossy;
@@ -250,22 +383,37 @@ export async function optimizeImages(
           usedLossy = false;
         }
       }
+      // Garde de fidélité (#398) : en mode SANS PERTE, l'image doit être pixel-identique à la
+      // source AVANT toute suppression du PNG. Sinon on refuse, on garde le PNG et on avertit.
+      if (!usedLossy) {
+        const identityCheck = options.pixelIdentityCheck ?? pixelsIdentical;
+        const identical = await identityCheck(input, output);
+        if (identical !== true) {
+          warnings.push(
+            `${url} : identité pixel NON vérifiée (${identical === false ? "différence détectée" : "vérification impossible"}) → PNG conservé, conversion annulée`,
+          );
+          rmSync(output, { force: true });
+          continue;
+        }
+      }
       entry.url = outputUrl;
       if (usedLossy) stats.lossy += 1;
       else stats.lossless += 1;
       if (options.keepOriginals) stats.kept += 1;
-      else rmSync(input, { force: true });
+      else pendingDeletes.push(input);
       stats.files += 1;
       stats.beforeBytes += before;
       const after = sizeOf(output);
       stats.afterBytes += after;
       addSize(categories, category, before, after);
+      convertedOk = true;
     } catch (err) {
       warnings.push(`${url} : conversion WebP échouée (${err instanceof Error ? err.message : String(err)})`);
       rmSync(output, { force: true });
     }
+    if (convertedOk) options.onConverted?.();
   }
-  return { stats, warnings, categories };
+  return { stats, warnings, categories, pendingDeletes };
 }
 
 /**
@@ -285,11 +433,78 @@ export async function optimizeAssets(options: OptimizeAssetsOptions): Promise<Op
 
   const categories: Record<string, CategoryStats> = {};
   const warnings: string[] = [];
+  const emptyStats = { files: 0, beforeBytes: 0, afterBytes: 0 };
+
+  // Mode `--repair` (#398) : répare les URLs incohérentes puis vérifie la cohérence.
+  if (options.repair) {
+    const { report, remaining } = repairManifest(assetsDir, manifest);
+    let assetsVersion = manifest.assetsVersion;
+    if (!options.dryRun && report.images + report.audio > 0) {
+      writeManifest(manifest, manifestPath);
+      assetsVersion = manifest.assetsVersion;
+      generateImageDimensions(assetsDir);
+    }
+    return {
+      assetsDir,
+      dryRun: options.dryRun ?? false,
+      audio: { ...emptyStats, warnings: 0, kept: 0 },
+      webp: { ...emptyStats, lossless: 0, lossy: 0, kept: 0, encoder: null },
+      json: {
+        manifestBeforeBytes,
+        manifestAfterBytes: sizeOf(manifestPath),
+        dimensionsBeforeBytes,
+        dimensionsAfterBytes: sizeOf(dimensionsPath),
+      },
+      categories: {},
+      totalBeforeBytes: manifestBeforeBytes + dimensionsBeforeBytes,
+      totalAfterBytes: sizeOf(manifestPath) + sizeOf(dimensionsPath),
+      ...(assetsVersion ? { assetsVersion } : {}),
+      warnings,
+      repairs: report,
+      check: remaining,
+    };
+  }
+
+  // Mode `--check` (#398) : vérifie que chaque entrée du manifeste a son fichier.
+  if (options.check) {
+    const check = checkAssetsInstallation(assetsDir, manifest);
+    return {
+      assetsDir,
+      dryRun: options.dryRun ?? false,
+      audio: { ...emptyStats, warnings: 0, kept: 0 },
+      webp: { ...emptyStats, lossless: 0, lossy: 0, kept: 0, encoder: null },
+      json: {
+        manifestBeforeBytes,
+        manifestAfterBytes: manifestBeforeBytes,
+        dimensionsBeforeBytes,
+        dimensionsAfterBytes: dimensionsBeforeBytes,
+      },
+      categories: {},
+      totalBeforeBytes: manifestBeforeBytes + dimensionsBeforeBytes,
+      totalAfterBytes: manifestBeforeBytes + dimensionsBeforeBytes,
+      warnings,
+      check,
+    };
+  }
+
+  // Crash-safety (#398) : le manifeste est réécrit (atomiquement) tous les
+  // `manifestFlushEvery` conversions — les originaux ne sont supprimés qu'APRÈS
+  // l'écriture finale, donc un run interrompu laisse toujours une installation cohérente.
+  const flushEvery = options.manifestFlushEvery ?? 25;
+  let convertedCount = 0;
+  const onConverted = (): void => {
+    convertedCount += 1;
+    if (!options.dryRun && flushEvery > 0 && convertedCount % flushEvery === 0) {
+      writeManifest(manifest, manifestPath);
+    }
+    options.onConverted?.();
+  };
+  const conversionOptions = { ...options, onConverted };
 
   const audioResult = options.noAudio
-    ? { stats: { files: 0, beforeBytes: 0, afterBytes: 0, warnings: 0, kept: 0 }, warnings: [] }
-    : await optimizeAudioFiles(assetsDir, manifest, options);
-  const imageResult = await optimizeImages(assetsDir, manifest, options);
+    ? { stats: { ...emptyStats, warnings: 0, kept: 0 }, warnings: [], pendingDeletes: [] }
+    : await optimizeAudioFiles(assetsDir, manifest, conversionOptions);
+  const imageResult = await optimizeImages(assetsDir, manifest, conversionOptions);
   warnings.push(...audioResult.warnings, ...imageResult.warnings);
   for (const [category, stats] of Object.entries(imageResult.categories)) {
     const current = categories[category] ?? { files: 0, beforeBytes: 0, afterBytes: 0 };
@@ -318,6 +533,12 @@ export async function optimizeAssets(options: OptimizeAssetsOptions): Promise<Op
     manifestAfterBytes = sizeOf(manifestPath);
     generateImageDimensions(assetsDir);
     dimensionsAfterBytes = sizeOf(dimensionsPath);
+  }
+  // Suppression DIFFÉRÉE des originaux : seulement une fois le manifeste final écrit.
+  if (!options.dryRun && !options.keepOriginals) {
+    for (const path of [...audioResult.pendingDeletes, ...imageResult.pendingDeletes]) {
+      rmSync(path, { force: true });
+    }
   }
 
   const statsFor = (category: string): CategoryStats => categories[category] ?? { files: 0, beforeBytes: 0, afterBytes: 0 };
@@ -375,6 +596,22 @@ export function formatOptimizeReport(report: OptimizeReport): string {
   lines.push(
     `${prefix}Total : ${formatMo(report.totalBeforeBytes)} → ${formatMo(report.totalAfterBytes)} (−${gainPercent(report.totalBeforeBytes, report.totalAfterBytes)} %)`,
   );
+  if (report.repairs) {
+    lines.push(
+      `${prefix}Réparation : ${report.repairs.images} image(s), ${report.repairs.audio} audio réparées.`,
+    );
+    for (const detail of report.repairs.details.slice(0, 10)) lines.push(`${prefix}  ${detail}`);
+    if (report.repairs.details.length > 10) lines.push(`${prefix}  … ${report.repairs.details.length - 10} autre(s)`);
+  }
+  if (report.check) {
+    if (report.check.ok) {
+      lines.push(`${prefix}Cohérence : 0 entrée manquante.`);
+    } else {
+      lines.push(`${prefix}Cohérence : ${report.check.missing.length} entrée(s) manquante(s) :`);
+      for (const missing of report.check.missing.slice(0, 20)) lines.push(`${prefix}  MANQUANT ${missing}`);
+      if (report.check.missing.length > 20) lines.push(`${prefix}  … ${report.check.missing.length - 20} autre(s)`);
+    }
+  }
   if (report.assetsVersion) lines.push(`${prefix}manifeste réécrit (assetsVersion ${report.assetsVersion}) ; image-dimensions.json régénéré.`);
   for (const warning of report.warnings) lines.push(`${prefix}⚠ ${warning}`);
   return lines.join("\n");
@@ -391,12 +628,15 @@ Optimise les assets DÉJÀ INSTALLÉS, en place (aucune ré-extraction) :
 
 Options :
   --assets <dir>       Dossier des assets installés (défaut : public/assets)
+  --repair             Répare un manifeste incohérent (URL absente → extension alternative présente)
+  --check              Vérifie la cohérence manifeste/fichiers ; code 1 si des entrées manquent
   --keep-originals     Conserve les .wav/.png d'origine
   --no-audio           Désactive la conversion audio
   --no-webp            Désactive la conversion WebP
   --webp-lossy         WebP avec perte q90 + SSIM ≥ 0,99 pour bg/ et image/ev* (règle : jamais rule/)
   --force              Autorise un dossier sans manifeste ou non ignoré par git
   --dry-run            Simule sans écrire
+  --manifest-flush-every <n>  Réécrit le manifeste tous les n conversions (défaut 25, 0 = à la fin)
   --help, -h           Affiche cette aide`;
 }
 
@@ -408,6 +648,9 @@ function parseArgs(argv: string[]): OptimizeAssetsOptions {
   let webpLossy = false;
   let force = false;
   let dryRun = false;
+  let repair = false;
+  let check = false;
+  let manifestFlushEvery: number | undefined;
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
       case "--assets":
@@ -431,6 +674,18 @@ function parseArgs(argv: string[]): OptimizeAssetsOptions {
       case "--dry-run":
         dryRun = true;
         break;
+      case "--repair":
+        repair = true;
+        break;
+      case "--check":
+        check = true;
+        break;
+      case "--manifest-flush-every":
+        manifestFlushEvery = Number.parseInt(argv[++i] ?? "", 10);
+        if (!Number.isFinite(manifestFlushEvery) || manifestFlushEvery < 0) {
+          throw new Error("--manifest-flush-every: entier ≥ 0 attendu");
+        }
+        break;
       case "--help":
       case "-h":
         console.log(printOptimizeUsage());
@@ -440,16 +695,49 @@ function parseArgs(argv: string[]): OptimizeAssetsOptions {
         throw new Error(`Option inconnue : ${argv[i]}`);
     }
   }
-  return { assetsDir, keepOriginals, noAudio, noWebp, webpLossy, force, dryRun };
+  return {
+    assetsDir,
+    keepOriginals,
+    noAudio,
+    noWebp,
+    webpLossy,
+    force,
+    dryRun,
+    ...(repair ? { repair: true } : {}),
+    ...(check ? { check: true } : {}),
+    ...(manifestFlushEvery !== undefined ? { manifestFlushEvery } : {}),
+  };
 }
 
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
   if (process.argv.includes("--help") || process.argv.includes("-h")) return;
+
+  // Crash-safety (#398) : les originaux ne sont supprimés qu'après l'écriture finale du
+  // manifeste ; une interruption laisse donc une installation cohérente.
+  process.once("SIGINT", () => {
+    console.error(
+      "[assets:optimize] Interruption : manifeste non finalisé, originaux conservés (installation cohérente). Relancer pour reprendre.",
+    );
+    process.exit(130);
+  });
+
   optimizeAssets(options)
     .then((report) => {
       console.log(formatOptimizeReport(report));
-      if (report.warnings.length > 0 && report.audio.files === 0 && report.webp.files === 0) {
+      if (report.check && !report.check.ok) {
+        if (options.force) {
+          console.warn("[assets:optimize] --force : entrées manquantes tolérées (code 0).");
+        } else {
+          console.error("[assets:optimize] Installation incohérente : relancer avec --repair ou régénérer les assets.");
+          process.exitCode = 1;
+        }
+      }
+      if (report.repairs && report.check && !report.check.ok) {
+        console.error("[assets:optimize] Réparation incomplète : des entrées manquent encore.");
+        process.exitCode = 1;
+      }
+      if (report.warnings.length > 0 && report.audio.files === 0 && report.webp.files === 0 && !report.check && !report.repairs) {
         console.warn(`[assets:optimize] ${report.warnings.length} avertissement(s) : rien n'a été optimisé.`);
       }
     })
