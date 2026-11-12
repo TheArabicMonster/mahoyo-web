@@ -190,6 +190,12 @@ export type StageRendererDeps = {
 /** Factory pour instancier un StageRenderer. */
 export type StageRendererFactory = (deps: StageRendererDeps) => StageRenderer;
 
+/** État lu par le mode revue (#400) : calques de timeline et transition en cours. */
+export type StageReviewState = {
+  transition: { method: string; timeMs: number; elapsedMs: number } | null;
+  timelineLayers: { id: string; storage: string; x: number; y: number; opacity: number; z: number }[];
+};
+
 export interface StageRenderer {
   /** Attache le rendu au DOM. Appelé une seule fois. */
   mount(root: HTMLElement): void;
@@ -212,6 +218,9 @@ export interface StageRenderer {
     target: string | undefined,
     signal: AbortSignal,
   ): Promise<void>;
+
+  /** Lecture seule pour le mode revue (#400) : calques de timeline et transition en cours. */
+  reviewState?(): StageReviewState;
 
   /** Clic utilisateur : termine le typewriter et amène les effets à leur état final. */
   hurry(): void;

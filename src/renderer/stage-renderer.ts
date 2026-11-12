@@ -21,9 +21,20 @@ import {
   type RunOptions,
   type StageRenderer,
   type StageRendererDeps,
+  type StageReviewState,
 } from "./types.js";
 import { compileAction, resolveKeyframes, type DiscreteChange } from "./action-compiler.js";
 import { sampleTrack } from "./easing-track.js";
+
+/** Nom de storage lisible depuis une URL d'asset (diagnostic mode revue #400). */
+function decodeStorageName(url: string): string {
+  const file = url.split("/").pop() ?? "";
+  try {
+    return decodeURIComponent(file).replace(/\.(png|jpe?g|webp)$/i, "");
+  } catch {
+    return file;
+  }
+}
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { partbgClipRect, resolvePlacement, spriteAnchorSize, type ImageSize, type Rect } from "./sprite-placement.js";
 import { storageKey } from "@/core/storage-key.js";
@@ -206,6 +217,8 @@ export class DomStageRenderer implements StageRenderer {
   private transitionPromise: Promise<void> | null = null;
   private transitionResolve: (() => void) | null = null;
   private transitionTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Diagnostic mode revue (#400) : durée et instant de la transition en cours. */
+  private transitionInfo: { method: string; timeMs: number; startedAt: number } | null = null;
 
   /**
    * Panoramique du fond en cours (`bgMove` d'une timeline) : positions de départ et
@@ -916,7 +929,30 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   /** Termine immédiatement la transition courante (si any) sans attendre. */
+  /** Lecture seule pour le mode revue (#400). */
+  reviewState(): StageReviewState {
+    const timelineLayers: StageReviewState["timelineLayers"] = [];
+    for (const element of this.timelineLayerEls.values()) {
+      const image = element.querySelector("img");
+      timelineLayers.push({
+        id: element.dataset.layerId ?? "",
+        storage: image ? decodeStorageName(image.getAttribute("src") ?? "") : "",
+        x: Number.parseFloat(element.style.left) || 0,
+        y: Number.parseFloat(element.style.top) || 0,
+        opacity: Number.parseFloat(element.style.opacity),
+        z: Number.parseInt(element.style.zIndex, 10) || 0,
+      });
+    }
+    return {
+      transition: this.transitionInfo && this.transitionPromise
+        ? { method: this.transitionInfo.method, timeMs: this.transitionInfo.timeMs, elapsedMs: Date.now() - this.transitionInfo.startedAt }
+        : null,
+      timelineLayers,
+    };
+  }
+
   private finishTransition(): void {
+    this.transitionInfo = null;
     if (this.transitionTimer) {
       clearTimeout(this.transitionTimer);
       this.transitionTimer = null;
@@ -2020,6 +2056,7 @@ export class DomStageRenderer implements StageRenderer {
   private startTransition(from: SceneState, to: SceneState, time: Ms, opts: RunOptions): void {
     // Termine une transition précédente éventuelle (clear timer + overlays).
     this.finishTransition();
+    this.transitionInfo = { method: "crossfade", timeMs: Math.max(0, time), startedAt: Date.now() };
     // Position de l'ancien fond à cet instant (il peut être en plein panoramique).
     const fromPos = this.bgPositionNow(from);
     // #373 : l'ancien fond normal vit dans un calque <img> ; on capture son URL/placement avant
