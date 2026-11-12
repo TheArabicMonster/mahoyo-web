@@ -354,6 +354,19 @@ Les contrats `src/kag/events.ts`, `src/renderer/types.ts` et `src/ui/types.ts` s
   coût de décodage réaliste sans aucun asset du jeu ; rapport `reports/perf-scenes.json` (ignoré).
 - Baseline et limites : [`PERF_BENCH.md`](PERF_BENCH.md).
 
+### Mode revue (#400)
+
+- `?review=1` (alias `?mark=1`) : `src/ui/review-mode.ts` monte un HUD discret et les raccourcis
+  **F2** (flag : catégorie 1–7 + note, pause courte), **F3** (export JSON), **F4** (copie JSON) ;
+  métadonnées en `localStorage`, captures JPEG (html2canvas, IndexedDB), aucun envoi réseau.
+  Sans le paramètre : **no-op total** (aucun nœud/écouteur).
+- Lecture seule exposée par `Player.reviewSnapshot()` (script + position d'instruction, texte,
+  scène, audio, réglages) et `StageRenderer.reviewState()` (calques de timeline, transition).
+- `tools/review.ts` (`npm run review`) : build optionnel + `vite preview` + navigateur **visible**
+  (chromium/firefox), journal console/pageerror/HTTP ≥ 400, récupération des flags à la fermeture
+  vers `reports/review-session.json` + `reports/review-shots/`.
+- Doc : [`REVIEW.md`](REVIEW.md).
+
 ## Principes
 
 - Le moteur KAG est indépendant du DOM (testable en headless).
