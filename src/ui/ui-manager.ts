@@ -32,6 +32,7 @@ import { focusSystemMenu, renderSystemMenu, syncSystemMenu, syncSystemMenuVeil }
 import { createTitleScreen, TITLE_ASSET_KEYS } from "@/ui/title-screen.js";
 import { createTouchControls, type TouchControls } from "@/ui/touch-controls.js";
 import { createUiAssets, UI_ASSET_KEYS, type UiAssets, type UiImageSource } from "@/ui/ui-assets.js";
+import { getPerfProbe } from "@/core/perf-probe.js";
 import "./ui-manager.css";
 
 const DEFAULT_STATUS: PlayerStatus = {
@@ -248,6 +249,19 @@ export class DomUIManager implements UIManager {
   show(view: UIView): void {
     this.view = view;
     if (!this.root) return;
+    // #385 : marqueurs de démarrage — titre peint après deux rAF, fin du chargement à l'affichage
+    // du titre. La sonde est no-op sans ?perf=1.
+    if (view.screen === "title") {
+      const perf = getPerfProbe();
+      if (perf.enabled && typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            perf.markBoot("title-painted");
+            perf.markBoot("load-end");
+          }),
+        );
+      }
+    }
     // Un changement d'écran referme les galeries CG et sonore (elles recouvrent le titre, pas la vue).
     this.closeCgMode(false);
     this.closeSoundMode(false);

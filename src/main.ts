@@ -3,6 +3,8 @@ import "./ui/tokens.css";
 import { createAssetResolver } from "@/core/asset-resolver.js";
 import type { AssetResolver } from "@/core/asset-resolver.js";
 import { applyViewportLayout, computeViewportLayout } from "@/core/display.js";
+import { getPerfProbe } from "@/core/perf-probe.js";
+import { mountPerfReportButton } from "@/ui/perf-report-button.js";
 import { createDomStageRenderer } from "./renderer/stage-renderer.js";
 import { createSoundEngine } from "./renderer/audio-manager.js";
 import { DomUIManager } from "./ui/ui-manager.js";
@@ -84,10 +86,14 @@ async function loadChain(resolver: AssetResolver): Promise<StoryChain | null> {
 }
 
 async function main() {
+  // Sonde perf (#385) : no-op sans ?perf=1 ; marque le tout début du démarrage.
+  const perf = getPerfProbe();
+  perf.markBoot("load-start");
   // Focus visible des focus programmatiques (#257) : suivi de modalité clavier/pointeur installé
   // avant tout écran, pour les navigateurs (Firefox) qui ne propagent pas `:focus-visible`.
   installFocusRingFallback();
   const [manifest, imageDimensions] = await Promise.all([loadManifest(), loadImageDimensions()]);
+  perf.markBoot("manifest-fetched");
   const settingsStore = createLocalSettingsStore();
   // Suivi des CG vues (HUD-15, #208) : progression persistée, enveloppe le résolveur pour marquer
   // chaque image réellement demandée par le rendu.
@@ -104,6 +110,8 @@ async function main() {
   const viewport = document.createElement("div");
   viewport.id = "viewport";
   app.appendChild(viewport);
+  // #385 : bouton « Copier le rapport perf », monté seulement si ?perf=1 (aucun nœud sinon).
+  mountPerfReportButton(perf);
 
   // Disposition initiale ; le player la recalcule selon les réglages (#177, #210).
   applyViewportLayout(
