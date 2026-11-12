@@ -136,6 +136,18 @@ describe("DomStageRenderer", () => {
     expect(indicator.style.visibility).toBe("hidden");
   });
 
+  it("un seul élément DOM par id de sprite après réconciliation (#408)", async () => {
+    const scene = (x: number): RenderEvent => ({
+      kind: "scene",
+      scene: { bg: null, sprites: [{ id: "rideau", storage: "rideau", x, y: 288, z: 1, opacity: 1 }], effect: null },
+      transition: { method: "none" },
+    });
+    await renderer.apply([scene(100)], { instant: true, signal: new AbortController().signal });
+    await renderer.apply([scene(300)], { instant: true, signal: new AbortController().signal });
+    expect(root.querySelectorAll('[data-sprite-id="rideau"]')).toHaveLength(1);
+    expect(root.querySelectorAll("img.mh-stage-sprite")).toHaveLength(1);
+  });
+
   it("n'affiche rien pour un calque sans image puis l'affiche si une image arrive (#110)", async () => {
     const applySprite = (storage: string) =>
       renderer.apply(
