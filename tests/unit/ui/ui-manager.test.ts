@@ -154,6 +154,84 @@ describe("DomUIManager", () => {
       document.dispatchEvent(new KeyboardEvent("keyup", { key: "Control" }));
       expect(cmd.setMode).toHaveBeenLastCalledWith("normal");
     });
+    it("Maj maintenue engage l'avance rapide puis la relâche (#382)", () => {
+      cmd.hurryText.mockReturnValue(false);
+      key("Shift");
+      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
+      ui.setStatus(status({ mode: "skip" }));
+      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift" }));
+      expect(cmd.setMode).toHaveBeenLastCalledWith("normal");
+    });
+
+    it("portée « lus » : pas de skip si la page n'est pas lue ; skip si lue/tout (#382)", () => {
+      cmd.hurryText.mockReturnValue(false);
+      ui.setStatus(status({ fastForwardScope: "read", pageRead: false }));
+      key("Shift");
+      expect(cmd.setMode).not.toHaveBeenCalled();
+      key("Shift", { repeat: true });
+      expect(cmd.setMode).not.toHaveBeenCalled();
+
+      ui.setStatus(status({ fastForwardScope: "read", pageRead: true }));
+      key("Shift");
+      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
+      ui.setStatus(status({ mode: "skip", fastForwardScope: "read", pageRead: true }));
+      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift" }));
+
+      ui.setStatus(status({ fastForwardScope: "all", pageRead: false }));
+      key("Shift");
+      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
+    });
+
+    it("Ctrl reste rétrocompatible quand il n'est pas la touche configurée (#382)", () => {
+      cmd.hurryText.mockReturnValue(false);
+      key("Control", { ctrlKey: true });
+      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
+      ui.setStatus(status({ mode: "skip" }));
+      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Control" }));
+      expect(cmd.setMode).toHaveBeenLastCalledWith("normal");
+    });
+
+    it("Entrée configurée : appui simple = avance, maintien = skip (#382)", () => {
+      cmd.hurryText.mockReturnValue(false);
+      ui.setStatus(status({ fastForwardKey: "enter" }));
+      key("Enter");
+      expect(cmd.advance).toHaveBeenCalledTimes(1);
+      expect(cmd.setMode).not.toHaveBeenCalled();
+
+      key("Enter", { repeat: true });
+      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
+      ui.setStatus(status({ mode: "skip", fastForwardKey: "enter" }));
+      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter" }));
+      expect(cmd.setMode).toHaveBeenLastCalledWith("normal");
+    });
+
+    it("pas d'avance rapide hors jeu, pendant un choix ou une saisie (#382)", () => {
+      cmd.hurryText.mockReturnValue(false);
+      ui.show({ screen: "pause" });
+      key("Shift");
+      expect(cmd.setMode).not.toHaveBeenCalled();
+
+      ui.show({ screen: "game" });
+      ui.showChoices(["A"]);
+      key("Shift");
+      expect(cmd.setMode).not.toHaveBeenCalled();
+
+      ui.show({ screen: "game" });
+      document.body.insertAdjacentHTML("beforeend", '<input id="ff">');
+      document.getElementById("ff")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift", bubbles: true }));
+      expect(cmd.setMode).not.toHaveBeenCalled();
+    });
+
+    it("un changement de touche pendant le maintien relâche l'ancien skip (#382)", () => {
+      cmd.hurryText.mockReturnValue(false);
+      key("Shift");
+      expect(cmd.setMode).toHaveBeenLastCalledWith("skip");
+      ui.setStatus(status({ mode: "skip", fastForwardKey: "ctrl" }));
+      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift" }));
+      // L'ancienne touche n'est plus reconnue : le mode reste celui du player (skip).
+      expect(cmd.setMode).toHaveBeenCalledTimes(1);
+    });
+
     it("Échap ouvre pause en jeu, ferme sinon", () => {
       key("Escape");
       expect(cmd.openScreen).toHaveBeenCalledWith("pause");
