@@ -23,6 +23,7 @@ import {
   foldKey,
   listAudio,
   listImages,
+  lookupAudio as lookupAud,
   lookupImage as lookupImg,
   lookupScenario as lookupScn,
 } from "./asset-manifest.js";
@@ -69,6 +70,10 @@ export type AssetResolver = {
    * (galerie sonore, HUD-16 / #209). Sans manifeste : liste vide.
    */
   audioEntries(): readonly ResolvedAudioEntry[];
+  /** L'audio `storage` est-il présent dans le manifeste ? (faux = ne pas précharger, #394) */
+  hasAudio(storage: string): boolean;
+  /** Taille connue de l'audio dans le manifeste, en octets (`null` si inconnue). */
+  audioSize(storage: string): number | null;
   /** Résout un fichier BGM. */
   bgm(storage: string): string;
   /** Résout un fichier SE. */
@@ -201,6 +206,15 @@ export function createAssetResolver(options: Partial<AssetResolverOptions> = {})
     },
     rule(storage: string): string {
       return resolveImage(storage, "rule", "png");
+    },
+    hasAudio(storage: string): boolean {
+      if (!manifest) return true; // sans manifeste, on ne peut pas savoir : convention
+      return lookupAud(manifest, storageKey(storage)) !== null;
+    },
+    audioSize(storage: string): number | null {
+      if (!manifest) return null;
+      const entry = manifest.audio[storageKey(storage)];
+      return typeof entry?.size === "number" ? entry.size : null;
     },
     bgm(storage: string): string {
       return resolveAudio(storage, "bgm", "ogg");

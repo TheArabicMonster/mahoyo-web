@@ -2,7 +2,7 @@ import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";
 import { Runtime, type RuntimeSaveData } from "@/kag/runtime.js";
 import { applyStageSnapshot, reduceAudio } from "@/kag/stage-state.js";
-import { WebAudioPlayer } from "@/renderer/audio-manager.js";
+import { audioPreloadPolicy, WebAudioPlayer } from "@/renderer/audio-manager.js";
 import { createAssetResolver, type AssetResolver } from "@/core/asset-resolver.js";
 import { applyViewportLayout, computeViewportLayout } from "@/core/display.js";
 import { defaultShortcuts } from "@/core/shortcuts.js";
@@ -297,7 +297,8 @@ export class Player implements PlayerCommands {
   /** Préchargement lookahead (#367) : contrôleur d'annulation et références bornées. */
   private lookaheadController: AbortController | null = null;
   private lookaheadRunning = false;
-  private lookaheadAudio = new Map<string, HTMLAudioElement>();
+  /** Médias préchargés partagés avec l'AudioManager (#394) : un élément par URL. */
+  private readonly audioPreloads = new Map<string, HTMLAudioElement>();
   private scriptFile = "";
   private scriptCache = new Map<string, ParsedScript>();
   private stageSnap: StageSnapshot = { scene: { bg: null, sprites: [], effect: null }, textbox: { visible: true, frame: true }, text: [], staffroll: null };
@@ -387,7 +388,7 @@ export class Player implements PlayerCommands {
     this.progress = new ProgressTracker(this.deps.settingsStore);
 
     this.stage = this.deps.createStageRenderer({ resolver });
-    this.audio = this.deps.createAudioPlayer({ resolver });
+    this.audio = this.deps.createAudioPlayer({ resolver, audioPreloads: this.audioPreloads });
     this.ui = this.deps.createUIManager();
     this.stage.mount(this.deps.root);
     this.ui.init(this.deps.root, this.bindCommands());
@@ -1539,15 +1540,17 @@ export class Player implements PlayerCommands {
 
   private preloadAudio(audio: readonly { kind: "bgm" | "se"; storage: string }[]): void {
     for (const entry of audio) {
+      // #394 : ne jamais précharger un asset absent du manifeste (voix Steam → 404 en rafale).
+      if (!this.deps.resolver.hasAudio(entry.storage)) continue;
       const url = entry.kind === "bgm" ? this.deps.resolver.bgm(entry.storage) : this.deps.resolver.se(entry.storage);
-      if (this.lookaheadAudio.has(url)) continue;
+      if (this.audioPreloads.has(url)) continue;
       try {
         const el = new Audio(url);
-        el.preload = "auto";
-        this.lookaheadAudio.set(url, el);
-        if (this.lookaheadAudio.size > Player.LOOKAHEAD_MAX_AUDIO) {
-          const oldest = this.lookaheadAudio.keys().next().value;
-          if (oldest !== undefined) this.lookaheadAudio.delete(oldest);
+        el.preload = audioPreloadPolicy(entry.kind, this.deps.resolver.audioSize(entry.storage), entry.storage);
+        this.audioPreloads.set(url, el);
+        if (this.audioPreloads.size > Player.LOOKAHEAD_MAX_AUDIO) {
+          const oldest = this.audioPreloads.keys().next().value;
+          if (oldest !== undefined) this.audioPreloads.delete(oldest);
         }
       } catch {
         // Audio indisponible : le préchargement audio est opportuniste.
