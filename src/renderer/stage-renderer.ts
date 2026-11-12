@@ -136,8 +136,11 @@ export class DomStageRenderer implements StageRenderer {
   private spritesEl: HTMLElement | null = null;
   /** Calque(s) overlay pour le crossfade de fond (transition non-bloquante). */
   private bgOverlays: HTMLElement[] = [];
-  /** Image du fond quand il est zoomé ou tourné (sinon `null` : le fond est un `background-image`). */
+  /** Image du fond quand il est zoomé ou tourné (sinon `null` : les calques <img> double tampon). */
   private bgImgEl: HTMLImageElement | null = null;
+  /** Double tampon du fond (#373) : deux <img>, l'une affichée, l'autre préparée. */
+  private bgLayers: [HTMLImageElement | null, HTMLImageElement | null] = [null, null];
+  private bgActiveLayer = 0;
   private effectsEl: HTMLElement | null = null;
   private textboxEl: HTMLElement | null = null;
   private textEl: HTMLElement | null = null;
@@ -477,6 +480,17 @@ export class DomStageRenderer implements StageRenderer {
     this.bgEl = document.createElement("div");
     this.bgEl.className = "mh-stage-bg";
     this.bgEl.id = "stage-bg";
+    for (let i = 0; i < 2; i++) {
+      const layer = document.createElement("img");
+      layer.className = "mh-stage-bg-layer";
+      layer.alt = "";
+      layer.draggable = false;
+      layer.dataset.back = i === 0 ? "true" : "false";
+      layer.dataset.front = i === 1 ? "true" : "false";
+      layer.style.display = "none";
+      this.bgEl.appendChild(layer);
+      this.bgLayers[i as 0 | 1] = layer;
+    }
 
     this.timelineEl = document.createElement("div");
     this.timelineEl.className = "mh-stage-tl";
@@ -932,7 +946,22 @@ export class DomStageRenderer implements StageRenderer {
         background-position: 50% 50%;
         background-repeat: no-repeat;
         z-index: 0;
+        overflow: hidden;
       }
+      /* Double tampon (#373) : deux <img> de fond, placement identique au background-image
+         (object-fit:none + object-position), fondu d'opacité composité. */
+      .mh-stage-bg-layer {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: none;
+        object-position: 50% 50%;
+        pointer-events: none;
+      }
+      .mh-stage-bg-layer[data-back="true"] { z-index: 0; }
+      .mh-stage-bg-layer[data-front="true"] { z-index: 1; }
+      .mh-stage-bg-img { position: absolute; max-width: none; }
       .mh-stage-tl {
         position: absolute;
         inset: 0;
@@ -1524,6 +1553,68 @@ export class DomStageRenderer implements StageRenderer {
     el.style.clipPath = `inset(${top}px ${right}px ${bottom}px ${left}px)`;
   }
 
+  /** Calque de fond actuellement affiché (double tampon #373), null avant montage. */
+  private activeBgLayer(): HTMLImageElement | null {
+    return this.bgLayers[this.bgActiveLayer];
+  }
+
+  /**
+   * Résout une fois le fond courant affiché **et décodé** (deux rAF), pour les tests/e2e (#373).
+   * Résout immédiatement sans fond ou après au plus 1 s si le chargement échoue.
+   */
+  async whenReady(): Promise<void> {
+    const img = this.bgImgEl ?? this.activeBgLayer();
+    const paint = (): Promise<void> =>
+      new Promise((resolve) => {
+        if (typeof requestAnimationFrame !== "function") return resolve();
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+    if (!img || !img.src) return paint();
+    if (img.complete && img.naturalWidth > 0) return paint();
+    await new Promise<void>((resolve) => {
+      const done = (): void => {
+        img.removeEventListener("load", done);
+        img.removeEventListener("error", done);
+        resolve();
+      };
+      img.addEventListener("load", done, { once: true });
+      img.addEventListener("error", done, { once: true });
+      setTimeout(done, 1000);
+    });
+    return paint();
+  }
+
+  private hideBgLayers(): void {
+    for (const layer of this.bgLayers) {
+      if (!layer) continue;
+      layer.style.display = "none";
+      layer.style.opacity = "0";
+    }
+  }
+
+  /** Prépare le calque inactif avec le nouveau fond et le rend actif (#373). */
+  private renderBgLayer(url: string, left: number | undefined, top: number | undefined, instant: boolean): void {
+    const next = this.bgActiveLayer === 0 ? 1 : 0;
+    const layer = this.bgLayers[next];
+    if (!layer) return;
+    if (layer.getAttribute("src") !== url) layer.src = url;
+    layer.style.objectPosition = `${left !== undefined ? `${left}px` : "50%"} ${top !== undefined ? `${top}px` : "calc(100% + 48px)"}`;
+    layer.style.removeProperty("transform");
+    layer.style.removeProperty("transform-origin");
+    layer.style.removeProperty("transition");
+    layer.style.removeProperty("will-change");
+    layer.style.display = "block";
+    layer.style.opacity = "1";
+    if (instant) {
+      const previous = this.bgLayers[this.bgActiveLayer];
+      if (previous) {
+        previous.style.display = "none";
+        previous.style.opacity = "0";
+      }
+    }
+    this.bgActiveLayer = next;
+  }
+
   private renderScene(instant: boolean): void {
     if (!this.bgEl || !this.spritesEl) return;
     const bg = this.currentScene.bg;
@@ -1540,7 +1631,9 @@ export class DomStageRenderer implements StageRenderer {
     if (sceneBgUrl && bg) this.cacheDecodedForDisplay(sceneBgUrl, bg);
     this.bgImgEl?.remove();
     this.bgImgEl = null;
-    this.bgEl.style.backgroundImage = bg && !transformedBg ? cssUrl(this.resolver.background(bg)) : "none";
+    // #373 : le fond n'est plus peint par `background-image` mais par deux calques <img>
+    // (double tampon). `background-image` reste vide ; la couleur de repli est sur le conteneur.
+    this.bgEl.style.backgroundImage = "none";
     this.bgEl.style.backgroundColor = bg ? "" : "#000";
     // Apparence du fond (`@bg type=/effect=/blur/brightness/contrast`).
     applyAppearance(
@@ -1570,9 +1663,18 @@ export class DomStageRenderer implements StageRenderer {
       // Défauts du moteur : X centré, Y = bas de l'image à 48 px sous le bas de l'écran
       // (`@bg` de `data/override/tagex.tjs`, issue #249). Chaque axe est indépendant : `left=`
       // seul n'impose pas le centrage vertical.
-      this.bgEl.style.backgroundPosition =
-        `${left !== undefined ? `${left}px` : "50%"} ${top !== undefined ? `${top}px` : "calc(100% + 48px)"}`;
-      if (transformedBg) this.renderTransformedBg(bg, left, top, bgZoomX, bgZoomY, bgRotate);
+      // Position par défaut identique au moteur (#249) : X centré, bas à 48 px sous l'écran.
+      const position = `${left !== undefined ? `${left}px` : "50%"} ${top !== undefined ? `${top}px` : "calc(100% + 48px)"}`;
+      this.bgEl.style.backgroundPosition = position;
+      if (transformedBg) {
+        // Fonds zoomés/tournés : <img> dédié (placement/transform historique de renderTransformedBg).
+        this.hideBgLayers();
+        this.renderTransformedBg(bg, left, top, bgZoomX, bgZoomY, bgRotate);
+      } else if (sceneBgUrl) {
+        this.renderBgLayer(sceneBgUrl, left, top, instant);
+      }
+    } else {
+      this.hideBgLayers();
     }
 
     const sprites = [...this.currentScene.sprites].sort((a, b) => a.z - b.z);
@@ -1760,10 +1862,13 @@ export class DomStageRenderer implements StageRenderer {
     }
 
     if (!instant) {
-      this.bgEl.style.opacity = "0";
-      void this.bgEl.offsetHeight;
-      this.bgEl.style.transition = "opacity 0.3s ease";
-      this.bgEl.style.opacity = "1";
+      const visual: HTMLElement | null = transformedBg ? this.bgEl : this.activeBgLayer();
+      if (visual) {
+        visual.style.opacity = "0";
+        void visual.offsetHeight;
+        visual.style.transition = "opacity 0.3s ease";
+        visual.style.opacity = "1";
+      }
     }
 
     this.renderEffect();
@@ -1832,22 +1937,27 @@ export class DomStageRenderer implements StageRenderer {
         ...(lastValues?.zoomy === undefined ? {} : { bgZoomY: lastValues.zoomy }),
         ...(lastValues?.rotate === undefined ? {} : { bgRotate: lastValues.rotate }),
       };
-      const el = this.bgEl;
+      // #373 : un fond normal est un calque <img> (object-position) ; un fond transformé garde
+      // l'ancien chemin `background-position` sur le conteneur.
+      const normalLayer = this.bgImgEl === null;
+      const el = normalLayer ? this.activeBgLayer() : this.bgEl;
       if (!el || instant || track.duration <= 0 || typeof el.animate !== "function") {
         this.renderScene(true);
         return;
       }
-      const frames = sampleTrack(track, 24).map((sample) => ({
-        offset: sample.offset,
-        backgroundPosition:
+      const frames = sampleTrack(track, 24).map((sample) => {
+        const position =
           sample.values.left === undefined && sample.values.top === undefined
             ? undefined
-            : `${sample.values.left ?? 0}px ${sample.values.top ?? 0}px`,
-        transform:
+            : `${sample.values.left ?? 0}px ${sample.values.top ?? 0}px`;
+        const transform =
           sample.values.zoomx === undefined && sample.values.zoomy === undefined && sample.values.rotate === undefined
             ? undefined
-            : `scale(${(sample.values.zoomx ?? 100) / 100}, ${(sample.values.zoomy ?? 100) / 100}) rotate(${sample.values.rotate ?? 0}deg)`,
-      }));
+            : `scale(${(sample.values.zoomx ?? 100) / 100}, ${(sample.values.zoomy ?? 100) / 100}) rotate(${sample.values.rotate ?? 0}deg)`;
+        return normalLayer
+          ? { offset: sample.offset, objectPosition: position, transform }
+          : { offset: sample.offset, backgroundPosition: position, transform };
+      });
       const animation = el.animate(frames, { duration: track.duration, easing: "linear", fill: "forwards" });
       this.trackAnimations.set(key, animation);
       animation.onfinish = () => {
@@ -1889,8 +1999,21 @@ export class DomStageRenderer implements StageRenderer {
     this.finishTransition();
     // Position de l'ancien fond à cet instant (il peut être en plein panoramique).
     const fromPos = this.bgPositionNow(from);
+    // #373 : l'ancien fond normal vit dans un calque <img> ; on capture son URL/placement avant
+    // que renderScene ne bascule sur le nouveau calque. Le fond transformé, lui, passe par `bgImgEl`.
+    const oldLayer = this.activeBgLayer();
+    const fromLayer = {
+      src: oldLayer?.getAttribute("src") ?? null,
+      position: oldLayer?.style.objectPosition ?? null,
+      transform: oldLayer?.style.transform ?? "",
+      origin: oldLayer?.style.transformOrigin ?? "",
+    };
     // Zoom et rotation de l'ancien fond (renderScene les remet à zéro pour le nouveau).
-    const fromTransform = this.bgEl ? { transform: this.bgEl.style.transform, origin: this.bgEl.style.transformOrigin } : null;
+    const fromTransform = this.bgImgEl
+      ? { transform: this.bgImgEl.style.transform, origin: this.bgImgEl.style.transformOrigin }
+      : oldLayer
+        ? { transform: fromLayer.transform, origin: fromLayer.origin }
+        : null;
 
     // Image de l'ancien fond s'il était zoomé ou tourné : elle passe dans l'overlay (sinon `renderScene` la retire).
     const fromImg = this.bgImgEl;
@@ -1937,10 +2060,18 @@ export class DomStageRenderer implements StageRenderer {
       const overlay = document.createElement("div");
       overlay.className = "mh-stage-bg mh-stage-bg-overlay";
       overlay.style.cssText = this.bgEl.style.cssText;
-      overlay.style.backgroundImage = fromImg ? "none" : cssUrl(this.resolver.background(oldBg));
-      if (fromImg) overlay.appendChild(fromImg);
+      if (fromImg) {
+        overlay.style.backgroundImage = "none";
+        overlay.appendChild(fromImg);
+      } else {
+        // Ancien fond normal : sa source et son placement viennent du calque <img> capturé.
+        overlay.style.backgroundImage = fromLayer.src ? `url("${fromLayer.src}")` : cssUrl(this.resolver.background(oldBg));
+        overlay.style.objectPosition = "";
+      }
       overlay.style.transition = "none";
-      overlay.style.backgroundPosition = fromPos ? `${fromPos.left}px ${fromPos.top}px` : "50% 50%";
+      overlay.style.backgroundPosition = fromPos
+        ? `${fromPos.left}px ${fromPos.top}px`
+        : fromLayer.position ?? "50% 50%";
       overlay.style.transform = fromTransform?.transform ?? "";
       overlay.style.transformOrigin = fromTransform?.origin ?? "";
       overlay.style.zIndex = "5";
@@ -2124,8 +2255,18 @@ export class DomStageRenderer implements StageRenderer {
       this.followBackground(left - from.left, top - from.top, time, accel);
     }
     this.bgMotion = null;
-    const el = this.bgEl;
+    // #373 : fond normal = calque <img> (object-position) ; fond transformé = conteneur.
+    // Un fond rendu par calque <img> (cas normal, y compris zoomé par piste) porte ses
+    // transformations ; seul le fond transformé posé par renderTransformedBg (`bgImgEl`) reste
+    // piloté par le conteneur.
+    const normalLayer = this.bgImgEl === null;
+    const el = normalLayer ? this.activeBgLayer() : this.bgEl;
     if (!el || !this.currentScene.bg) return;
+    const setPosition = (value: string): void => {
+      if (normalLayer) el.style.objectPosition = value;
+      else el.style.backgroundPosition = value;
+    };
+    const positionProperty = normalLayer ? "object-position" : "background-position";
     const target = transformed ? this.bgTransformCss(left, top, opts.zoomx ?? 100, opts.zoomy ?? 100, opts.rotate ?? 0) : null;
     // Une transition de zoom/rotation encore en cours repart de la valeur affichée.
     const live = performance.now() < this.bgTransformEnd ? getComputedStyle(el) : null;
@@ -2133,7 +2274,7 @@ export class DomStageRenderer implements StageRenderer {
     el.style.transition = "none";
     this.bgTransformEnd = 0;
     if (time <= 0 || !from) {
-      el.style.backgroundPosition = `${left}px ${top}px`;
+      setPosition(`${left}px ${top}px`);
       if (target) {
         el.style.transform = target.transform;
         el.style.transformOrigin = target.origin;
@@ -2141,7 +2282,7 @@ export class DomStageRenderer implements StageRenderer {
       return;
     }
     // Repart de la position courante (un panoramique précédent peut être en cours).
-    el.style.backgroundPosition = `${from.left}px ${from.top}px`;
+    setPosition(`${from.left}px ${from.top}px`);
     if (target) {
       if (liveTransform) {
         el.style.transform = liveTransform.transform;
@@ -2153,10 +2294,10 @@ export class DomStageRenderer implements StageRenderer {
     }
     void el.offsetHeight;
     const easing = cssEasing(accel);
-    const parts = [`background-position ${time}ms ${easing}`];
+    const parts = [`${positionProperty} ${time}ms ${easing}`];
     if (target) parts.push(`transform ${time}ms ${easing}`, `transform-origin ${time}ms ${easing}`);
     el.style.transition = parts.join(", ");
-    el.style.backgroundPosition = `${left}px ${top}px`;
+    setPosition(`${left}px ${top}px`);
     if (target) {
       el.style.transform = target.transform;
       el.style.transformOrigin = target.origin;

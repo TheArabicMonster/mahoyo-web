@@ -10,6 +10,8 @@ describe("DomStageRenderer — zoom et rotation des fonds et des sprites", () =>
   const sig = () => new AbortController().signal;
   const bgEl = () => root.querySelector("#stage-bg") as HTMLElement;
   const bgImg = () => root.querySelector("#stage-bg > .mh-stage-bg-img") as HTMLImageElement | null;
+  const bgLayer = (): HTMLImageElement | null =>
+    [...root.querySelectorAll<HTMLImageElement>("#stage-bg > .mh-stage-bg-layer")].find((l) => l.style.display !== "none") ?? null;
 
   const show = (scene: Partial<SceneState> & { bg: string | null }, instant = true, transition: TransitionSpec = { method: "none" }) =>
     renderer.apply([{ kind: "scene", scene: { sprites: [], effect: null, ...scene }, transition }], { instant, signal: sig() });
@@ -74,20 +76,23 @@ describe("DomStageRenderer — zoom et rotation des fonds et des sprites", () =>
       expect(bgImg()!.style.transform).toBe("rotate(0deg) scale(-1, 1)");
     });
 
-    it("sans zoom ni rotation : background-image classique, aucun <img>", async () => {
+    it("sans zoom ni rotation : calque <img> (#373), plus de background-image", async () => {
       await show({ bg: "fond", bgLeft: -48, bgTop: -48 });
       expect(bgImg()).toBeNull();
-      expect(bgEl().style.backgroundImage).toContain("fond");
-      expect(bgEl().style.backgroundPosition).toBe("-48px -48px");
+      expect(bgEl().style.backgroundImage).toBe("none");
+      expect(bgLayer()!.src).toContain("fond");
+      expect(bgLayer()!.style.objectPosition).toBe("-48px -48px");
     });
 
-    it("un fond ordinaire après un fond zoomé retire l'<img>", async () => {
+    it("un fond ordinaire après un fond zoomé retire l'<img> transformée", async () => {
       await show({ bg: "un", bgLeft: 0, bgTop: 0, bgZoomX: 200, bgZoomY: 200 });
       expect(bgImg()).not.toBeNull();
       await show({ bg: "deux", bgLeft: -48, bgTop: -48 });
       expect(bgImg()).toBeNull();
-      expect(bgEl().style.backgroundImage).toContain("deux");
-      expect(bgEl().children.length).toBe(0);
+      expect(bgLayer()!.src).toContain("deux");
+      // Le conteneur ne garde que les deux calques <img> du double tampon (#373).
+      expect(bgEl().children.length).toBe(2);
+      expect(bgEl().style.backgroundImage).toBe("none");
     });
 
     it("fond effacé (null) : plus d'<img>, fond noir", async () => {
@@ -108,7 +113,8 @@ describe("DomStageRenderer — zoom et rotation des fonds et des sprites", () =>
       expect(old.style.transform).toBe("rotate(0deg) scale(2, 2)");
       expect(overlay.style.backgroundImage).toBe("none");
       expect(bgImg()).toBeNull();
-      expect(bgEl().style.backgroundImage).toContain("deux");
+      expect(bgLayer()!.src).toContain("deux");
+      expect(bgEl().style.backgroundImage).toBe("none");
       renderer.hurry();
       expect(root.querySelector(".mh-stage-bg-overlay")).toBeNull();
     });

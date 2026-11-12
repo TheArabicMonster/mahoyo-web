@@ -246,6 +246,12 @@ export interface StageRenderer {
   /** Capture de l'écran courant pour les vignettes de sauvegarde. */
   captureThumbnail(maxWidth: number): Promise<Blob | null>;
 
+  /**
+   * Résout quand le fond courant est affiché **et décodé** (deux rAF), pour les tests/e2e (#373).
+   * Résout immédiatement sans fond, ou après au plus 1 s si le chargement échoue.
+   */
+  whenReady?(): Promise<void>;
+
   setSettings(settings: Readonly<DisplaySettings>): void;
 
   /** Écran vide (retour titre, nouvelle partie). */
