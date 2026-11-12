@@ -29,6 +29,8 @@ export type TextSegment =
   | { text: string; ruby?: undefined; rubyGroup?: undefined; style?: TextStyle }
   | { text: string; ruby: string; rubyGroup?: number; style?: TextStyle }
   | { pause: true }
+  /** Retour à la ligne forcé (`[l]`) : `<br>`, sans attente ni indicateur (#407). */
+  | { lineBreak: true }
   /**
    * Image inline dans le flux de texte (`[graph storage=… alt=…]`, KAG3). `storage` est la clé
    * d'asset résolue par l'`AssetResolver` ; `alt` sert de repli accessible et si l'image manque.

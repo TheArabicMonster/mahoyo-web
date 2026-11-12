@@ -137,14 +137,14 @@ describe("mise en page logique (#319)", () => {
 });
 
 describe("extractTextPages", () => {
-  it("regroupe le texte par page ; [l] ne coupe pas la ligne (comportement du renderer)", () => {
+  it("regroupe le texte par page ; [l] insère un retour à la ligne avant l'attente (#407)", () => {
     const pages = extractTextPages("*start|\nBonjour[l]le monde.[p]\nDeuxième page.[p]\n@return\n", "t.ks");
     expect(pages).toHaveLength(2);
     expect(pages[0]!.page).toBe(0);
-    // Port actuel : `[l]` n'insère pas de saut de ligne (le renderer continue le texte), seul un
-    // `lineBreak` du script (saut de source / `[r]`) en ajoute un.
+    // #407 : `[l]` coupe la ligne AVANT d'afficher l'indicateur de clic (fini l'icône au milieu
+    // d'une phrase) ; la sémantique du moteur reste retour à la ligne + attente de clic.
     expect(pages[0]!.text).toContain("Bonjour");
-    expect(pages[0]!.text).not.toContain("\n");
+    expect(pages[0]!.text).toContain("\n");
     expect(pages[0]!.text).toContain("le monde.");
     expect(pages[1]!.text).toContain("Deuxième page.");
     expect(pages[0]!.scriptSizes).toEqual([]);
