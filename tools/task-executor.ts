@@ -18,6 +18,7 @@ import { runCommand } from "./command-template.js";
 import { normalizeScriptText } from "./normalize-ks.js";
 import { decodeKs } from "./ks-encoding.js";
 import { readFileSync } from "fs";
+import { convertAudioFile } from "./convert-audio.js";
 import { convertTlgFile } from "./convert-tlg.js";
 import { encodePngToWebp, encodeTlgToWebp, measureSsim, type WebpEncoderKind } from "./webp.js";
 import { tlgToPng } from "./tlg-decode.js";
@@ -81,6 +82,14 @@ export async function executeTask(task: Task, dryRun: boolean): Promise<TaskResu
         // TLG sans outil externe : décodeur intégré (TLG0.0 / TLG5), écriture PNG.
         if (!task.commandTemplate && task.action === "convert-image" && task.entry.ext === ".tlg") {
           await convertTlgFile(task.entry.source, task.outputPath);
+          break;
+        }
+        // WAV → Opus/Ogg (ou AAC/.m4a) par ffmpeg détecté, sans gabarit utilisateur (#387).
+        if (!task.commandTemplate && task.action === "convert-audio" && task.audio) {
+          await convertAudioFile(task.entry.source, task.outputPath, {
+            ffmpegPath: task.audio.ffmpegPath,
+            format: task.audio.format,
+          });
           break;
         }
         if (!task.commandTemplate) {

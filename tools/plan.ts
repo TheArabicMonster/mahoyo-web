@@ -8,6 +8,8 @@
  * utiliser. Le manifest final est construit à partir des résultats réels,
  * pas des prédictions de webPath.
  */
+import { AUDIO_OUTPUT_EXT } from "./convert-audio.js";
+import type { AudioFormat } from "./convert-audio.js";
 import type { InventoryEntry } from "./inventory.js";
 
 export type TaskAction = "convert-image" | "copy" | "convert-audio" | "transcode-ks";
@@ -25,6 +27,8 @@ export type Task = {
   internal: boolean;
   /** Conversion WebP (#374) : options d'encodage quand `outputExt === ".webp"` et interne. */
   webp?: { lossless: boolean; quality: number; encoder?: "sharp" | "cwebp" };
+  /** Conversion audio interne (#387) : ffmpeg détecté et format de sortie des WAV. */
+  audio?: { ffmpegPath: string; format: AudioFormat };
 };
 
 export type TaskResult = {
@@ -46,6 +50,11 @@ export type PlanContext = {
   /** true pour copier les .wav sans encodeur (au lieu d'échouer). */
   copyWavIfNoEncoder: boolean;
   /**
+   * Conversion audio interne (#387) : ffmpeg détecté par le pipeline. Priorité au gabarit
+   * `audioCommand` explicite s'il est fourni.
+   */
+  audio?: { ffmpegPath: string; format: AudioFormat } | null;
+  /**
    * Encodeur WebP détecté (#374) ; absent/null = repli PNG. `lossyCategories` active la
    * conversion avec perte (qualité ≥ 90, SSIM ≥ 0,99) pour ces catégories seulement.
    */
@@ -64,9 +73,10 @@ export type PlanContext = {
  * - .tlg sans tlgCommand → convert-image (.png) par le décodeur intégré (tlg-decode.ts :
  *   TLG0.0 et TLG5 ; un TLG6 échoue avec un message explicite et reste absent du manifest)
  * - .png/.jpg/.jpeg/.bmp → copy (garde l'extension)
- * - .ogg → copy (.ogg)
- * - .wav + audioCommand → convert-audio (.ogg)
- * - .wav sans audioCommand → copy (.wav) si copyWavIfNoEncoder, sinon échec
+ * - .ogg/.mp3 → copy (.ogg)
+ * - .wav + audioCommand → convert-audio (.ogg, gabarit externalisé)
+ * - .wav + ffmpeg détecté (sans audioCommand) → convert-audio (.ogg Opus, ou .m4a AAC, #387)
+ * - .wav sans audioCommand ni ffmpeg → copy (.wav) si copyWavIfNoEncoder, sinon échec
  * - .ks → transcode-ks (.ks)
  */
 export function planTasks(entries: InventoryEntry[], ctx: PlanContext): Task[] {
@@ -135,6 +145,18 @@ function planEntry(entry: InventoryEntry, ctx: PlanContext): Task | null {
       if (ctx.audioCommand) {
         return makeTask(entry, ctx, "convert-audio", ".ogg", ctx.audioCommand, false);
       }
+      if (ctx.audio) {
+        return makeTask(
+          entry,
+          ctx,
+          "convert-audio",
+          AUDIO_OUTPUT_EXT[ctx.audio.format],
+          undefined,
+          false,
+          undefined,
+          ctx.audio,
+        );
+      }
       if (ctx.copyWavIfNoEncoder) {
         return makeTask(entry, ctx, "copy", ".wav", undefined, true);
       }
@@ -159,10 +181,20 @@ function makeTask(
   commandTemplate: string | undefined,
   internal: boolean,
   webp?: { lossless: boolean; quality: number; encoder?: "sharp" | "cwebp" },
+  audio?: { ffmpegPath: string; format: AudioFormat },
 ): Task {
   const fileName = `${entry.key}${outputExt}`;
   const outputPath = `${ctx.outputDir}/${entry.kind}/${fileName}`;
-  return { entry, action, outputPath, outputExt, commandTemplate, internal, ...(webp ? { webp } : {}) };
+  return {
+    entry,
+    action,
+    outputPath,
+    outputExt,
+    commandTemplate,
+    internal,
+    ...(webp ? { webp } : {}),
+    ...(audio ? { audio } : {}),
+  };
 }
 
 /**

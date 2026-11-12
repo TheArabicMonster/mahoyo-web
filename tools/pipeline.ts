@@ -35,10 +35,11 @@
  *   --no-translation     Ne pas installer la traduction française (par défaut, installée
  *                        après la conversion ; un échec réseau n'est qu'un avertissement)
  */
-import { mkdir } from "fs/promises";
+import { mkdir, stat } from "fs/promises";
 import { generateImageDimensions } from "./image-dimensions.js";
 import { existsSync } from "fs";
-import { spawnSync } from "child_process";
+import { execFile, spawnSync } from "child_process";
+import { promisify } from "util";
 import { join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { buildInventory } from "./inventory.js";
@@ -50,6 +51,7 @@ import {
   verifyReferences,
 } from "./manifest.js";
 import { validateCommandTemplate } from "./command-template.js";
+import { AUDIO_OUTPUT_EXT, type AudioFormat } from "./convert-audio.js";
 import { listFiles } from "./pipeline-utils.js";
 import { extractXp3WithCommand } from "./extract-xp3.js";
 import {
@@ -82,6 +84,23 @@ function parseArgs(argv: string[]) {
   return args;
 }
 
+const execFileAsync = promisify(execFile);
+
+/** `ffmpeg` est-il disponible sur le PATH ? (détection du mode audio par défaut, #387) */
+async function detectFfmpeg(): Promise<boolean> {
+  try {
+    await execFileAsync("ffmpeg", ["-version"], { maxBuffer: 1024 * 1024 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Formate un nombre d'octets en Mo lisibles. */
+function formatMo(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
 export type PipelineOptions = {
   inputDir: string;
   outputDir: string;
@@ -90,6 +109,10 @@ export type PipelineOptions = {
   xp3Command?: string;
   tlgCommand?: string;
   audioCommand?: string;
+  /** Format audio des WAV convertis par ffmpeg sans `--audio-cmd` (#387) : `opus` (défaut) ou `aac`. */
+  audioFormat?: AudioFormat;
+  /** Désactive la conversion audio interne (WAV copiés tels quels si `copyWavIfNoEncoder`). */
+  noAudio?: boolean;
   strict: boolean;
   force: boolean;
   /** Désactive la conversion WebP (repli PNG, #374). */
@@ -243,11 +266,29 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineReport
       console.warn("[pipeline] Aucun encodeur WebP (sharp/cwebp) : repli PNG.");
     }
   }
+  // Audio (#387) : WAV → Opus/Ogg par défaut si ffmpeg est disponible et qu'aucun gabarit
+  // `--audio-cmd` n'est fourni ; repli AAC/.m4a pour Safari via `--audio-format aac`.
+  const audioFormat: AudioFormat = opts.audioFormat ?? "opus";
+  const ffmpegAvailable = !opts.noAudio && !opts.audioCommand && (await detectFfmpeg());
+  if (!opts.audioCommand && !opts.noAudio) {
+    if (ffmpegAvailable) {
+      console.log(
+        audioFormat === "aac"
+          ? "[pipeline] Audio : WAV → AAC .m4a 128 kbps via ffmpeg (repli Safari ; Manifeste = .m4a)"
+          : "[pipeline] Audio : WAV → Opus/Ogg 96 kbps (64 kbps mono) via ffmpeg — BGM OGG non réencodées",
+      );
+    } else {
+      console.warn(
+        "[pipeline] ffmpeg introuvable : les WAV sont copiés tels quels (installer ffmpeg pour −90 % de poids SE).",
+      );
+    }
+  }
   const planCtx: PlanContext = {
     outputDir: resolve(outputDir),
     tlgCommand: opts.tlgCommand,
     audioCommand: opts.audioCommand,
     copyWavIfNoEncoder: true,
+    audio: !opts.audioCommand && ffmpegAvailable ? { ffmpegPath: "ffmpeg", format: audioFormat } : null,
     webp:
       !opts.noWebp && tooling.encoder
         ? {
@@ -319,6 +360,26 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineReport
 
   const summary = summarizeResults(taskResults);
   console.log(`[pipeline] Terminé: ${summary.ok} OK, ${summary.failed} échecs, ${summary.skipped} ignorés`);
+
+  // Rapport de poids audio (#387) : entrée WAV → sortie Opus/AAC (SE convertis par ffmpeg).
+  const audioConversions: { input: number; output: number }[] = [];
+  for (const result of taskResults) {
+    if (result.status !== "ok" || result.task.action !== "convert-audio" || !result.actualOutputPath) continue;
+    try {
+      const [input, output] = await Promise.all([stat(result.task.entry.source), stat(result.actualOutputPath)]);
+      audioConversions.push({ input: input.size, output: output.size });
+    } catch {
+      // Fichier de sortie manquant : déjà signalé dans le résumé des échecs.
+    }
+  }
+  if (audioConversions.length > 0) {
+    const inputBytes = audioConversions.reduce((sum, item) => sum + item.input, 0);
+    const outputBytes = audioConversions.reduce((sum, item) => sum + item.output, 0);
+    const saved = inputBytes > 0 ? Math.round((1 - outputBytes / inputBytes) * 100) : 0;
+    console.log(
+      `[pipeline] Audio : ${formatMo(inputBytes)} → ${formatMo(outputBytes)} (−${saved} %, ${audioConversions.length} fichier(s), ${AUDIO_OUTPUT_EXT[audioFormat]})`,
+    );
+  }
 
   // 5. Construire le manifest depuis les résultats.
   const manifest = buildManifestFromResults(taskResults, resolve(outputDir));
@@ -420,7 +481,9 @@ Options :
   --work <dir>           Dossier de travail (défaut : .pipeline-work/, ignoré par git)
   --xp3-cmd <template>   Gabarit d'extraction des .xp3 ({in} = archive, {out} = dossier)
   --tlg-cmd <template>   Gabarit de conversion .tlg → .webp ({in}/{out}) ; décodeur intégré sinon (.png)
-  --audio-cmd <template> Gabarit de conversion audio ({in}/{out}) ; copie des .ogg sinon
+  --audio-cmd <template> Gabarit de conversion audio ({in}/{out}) ; prioritaire sur la conversion interne
+  --audio-format <opus|aac> Format des WAV sans --audio-cmd (défaut opus ; aac = repli Safari .m4a)
+  --no-audio             Désactive la conversion audio interne (WAV copiés tels quels)
   --no-webp              Désactive la conversion WebP (repli PNG)
   --webp-lossy <cats>    Conversion avec perte pour les catégories listées (bg,ev), qualité ≥90,
                          garde-fou SSIM ≥0,99 (ffmpeg requis) ; désactivé par défaut
@@ -436,8 +499,9 @@ Code de sortie : 0 si tout est produit, 1 si des fichiers n'ont pas été conver
 
 Prérequis externes : un extracteur .xp3 (obligatoire si --input contient des .xp3),
 un convertisseur TLG→WebP (sinon décodeur intégré + WebP sans perte si cwebp/sharp,
-repli .png), ffmpeg pour le garde-fou SSIM, et
-éventuellement ffmpeg pour l'audio. Voir docs/PIPELINE.md.`);
+repli .png), ffmpeg pour le garde-fou SSIM et, s'il est présent, pour la conversion
+audio WAV → Opus/Ogg (ou AAC/.m4a avec --audio-format aac, repli Safari).
+Voir docs/PIPELINE.md.`);
 }
 
 // CLI
@@ -470,6 +534,17 @@ async function main() {
       xp3Command: args["xp3-cmd"] as string | undefined,
       tlgCommand: args["tlg-cmd"] as string | undefined,
       audioCommand: args["audio-cmd"] as string | undefined,
+      audioFormat:
+        args["audio-format"] === undefined
+          ? undefined
+          : (() => {
+              const value = String(args["audio-format"]);
+              if (value !== "opus" && value !== "aac") {
+                throw new Error(`--audio-format: valeur « ${value} » invalide (attendu : opus ou aac).`);
+              }
+              return value;
+            })(),
+      noAudio: args["no-audio"] === true,
       strict,
       force,
       noWebp: args["no-webp"] === true,
