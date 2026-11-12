@@ -152,8 +152,9 @@ src/renderer/ + src/ui/  ── rendu navigateur
 - **`register.ts`** : enregistrement du service worker (production uniquement), gestion de la mise à jour
   (`controllerchange` + `SKIP_WAITING`, rechargement contrôlé une seule fois, garde-fou de session).
 - **`sw-source.ts`** : génération du code source du service worker — pré-cache versionné de la coquille,
-  navigation network-first, cache runtime borné des assets du jeu (`/assets/**`), nettoyage des anciens
-  caches. Le fichier `dist/sw.js` est produit au build par `tools/pwa-sw.ts` (les noms hachés des bundles
+  navigation network-first, cache d'assets **versionné** (`mahoyo-assets-<assetsVersion>`, version
+  écrite par le pipeline dans le manifeste, #372) purgé à l'activation, stale-while-revalidate pour
+  `asset-manifest.json`/`image-dimensions.json`, trim différé et borne 2 000 entrées. Le fichier `dist/sw.js` est produit au build par `tools/pwa-sw.ts` (les noms hachés des bundles
   ne sont connus qu'après `vite build`).
 
 ### `src/core/` — utilitaires

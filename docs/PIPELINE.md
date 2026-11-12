@@ -134,8 +134,11 @@ npm run normalize-ks -- <input.ks>
 
 - **Entrée** : fichiers `.tlg` (images KiriKiri)
 - **Sortie** : même arborescence relative
-  - **sans convertisseur** : `.png`, par le décodeur intégré `tools/tlg-decode.ts` ;
-  - **avec `--tlg-cmd`** (ou l'argument `converterPath`) : `.webp`, par l'outil externe, comme avant. L'outil externe prime toujours sur le décodeur intégré.
+  - **sans convertisseur** : **WebP sans perte par défaut** si un encodeur est détecté
+    (`sharp` en dépendance optionnelle, sinon `cwebp`), par le décodeur intégré
+    `tools/tlg-decode.ts` puis encodage ; repli `.png` si aucun encodeur (#374) ;
+  - **avec `--tlg-cmd`** (ou l'argument `converterPath`) : `.webp`, par l'outil externe, comme
+    avant. L'outil externe prime toujours sur le décodeur intégré.
 - **Décodeur intégré** (écrit pour le projet d'après la spécification publique du format, sans dépendance, PNG via le zlib de Node) :
   - `TLG0.0` (conteneur « sds », `TLG0.0\0sds\x1a` + taille) : l'image interne est décodée, les tags sont ignorés ;
   - `TLG5.0` : bandes de `blockHeight` lignes ; chaque composante (B, G, R, éventuellement A) est compressée en LZSS (fenêtre de 4096 octets, qui se poursuit d'une bande à l'autre) ou stockée brute ; reconstruction par prédicteur vertical puis cumul horizontal, couleurs décorrélées autour du vert ;
@@ -144,9 +147,17 @@ npm run normalize-ks -- <input.ks>
 - **Corpus de référence** : les 32 `TLG0.0` + `TLG5.0` de l'archive (dont 15 jamais convertis, #155) sont décodés ; pour les 17 qui avaient déjà un PNG, le décodeur le reproduit au pixel près.
 - **Réparer une installation existante** (assets déjà générés par l'ancien POC) : `npm run convert-tlg -- <dossier des .tlg restants> <dossier temporaire>`, copier les `.png` manquants dans `assets/image/`, puis ajouter au manifest, pour chacun, `"<nom en minuscules>": { "url": "image/<nom>.png", "source": "fg/<nom>.png", "kind": "image" }`. Sans ajout au manifest, le resolver ne les voit pas.
 - Le manifest généré ne prédit plus d'échec : un `.tlg` sans outil externe devient une tâche interne (`convert-image`, sortie `.png`).
-- **Obtenir du WebP** : le décodeur intégré ne produit que du PNG. Pour du WebP,
-  fournissez un gabarit `--tlg-cmd` qui écrit directement le `.webp`. Un
-  convertisseur TLG natif vers WebP est rare : le plus simple est un petit script
+- **WebP sans perte par défaut** (#374) : les `.tlg` et `.png` des catégories
+  `bg`/`image` sont convertis en WebP si `sharp` ou `cwebp` est disponible ; les rules restent en
+  PNG (peu utilisées à l'exécution). Le manifest porte l'extension réelle (`.webp` ou `.png`).
+  `--no-webp` force l'ancien comportement PNG.
+- **WebP avec perte (optionnel, désactivé par défaut)** : `--webp-lossy bg,ev` (qualité
+  `--webp-quality`, ≥ 90, `sharp_yuv`/4:4:4) réserve la perte aux fonds et images d'événement.
+  Un garde-fou calcule le **SSIM ≥ 0,99** contre le PNG via `ffmpeg` ; sous le seuil, le fichier
+  est ré-encodé sans perte. Sans `ffmpeg`, l'option avec perte est ignorée (message) et la
+  conversion reste sans perte.
+- **Obtenir du WebP avec un outil externe** : `--tlg-cmd` qui écrit directement le `.webp` reste
+  prioritaire. Un convertisseur TLG natif vers WebP est rare : le plus simple est un petit script
   qui décode puis encode, par exemple avec ImageMagick ou `cwebp` :
 
   ```bash

@@ -20,6 +20,8 @@ function sceneEvent(bg: string, time: number): RenderEvent {
 describe("DomStageRenderer — décodage avant transition (#362)", () => {
   let root: HTMLElement;
   let renderer: ReturnType<typeof createDomStageRenderer>;
+  const activeLayer = (): HTMLImageElement | null =>
+    [...root.querySelectorAll<HTMLImageElement>("#stage-bg .mh-stage-bg-layer")].find((l) => l.style.display !== "none") ?? null;
 
   beforeEach(() => {
     ensureDecoded.mockReset();
@@ -32,26 +34,26 @@ describe("DomStageRenderer — décodage avant transition (#362)", () => {
   it("n'ouvre pas la transition avant la fin du décodage, puis l'applique", async () => {
     const signal = new AbortController().signal;
     await renderer.apply([sceneEvent("bg01", 0)], { instant: true, signal });
-    const before = (root.querySelector(".mh-stage-bg") as HTMLElement).style.backgroundImage;
+    const before = activeLayer()?.getAttribute("src");
 
     let resolveDecode!: () => void;
     ensureDecoded.mockImplementation(() => new Promise<void>((resolve) => (resolveDecode = resolve)));
     const transition = renderer.apply([sceneEvent("bg02", 500)], { instant: false, signal });
     await Promise.resolve();
-    // L'ancienne image reste affichée pendant l'attente (aucun écran noir).
-    const bg = root.querySelector(".mh-stage-bg") as HTMLElement;
-    expect(bg.style.backgroundImage).toBe(before);
+    // L'ancienne image reste affichée pendant l'attente (aucun écran noir) : calque inchangé.
+    expect(activeLayer()?.getAttribute("src")).toBe(before);
     expect(ensureDecoded).toHaveBeenCalledWith("/assets/bg/bg02.webp", expect.any(AbortSignal), expect.objectContaining({ timeoutMs: 1000 }));
 
     resolveDecode();
     await transition;
-    expect(bg.style.backgroundImage).toContain("bg02");
+    await renderer.whenReady?.();
+    expect(activeLayer()?.getAttribute("src")).toContain("bg02");
   });
 
   it("en instantané (skip/restauration), n'attend pas le décodage", async () => {
     ensureDecoded.mockImplementation(() => new Promise<void>(() => {}));
     await renderer.apply([sceneEvent("bg03", 500)], { instant: true, signal: new AbortController().signal });
     expect(ensureDecoded).not.toHaveBeenCalled();
-    expect((root.querySelector(".mh-stage-bg") as HTMLElement).style.backgroundImage).toContain("bg03");
+    expect(activeLayer()?.getAttribute("src")).toContain("bg03");
   });
 });

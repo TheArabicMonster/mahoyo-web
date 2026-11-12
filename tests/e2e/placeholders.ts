@@ -261,6 +261,8 @@ function placeholderManifest(): string {
   return JSON.stringify(
     {
       version: 1,
+      // Version fixe des placeholders (#372) : le SW e2e doit obtenir un cache versionné.
+      assetsVersion: "placeholders-v1",
       generatedAt: new Date(0).toISOString(),
       images: {
         black: image("bg/black.png"),

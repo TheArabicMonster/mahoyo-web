@@ -89,6 +89,33 @@ Mesure du 2026-11-09, avec placeholders, build Vite 5.4.21 :
 Le rapport JSON complet (métriques + budgets + statut de chaque contrôle) est écrit dans
 `reports/perf.json` à chaque exécution.
 
+## Budgets `scene-ready` (#375, PERF-09)
+
+Les seuils du plan [`PERF_PLAN_OPUS.md`](PERF_PLAN_OPUS.md) (§1) sont formalisés dans
+[`tools/perf-budgets.ts`](../tools/perf-budgets.ts) (`PERF_SCENE_BUDGETS`) et vérifiés par
+`npm run perf` à partir du rapport du banc `npm run perf:scenes`
+([`PERF_BENCH.md`](PERF_BENCH.md)) :
+
+| Budget | desktop | mobile (CPU ×4, 10 Mbps) |
+|---|---|---|
+| p95 `scene-ready`, premier affichage sans préchargement | **≤ 100 ms** | **≤ 250 ms** |
+| p95 `scene-ready`, image préchargée (lookahead) + cache chaud | **≤ 16 ms** | **≤ 33 ms** |
+| Blocages > 50 ms pendant une transition | **0** | **≤ 1** |
+| INP au clic d'avance | **≤ 100 ms** | **≤ 200 ms** |
+| Cache décodé estimé | **≤ 192 Mo** | **≤ 64 Mo** |
+
+Mesure : `npm run perf:scenes` écrit `reports/perf-scenes.json` (profils desktop/mobile, passes
+froides/chaude) ; `npm run perf` le lit (option `--scenes-report <fichier>`) et affiche les contrôles.
+Le seuil « préchargé + cache chaud » n'est évalué que si la passe chaude contient réellement du
+lookahead ou de la réutilisation d'image ; sinon il est marqué « skippé » (note explicite), jamais en
+échec.
+
+**Non bloquant en CI** : sans assets réels, le banc ne tourne pas ; l'absence de rapport
+`reports/perf-scenes.json` produit un **avertissement explicite** (`… aucune passe perf:scenes
+trouvée`), pas une erreur. Pour un contrôle bloquant local : `npm run perf -- --strict-scenes`
+(échoue si un budget `scene-ready` mesuré est dépassé). Les budgets de bundle restent, eux, vérifiés
+en CI via [`CI.md`](CI.md) (Ship v2) et l'étape non bloquante existante.
+
 ## Banc des scènes (#361)
 
 `npm run perf:scenes` mesure les temps de chargement entre scènes sur `vite preview` (profils

@@ -11,13 +11,16 @@
  * Les fichiers sont d'abord écrits dans un fichier temporaire puis renommés
  * (écriture atomique) pour éviter les fichiers tronqués en cas de crash.
  */
-import { copyFile, mkdir, rename, writeFile } from "fs/promises";
-import { dirname } from "path";
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import { dirname, join } from "path";
 import { runCommand } from "./command-template.js";
 import { normalizeScriptText } from "./normalize-ks.js";
 import { decodeKs } from "./ks-encoding.js";
 import { readFileSync } from "fs";
 import { convertTlgFile } from "./convert-tlg.js";
+import { encodePngToWebp, encodeTlgToWebp, measureSsim, type WebpEncoderKind } from "./webp.js";
+import { tlgToPng } from "./tlg-decode.js";
 import type { Task, TaskResult } from "./plan.js";
 
 /**
@@ -43,6 +46,38 @@ export async function executeTask(task: Task, dryRun: boolean): Promise<TaskResu
 
       case "convert-image":
       case "convert-audio": {
+        // Conversion WebP interne (#374) : TLG décodé en PNG puis encodé, ou PNG→WebP.
+        if (!task.commandTemplate && task.action === "convert-image" && task.webp) {
+          const encoder: WebpEncoderKind = task.webp.encoder ?? "cwebp";
+          const options = { lossless: task.webp.lossless, quality: task.webp.quality };
+          if (options.lossless) {
+            if (task.entry.ext === ".tlg") {
+              await encodeTlgToWebp(task.entry.source, task.outputPath, options, encoder);
+            } else {
+              await encodePngToWebp(task.entry.source, task.outputPath, options, encoder);
+            }
+            break;
+          }
+          // Avec perte : garde-fou SSIM ≥ 0,99 contre le PNG ; sinon re-encodage sans perte.
+          const dir = await mkdtemp(join(tmpdir(), "mahoyo-webp-guard-"));
+          try {
+            const pngPath = join(dir, "source.png");
+            if (task.entry.ext === ".tlg") {
+              await writeFile(pngPath, tlgToPng(await readFile(task.entry.source)));
+            } else {
+              await copyFile(task.entry.source, pngPath);
+            }
+            await encodePngToWebp(pngPath, task.outputPath, options, encoder);
+            const ssim = await measureSsim(pngPath, task.outputPath);
+            if (ssim === null || ssim < 0.99) {
+              console.warn(`[webp] SSIM ${ssim ?? "n/a"} < 0,99 pour ${task.entry.relPath} : repli sans perte`);
+              await encodePngToWebp(pngPath, task.outputPath, { ...options, lossless: true }, encoder);
+            }
+          } finally {
+            await rm(dir, { recursive: true, force: true });
+          }
+          break;
+        }
         // TLG sans outil externe : décodeur intégré (TLG0.0 / TLG5), écriture PNG.
         if (!task.commandTemplate && task.action === "convert-image" && task.entry.ext === ".tlg") {
           await convertTlgFile(task.entry.source, task.outputPath);

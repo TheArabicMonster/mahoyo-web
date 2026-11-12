@@ -136,3 +136,53 @@ describe("summarizeResults", () => {
     expect(summary.byAction["convert-image"].failed).toBe(1);
   });
 });
+
+describe("planTasks — WebP (#374)", () => {
+  const webpCtx: PlanContext = {
+    ...baseCtx,
+    webp: { encoder: "cwebp", lossyCategories: [], quality: 90 },
+  };
+
+  it("convertit les TLG intégrés en WebP sans perte par défaut", () => {
+    const tasks = planTasks([makeEntry("bg/night.tlg", "bg", ".tlg", "night")], webpCtx);
+    expect(tasks[0]).toMatchObject({
+      action: "convert-image",
+      outputExt: ".webp",
+      internal: true,
+      webp: { lossless: true, quality: 90, encoder: "cwebp" },
+    });
+    expect(tasks[0]!.outputPath).toBe("/output/bg/night.webp");
+  });
+
+  it("convertit les PNG en WebP sans perte, règles exclues", () => {
+    const tasks = planTasks(
+      [
+        makeEntry("bg/night.png", "bg", ".png", "night"),
+        makeEntry("fg/aoko.png", "image", ".png", "aoko"),
+        makeEntry("rule/crossfade.png", "rule", ".png", "crossfade"),
+      ],
+      webpCtx,
+    );
+    expect(tasks.map((task) => task.outputExt)).toEqual([".webp", ".webp", ".png"]);
+    expect(tasks[2]!.action).toBe("copy");
+  });
+
+  it("option avec perte réservée aux catégories bg/ev", () => {
+    const tasks = planTasks(
+      [
+        makeEntry("bg/night.tlg", "bg", ".tlg", "night"),
+        makeEntry("fg/ev1301.png", "image", ".png", "ev1301"),
+        makeEntry("fg/aoko.png", "image", ".png", "aoko"),
+      ],
+      { ...webpCtx, webp: { encoder: "cwebp", lossyCategories: ["bg", "ev"], quality: 92 } },
+    );
+    expect(tasks[0]).toMatchObject({ outputExt: ".webp", webp: { lossless: false, quality: 92 } });
+    expect(tasks[1]).toMatchObject({ outputExt: ".webp", webp: { lossless: false } });
+    expect(tasks[2]).toMatchObject({ outputExt: ".webp", webp: { lossless: true } });
+  });
+
+  it("sans encodeur WebP, repli PNG (compatibilité)", () => {
+    const tasks = planTasks([makeEntry("bg/night.tlg", "bg", ".tlg", "night")], { ...baseCtx, webp: null });
+    expect(tasks[0]!.outputExt).toBe(".png");
+  });
+});

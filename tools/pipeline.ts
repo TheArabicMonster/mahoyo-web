@@ -62,6 +62,7 @@ import {
   type RunFailure,
 } from "./pipeline-report.js";
 import { installEngineDataFiles, type EngineDataInstallReport } from "./data-files.js";
+import { detectWebpTooling } from "./webp.js";
 
 function parseArgs(argv: string[]) {
   const args: Record<string, string | boolean> = {};
@@ -91,6 +92,12 @@ export type PipelineOptions = {
   audioCommand?: string;
   strict: boolean;
   force: boolean;
+  /** Désactive la conversion WebP (repli PNG, #374). */
+  noWebp?: boolean;
+  /** Catégories autorisées à la conversion avec perte (`bg`, `ev`) ; vide = sans perte. */
+  webpLossy?: string;
+  /** Qualité WebP avec perte (≥ 90, défaut 90). */
+  webpQuality?: number;
 };
 
 export type PipelineReport = {
@@ -218,12 +225,37 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineReport
     throw new Error(`Aucun fichier asset trouvé dans ${sourceRoot}. Vérifiez --input (racine des fichiers extraits) et --xp3-cmd.`);
   }
 
-  // 3. Planifier.
+  // 3. Planifier. WebP sans perte par défaut (#374) ; avec perte seulement sur option et si le
+  // garde-fou SSIM (ffmpeg) est disponible, catégories bg/ev uniquement.
+  const tooling = await detectWebpTooling();
+  const lossyCategories = (opts.webpLossy ?? "")
+    .split(",")
+    .map((category) => category.trim().toLowerCase())
+    .filter((category) => category === "bg" || category === "ev");
+  const lossy = lossyCategories.length > 0 && tooling.ssim;
+  if (lossyCategories.length > 0 && !tooling.ssim) {
+    console.warn("[pipeline] WebP avec perte demandé sans ffmpeg (SSIM) : conversion sans perte conservée.");
+  }
+  if (!opts.noWebp) {
+    if (tooling.encoder) {
+      console.log(`[pipeline] WebP ${lossy ? "avec perte contrôlée" : "sans perte"} (${tooling.encoder})`);
+    } else {
+      console.warn("[pipeline] Aucun encodeur WebP (sharp/cwebp) : repli PNG.");
+    }
+  }
   const planCtx: PlanContext = {
     outputDir: resolve(outputDir),
     tlgCommand: opts.tlgCommand,
     audioCommand: opts.audioCommand,
     copyWavIfNoEncoder: true,
+    webp:
+      !opts.noWebp && tooling.encoder
+        ? {
+            encoder: tooling.encoder,
+            lossyCategories: lossy ? lossyCategories : [],
+            quality: Math.max(90, opts.webpQuality ?? 90),
+          }
+        : null,
   };
   const tasks = planTasks(entries, planCtx);
 
@@ -389,6 +421,10 @@ Options :
   --xp3-cmd <template>   Gabarit d'extraction des .xp3 ({in} = archive, {out} = dossier)
   --tlg-cmd <template>   Gabarit de conversion .tlg → .webp ({in}/{out}) ; décodeur intégré sinon (.png)
   --audio-cmd <template> Gabarit de conversion audio ({in}/{out}) ; copie des .ogg sinon
+  --no-webp              Désactive la conversion WebP (repli PNG)
+  --webp-lossy <cats>    Conversion avec perte pour les catégories listées (bg,ev), qualité ≥90,
+                         garde-fou SSIM ≥0,99 (ffmpeg requis) ; désactivé par défaut
+  --webp-quality <n>     Qualité avec perte (≥90, défaut 90)
   --dry-run              Simule sans écrire (plan, coûts, archives à extraire)
   --strict               Code de sortie non nul s'il reste des storages manquants
   --force                Ignore le cache incrémental
@@ -399,7 +435,8 @@ Code de sortie : 0 si tout est produit, 1 si des fichiers n'ont pas été conver
 (liste et rapport dans <work>/pipeline-report.json) ou en --strict.
 
 Prérequis externes : un extracteur .xp3 (obligatoire si --input contient des .xp3),
-un convertisseur TLG→WebP (sinon le décodeur intégré produit des .png) et
+un convertisseur TLG→WebP (sinon décodeur intégré + WebP sans perte si cwebp/sharp,
+repli .png), ffmpeg pour le garde-fou SSIM, et
 éventuellement ffmpeg pour l'audio. Voir docs/PIPELINE.md.`);
 }
 
@@ -435,6 +472,9 @@ async function main() {
       audioCommand: args["audio-cmd"] as string | undefined,
       strict,
       force,
+      noWebp: args["no-webp"] === true,
+      webpLossy: args["webp-lossy"] as string | undefined,
+      webpQuality: args["webp-quality"] !== undefined ? Number.parseInt(String(args["webp-quality"]), 10) : undefined,
     });
     if (!dryRun && args["no-translation"] !== true) installFrenchTranslation(workDir, outputDir);
     if (report.exitCode !== 0) {

@@ -49,6 +49,9 @@ async function withMockAnimate<T>(
 describe("DomStageRenderer", () => {
   let root: HTMLElement;
   let renderer: ReturnType<typeof createDomStageRenderer>;
+  /** Calque <img> de fond actif (double tampon #373). */
+  const bgLayer = (): HTMLImageElement | null =>
+    [...root.querySelectorAll<HTMLImageElement>("#stage-bg .mh-stage-bg-layer")].find((l) => l.style.display !== "none") ?? null;
 
   beforeEach(() => {
     root = document.createElement("div");
@@ -73,8 +76,8 @@ describe("DomStageRenderer", () => {
       { kind: "scene", scene: { bg: "black", sprites: [], effect: null }, transition: { method: "none" } },
     ];
     await renderer.apply(events, { instant: true, signal: new AbortController().signal });
-    const bg = root.querySelector(".mh-stage-bg") as HTMLElement;
-    expect(bg.style.backgroundImage).toContain("black.webp");
+    const layer = bgLayer();
+    expect(layer?.src).toContain("black.webp");
   });
 
   it("@bg sans left/top : position par défaut du moteur, X centré et bas + 48 px (#249)", async () => {
@@ -82,10 +85,9 @@ describe("DomStageRenderer", () => {
       { kind: "scene", scene: { bg: "black", sprites: [], effect: null }, transition: { method: "none" } },
     ];
     await renderer.apply(events, { instant: true, signal: new AbortController().signal });
-    const bg = root.querySelector(".mh-stage-bg") as HTMLElement;
     // `@bg` (tagex.tjs) pose top = 576 - hauteurImage + 48 ; en CSS sans connaître la taille :
-    // «100% + 48px» place le bas de l'image 48 px sous le bas de l'écran.
-    expect(bg.style.backgroundPosition).toBe("50% calc(100% + 48px)");
+    // «100% + 48px» place le bas de l'image 48 px sous le bas de l'écran (object-position, #373).
+    expect(bgLayer()!.style.objectPosition).toBe("50% calc(100% + 48px)");
   });
 
   it("@bg avec left seul : X explicite, Y par défaut du moteur (#249)", async () => {
@@ -93,8 +95,7 @@ describe("DomStageRenderer", () => {
       { kind: "scene", scene: { bg: "black", bgLeft: 10, sprites: [], effect: null }, transition: { method: "none" } },
     ];
     await renderer.apply(events, { instant: true, signal: new AbortController().signal });
-    const bg = root.querySelector(".mh-stage-bg") as HTMLElement;
-    expect(bg.style.backgroundPosition).toBe("10px calc(100% + 48px)");
+    expect(bgLayer()!.style.objectPosition).toBe("10px calc(100% + 48px)");
   });
 
   it("@bg avec top seul : Y explicite, X centré (#249)", async () => {
@@ -102,8 +103,7 @@ describe("DomStageRenderer", () => {
       { kind: "scene", scene: { bg: "black", bgTop: 20, sprites: [], effect: null }, transition: { method: "none" } },
     ];
     await renderer.apply(events, { instant: true, signal: new AbortController().signal });
-    const bg = root.querySelector(".mh-stage-bg") as HTMLElement;
-    expect(bg.style.backgroundPosition).toBe("50% 20px");
+    expect(bgLayer()!.style.objectPosition).toBe("50% 20px");
   });
 
   it("affiche du texte en mode instant", async () => {
@@ -628,7 +628,6 @@ describe("DomStageRenderer", () => {
 
   describe("panoramique du fond (bgMove, #135)", () => {
     const sig = () => new AbortController().signal;
-    const bgEl = () => root.querySelector("#stage-bg") as HTMLElement;
     const showPano = () =>
       renderer.apply(
         [{ kind: "scene", scene: { bg: "pano", bgLeft: -99, bgTop: -48, sprites: [], effect: null }, transition: { method: "none" } }],
@@ -639,23 +638,23 @@ describe("DomStageRenderer", () => {
 
     it("fait glisser le fond en ligne droite jusqu'à la position cible", async () => {
       await showPano();
-      expect(bgEl().style.backgroundPosition).toBe("-99px -48px");
+      expect(bgLayer()!.style.objectPosition).toBe("-99px -48px");
       await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 5000, keyframes: [{ time: 0 }, { time: 5000, left: -167, top: -48 }] } }], { instant: false, signal: sig() });
-      expect(bgEl().style.transition).toBe("background-position 5000ms linear");
-      expect(bgEl().style.backgroundPosition).toBe("-167px -48px");
+      expect(bgLayer()!.style.transition).toBe("object-position 5000ms linear");
+      expect(bgLayer()!.style.objectPosition).toBe("-167px -48px");
     });
 
     it("en mode instantané (saut de la séquence), pose directement la position finale", async () => {
       await showPano();
       await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 5000, keyframes: [{ time: 0 }, { time: 5000, left: -167, top: -48 }] } }], { instant: true, signal: sig() });
-      expect(bgEl().style.transition).toBe("none");
-      expect(bgEl().style.backgroundPosition).toBe("-167px -48px");
+      expect(bgLayer()!.style.transition).toBe("none");
+      expect(bgLayer()!.style.objectPosition).toBe("-167px -48px");
     });
 
     it("panoramique accéléré : la transition porte l'accélération", async () => {
       await showPano();
       await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 14500, accel: 20, keyframes: [{ time: 0 }, { time: 14500, left: -48, top: -149 }] } }], { instant: false, signal: sig() });
-      expect(bgEl().style.transition).toMatch(/^background-position 14500ms (linear\(0|ease-in)/);
+      expect(bgLayer()!.style.transition).toMatch(/^object-position 14500ms (linear\(0|ease-in)/);
     });
 
     it("un fondu en plein panoramique accéléré part de la position eased, pas de la linéaire", async () => {
@@ -679,13 +678,13 @@ describe("DomStageRenderer", () => {
     it("zoom et rotation du fond : transform autour du centre ; un nouveau fond les remet à zéro", async () => {
       await showPano();
       await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 0, keyframes: [{ time: 0 }, { time: 0, left: -381, top: -613, zoomx: 60, zoomy: 60, rotate: 315 }] } }], { instant: false, signal: sig() });
-      expect(bgEl().style.transform).toBe("rotate(315deg) scale(0.6, 0.6)");
-      expect(bgEl().style.transformOrigin).toBe("512px 288px");
+      expect(bgLayer()!.style.transform).toBe("rotate(315deg) scale(0.6, 0.6)");
+      expect(bgLayer()!.style.transformOrigin).toBe("512px 288px");
       await renderer.apply([{ kind: "track", track: { target: "bg", prop: "transform", duration: 2000, accel: 3, keyframes: [{ time: 0 }, { time: 2000, left: -48, top: -48, zoomx: 100, zoomy: 100, rotate: 0 }] } }], { instant: false, signal: sig() });
-      expect(bgEl().style.transition).toMatch(/transform 2000ms (linear\(0|ease-in)/);
-      expect(bgEl().style.transform).toBe("rotate(0deg) scale(1, 1)");
+      expect(bgLayer()!.style.transition).toMatch(/transform 2000ms (linear\(0|ease-in)/);
+      expect(bgLayer()!.style.transform).toBe("rotate(0deg) scale(1, 1)");
       await showPano();
-      expect(bgEl().style.transform).toBe("");
+      expect(bgLayer()!.style.transform).toBe("");
     });
 
     it("un fondu commencé en plein panoramique part de la position courante de l'ancien fond", async () => {
@@ -701,8 +700,8 @@ describe("DomStageRenderer", () => {
       expect(overlay.style.backgroundImage).toContain("pano");
       expect(overlay.style.backgroundPosition).toBe("-133px -48px");
       // Le nouveau fond est posé à sa propre position, sans mouvement hérité.
-      expect(bgEl().style.backgroundPosition).toBe("-48px -300px");
-      expect(bgEl().style.transition).toBe("");
+      expect(bgLayer()!.style.objectPosition).toBe("-48px -300px");
+      expect(bgLayer()!.style.transition).toBe("");
       renderer.hurry();
     });
   });
@@ -1104,10 +1103,10 @@ describe("DomStageRenderer", () => {
         [{ kind: "scene", scene: { bg, sprites: [], effect: null }, transition: { method: "none" } }],
         { instant: true, signal: new AbortController().signal },
       );
-      const el = root.querySelector("#stage-bg") as HTMLElement;
-      // Un url() sans guillemets serait rejeté par le navigateur : la propriété resterait vide.
-      expect(el.style.backgroundImage, bg).not.toBe("");
-      expect(el.style.backgroundImage).toContain("url(");
+      // #373 : le fond est un calque <img>, son src doit être résolu et encodé correctement.
+      const layer = bgLayer();
+      expect(layer?.src, bg).toBeTruthy();
+      expect(decodeURIComponent(layer!.src), bg).toContain(bg.split("/").pop()!.replace(/\.(webp|png)$/, ""));
     }
   });
 

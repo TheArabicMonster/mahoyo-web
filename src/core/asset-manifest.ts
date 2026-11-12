@@ -50,6 +50,12 @@ export type ImageEntry = {
 /** Manifest complet, sérialisable en JSON. */
 export type AssetManifest = {
   version: 1;
+  /**
+   * Version des assets (hash du contenu du manifeste, hors `generatedAt`), écrite par le pipeline
+   * (#372). Le service worker nomme son cache `mahoyo-assets-<assetsVersion>` et purge les anciens
+   * à l'activation ; absente (manifeste ancien/placeholder brut) → cache `unversioned`.
+   */
+  assetsVersion?: string;
   /** Horodatage de génération (ISO 8601). */
   generatedAt: string;
   /** Images : backgrounds, sprites, rules, UI. */
