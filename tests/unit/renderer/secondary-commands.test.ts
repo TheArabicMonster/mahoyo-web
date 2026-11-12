@@ -125,8 +125,10 @@ describe("DomStageRenderer — @dispclock time=0 rendu sur la page affichée (#2
     expect(sprites).toHaveLength(4);
     expect(sprites.map((sprite) => decodeURIComponent(sprite.src)).every((src) => src.includes("ロビー時計"))).toBe(true);
     // Le fond d'horloge est peint sur l'élément de fond visible.
-    const bg = root.querySelector<HTMLElement>(".mh-stage-bg");
-    expect(bg).not.toBeNull();
-    expect(decodeURIComponent(bg!.style.backgroundImage)).toContain("ロビー時計");
+    const layer = [...root.querySelectorAll<HTMLImageElement>("#stage-bg .mh-stage-bg-layer")].find(
+      (l) => l.style.display !== "none",
+    );
+    expect(layer).not.toBeNull();
+    expect(decodeURIComponent(layer!.src)).toContain("ロビー時計");
   });
 });
