@@ -10,6 +10,7 @@ import {
   dumpFlags,
   endReasonMessage,
   parseReviewArgs,
+  playwrightShotName,
   reviewShotName,
   summarizeReviewSession,
   writeSession,
@@ -70,6 +71,7 @@ describe("lanceur review — URL et fichiers (#400)", () => {
 
   it("assainit le nom de capture et résume la session", () => {
     expect(reviewShotName("flag-abc/../x")).toBe("flag-abc____x.jpg");
+    expect(playwrightShotName("flag-abc/../x")).toBe("playwright-flag-abc____x.png");
     expect(summarizeReviewSession({ flags: [] })).toContain("Aucun flag");
     expect(
       summarizeReviewSession({
@@ -89,6 +91,9 @@ describe("lanceur review — mode manuel et session (#405)", () => {
     expect(parseReviewArgs(["--manual"]).manual).toBe(true);
     expect(parseReviewArgs(["--no-open"]).manual).toBe(true);
     expect(parseReviewArgs(["--manual", "--no-console-log"]).manual).toBe(true);
+    expect(parseReviewArgs([]).playwrightShots).toBe(true);
+    expect(parseReviewArgs(["--no-playwright-shots"]).playwrightShots).toBe(false);
+    expect(parseReviewArgs(["--playwright-shots"]).playwrightShots).toBe(true);
   });
 
   it("construit une session complète avec raison de fin et durée", () => {

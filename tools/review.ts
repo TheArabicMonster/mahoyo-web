@@ -25,6 +25,7 @@ import {
   dumpFlags,
   endReasonMessage,
   parseReviewArgs,
+  playwrightShotName,
   summarizeReviewSession,
   writeSession,
   zeroFlagHelpLines,
@@ -261,7 +262,21 @@ async function main(): Promise<void> {
           if (!dump) return;
           latest = dump as SessionDump;
           const count = dumpFlagCount(dump);
-          if (count > savedFlagsCount) persist(false);
+          if (count <= savedFlagsCount) return;
+          const previousCount = savedFlagsCount;
+          const fresh = dumpFlags(dump).slice(previousCount);
+          persist(false);
+          // Capture Playwright de secours (#415) : rendu navigateur complet (cadre compris),
+          // utile si la capture html2canvas du jeu reste insuffisante.
+          if (options.playwrightShots) {
+            for (const flag of fresh) {
+              const shotPath = join(shotsDir, playwrightShotName(flag.id));
+              void page
+                ?.screenshot({ path: shotPath, type: "png" })
+                .then(() => logLine(`[review] capture Playwright : ${shotPath}`))
+                .catch((error) => logLine(`[review] capture Playwright impossible (${flag.id}) : ${String(error)}`));
+            }
+          }
         })
         .catch(() => undefined);
     }, 400);
