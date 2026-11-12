@@ -208,7 +208,8 @@ function exposeSaveTransfer(saveStore: ResilientSaveStore, progress: ProgressAcc
 }
 
 // PWA (#96) : enregistrement du service worker en production (coquille + assets hors ligne).
-installPwa();
+// Mode revue (#403) : pas de service worker (le serveur de revue ne sert pas /sw.js en JS).
+if (!isReviewMode(location.search)) installPwa();
 
 main().catch((err) => {
   console.error("[main] Erreur fatale:", err);
