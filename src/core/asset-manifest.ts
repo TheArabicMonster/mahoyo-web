@@ -22,6 +22,8 @@ export type ManifestEntry = {
    */
   title?: string;
   composer?: string;
+  /** Taille du fichier produit, en octets (facultatif, renseignée par le pipeline #394). */
+  size?: number;
 };
 
 /** Entrée d'un scénario dans le manifest. */

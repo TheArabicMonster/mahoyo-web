@@ -271,6 +271,8 @@ export interface StageRenderer {
 /** Dépendances injectées dans AudioPlayer. */
 export type AudioPlayerDeps = {
   resolver: AssetResolver;
+  /** Cache partagé des médias préchargés (lookahead #394) : un seul élément par URL. */
+  audioPreloads?: Map<string, HTMLAudioElement>;
 };
 
 /** Factory pour instancier un AudioPlayer. */
