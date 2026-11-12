@@ -427,6 +427,9 @@ export class Runtime {
    * context has changed. More robust than comparing pc/instructionIndex.
    */
   private pendingContextChange = false;
+  /** Animations préparées sur la page back : jouées après le `@trans` qui révèle cette page (#408). */
+  private pendingBackAnimations: AnimationDef[] = [];
+  private pendingBackBgTracks: Extract<RenderEvent, { kind: "track" }>["track"][] = [];
 
   /**
    * Le dernier step s'est arrêté sur un point d'arrêt (hors fin de script) :
@@ -1292,6 +1295,7 @@ export class Runtime {
   private runImplicitTrans(time: number, rule: string | undefined, nowait?: boolean, canskip?: boolean): { events: RenderEvent[]; stop?: StopReason } {
     this.state.fore = { ...bgFieldsOf(this.state.back), layers: this.state.back.layers.slice() };
     const events: RenderEvent[] = [this.emitScene(this.makeTransition(time, rule))];
+    events.push(...this.drainPendingBackEvents());
     if (nowait) return { events };
     return { events, stop: { kind: "waitFor", what: "transition", skippable: canskip ?? true } };
   }
@@ -1376,25 +1380,26 @@ export class Runtime {
       zoomy: last.zoomy !== undefined ? last.zoomy * 100 : undefined,
       rotate: last.rotate,
     });
-    // Piste unifiée (#317) : une seule propriété `transform` pour la cible `bg`. La page back
-    // prépare l'état ; la piste n'est émise que si le calque est visible (fore).
-    if (page === "back") return null;
-    return {
-      kind: "track",
-      track: {
-        target: "bg",
-        prop: "transform",
-        duration: last.time,
-        keyframes: instruction.keyframes.map((frame) => ({
-          time: frame.time,
-          ...(frame.left === undefined ? {} : { left: frame.left }),
-          ...(frame.top === undefined ? {} : { top: frame.top }),
-          ...(frame.zoomx === undefined ? {} : { zoomx: frame.zoomx * 100 }),
-          ...(frame.zoomy === undefined ? {} : { zoomy: frame.zoomy * 100 }),
-          ...(frame.rotate === undefined ? {} : { rotate: frame.rotate }),
-        })),
-      },
+    // Piste unifiée (#317) : une seule propriété `transform` pour la cible `bg`.
+    const track: Extract<RenderEvent, { kind: "track" }>["track"] = {
+      target: "bg",
+      prop: "transform",
+      duration: last.time,
+      keyframes: instruction.keyframes.map((frame) => ({
+        time: frame.time,
+        ...(frame.left === undefined ? {} : { left: frame.left }),
+        ...(frame.top === undefined ? {} : { top: frame.top }),
+        ...(frame.zoomx === undefined ? {} : { zoomx: frame.zoomx * 100 }),
+        ...(frame.zoomy === undefined ? {} : { zoomy: frame.zoomy * 100 }),
+        ...(frame.rotate === undefined ? {} : { rotate: frame.rotate }),
+      })),
     };
+    // #408 : la page back prépare l'état ; la piste est rejouée après le @trans qui la révèle.
+    if (page === "back") {
+      this.pendingBackBgTracks.push(track);
+      return null;
+    }
+    return { kind: "track", track };
   }
 
   private applyPartbg(instruction: Extract<Instruction, { kind: "partbg" }>): { events: RenderEvent[]; stop?: StopReason } {
@@ -2102,6 +2107,12 @@ export class Runtime {
 
     // (#317) Une animation de calque sur la page affichée ne ré-émet PAS de scène : elle ne doit
     // jamais terminer la transition de fond en cours. L'événement `animate` porte l'animation.
+    // #408 : une animation préparée sur back doit être jouée **après** le @trans qui révèle cette
+    // page, sinon elle est perdue (saut à l'état final). On la met en attente.
+    if (page === "back") {
+      this.pendingBackAnimations.push(enrichedDef);
+      return events;
+    }
     events.push({ kind: "animate", target: realId, def: enrichedDef });
     return events;
   }
@@ -2157,6 +2168,18 @@ export class Runtime {
    *   appliquée immédiatement (approximation d'ordonnancement documentée §2) ;
    * - `exchange=0` : comportement historique du port (`fore = clone(back)`, back conservé).
    */
+  /** Événements à émettre **après** la scène de transition : animations préparées sur back (#408). */
+  private drainPendingBackEvents(): RenderEvent[] {
+    const events: RenderEvent[] = [];
+    for (const def of this.pendingBackAnimations) {
+      events.push({ kind: "animate", target: def.id ?? def.storage, def });
+    }
+    for (const track of this.pendingBackBgTracks) events.push({ kind: "track", track });
+    this.pendingBackAnimations = [];
+    this.pendingBackBgTracks = [];
+    return events;
+  }
+
   private applyTrans(instruction: Extract<Instruction, { kind: "trans" }>): { events: RenderEvent[]; stop?: StopReason } {
     const blocking = !instruction.nowait;
     const exchange = instruction.exchange !== false;
@@ -2179,6 +2202,7 @@ export class Runtime {
       this.state.transitionBacklayPending = blocking ? false : true;
     }
     const events: RenderEvent[] = [this.emitScene(this.makeTransition(instruction.time, instruction.rule))];
+    events.push(...this.drainPendingBackEvents());
     if (!blocking) return { events };
     return { events, stop: { kind: "waitFor", what: "transition", skippable: instruction.canskip ?? true } };
   }

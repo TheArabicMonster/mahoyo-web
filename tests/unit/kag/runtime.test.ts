@@ -528,6 +528,45 @@ Quelques minutes plus tard, [l]ils trouvèrent un être vivant.[l]
     expect(text).toBe("Quelques minutes plus tard, ");
   });
 
+  it("les animations page=back sont émises après la scène de transition (#408)", () => {
+    const SRC = `
+*page0|
+@fg page=back storage=sprite center=100 vcenter=100 index=1
+@fgact page=back props=center,vcenter keys=(0,0,l,100,100)(1000,,,300,100) storage=sprite
+@trans time=100
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expect(step.stop?.kind).toBe("waitFor");
+    const kinds = step.events.map((e) => e.kind);
+    const sceneIndex = kinds.indexOf("scene");
+    const animateIndex = kinds.indexOf("animate");
+    expect(sceneIndex).toBeGreaterThanOrEqual(0);
+    expect(animateIndex).toBeGreaterThan(sceneIndex);
+    const animate = step.events[animateIndex];
+    expect(animate?.kind).toBe("animate");
+    if (animate?.kind === "animate") expect(animate.target).toBe("sprite");
+  });
+
+  it("une piste @bgact page=back est rejouée après le @trans qui révèle la page (#408)", () => {
+    const SRC = `
+*page0|
+@bg page=back storage=fond left=111 top=-566
+@bgact page=back props=-storage,left,top,zoomx,zoomy keys=(0,0,l,fond,111,-566,120,120)(40000,,,,-63,,,) storage=fond
+@trans time=100
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    const kinds = step.events.map((e) => e.kind);
+    expect(kinds.indexOf("scene")).toBeGreaterThanOrEqual(0);
+    expect(kinds.indexOf("track")).toBeGreaterThan(kinds.indexOf("scene"));
+    const track = step.events.find((e) => e.kind === "track");
+    if (track?.kind === "track") expect(track.track.target).toBe("bg");
+    expect(runtime.getSaveData().state.fore.background).toBe("fond");
+  });
+
   it("stops on [l] pause markers", () => {
     const PAUSE_SAMPLE = `
 *page0|
@@ -638,6 +677,7 @@ Deuxième ligne.
 *page0|
 @partbg id=pb1 storage=im09 storagebg=black center=512 vcenter=288 index=2000 width=522 height=576 srcleft=542 srctop=0 srczoomx=100 srczoomy=100
 @partbgact storage=im09 keys=(srcleft,542)(srcleft,0)
+@trans time=0
 @pg
 `;
     const runtime = new Runtime(parse(lex(SRC)));
