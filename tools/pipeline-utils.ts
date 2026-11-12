@@ -18,6 +18,8 @@ export type PipelineContext = {
   xp3Extractor?: string;
   /** Extérieur : encodeur audio (ffmpeg, etc.). */
   audioEncoder?: string;
+  /** Format des WAV convertis en interne (#387) : `opus` (défaut) ou `aac` (repli Safari). */
+  audioFormat?: "opus" | "aac";
 };
 
 export function ensureDir(path: string): void {
