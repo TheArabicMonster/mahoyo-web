@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createAssetResolver } from "@/core/asset-resolver.js";
-import { WebAudioPlayer, type AudioElementLike } from "@/renderer/audio-manager.js";
+import { AUDIO_PRELOAD_AUTO_MAX_BYTES, audioPreloadPolicy, WebAudioPlayer, type AudioElementLike } from "@/renderer/audio-manager.js";
 import type { AudioSettings } from "@/renderer/types.js";
 import type { AudioEvent } from "@/kag/events.js";
 import fixtures from "../../fixtures/audio.json";
@@ -380,5 +380,33 @@ describe("WebAudioPlayer — waitForFade (@wb, #285)", () => {
     const p = player.waitForFade("bgm", ctrl.signal);
     ctrl.abort();
     await p;
+  });
+});
+
+
+describe("préchargement audio dédupliqué (#394)", () => {
+  it("réutilise l'élément préchargé par le lookahead (une seule URL/média)", () => {
+    const preloaded = new FakeAudio("/assets/se/se01.ogg");
+    const cache = new Map<string, FakeAudio>([["/assets/se/se01.ogg", preloaded]]);
+    const created: FakeAudio[] = [];
+    const audio = new WebAudioPlayer({ resolver: createAssetResolver(), audioPreloads: cache as never }, (url) => {
+      const el = new FakeAudio(url);
+      created.push(el);
+      return el;
+    });
+    audio.apply(play("se:0", "se01", false), { instant: false });
+    expect(created).toHaveLength(0);
+    expect(preloaded.playCalls).toBe(1);
+    expect(cache.size).toBe(0); // l'élément préchargé est réclamé par la lecture
+    audio.dispose();
+  });
+
+  it("politique preload : auto ≤ 300 Ko, metadata au-dessus, BGM streaming", () => {
+    expect(audioPreloadPolicy("se", 100 * 1024, "se01")).toBe("auto");
+    expect(audioPreloadPolicy("se", AUDIO_PRELOAD_AUTO_MAX_BYTES, "se01")).toBe("auto");
+    expect(audioPreloadPolicy("se", AUDIO_PRELOAD_AUTO_MAX_BYTES + 1, "se01.wav")).toBe("metadata");
+    expect(audioPreloadPolicy("se", null, "se13010.wav")).toBe("metadata");
+    expect(audioPreloadPolicy("se", null, "se01.ogg")).toBe("auto");
+    expect(audioPreloadPolicy("bgm", 5 * 1024 * 1024, "m19")).toBe("metadata");
   });
 });

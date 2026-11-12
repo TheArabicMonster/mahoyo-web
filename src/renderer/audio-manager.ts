@@ -18,6 +18,19 @@ export type AudioElementFactory = (url: string) => AudioElementLike;
 
 const defaultFactory: AudioElementFactory = (url) => new Audio(url);
 
+/** Seuil de préchargement `auto` des SE (#394) : au-delà, `metadata` seulement. */
+export const AUDIO_PRELOAD_AUTO_MAX_BYTES = 300 * 1024;
+
+/**
+ * Politique `preload` (#394) : BGM = streaming (`metadata`), SE ≤ 300 Ko = `auto`, au-dessus =
+ * `metadata`. Sans taille connue (ancien manifeste), un `.wav` est supposé lourd.
+ */
+export function audioPreloadPolicy(kind: "bgm" | "se", size: number | null, storage: string): "auto" | "metadata" {
+  if (kind === "bgm") return "metadata";
+  if (size !== null) return size <= AUDIO_PRELOAD_AUTO_MAX_BYTES ? "auto" : "metadata";
+  return /\.wav$/i.test(storage) ? "metadata" : "auto";
+}
+
 /**
  * Sous-ensemble de `HTMLAudioElement` utilisé par la galerie sonore (HUD-16, #209) : position et
  * durée en plus, pour la barre de progression. Permet de simuler l'élément en test.
@@ -226,6 +239,8 @@ function clamp01(v: number): number {
 export class WebAudioPlayer implements AudioPlayer {
   private readonly resolver: AssetResolver;
   private readonly createAudio: AudioElementFactory;
+  /** Médias préchargés par le lookahead, réutilisés à la lecture (#394). */
+  private readonly audioPreloads?: Map<string, HTMLAudioElement>;
   private readonly voices = new Map<AudioChannel, Voice>();
   /** Voix détachées de leur canal, en fondu de sortie. */
   private readonly fading = new Set<Voice>();
@@ -240,6 +255,7 @@ export class WebAudioPlayer implements AudioPlayer {
   constructor(deps: AudioPlayerDeps, createAudio: AudioElementFactory = defaultFactory) {
     this.resolver = deps.resolver;
     this.createAudio = createAudio;
+    this.audioPreloads = deps.audioPreloads;
   }
 
   unlock(): Promise<void> {
@@ -475,7 +491,10 @@ export class WebAudioPlayer implements AudioPlayer {
     const audioKind = channel === "bgm" ? ("bgm" as const) : ("se" as const);
     const perf = getPerfProbe();
     perf.markAudio(audioKind, "request", { url });
-    const audio = this.createAudio(url);
+    // #394 : un seul média par URL ; réutiliser l'élément préchargé par le lookahead.
+    const preloaded = this.audioPreloads?.get(url);
+    if (preloaded) this.audioPreloads!.delete(url);
+    const audio = (preloaded as unknown as AudioElementLike | undefined) ?? this.createAudio(url);
     audio.loop = loop;
     (audio as unknown as { addEventListener(type: string, cb: () => void): void }).addEventListener("loadeddata", () => {
       perf.markAudio(audioKind, "fetched", { url });

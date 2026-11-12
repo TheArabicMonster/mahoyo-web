@@ -5,7 +5,7 @@
  * Il est produit à partir de l'inventaire et vérifié contre les scripts .ks
  * pour détecter les storages introuvables.
  */
-import { readFileSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { fileURLToPath } from "url";
 import { createHash } from "crypto";
 import { writeFileSync } from "fs";
@@ -261,7 +261,13 @@ export function buildManifestFromResults(
         priority,
       });
     } else if (kind === "bgm" || kind === "se") {
-      manifest.audio[key] = { url: relPath, source: task.entry.relPath, kind };
+      let size: number | undefined;
+      try {
+        size = statSync(result.actualOutputPath).size;
+      } catch {
+        size = undefined;
+      }
+      manifest.audio[key] = { url: relPath, source: task.entry.relPath, kind, ...(size !== undefined ? { size } : {}) };
     } else if (kind === "scenario") {
       manifest.scenarios[key] = {
         url: relPath,

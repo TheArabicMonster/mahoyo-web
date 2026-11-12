@@ -325,3 +325,31 @@ describe("AssetResolver — audio : extension/casse sans ambiguïté (#354)", ()
     expect(resolver.bgm("M19.ogg")).toBe("/assets/bgm/M19.ogg");
   });
 });
+
+describe("AssetResolver — présence et taille audio (#394)", () => {
+  const manifest: AssetManifest = {
+    version: 1,
+    generatedAt: "2026-01-01T00:00:00Z",
+    images: {},
+    audio: {
+      m19: { url: "bgm/m19.ogg", source: "bgm/m19.ogg", kind: "bgm", size: 123456 },
+      se01: { url: "se/se01.ogg", source: "se/se01.ogg", kind: "se" },
+    },
+    scenarios: {},
+  };
+
+  it("hasAudio distingue les refs absentes (voix Steam) des présentes", () => {
+    const resolver = createAssetResolver({ manifest });
+    expect(resolver.hasAudio("M19")).toBe(true);
+    expect(resolver.hasAudio("se01")).toBe(true);
+    expect(resolver.hasAudio("a10_5a_8_0002")).toBe(false);
+    expect(resolver.audioSize("m19")).toBe(123456);
+    expect(resolver.audioSize("se01")).toBeNull();
+  });
+
+  it("sans manifeste, la présence est inconnue (convention) et la taille null", () => {
+    const resolver = createAssetResolver();
+    expect(resolver.hasAudio("a10_5a_8_0002")).toBe(true);
+    expect(resolver.audioSize("m19")).toBeNull();
+  });
+});
