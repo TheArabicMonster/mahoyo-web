@@ -2146,12 +2146,26 @@ export class DomStageRenderer implements StageRenderer {
         : fromLayer.position ?? "50% 50%";
       overlay.style.transform = fromTransform?.transform ?? "";
       overlay.style.transformOrigin = fromTransform?.origin ?? "";
-      overlay.style.zIndex = "999999"; // au-dessus des calques/effets, sous la boîte de texte
+      overlay.style.zIndex = "999998"; // au-dessus des calques/effets, sous la boîte de texte
       overlay.style.opacity = "1";
-      for (const node of fromSpriteNodes) overlay.appendChild(node);
-      for (const node of fromTimelineNodes) overlay.appendChild(node);
       this.bgEl.parentElement?.appendChild(overlay);
       this.bgOverlays.push(overlay);
+
+      // #410 : les calques de l'ancienne scène gardent **leur propre** filtre. Les mettre dans
+      // l'overlay de fond (qui porte le filtre `effect`/`blur` du fond) les filtrait une seconde
+      // fois : mélange flou/net et couleurs fausses pendant le fondu. Ils sont donc dans une
+      // couche sœur non filtrée, au-dessus du fond, qui s'efface avec la même temporisation.
+      let overlayLayers: HTMLElement | null = null;
+      if (fromSpriteNodes.length > 0 || fromTimelineNodes.length > 0) {
+        overlayLayers = document.createElement("div");
+        overlayLayers.className = "mh-stage-bg-overlay-layers";
+        overlayLayers.style.cssText =
+          "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;transition:none;opacity:1;z-index:999999;";
+        for (const node of fromSpriteNodes) overlayLayers.appendChild(node);
+        for (const node of fromTimelineNodes) overlayLayers.appendChild(node);
+        this.bgEl.parentElement?.appendChild(overlayLayers);
+        this.bgOverlays.push(overlayLayers);
+      }
 
       requestAnimationFrame(() => {
         // L'ancien fond poursuit son panoramique pendant qu'il s'efface.
@@ -2161,6 +2175,10 @@ export class DomStageRenderer implements StageRenderer {
           : `opacity ${time}ms ease`;
         overlay.style.opacity = "0";
         if (moving) overlay.style.backgroundPosition = `${fromPos.toLeft}px ${fromPos.toTop}px`;
+        if (overlayLayers) {
+          overlayLayers.style.transition = `opacity ${time}ms ease`;
+          overlayLayers.style.opacity = "0";
+        }
       });
     } else {
       fromImg?.remove();
