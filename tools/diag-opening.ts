@@ -217,7 +217,9 @@ type DomSample = {
   phase: string | null;
   overlay: string | null;
   title: boolean;
-  bg: { storage: string; left: number | null; top: number | null };
+  bg: { storage: string; left: number | null; top: number | null; source?: "overlay" | "layer" | "container" };
+  /** Fond de l'overlay de transition (ancien fond), lu séparément (#397). */
+  overlayBg?: { storage: string; left: number | null; top: number | null } | null;
   layers: { id: string; storage: string; left: number; top: number; opacity: number }[];
   animations: { id: string; duration: number; state: string; current: number | null }[];
   audio: { t: number; src: string; kind: string }[];
@@ -295,7 +297,54 @@ async function capture(cli: Cli): Promise<{ framesDir: string; samples: DomSampl
     while (Date.now() - start < cli.maxSeconds * 1000) {
       const sample = (await page.evaluate(() => {
         const bg = document.querySelector(".mh-stage-bg") as HTMLElement | null;
-        const pos = bg ? getComputedStyle(bg).backgroundPosition.split(" ") : [];
+        // #397 : depuis le double tampon (#373), le fond est peint par des calques <img>
+        // (`object-position`), pas par `background-image`/`background-position` du conteneur.
+        // On lit la couche active visible ; pendant un fondu, l'overlay de l'ancien fond est
+        // au-dessus (background-image). Repli sur le conteneur si aucun calque (ancien rendu).
+        const bgLayerEls = [...document.querySelectorAll<HTMLImageElement>("#stage-bg > .mh-stage-bg-layer")];
+        const activeLayer =
+          bgLayerEls.find((el) => {
+            const style = getComputedStyle(el);
+            return style.display !== "none" && Number.parseFloat(style.opacity || "1") > 0.01;
+          }) ?? null;
+        const overlay = document.querySelector<HTMLElement>(".mh-stage-bg-overlay");
+        const overlayStyle = overlay ? getComputedStyle(overlay) : null;
+        const overlayVisible =
+          overlayStyle !== null &&
+          Number.parseFloat(overlayStyle.opacity || "0") > 0.01 &&
+          overlayStyle.backgroundImage !== "none";
+        const overlayParts = overlayVisible ? overlayStyle!.backgroundPosition.split(" ") : [];
+        const overlayBg = overlayVisible
+          ? {
+              storage: overlayStyle!.backgroundImage,
+              left: Number.isFinite(Number.parseFloat(overlayParts[0] ?? "")) ? Number.parseFloat(overlayParts[0] ?? "") : null,
+              top: Number.isFinite(Number.parseFloat(overlayParts[1] ?? "")) ? Number.parseFloat(overlayParts[1] ?? "") : null,
+            }
+          : null;
+        // #397 : le fond « moteur » est le calque actif (`src` + `object-position`) ; l'overlay de
+        // transition est lu à part. Lire l'overlay comme fond principal décalait les changements
+        // de ~1,8 s (ancien fond visible pendant le fondu).
+        let bgStorage = bg ? getComputedStyle(bg).backgroundImage : "none";
+        let bgLeft: number | null = null;
+        let bgTop: number | null = null;
+        let bgSource: "overlay" | "layer" | "container" = "container";
+        if (activeLayer) {
+          const parts = getComputedStyle(activeLayer).objectPosition.split(" ");
+          bgStorage = activeLayer.currentSrc || activeLayer.src || "none";
+          bgLeft = Number.isFinite(Number.parseFloat(parts[0] ?? "")) ? Number.parseFloat(parts[0] ?? "") : null;
+          bgTop = Number.isFinite(Number.parseFloat(parts[1] ?? "")) ? Number.parseFloat(parts[1] ?? "") : null;
+          bgSource = "layer";
+        } else if (overlayBg) {
+          bgStorage = overlayBg.storage;
+          bgLeft = overlayBg.left;
+          bgTop = overlayBg.top;
+          bgSource = "overlay";
+        } else if (bg) {
+          const parts = getComputedStyle(bg).backgroundPosition.split(" ");
+          bgStorage = getComputedStyle(bg).backgroundImage;
+          bgLeft = Number.isFinite(Number.parseFloat(parts[0] ?? "")) ? Number.parseFloat(parts[0] ?? "") : null;
+          bgTop = Number.isFinite(Number.parseFloat(parts[1] ?? "")) ? Number.parseFloat(parts[1] ?? "") : null;
+        }
         const layers = Array.from(document.querySelectorAll<HTMLElement>("#stage-timeline > .mh-stage-tl-layer")).map((el) => {
           const img = el.querySelector("img");
           const style = getComputedStyle(el);
@@ -311,11 +360,8 @@ async function capture(cli: Cli): Promise<{ framesDir: string; samples: DomSampl
           phase: document.querySelector("#ui-transition")?.getAttribute("data-phase") ?? null,
           overlay: document.querySelector("#ui-overlay")?.getAttribute("data-screen") ?? null,
           title: Boolean(document.querySelector(".mh-ui-title-screen")),
-          bg: {
-            storage: bg ? getComputedStyle(bg).backgroundImage : "none",
-            left: pos[0] ? Number.parseFloat(pos[0]) : null,
-            top: pos[1] ? Number.parseFloat(pos[1]) : null,
-          },
+          bg: { storage: bgStorage, left: bgLeft, top: bgTop, source: bgSource },
+          overlayBg,
           layers,
           animations: (document.getAnimations() as Animation[])
             .map((animation) => {
@@ -394,6 +440,30 @@ function analyzeFlash(frames: FrameLuminance[]): {
   return { median, intervals };
 }
 
+/**
+ * #397 : position du fond interpolée à l'instant exact `t` (les échantillons sont espacés de
+ * ~60-100 ms ; au pas du panoramique ~20 px/s, une erreur d'un échantillon vaut ~2 px). On
+ * interpole entre les deux échantillons encadrants de même storage, sinon on prend le plus proche.
+ */
+function bgSampleAt(samples: DomSample[], t: number): DomSample | null {
+  const candidates = samples.filter((sample) => sample.bg.top !== null && sample.bg.left !== null && sample.bg.source !== "overlay");
+  const before = [...candidates].reverse().find((sample) => sample.t <= t) ?? null;
+  const after = candidates.find((sample) => sample.t >= t) ?? null;
+  if (!before || !after || before === after) return nearestSample(samples, t);
+  if (before.bg.storage !== after.bg.storage) return Math.abs(before.t - t) <= Math.abs(after.t - t) ? before : after;
+  const ratio = after.t === before.t ? 0 : (t - before.t) / (after.t - before.t);
+  const interpolate = (a: number, b: number): number => Math.round((a + (b - a) * ratio) * 1000) / 1000;
+  return {
+    ...before,
+    t,
+    bg: {
+      ...before.bg,
+      left: interpolate(before.bg.left!, after.bg.left!),
+      top: interpolate(before.bg.top!, after.bg.top!),
+    },
+  };
+}
+
 function nearestSample(samples: DomSample[], t: number): DomSample | null {
   let best: DomSample | null = null;
   let bestDiff = Infinity;
@@ -428,7 +498,11 @@ function resolveScene(model: Record<string, OpeningScene>, samples: DomSample[])
   const firstExpected = (scene.bg[1] ?? scene.bg[0])!;
   const firstObserved = samples.find((sample) => decodeStorage(sample.bg.storage) === firstExpected.storage && sample.t > 1500);
   const firstImageMs = firstObserved?.t ?? 0;
-  const scheduleOffsetMs = firstObserved ? firstObserved.t - (firstExpected.at ?? 0) : 0;
+  // #397 : l'ancre de temps est le **début de la scène** (premier échantillon « en jeu »), pas le
+  // premier changement de fond. Depuis #362, un changement de fond peut être retardé par l'attente
+  // de décodage : ancrer dessus décalait toutes les comparaisons de plusieurs secondes.
+  const firstGameSample = samples.find((sample) => sample.overlay === "game");
+  const scheduleOffsetMs = firstGameSample ? firstGameSample.t : firstObserved ? firstObserved.t - (firstExpected.at ?? 0) : 0;
   return { scene, scheduleOffsetMs, firstImageMs };
 }
 
@@ -535,7 +609,7 @@ async function main(): Promise<void> {
       const sampleTime = modelTime + scheduleOffsetMs;
       const expected = expectedBgAt(scene, modelTime);
       const lastSample = samples.at(-1)?.t ?? 0;
-      const observed = sampleTime <= lastSample - 500 ? nearestSample(samples, sampleTime) : null;
+      const observed = sampleTime <= lastSample - 500 ? bgSampleAt(samples, sampleTime) : null;
       const observedStorage = observed ? decodeStorage(observed.bg.storage) : "";
       return {
         modelTimeMs: modelTime,
@@ -547,6 +621,21 @@ async function main(): Promise<void> {
         } : null,
       };
     });
+
+    // #397 : mouvement réellement observé du fond pendant la fenêtre du panoramique. Le diagnostic
+    // historique lisait `background-position` du conteneur ; depuis #373 le fond est un calque <img>
+    // (`object-position`), d'où des valeurs figées à tort. Ce résumé rend le verdict explicite.
+    const panSamples = bgCheckpoints
+      .map((checkpoint) => checkpoint.observed)
+      .filter((observed): observed is NonNullable<typeof observed> => observed !== null && observed.top !== null);
+    const observedTops = panSamples.map((observed) => observed.top as number);
+    const panMovement = {
+      samples: panSamples.length,
+      minTop: observedTops.length ? Math.round(Math.min(...observedTops) * 10) / 10 : null,
+      maxTop: observedTops.length ? Math.round(Math.max(...observedTops) * 10) / 10 : null,
+      movedPx: observedTops.length ? Math.round((Math.max(...observedTops) - Math.min(...observedTops)) * 10) / 10 : 0,
+      frozen: observedTops.length > 0 ? Math.max(...observedTops) - Math.min(...observedTops) < 5 : true,
+    };
 
     // ── Calques finaux : 12_手前c (L8) et 00_タイトル (L6/L11) ──
     const layerCheckpoints = ["L8", "L11"].flatMap((layerId) =>
@@ -569,7 +658,7 @@ async function main(): Promise<void> {
     const logoAtMs = 176750; // opacité pleine du calque L11 (173 750 + 3 000 ms)
     const logoExpected = expectedBgAt(scene, logoAtMs);
     const lastSampleForLogo = samples.at(-1)?.t ?? 0;
-    const logoObserved = logoAtMs + scheduleOffsetMs <= lastSampleForLogo - 500 ? nearestSample(samples, logoAtMs + scheduleOffsetMs) : null;
+    const logoObserved = logoAtMs + scheduleOffsetMs <= lastSampleForLogo - 500 ? bgSampleAt(samples, logoAtMs + scheduleOffsetMs) : null;
     const logoOnSky = {
       atMs: logoAtMs,
       expectedBgTop: Math.round(logoExpected.top * 10) / 10,
@@ -642,6 +731,8 @@ async function main(): Promise<void> {
       whiteFlashBeforeFirstImage: flash.intervals.some((interval) => interval.peakMs < firstImageMs),
       cutsOutsideFlash: cuts.map((cut) => ({ ms: Math.round(cut.t), delta: Math.round(cut.delta * 1000) / 1000 })),
       finalPan: bgCheckpoints,
+    finalPanMovement: panMovement,
+    transitionOverlaySamples: samples.filter((sample) => sample.overlayBg).length,
       logoOnSky,
       layers: layerCheckpoints,
       sync: { bgChanges: bgSync, audio: audioSync, animationDurationsMs: animationDurations, expectedFadeDurationsMs: fadeDurations },
@@ -657,7 +748,10 @@ async function main(): Promise<void> {
       console.log(`  ${Math.round(interval.startMs)}→${Math.round(interval.endMs)} ms (durée ${Math.round(interval.durationMs)} ms), pic ${Math.round(interval.peakMs)} ms L=${interval.peak.toFixed(2)} ratio×${interval.ratio.toFixed(2)}${interval.peakMs < firstImageMs ? " (avant première image)" : ""}`);
     }
     console.log(`Coupures hors flash : ${cuts.length}`);
-    console.log("Panoramique final (Δ observé − modèle) :");
+    console.log(
+    `Mouvement du fond observé : ${panMovement.movedPx} px (top ${panMovement.minTop} → ${panMovement.maxTop}) — ${panMovement.frozen ? "FIGÉ (régression)" : "animé"}`,
+  );
+  console.log("Panoramique final (Δ observé − modèle) :");
     for (const point of bgCheckpoints) {
       console.log(`  t=${point.modelTimeMs} ms : modèle ${point.expected.storage} @(${point.expected.left}, ${point.expected.top}) ; observé ${point.observed?.storage ?? "n/a"} @(${point.observed?.left ?? "n/a"}, ${point.observed?.top ?? "n/a"}) ; Δ=${point.deltaPx ? `(${point.deltaPx.x}, ${point.deltaPx.y}) px` : "n/a"}`);
     }

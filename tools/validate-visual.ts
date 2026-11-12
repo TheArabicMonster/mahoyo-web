@@ -260,18 +260,26 @@ window.__mahoyoAnalyze = async (payload) => {
     return best;
   };
   const W = 1280, H = 720;
-  const ref = await load(payload.referenceUrl);
   const scene = await load(payload.sceneUrl);
-  const gRef = gray(ref, W, H), gScene = gray(scene, W, H);
-  const search = 60;
-  const decor = match(gScene, W, H, gRef, W, payload.decor, [0.97, 0.98, 0.99, 1, 1.01, 1.02, 1.03], search);
-  const sprite = match(gScene, W, H, gRef, W, payload.sprite, [0.95, 0.96, 0.97, 0.98, 0.99, 1, 1.01, 1.02, 1.03, 1.04, 1.05], search);
-  // Transformation "référence -> capture" de chaque modèle, appliquée au point de contrôle (nœud).
-  const tf = (m, box) => ({ x: m.x + m.scale * (payload.tie.x - box.x), y: m.y + m.scale * (payload.tie.y - box.y), s: m.scale });
-  const tieByDecor = tf(decor, payload.decor);
-  const tieBySprite = tf(sprite, payload.sprite);
-  const delta = { x: tieBySprite.x - tieByDecor.x, y: tieBySprite.y - tieByDecor.y };
-  const pct = { x: Math.abs(delta.x) / W * 100, y: Math.abs(delta.y) / H * 100 };
+  // Mesure sprite optionnelle : sans frame de référence, ne pas charger une URL vide (erreur
+  // « image » qui interrompait aussi la mesure des transitions, #397).
+  let matches = null;
+  let tie = null;
+  if (payload.referenceUrl) {
+    const ref = await load(payload.referenceUrl);
+    const gRef = gray(ref, W, H), gScene = gray(scene, W, H);
+    const search = 60;
+    const decor = match(gScene, W, H, gRef, W, payload.decor, [0.97, 0.98, 0.99, 1, 1.01, 1.02, 1.03], search);
+    const sprite = match(gScene, W, H, gRef, W, payload.sprite, [0.95, 0.96, 0.97, 0.98, 0.99, 1, 1.01, 1.02, 1.03, 1.04, 1.05], search);
+    // Transformation "référence -> capture" de chaque modèle, appliquée au point de contrôle (nœud).
+    const tf = (m, box) => ({ x: m.x + m.scale * (payload.tie.x - box.x), y: m.y + m.scale * (payload.tie.y - box.y), s: m.scale });
+    const tieByDecor = tf(decor, payload.decor);
+    const tieBySprite = tf(sprite, payload.sprite);
+    const delta = { x: tieBySprite.x - tieByDecor.x, y: tieBySprite.y - tieByDecor.y };
+    const pct = { x: Math.abs(delta.x) / W * 100, y: Math.abs(delta.y) / H * 100 };
+    matches = { decor, sprite };
+    tie = { byDecor: tieByDecor, bySprite: tieBySprite, delta, pct };
+  }
   // Transitions : luminosité moyenne de la scène (hors bande de texte), frames de la séquence.
   const brightness = [];
   const diffs = [];
@@ -284,17 +292,13 @@ window.__mahoyoAnalyze = async (payload) => {
     brightness.push(s / n / 255);
   }
   for (let i = 1; i < brightness.length; i++) diffs.push(Math.abs(brightness[i] - brightness[i-1]));
-  return {
-    matches: { decor, sprite },
-    tie: { byDecor: tieByDecor, bySprite: tieBySprite, delta, pct },
-    brightness, diffs, frameCount: payload.frames.length,
-  };
+  return { matches, tie, brightness, diffs, frameCount: payload.frames.length };
 };
 `;
 
 type AnalysisResult = {
-  matches: { decor: { score: number; x: number; y: number; scale: number }; sprite: { score: number; x: number; y: number; scale: number } };
-  tie: { byDecor: { x: number; y: number }; bySprite: { x: number; y: number }; delta: { x: number; y: number }; pct: { x: number; y: number } };
+  matches: { decor: { score: number; x: number; y: number; scale: number }; sprite: { score: number; x: number; y: number; scale: number } } | null;
+  tie: { byDecor: { x: number; y: number }; bySprite: { x: number; y: number }; delta: { x: number; y: number }; pct: { x: number; y: number } } | null;
   brightness: number[];
   diffs: number[];
   frameCount: number;
@@ -462,11 +466,13 @@ async function main(): Promise<void> {
     console.log(`  appariement time= : ${matched}/${animationMatches.length} durées exactes ; ${transitionsOk ? "aucun cut parasite" : "vérifier cuts"}`);
 
     // ── Mesure sprite ──
-    if (referenceExists) {
-      const aligned = analysis.tie.pct.x <= SPRITE_TOLERANCE_PCT && analysis.tie.pct.y <= SPRITE_TOLERANCE_PCT;
-      report.sprite = { matches: analysis.matches, tie: analysis.tie, tolerancePct: SPRITE_TOLERANCE_PCT, ok: aligned };
-      console.log(`[visual] sprite (#315) : décor score ${(analysis.matches.decor.score * 100).toFixed(1)} % (échelle ×${analysis.matches.decor.scale.toFixed(3)}), sprite score ${(analysis.matches.sprite.score * 100).toFixed(1)} %`);
-      console.log(`  écart nœud vs décor : Δx=${analysis.tie.delta.x.toFixed(1)} px (${analysis.tie.pct.x.toFixed(2)} %), Δy=${analysis.tie.delta.y.toFixed(1)} px (${analysis.tie.pct.y.toFixed(2)} %) → ${aligned ? "OK" : "HORS TOLÉRANCE"}`);
+    if (referenceExists && analysis.tie && analysis.matches) {
+      const tie = analysis.tie;
+      const matches = analysis.matches;
+      const aligned = tie.pct.x <= SPRITE_TOLERANCE_PCT && tie.pct.y <= SPRITE_TOLERANCE_PCT;
+      report.sprite = { matches, tie, tolerancePct: SPRITE_TOLERANCE_PCT, ok: aligned };
+      console.log(`[visual] sprite (#315) : décor score ${(matches.decor.score * 100).toFixed(1)} % (échelle ×${matches.decor.scale.toFixed(3)}), sprite score ${(matches.sprite.score * 100).toFixed(1)} %`);
+      console.log(`  écart nœud vs décor : Δx=${tie.delta.x.toFixed(1)} px (${tie.pct.x.toFixed(2)} %), Δy=${tie.delta.y.toFixed(1)} px (${tie.pct.y.toFixed(2)} %) → ${aligned ? "OK" : "HORS TOLÉRANCE"}`);
     }
 
     const reportPath = join(cli.out, "rapport.json");
