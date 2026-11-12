@@ -1017,7 +1017,9 @@ export class Player implements PlayerCommands {
     switch (stop.kind) {
       case "click": {
         const entry = record ? this.recordPoint(step) : null;
-        const skippable = this.stopWasRead;
+        // #382 : la portée « tout » autorise l'avance rapide sur une page non lue ; la portée
+        // « lus » garde le comportement historique (skip s'arrête sur l'inédit).
+        const skippable = this.stopWasRead || this.settings.display.fastForwardScope === "all";
         this.readSet.add(positionKey(position));
         if (entry && this.mode !== "skip") void this.autosave(entry);
         // « Affichage final des pages » : amène les effets en cours à leur état final (#177).
@@ -1664,6 +1666,8 @@ export class Player implements PlayerCommands {
       mouseMode: this.settings.display.mouseMode,
       autoHideCursor: this.settings.display.autoHideCursor,
       fastForwardKey: this.settings.display.fastForwardKey,
+      fastForwardScope: this.settings.display.fastForwardScope,
+      pageRead: this.pageRead,
       shortcuts: this.settings.shortcuts,
     });
   }

@@ -123,6 +123,11 @@ export class DomUIManager implements UIManager {
 
   private ctrlSkip = false;
   private modeBeforeCtrl: PlayerStatus["mode"] = "normal";
+  /** Touche d'avance rapide configurée maintenue (Maj/Ctrl/Entrée) et mode à restaurer. */
+  private fastKeyHeld: string | null = null;
+  private modeBeforeFast: PlayerStatus["mode"] = "normal";
+  /** Dernière touche d'avance rapide connue (pour relâcher si le réglage change en cours de jeu). */
+  private lastFastKey: PlayerStatus["fastForwardKey"] = "shift";
   private settingsTab: SettingsTab = "system";
   private capturing: { action: ShortcutAction; index: number } | null = null;
   private captureApply: ((binding: string) => void) | null = null;
@@ -187,7 +192,10 @@ export class DomUIManager implements UIManager {
     this.listen(document, "keydown", (e) => this.onKeyDown(e as KeyboardEvent));
     this.listen(document, "keyup", (e) => this.onKeyUp(e as KeyboardEvent));
     this.listen(document, "mousemove", () => this.resetCursorTimer());
-    this.listen(window, "blur", () => this.releaseCtrlSkip());
+    this.listen(window, "blur", () => {
+      this.releaseFastKey(false);
+      this.releaseCtrlSkip();
+    });
     // Changement de langue : on pose `lang` et on redessine l'écran courant dans la nouvelle langue.
     this.cleanups.push(
       onUiLanguageChange(() => {
@@ -285,9 +293,15 @@ export class DomUIManager implements UIManager {
   }
 
   setStatus(status: Readonly<PlayerStatus>): void {
+    // Réglage changé pendant un maintien (sans rechargement) : relâcher l'ancienne touche (#382).
+    if (this.fastKeyHeld !== null && status.fastForwardKey !== this.lastFastKey) this.releaseFastKey(false);
     this.status = { ...status };
+    this.lastFastKey = status.fastForwardKey;
     // Le player fait foi : si le mode revient à autre chose que skip, le Ctrl temporaire est caduc.
-    if (this.ctrlSkip && status.mode !== "skip") this.ctrlSkip = false;
+    if ((this.ctrlSkip || this.fastKeyHeld !== null) && status.mode !== "skip") {
+      this.ctrlSkip = false;
+      this.fastKeyHeld = null;
+    }
     this.renderStatus();
     this.resetCursorTimer();
   }
@@ -355,7 +369,10 @@ export class DomUIManager implements UIManager {
     if (!this.root) return;
     this.loading.hidden = enabled;
     this.overlay.classList.toggle("mh-ui-disabled", !enabled);
-    if (!enabled) this.releaseCtrlSkip(false);
+    if (!enabled) {
+      this.releaseCtrlSkip(false);
+      this.fastKeyHeld = null;
+    }
   }
 
   // ── Helpers internes ──
@@ -685,8 +702,10 @@ export class DomUIManager implements UIManager {
       return;
     }
     // Une touche maintenue ne doit ni enchaîner les pages, ni faire clignoter une bascule (B1).
-    // Ctrl et Shift sont exclus : ils servent à l'avance rapide maintenue.
-    if (e.repeat && e.key !== "Control" && e.key !== "Shift") return;
+    // Ctrl/Shift/configurée servent à l'avance rapide maintenue ; Entrée configurée doit laisser
+    // passer ses répétitions (appui simple = avance normale, maintien = skip, #382).
+    const fastEnterRepeat = this.status.fastForwardKey === "enter" && e.key === "Enter";
+    if (e.repeat && !fastEnterRepeat && e.key !== "Control" && e.key !== "Shift") return;
     if (!this.inputEnabled || this.confirmEl) {
       if (e.key === "Escape") this.onEscape();
       return;
@@ -711,16 +730,32 @@ export class DomUIManager implements UIManager {
       return;
     }
 
-    // Touche d'avance rapide : termine la frappe en cours (#177).
-    if (this.isFastKey(e) && this.commands.hurryText()) {
-      e.preventDefault();
-      return;
+    // Touche d'avance rapide configurée (#382) : appui bref = terminer la frappe ; maintien =
+    // mode skip tant que la touche est tenue. Entrée configurée ne démarre le skip qu'à la
+    // répétition (un appui simple reste une avance normale).
+    const configuredFast = this.isFastKey(e);
+    if (configuredFast) {
+      const enterNeedsRepeat = this.status.fastForwardKey === "enter" && e.key === "Enter";
+      const hurried = this.commands.hurryText();
+      if (hurried) e.preventDefault();
+      if (
+        (!enterNeedsRepeat || e.repeat) &&
+        screen === "game" &&
+        this.choiceCount === 0 &&
+        this.fastForwardAllowed()
+      ) {
+        this.startFastKeyHold(e.key);
+        e.preventDefault();
+        return;
+      }
+      // Maj/Ctrl : ne pas laisser la touche faire autre chose (avance/scroll) si le skip n'est
+      // pas autorisé ; Entrée simple continue vers l'avance normale.
+      if (!(this.status.fastForwardKey === "enter" && e.key === "Enter")) return;
     }
-    if (this.isFastKey(e) && e.key !== "Enter") return;
 
-    // Rétrocompatibilité : Ctrl maintenu = skip, sauf s'il est devenu la touche d'avance rapide.
+    // Rétrocompatibilité : Ctrl maintenu = skip, sauf s'il est devenu la touche configurée.
     if (e.key === "Control" && this.status.fastForwardKey !== "ctrl") {
-      if (!this.ctrlSkip && screen === "game") {
+      if (!this.ctrlSkip && screen === "game" && this.choiceCount === 0 && this.fastForwardAllowed()) {
         this.ctrlSkip = true;
         this.modeBeforeCtrl = this.status.mode;
         if (this.status.mode !== "skip") this.commands.setMode("skip");
@@ -748,6 +783,37 @@ export class DomUIManager implements UIManager {
         this.commands.rollback();
         break;
     }
+  }
+
+  /** Portée d'avance rapide : tout, ou seulement les pages déjà lues (#382). */
+  private fastForwardAllowed(): boolean {
+    const scope = this.status.fastForwardScope ?? "all";
+    return scope === "all" || (this.status.pageRead ?? true);
+  }
+
+  /** Démarre le skip maintenu pour la touche configurée (Maj/Ctrl/Entrée). */
+  private startFastKeyHold(key: string): void {
+    if (this.fastKeyHeld === key) return;
+    this.releaseFastKey(false);
+    this.fastKeyHeld = key;
+    this.modeBeforeFast = this.status.mode;
+    if (this.status.mode !== "skip") this.commands?.setMode("skip");
+  }
+
+  /** Relâche l'avance rapide maintenue configurée et restaure le mode mémorisé. */
+  private releaseFastKey(notify = true): void {
+    if (this.fastKeyHeld === null) return;
+    this.fastKeyHeld = null;
+    if (notify && this.status.mode === "skip" && this.modeBeforeFast !== "skip") {
+      this.commands?.setMode(this.modeBeforeFast);
+    }
+  }
+
+  /** La touche relâchée correspond-elle à la touche d'avance rapide configurée ? */
+  private isConfiguredFastRelease(e: KeyboardEvent): boolean {
+    if (this.status.fastForwardKey === "enter") return e.key === "Enter";
+    if (this.status.fastForwardKey === "ctrl") return e.key === "Control";
+    return e.key === "Shift";
   }
 
   private isFastKey(e: KeyboardEvent): boolean {
@@ -831,7 +897,19 @@ export class DomUIManager implements UIManager {
   }
 
   private onKeyUp(e: KeyboardEvent): void {
+    if (this.fastKeyHeld !== null && this.isConfiguredFastRelease(e) && this.fastForwardKeyMatchesHeld(e)) {
+      this.releaseFastKey();
+    }
+    // Rétrocompatibilité Ctrl maintenu (lorsque Ctrl n'est pas la touche configurée).
     if (e.key === "Control") this.releaseCtrlSkip();
+  }
+
+  /** La touche relâchée est bien celle qui a démarré le skip (évite un keyup d'une autre touche). */
+  private fastForwardKeyMatchesHeld(e: KeyboardEvent): boolean {
+    if (this.fastKeyHeld === null) return false;
+    if (this.fastKeyHeld === "Control") return e.key === "Control";
+    if (this.fastKeyHeld === "Shift") return e.key === "Shift";
+    return this.fastKeyHeld === e.key;
   }
 
   private releaseCtrlSkip(notify = true): void {

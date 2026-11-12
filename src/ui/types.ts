@@ -44,6 +44,10 @@ export type PlayerStatus = {
   autoHideCursor: boolean;
   /** Touche d'avance rapide choisie. */
   fastForwardKey: "enter" | "shift" | "ctrl";
+  /** Portée de l'avance rapide (#382) : `all` ou pages déjà lues (`read`). */
+  fastForwardScope?: "all" | "read";
+  /** La page courante a-t-elle déjà été lue ? (portée `read`, #382) */
+  pageRead?: boolean;
   /** Raccourcis actifs, poussés avec le statut pour être disponibles en jeu. */
   shortcuts: ShortcutBindings;
 };
