@@ -329,16 +329,21 @@ export type ReviewModeHandle = {
 
 const HUD_ID = "mh-review-hud";
 const PANEL_ID = "mh-review-panel";
+const HELP_ID = "mh-review-help";
+const TOAST_ID = "mh-review-toast";
+const HELP_SEEN_KEY = "mahoyo-review-help-seen";
 const STYLE_ID = "mh-review-style";
 
 const CSS = `
-#${HUD_ID} { position: fixed; top: 8px; right: 8px; z-index: 400; display: flex; gap: 6px; align-items: center;
-  font: 600 12px/1.2 system-ui, sans-serif; color: #f5e9c8; background: rgba(20, 16, 10, .78);
-  border: 1px solid #c9a75a; border-radius: 6px; padding: 5px 8px; cursor: pointer; user-select: none; }
-#${HUD_ID}:hover { background: rgba(40, 32, 18, .9); }
-#${HUD_ID} .mh-review-badge { letter-spacing: .04em; }
-#${HUD_ID}[data-empty="true"] { opacity: .65; }
-#${PANEL_ID} { position: fixed; inset: 0; z-index: 401; display: none; align-items: center; justify-content: center;
+#${HUD_ID} { position: fixed; top: 8px; right: 8px; z-index: 900; display: flex; gap: 6px; align-items: center;
+  font: 600 12px/1.2 system-ui, sans-serif; color: #f5e9c8; background: rgba(20, 16, 10, .9);
+  border: 1px solid #c9a75a; border-radius: 6px; padding: 4px; box-shadow: 0 2px 10px rgba(0,0,0,.45); }
+#${HUD_ID}[data-empty="true"] { border-color: #8a7440; }
+#${HUD_ID} button { font: inherit; color: inherit; background: transparent; border: 1px solid #4a3f2a;
+  border-radius: 4px; padding: 4px 7px; cursor: pointer; }
+#${HUD_ID} button:hover { background: rgba(201, 167, 90, .18); border-color: #c9a75a; }
+#${HUD_ID} .mh-review-count { min-width: 16px; text-align: center; color: #e8c980; font-weight: 700; }
+#${PANEL_ID} { position: fixed; inset: 0; z-index: 901; display: none; align-items: center; justify-content: center;
   background: rgba(0, 0, 0, .55); font: 14px/1.4 system-ui, sans-serif; color: #f6f1e4; }
 #${PANEL_ID}[data-open="true"] { display: flex; }
 #${PANEL_ID} .mh-review-box { width: min(560px, 92vw); max-height: 84vh; overflow: auto; background: #16130d;
@@ -358,6 +363,22 @@ const CSS = `
 #${PANEL_ID} .mh-review-item { display: flex; gap: 8px; justify-content: space-between; align-items: center; padding: 3px 0; }
 #${PANEL_ID} .mh-review-item button { background: transparent; border: 0; color: #d98b7a; cursor: pointer; }
 #${PANEL_ID} .mh-review-status { min-height: 18px; margin-top: 8px; font-size: 12px; color: #9fd39f; }
+#${HELP_ID} { position: fixed; inset: 0; z-index: 902; display: none; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .6); font: 14px/1.5 system-ui, sans-serif; color: #f6f1e4; }
+#${HELP_ID}[data-open="true"] { display: flex; }
+#${HELP_ID} .mh-review-help-box { width: min(520px, 92vw); background: #16130d; border: 1px solid #c9a75a;
+  border-radius: 10px; padding: 18px 20px; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+#${HELP_ID} h2 { margin: 0 0 8px; font-size: 17px; color: #e8c980; }
+#${HELP_ID} ul { margin: 0 0 12px; padding-left: 18px; }
+#${HELP_ID} li { margin: 3px 0; }
+#${HELP_ID} kbd { background: #2a2418; border: 1px solid #5a4a2a; border-radius: 4px; padding: 0 5px; font: inherit; }
+#${HELP_ID} .mh-review-help-actions { display: flex; justify-content: flex-end; gap: 8px; }
+#${HELP_ID} button { background: #c9a75a; color: #16130d; border: 0; border-radius: 6px; padding: 7px 14px; font-weight: 700; cursor: pointer; }
+#${TOAST_ID} { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 903;
+  max-width: 86vw; padding: 8px 14px; border-radius: 6px; background: rgba(24, 20, 12, .96);
+  border: 1px solid #c9a75a; color: #f6f1e4; font: 600 13px/1.3 system-ui, sans-serif;
+  opacity: 0; pointer-events: none; transition: opacity .18s linear; }
+#${TOAST_ID}[data-visible="true"] { opacity: 1; }
 `;
 
 function newId(): string {
@@ -393,13 +414,35 @@ export function mountReviewMode(deps: ReviewModeDeps): ReviewModeHandle {
   const hud = document.createElement("div");
   hud.id = HUD_ID;
   hud.dataset.empty = "true";
-  hud.setAttribute("role", "button");
-  hud.tabIndex = 0;
-  hud.innerHTML = `<span class="mh-review-badge">Revue</span><span aria-hidden="true">⚑</span><span class="mh-review-count">0</span>`;
+  hud.setAttribute("role", "toolbar");
+  hud.setAttribute("aria-label", "Mode revue");
+  hud.innerHTML = `
+    <button type="button" class="mh-review-mark" title="Marquer un passage (F2)">⚑ Marquer (F2)</button>
+    <span class="mh-review-count" aria-label="Nombre de flags">0</span>
+    <button type="button" class="mh-review-export" title="Exporter la session (F3)">Exporter (F3)</button>
+    <button type="button" class="mh-review-help" title="Aide du mode revue">?</button>`;
   const panel = document.createElement("div");
   panel.id = PANEL_ID;
   panel.dataset.open = "false";
-  document.body.append(hud, panel);
+  const help = document.createElement("div");
+  help.id = HELP_ID;
+  help.dataset.open = "false";
+  help.innerHTML = `
+    <div class="mh-review-help-box" role="dialog" aria-modal="true" aria-label="Aide du mode revue">
+      <h2>⚑ Mode revue actif</h2>
+      <ul>
+        <li><kbd>F2</kbd> (ou le bouton <strong>⚑ Marquer</strong>) : marquer le passage — catégorie avec <kbd>1</kbd>–<kbd>7</kbd> (Texte/Sprite/Fond/Transition/Son/Icône/Autre), note libre, <kbd>Entrée</kbd> valide.</li>
+        <li><kbd>F3</kbd> : exporter <code>review-session.json</code> ; <kbd>F4</kbd> : copier le JSON.</li>
+        <li><strong>Fermez le navigateur pour terminer la session</strong> : le lanceur récupère les flags automatiquement.</li>
+        <li>Si les touches ne répondent pas, cliquez une fois dans la page (focus).</li>
+      </ul>
+      <div class="mh-review-help-actions"><button type="button" class="mh-review-help-ok">Compris (Entrée)</button></div>
+    </div>`;
+  const toast = document.createElement("div");
+  toast.id = TOAST_ID;
+  toast.dataset.visible = "false";
+  toast.setAttribute("role", "status");
+  document.body.append(hud, panel, help, toast);
 
   let selectedCategory: ReviewCategory = "autre";
   let saving = false;
@@ -413,6 +456,40 @@ export function mountReviewMode(deps: ReviewModeDeps): ReviewModeHandle {
     hud.dataset.empty = count === 0 ? "true" : "false";
     const counter = hud.querySelector<HTMLElement>(".mh-review-count");
     if (counter) counter.textContent = String(count);
+  };
+
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  const showToast = (text: string): void => {
+    toast.textContent = text;
+    toast.dataset.visible = "true";
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toast.dataset.visible = "false";
+    }, 2600);
+  };
+
+  const hideHelp = (): void => {
+    help.dataset.open = "false";
+    try {
+      sessionStorage.setItem(HELP_SEEN_KEY, "1");
+    } catch {
+      // stockage indisponible : l'aide se réaffichera au prochain chargement, sans impact.
+    }
+  };
+  const showHelp = (): void => {
+    help.dataset.open = "true";
+  };
+  let helpShownThisSession = false;
+  const maybeShowFirstLaunchHelp = (): void => {
+    try {
+      if (sessionStorage.getItem(HELP_SEEN_KEY) === "1") return;
+    } catch {
+      // pas de sessionStorage : on affiche quand même l'aide une fois.
+    }
+    if (!helpShownThisSession) {
+      helpShownThisSession = true;
+      showHelp();
+    }
   };
 
   const buildPanel = (): void => {
@@ -522,9 +599,11 @@ export function mountReviewMode(deps: ReviewModeDeps): ReviewModeHandle {
         hasCapture: false,
       };
       if (capture) flag.hasCapture = await putCapture(id, capture);
-      writeStoredFlags([...readStoredFlags(), flag]);
+      const allFlags = [...readStoredFlags(), flag];
+      writeStoredFlags(allFlags);
       refreshHud();
       closePanel();
+      showToast(`Flag #${allFlags.length} enregistré — ${categoryLabel(selectedCategory)}`);
     } catch (error) {
       console.warn("[review] échec de l'enregistrement du flag :", error);
     } finally {
@@ -560,6 +639,16 @@ export function mountReviewMode(deps: ReviewModeDeps): ReviewModeHandle {
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
+    if (help.dataset.open === "true") {
+      if (event.key === "Enter" || event.key === "Escape" || event.key === " ") {
+        event.preventDefault();
+        event.stopPropagation();
+        hideHelp();
+        return;
+      }
+      if (event.key !== "F2" && event.key !== "F3" && event.key !== "F4") return;
+      hideHelp();
+    }
     if (event.key === "F2") {
       event.preventDefault();
       event.stopPropagation();
@@ -601,21 +690,28 @@ export function mountReviewMode(deps: ReviewModeDeps): ReviewModeHandle {
     }
   };
 
-  hud.addEventListener("click", () => (panel.dataset.open === "true" ? closePanel() : openPanel()));
-  hud.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      openPanel();
-    }
+  hud.querySelector<HTMLButtonElement>(".mh-review-mark")?.addEventListener("click", () => {
+    if (panel.dataset.open === "true") closePanel();
+    else openPanel();
+  });
+  hud.querySelector<HTMLButtonElement>(".mh-review-export")?.addEventListener("click", () => void downloadSession());
+  hud.querySelector<HTMLButtonElement>(".mh-review-help")?.addEventListener("click", () => showHelp());
+  help.querySelector<HTMLButtonElement>(".mh-review-help-ok")?.addEventListener("click", hideHelp);
+  help.addEventListener("click", (event) => {
+    if (event.target === help) hideHelp();
   });
   window.addEventListener("keydown", onKeyDown, true);
   refreshHud();
+  maybeShowFirstLaunchHelp();
 
   const handle: ReviewModeHandle = {
     dispose: () => {
       window.removeEventListener("keydown", onKeyDown, true);
+      if (toastTimer) clearTimeout(toastTimer);
       hud.remove();
       panel.remove();
+      help.remove();
+      toast.remove();
     },
     dump: () => exportSession(),
   };
