@@ -89,6 +89,43 @@ describe("planTasks", () => {
     expect(tasks[0].commandTemplate).toBe("ffmpeg -i {in} {out}");
   });
 
+  it("planifie la conversion .wav → Opus .ogg par ffmpeg détecté (#387)", () => {
+    const entries = [makeEntry("sound/se01.wav", "se", ".wav", "se01")];
+    const tasks = planTasks(entries, {
+      ...baseCtx,
+      audio: { ffmpegPath: "ffmpeg", format: "opus" },
+    });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].action).toBe("convert-audio");
+    expect(tasks[0].outputExt).toBe(".ogg");
+    expect(tasks[0].commandTemplate).toBeUndefined();
+    expect(tasks[0].audio).toEqual({ ffmpegPath: "ffmpeg", format: "opus" });
+  });
+
+  it("planifie le repli Safari .m4a AAC (#387)", () => {
+    const entries = [makeEntry("sound/se01.wav", "se", ".wav", "se01")];
+    const tasks = planTasks(entries, {
+      ...baseCtx,
+      audio: { ffmpegPath: "ffmpeg", format: "aac" },
+    });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].action).toBe("convert-audio");
+    expect(tasks[0].outputExt).toBe(".m4a");
+    expect(tasks[0].audio?.format).toBe("aac");
+  });
+
+  it("le gabarit --audio-cmd reste prioritaire sur la conversion interne (#387)", () => {
+    const entries = [makeEntry("sound/se01.wav", "se", ".wav", "se01")];
+    const tasks = planTasks(entries, {
+      ...baseCtx,
+      audioCommand: "mon-encodeur {in} {out}",
+      audio: { ffmpegPath: "ffmpeg", format: "aac" },
+    });
+    expect(tasks[0].outputExt).toBe(".ogg");
+    expect(tasks[0].commandTemplate).toBe("mon-encodeur {in} {out}");
+    expect(tasks[0].audio).toBeUndefined();
+  });
+
   it("planifie la copie .wav sans encodeur (copyWavIfNoEncoder)", () => {
     const entries = [makeEntry("sound/se01.wav", "se", ".wav", "se01")];
     const tasks = planTasks(entries, baseCtx);

@@ -12,7 +12,7 @@ Le pipeline convertit les assets du jeu original (PC 2012, KiriKiri/KAG3) en fic
 | `tsx` (installé via npm) | Exécution des scripts TypeScript | ✅ Oui (devDep) |
 | Extracteur XP3 (`xp3extract`, `krkrExtract`, GARbro CLI, script Python…) | Extraction des archives `.xp3` | ✅ Si `--input` contient des `.xp3` (prérequis externe, non fourni) |
 | Convertisseur TLG (`tlg2png` + `cwebp`, ou convertisseur TLG→WebP) | Conversion `.tlg` → `.webp` | ⬚ Recommandé pour WebP ; sans lui, décodeur intégré → `.png` (`TLG0.0`/`TLG5` seulement) |
-| `ffmpeg` (ou autre encodeur) | Re-encodage audio `.wav` → `.ogg` | ⬚ Optionnel (sans lui, les `.wav`/`.ogg` sont copiés tels quels) |
+| `ffmpeg` | Conversion audio `.wav` → **Opus/Ogg** (96 kbps stéréo / 64 kbps mono) ou AAC `.m4a` (repli Safari) | ⬚ Recommandé : activé **automatiquement** s'il est présent dans le PATH (sans lui, les `.wav` sont copiés tels quels) |
 
 > Les outils externes sont appelés par des **gabarits de commande** (`{in}` et
 > `{out}` remplacés argument par argument, sans shell) : adaptez-les à votre
@@ -35,8 +35,7 @@ Il faut posséder une copie du jeu PC 2012 ; le dépôt ne contient aucun asset.
      --output ./public/assets \
      --work .pipeline-work \
      --xp3-cmd "<extracteur> {in} {out}" \
-     --tlg-cmd "<convertisseur TLG→WebP> {in} {out}" \
-     --audio-cmd "ffmpeg -y -i {in} -c:a libopus -b:a 96k -f ogg {out}"
+     --tlg-cmd "<convertisseur TLG→WebP> {in} {out}"
    ```
 
    - `./jeu` contient les archives (`data.xp3`, `bg.xp3`, …) **ou** les fichiers
@@ -44,7 +43,17 @@ Il faut posséder une copie du jeu PC 2012 ; le dépôt ne contient aucun asset.
    - L'extraction va dans `<work>/extracted/<archive>/`, puis le pipeline
      inventorie, convertit et écrit `public/assets/asset-manifest.json`.
    - Sans `--tlg-cmd`, les `.tlg` sont décodés en `.png` par le décodeur intégré
-     (voir « Étapes ») ; sans `--audio-cmd`, les audio sont copiés.
+     (voir « Étapes »).
+   - **Audio** : si `ffmpeg` est détecté, les `.wav` sont convertis en **Opus/Ogg**
+     (96 kbps stéréo, 64 kbps mono ; durées vérifiées à ±20 ms) — les BGM `.ogg`
+     sont copiées sans réencodage. Sans `ffmpeg`, les `.wav` sont copiés tels
+     quels. Un gabarit `--audio-cmd` reste possible et prioritaire (encodeur
+     personnalisé).
+   - **Repli Safari** : les anciens Safari ne lisent pas Ogg/Opus. Pour cibler ces
+     navigateurs, relancer la conversion avec `--audio-format aac` : les `.wav`
+     sont alors produits en `.m4a` (AAC 128 kbps) ; le manifeste reflète
+     l'extension réelle et le résolveur d'assets le suit (aucun changement du
+     player).
    - Le gabarit audio doit **forcer le format de sortie** (`-f ogg` avec ffmpeg) :
      le pipeline écrit d'abord `<sortie>.tmp` (écriture atomique), et ffmpeg ne
      peut pas déduire le conteneur de cette extension.
@@ -75,7 +84,8 @@ npm run pipeline -- \
   [--dry-run] [--strict] [--force] [--no-translation] \
   [--xp3-cmd "<extracteur> {in} {out}"] \
   [--tlg-cmd "<convertisseur TLG→WebP> {in} {out}"] \
-  [--audio-cmd "<encodeur> {in} {out}"]
+  [--audio-cmd "<encodeur> {in} {out}"] \
+  [--audio-format opus|aac] [--no-audio]
 ```
 
 **Exemple :**
@@ -85,8 +95,10 @@ npm run pipeline -- \
   --input ./raw-assets \
   --output ./public/assets \
   --xp3-cmd "/usr/local/bin/xp3extract {in} {out}" \
-  --tlg-cmd "/usr/local/bin/tlg2webp {in} {out}" \
-  --audio-cmd "ffmpeg -y -i {in} -c:a libopus -b:a 96k -f ogg {out}"
+  --tlg-cmd "/usr/local/bin/tlg2webp {in} {out}"
+
+# Audio : conversion Opus automatique si ffmpeg est présent.
+# Repli Safari (Ogg/Opus non supporté) : ajouter --audio-format aac (.m4a).
 ```
 
 Les gabarits sont exécutés **sans shell** (`execFile`), avec `{in}` et `{out}`
@@ -176,13 +188,25 @@ npm run normalize-ks -- <input.ks>
 ### 3. convert-audio
 
 - **Entrée** : fichiers `.ogg`, `.mp3`, `.wav`
-- **Sortie** : fichiers `.ogg` dans la même arborescence relative
-- **Sans encodeur** : copie simple des fichiers OGG (déjà compatibles navigateur)
-- **Avec encodeur** : re-encodage via l'outil fourni (ex: ffmpeg)
-- **Format de sortie forcé** : la sortie est d'abord écrite en `<sortie>.tmp`
-  (écriture atomique) ; l'extension `.tmp` empêche ffmpeg de déduire le
-  conteneur, forcez-le donc dans le gabarit : `-f ogg`, par exemple
-  `ffmpeg -y -i {in} -c:a libopus -b:a 96k -f ogg {out}`.
+- **Sortie** : `.ogg` (Opus) par défaut, `.m4a` (AAC) avec `--audio-format aac`,
+  dans la même arborescence relative (le manifeste porte l'extension réelle).
+- **Par défaut, sans option** : si `ffmpeg` est détecté dans le PATH, les `.wav`
+  sont convertis en **Opus/Ogg** (`libopus`, 96 kbps stéréo, 64 kbps mono),
+  durées vérifiées à ±20 ms (avertissement au-delà). Les `.ogg`/`.mp3` existants
+  sont copiés : **les BGM déjà en OGG ne sont pas réencodées** (perte évitée sur
+  un format déjà compressé).
+- **Sans `ffmpeg`** : les `.wav` sont copiés tels quels (comportement de repli).
+- **Avec gabarit `--audio-cmd`** : encodeur personnalisé prioritaire, ex.
+  `ffmpeg -y -i {in} -c:a libopus -b:a 96k -f ogg {out}`. La sortie est d'abord
+  écrite en `<sortie>.tmp` (écriture atomique) : forcez le conteneur (`-f ogg`).
+- **Repli Safari (`.m4a` AAC)** : tester `canPlayType('audio/ogg; codecs=opus')`
+  dans le navigateur cible ; s'il répond `""`, regénérer les assets avec
+  `--audio-format aac` (AAC 128 kbps). Le manifeste contient alors
+  `.m4a` et le résolveur d'assets (lecture du manifeste) est déjà tolérant à
+  l'extension : c'est un **build dédié**, pas un double encodage.
+- **Mesure** : le pipeline affiche en fin d'exécution le poids audio avant/après
+  (ex. `596,0 Mo → 45,0 Mo (−92 %)`). Référence : ~806 SE WAV de 596 Mo
+  deviennent ~45 Mo en Opus (x14), `se13010` de 3,07 Mo → ~210 Ko.
 
 ### 4. normalize-ks
 
