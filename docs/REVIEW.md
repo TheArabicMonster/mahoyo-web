@@ -4,10 +4,12 @@ Mode destiné au **propriétaire** : jouer au jeu et marquer les passages à pro
 envoyer une session JSON exploitable (script, position d'instruction, état scène, capture).
 Tout reste **local** (localStorage + IndexedDB) : aucun envoi réseau, aucun asset/texte commité.
 
-## Lancer
+## Lancer : deux modes
+
+### Mode automatique (défaut)
 
 ```bash
-# Recommandé : construit l'app, sert dist/ en local et ouvre un navigateur visible
+# Construit l'app, sert dist/ en local et ouvre un navigateur visible Playwright
 npm run review
 
 # Avec les assets réels locaux du propriétaire (public/assets, non commités)
@@ -15,13 +17,27 @@ npm run review -- --assets /chemin/vers/public
 
 # Tester un déploiement existant (pas de build ni de serveur local)
 npm run review -- --url https://exemple.test/game/
-
-# Options
-npm run review -- --browser firefox --port 4321 --no-build --no-console-log
 ```
+
+La session est **sauvegardée à chaque flag** dans `reports/review-session.json` (+
+`reports/review-shots/`) : même si la fenêtre se ferme, les flags déjà posés sont sur disque. La
+raison de fin est journalisée (`page.close` / `page.crash` / `browser.disconnected`).
+
+### Mode manuel (`--manual`, alias `--no-open`) — recommandé si la fenêtre se ferme seule
+
+```bash
+npm run review -- --manual
+```
+
+**Aucune fenêtre Playwright** n'est lancée : le script démarre le serveur (ou utilise `--url`) et
+affiche l'URL `?review=1` à ouvrir dans **votre** navigateur. Marquez avec F2, puis récupérez le JSON
+avec **F3** (téléchargement de `review-session.json`, captures incluses) ou **F4** (copie). `Ctrl+C`
+arrête le serveur. C'est le mode recommandé en cas de fermeture intempestive de la fenêtre
+automatique (bug connu non reproduit localement, #405).
 
 | Option | Effet |
 |---|---|
+| `--manual` / `--no-open` | pas de Playwright : URL à ouvrir soi-même, JSON via F3 |
 | `--url <url>` | teste une URL existante (aucun build/serveur local) |
 | `--port N` | port du serveur local (`vite preview`) ; défaut : port libre |
 | `--browser chromium\|firefox` | navigateur **visible** (défaut chromium) |
@@ -71,10 +87,11 @@ Chaque flag contient :
 
 ## Récupérer la session
 
-- **F3 / F4** dans le jeu : JSON complet avec captures (bouton « Exporter (F3) » équivalent).
-- **Fermeture du navigateur lancé par `npm run review`** : le lanceur écrit automatiquement
-  `reports/review-session.json` (captures inline) + `reports/review-shots/<id>.jpg` + résumé
-  (nombre de flags, pages/scripts concernés).
+- **F3 / F4** dans le jeu : JSON complet avec captures (bouton « Exporter (F3) » équivalent) —
+  c'est la **seule** récupération en mode manuel ;
+- **Mode automatique** : `reports/review-session.json` est réécrit **à chaque flag** (sauvegarde
+  incrémentale) puis à la fermeture, avec `reports/review-shots/<id>.jpg` et le résumé
+  (nombre de flags, pages/scripts concernés) ; la raison de fin est incluse (`endReason`, `durationMs`).
 - `reports/review-console.log` : journal continu console (warn/error), `pageerror` et réponses
   HTTP ≥ 400 (404 d'assets), sauf `--no-console-log`.
 

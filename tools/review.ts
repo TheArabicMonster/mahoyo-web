@@ -1,13 +1,16 @@
 /**
  * Lanceur du mode revue (#400) — `npm run review`.
  *
- * - build optionnel (`--no-build`), serveur local `vite preview` (ou `--url` pour un déploiement) ;
- * - **navigateur visible** (Playwright chromium/firefox) ouvert sur `?review=1` ;
- * - journal continu : `console` (warn/error), `pageerror`, réponses HTTP ≥ 400 →
- *   `reports/review-console.log` (désactivable avec `--no-console-log`) ;
- * - à la fermeture du navigateur : récupération des flags (poll `window.__mhReview.dump()`) →
- *   `reports/review-session.json` (captures inline) + `reports/review-shots/*.jpg` + résumé console.
+ * Deux modes (#405) :
+ * - **automatique** (défaut) : build optionnel, `vite preview` (ou `--url`), navigateur **visible**
+ *   Playwright (`chromium`/`firefox`) ouvert sur `?review=1` ; la session est sauvegardée **à chaque
+ *   flag** dans `reports/review-session.json` (+ `reports/review-shots/`), la raison de fin est
+ *   journalisée (`page.close`/`page.crash`/`browser.disconnected`) ;
+ * - **manuel** (`--manual` / `--no-open`) : **pas de Playwright** ; sert l'app et affiche l'URL
+ *   `?review=1` à ouvrir dans le navigateur du propriétaire, jusqu'à Ctrl+C. Le JSON est récupéré
+ *   par **F3** (téléchargement) ; F4 copie le JSON.
  *
+ * Journal continu (console warn/error, `pageerror`, HTTP ≥ 400) dans `reports/review-console.log`.
  * Aucun asset du jeu n'est commité : le build local lie `public/assets` dans `dist/assets`.
  */
 import { spawn, spawnSync } from "child_process";
@@ -15,7 +18,19 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync, writeFileSy
 import { createServer as createNetServer } from "net";
 import { join, resolve } from "path";
 import { chromium, firefox, type Browser, type Page } from "playwright";
-import { buildReviewUrl, parseReviewArgs, reviewShotName, summarizeReviewSession } from "./review-lib.js";
+import {
+  buildReviewUrl,
+  buildSessionPayload,
+  dumpFlagCount,
+  dumpFlags,
+  endReasonMessage,
+  parseReviewArgs,
+  summarizeReviewSession,
+  writeSession,
+  zeroFlagHelpLines,
+  type ReviewEndReason,
+  type ReviewSessionFlag,
+} from "./review-lib.js";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const DIST_DIR = join(ROOT, "dist");
@@ -57,12 +72,6 @@ function linkRealAssets(assetsDir: string): void {
   }
 }
 
-function build(): void {
-  console.log("[review] build vite…");
-  const result = spawnSyncVite();
-  if (result !== 0) throw new Error("échec du build vite (voir les logs ci-dessus)");
-}
-
 function spawnSyncVite(): number {
   const result = spawnSync(join(ROOT, "node_modules", ".bin", "vite"), ["build", "--logLevel", "warn"], {
     cwd: ROOT,
@@ -70,6 +79,12 @@ function spawnSyncVite(): number {
     env: process.env,
   });
   return result.status ?? 1;
+}
+
+function build(): void {
+  console.log("[review] build vite…");
+  const result = spawnSyncVite();
+  if (result !== 0) throw new Error("échec du build vite (voir les logs ci-dessus)");
 }
 
 async function startPreview(port: number | null): Promise<{ url: string; stop: () => Promise<void> }> {
@@ -85,15 +100,38 @@ async function startPreview(port: number | null): Promise<{ url: string; stop: (
     child.kill("SIGTERM");
     throw error;
   }
-  return { url, stop: () => new Promise<void>((done) => { child.kill("SIGTERM"); child.once("exit", () => done()); }) };
+  return {
+    url,
+    stop: () =>
+      new Promise<void>((done) => {
+        child.kill("SIGTERM");
+        child.once("exit", () => done());
+      }),
+  };
 }
 
-type SessionDump = {
-  flags: { id: string; capture?: string | null; category: string; script?: { scriptName?: string | null } | null; createdAt?: string }[];
-};
+/** Attend Ctrl+C / SIGTERM (mode manuel) en gardant la boucle d'événements active. */
+function waitForSignal(): Promise<void> {
+  return new Promise((done) => {
+    // Un listener de signal ne maintient pas la boucle : sans ce timer, Node sortirait aussitôt
+    // (« unsettled top-level await ») et le serveur manuel ne resterait pas disponible.
+    const keepAlive = setInterval(() => undefined, 1000);
+    const finish = (): void => {
+      clearInterval(keepAlive);
+      process.removeListener("SIGINT", finish);
+      process.removeListener("SIGTERM", finish);
+      done();
+    };
+    process.once("SIGINT", finish);
+    process.once("SIGTERM", finish);
+  });
+}
+
+type SessionDump = { flags?: ReviewSessionFlag[] };
 
 async function main(): Promise<void> {
   const options = parseReviewArgs(process.argv.slice(2));
+  const startedAt = new Date().toISOString();
   mkdirSync(options.outDir, { recursive: true });
   const consoleLogPath = join(options.outDir, "review-console.log");
   const shotsDir = join(options.outDir, "review-shots");
@@ -112,8 +150,6 @@ async function main(): Promise<void> {
     baseUrl = server.url;
   }
   const url = buildReviewUrl(baseUrl);
-  console.log(`[review] URL : ${url}`);
-  console.log("[review] F2 = poser un flag · F3 = exporter · F4 = copier · fermer le navigateur pour terminer la session.");
 
   const lines: string[] = [];
   const logLine = (text: string): void => {
@@ -123,26 +159,91 @@ async function main(): Promise<void> {
       try {
         writeFileSync(consoleLogPath, `${lines.join("\n")}\n`, "utf-8");
       } catch {
-        // ignore
+        // journal non bloquant
       }
     }
   };
-  logLine(`[review] session ${new Date().toISOString()} — ${url}`);
+  logLine(`[review] session ${startedAt} — ${url}`);
+
+  // ── Mode manuel (#405) : aucun navigateur Playwright, l'utilisateur ouvre l'URL ────────────
+  if (options.manual) {
+    logLine("[review] MODE MANUEL : aucune fenêtre Playwright ne sera lancée.");
+    logLine(`[review] Ouvrez cette URL dans votre navigateur : ${url}`);
+    logLine("[review] F2 = marquer un passage · F3 = exporter review-session.json (téléchargement) · F4 = copier le JSON.");
+    logLine("[review] Quand vous avez terminé, récupérez le JSON via F3 (ou F4), puis Ctrl+C ici pour arrêter le serveur.");
+    logLine("[review] Le mode manuel est recommandé si la fenêtre automatique se ferme toute seule.");
+    await waitForSignal();
+    await server?.stop();
+    logLine(`[review] serveur arrêté — session manuelle terminée (${new Date().toISOString()}).`);
+    logLine("[review] Le JSON de session vient de F3 dans votre navigateur (dossier Téléchargements).");
+    return;
+  }
+
+  console.log(`[review] URL : ${url}`);
+  console.log("[review] F2 = poser un flag · F3 = exporter · F4 = copier · fermer le navigateur pour terminer la session.");
 
   const browserType = options.browser === "firefox" ? firefox : chromium;
   let browser: Browser | null = null;
   let latest: SessionDump | null = null;
   let page: Page | null = null;
-  // Fermer proprement le navigateur sur SIGINT/SIGTERM pour que la session soit quand même écrite.
+  let endReason: ReviewEndReason | null = null;
+  let endedAt: string | null = null;
+  let savedFlagsCount = 0;
+  let saving = false;
+
+  const persist = (final: boolean): void => {
+    if (saving) return;
+    saving = true;
+    try {
+      const flags = dumpFlags(latest);
+      const ended = endedAt ?? new Date().toISOString();
+      const session = buildSessionPayload({
+        url,
+        browser: options.browser,
+        consoleLog: options.consoleLog ? consoleLogPath : null,
+        flags,
+        startedAt,
+        endedAt: ended,
+        endReason: final ? endReason : null,
+      });
+      const written = writeSession(options.outDir, session);
+      savedFlagsCount = flags.length;
+      logLine(
+        `[review] session sauvegardée${final ? " (finale)" : " (incrémentale)"} : ${flags.length} flag(s), ${written.shots} capture(s) → ${written.sessionPath}`,
+      );
+    } catch (error) {
+      logLine(`[review] échec de sauvegarde de la session : ${String(error)}`);
+    } finally {
+      saving = false;
+    }
+  };
+
+  const markEnd = (reason: ReviewEndReason, detail: string): void => {
+    if (endReason !== null) return;
+    endReason = reason;
+    endedAt = new Date().toISOString();
+    const flagsCount = dumpFlagCount(latest);
+    logLine(`[review] ${endedAt} ${detail}`);
+    logLine(`[review] raison de fin : ${endReasonMessage(reason, flagsCount, Date.now() - new Date(startedAt).getTime())}`);
+  };
+
+  // Fermer proprement le navigateur sur SIGINT/SIGTERM pour que la session soit écrite.
   const closeOnSignal = (): void => {
+    markEnd("signal", "interruption par signal (Ctrl+C/SIGTERM)");
     void browser?.close().catch(() => undefined);
   };
   process.once("SIGINT", closeOnSignal);
   process.once("SIGTERM", closeOnSignal);
   try {
     browser = await browserType.launch({ headless: false });
+    browser.on("disconnected", () => {
+      if (page && !page.isClosed()) return;
+      markEnd("disconnected", "navigateur déconnecté (fenêtre fermée ou processus terminé)");
+    });
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     page = await context.newPage();
+    page.on("crash", () => markEnd("crash", "page en crash (crash du renderer)"));
+    page.on("close", () => markEnd("external-close", "page fermée (fermeture externe : Cmd+W/Cmd+Q, croix, gestionnaire de fenêtres)"));
     page.on("console", (message) => {
       if (message.type() === "warning" || message.type() === "error") logLine(`[console:${message.type()}] ${message.text().slice(0, 500)}`);
     });
@@ -151,11 +252,16 @@ async function main(): Promise<void> {
       if (response.status() >= 400) logLine(`[http ${response.status()}] ${response.url().slice(0, 300)}`);
     });
 
+    // Sauvegarde incrémentale : dès qu'un nouveau flag apparaît, on écrit la session (ne rien perdre
+    // si la fenêtre se ferme ensuite). Le poll sert aussi de source pour la sauvegarde finale.
     const poll = setInterval(() => {
       void page
         ?.evaluate("window.__mhReview ? window.__mhReview.dump() : null")
         .then((dump: unknown) => {
-          if (dump) latest = dump as SessionDump;
+          if (!dump) return;
+          latest = dump as SessionDump;
+          const count = dumpFlagCount(dump);
+          if (count > savedFlagsCount) persist(false);
         })
         .catch(() => undefined);
     }, 400);
@@ -175,39 +281,16 @@ async function main(): Promise<void> {
     await server?.stop();
   }
 
-  const session = latest as SessionDump | null;
-  const flags = session?.flags ?? [];
-  let shots = 0;
-  for (const flag of flags) {
-    if (!flag.capture || !flag.capture.startsWith("data:image/")) continue;
-    const data = flag.capture.split(",")[1] ?? "";
-    try {
-      writeFileSync(join(shotsDir, reviewShotName(flag.id)), Buffer.from(data, "base64"));
-      shots++;
-    } catch (error) {
-      logLine(`[review] capture non écrite (${flag.id}) : ${String(error)}`);
-    }
-  }
-  const report = {
-    kind: "mahoyo-review-session",
-    version: 1,
-    generatedAt: new Date().toISOString(),
-    source: "tools/review.ts",
-    url,
-    browser: options.browser,
-    consoleLog: options.consoleLog ? consoleLogPath : null,
-    flags,
-  };
-  writeFileSync(join(options.outDir, "review-session.json"), JSON.stringify(report, null, 2), "utf-8");
+  const flags = dumpFlags(latest);
+  const durationMs = Date.now() - new Date(startedAt).getTime();
+  if (endReason === null) endReason = "disconnected";
+  endedAt ??= new Date().toISOString();
+  persist(true);
+
   logLine(`[review] session terminée : ${summarizeReviewSession({ flags })}`);
-  if (flags.length === 0) {
-    logLine("[review] AUCUN FLAG — aide :");
-    logLine("  1. démarrez une partie (Start) ou chargez une sauvegarde ;");
-    logLine("  2. cliquez une fois dans la page si les touches ne répondent pas (focus fenêtre) ;");
-    logLine("  3. F2 → catégorie (1-7) → note → Entrée ; F3 exporte, F4 copie ;");
-    logLine("  4. fermez le navigateur pour terminer la session et récupérer les flags.");
-  }
-  logLine(`[review] ${join(options.outDir, "review-session.json")} (+ ${shots} capture(s) dans ${shotsDir})`);
+  logLine(`[review] raison de fin : ${endReasonMessage(endReason, flags.length, durationMs)}`);
+  for (const line of zeroFlagHelpLines(flags.length, durationMs)) logLine(line);
+  logLine(`[review] ${join(options.outDir, "review-session.json")} (${flags.length} flag(s), dossier captures : ${shotsDir})`);
   logLine(`[review] journal : ${options.consoleLog ? consoleLogPath : "désactivé"}`);
 }
 
