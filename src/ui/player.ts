@@ -297,7 +297,6 @@ export class Player implements PlayerCommands {
   /** Préchargement lookahead (#367) : contrôleur d'annulation et références bornées. */
   private lookaheadController: AbortController | null = null;
   private lookaheadRunning = false;
-  private lookaheadImages = new Map<string, HTMLImageElement>();
   private lookaheadAudio = new Map<string, HTMLAudioElement>();
   private scriptFile = "";
   private scriptCache = new Map<string, ParsedScript>();
@@ -1514,7 +1513,8 @@ export class Player implements PlayerCommands {
       const worker = async (): Promise<void> => {
         while (!signal.aborted && cursor < urls.length) {
           const url = urls[cursor++]!;
-          await this.preloadImage(url, signal);
+          // #386 : passer par le cache décodé du renderer, pas par une Map séparée.
+          await this.stage.prepare?.(url, { decode: true });
         }
       };
       await Promise.all(Array.from({ length: Player.LOOKAHEAD_CONCURRENCY }, worker));
@@ -1534,36 +1534,6 @@ export class Player implements PlayerCommands {
       } else {
         setTimeout(resolve, 0);
       }
-    });
-  }
-
-  private preloadImage(url: string, signal: AbortSignal): Promise<void> {
-    if (signal.aborted) return Promise.resolve();
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.decoding = "async";
-      img.fetchPriority = "low";
-      this.lookaheadImages.set(url, img);
-      if (this.lookaheadImages.size > Player.LOOKAHEAD_MAX_IMAGES) {
-        const oldest = this.lookaheadImages.keys().next().value;
-        if (oldest !== undefined) this.lookaheadImages.delete(oldest);
-      }
-      let settled = false;
-      const timer = setTimeout(done, 5000);
-      const onAbort = () => done();
-      function done(): void {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        signal.removeEventListener("abort", onAbort);
-        img.onload = null;
-        img.onerror = null;
-        resolve();
-      }
-      img.onload = done;
-      img.onerror = done;
-      signal.addEventListener("abort", onAbort, { once: true });
-      img.src = url;
     });
   }
 

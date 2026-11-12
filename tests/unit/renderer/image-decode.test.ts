@@ -1,6 +1,6 @@
 /** Attente de décodage d'image (#362). */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { ensureDecoded, DECODED_CACHE_LIMIT, type DecodableImage } from "@/renderer/image-decode.js";
+import { decodeImage, ensureDecoded, DECODED_CACHE_LIMIT, type DecodableImage, type InflightDecodes } from "@/renderer/image-decode.js";
 import { DecodedImageCache } from "@/renderer/image-cache.js";
 
 class FakeImage implements DecodableImage {
@@ -23,8 +23,7 @@ describe("ensureDecoded (#362)", () => {
     const img = new FakeImage(() => Promise.resolve());
     const done = vi.fn();
     void ensureDecoded("/assets/bg/a.webp", undefined, { createImage: () => img }).then(done);
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(done).toHaveBeenCalledTimes(1);
     expect(img.fetchPriority).toBe("high");
     expect(img.decoding).toBe("async");
@@ -115,5 +114,88 @@ describe("ensureDecoded + cache décodé LRU (#368)", () => {
     await ensureDecoded("/assets/bg/cache.webp", undefined, { cache, createImage: factory });
     expect(created).toBe(1); // deuxième appel = hit
     expect(cache.stats()).toMatchObject({ hits: 1, entries: 1 });
+  });
+});
+
+describe("cache des décodages en cours (#386)", () => {
+  function trackingCache() {
+    const entries = new Map<string, DecodableImage>();
+    const stats = { gets: 0, sets: 0, hits: 0 };
+    return {
+      stats,
+      cache: {
+        get size() { return entries.size; },
+        get(url: string) { stats.gets++; const image = entries.get(url); if (image) stats.hits++; return image; },
+        set(url: string, image: DecodableImage) { stats.sets++; entries.set(url, image); return image; },
+        delete(url: string) { return entries.delete(url); },
+        keys() { return entries.keys(); },
+      },
+      entries,
+    };
+  }
+
+  it("deux appels concurrents partagent une seule Image et aucun hit avant décodage", async () => {
+    const { cache, stats, entries } = trackingCache();
+    const inflight: InflightDecodes = new Map();
+    const images: FakeImage[] = [];
+    const createImage = () => {
+      const img = new FakeImage(() => new Promise<void>(() => {}));
+      images.push(img);
+      return img;
+    };
+    const first = decodeImage("/assets/bg/a.webp", undefined, { cache, inflight, createImage });
+    const second = decodeImage("/assets/bg/a.webp", undefined, { cache, inflight, createImage });
+    expect(images).toHaveLength(1);
+    expect(stats.sets).toBe(0);
+    expect(entries.size).toBe(0);
+    expect(inflight.size).toBe(1);
+
+    images[0]!.onload?.();
+    const [a, b] = await Promise.all([first, second]);
+    expect(a).toBe(images[0]);
+    expect(b).toBe(images[0]);
+    expect(stats.sets).toBe(1);
+    expect(inflight.size).toBe(0);
+
+    // Appel suivant : hit de cache, aucune nouvelle Image.
+    const third = await decodeImage("/assets/bg/a.webp", undefined, { cache, inflight, createImage });
+    expect(third).toBe(images[0]);
+    expect(images).toHaveLength(1);
+    expect(stats.hits).toBe(1);
+  });
+
+  it("un échec ne met rien en cache et n'est pas un hit", async () => {
+    const { cache, stats, entries } = trackingCache();
+    const inflight: InflightDecodes = new Map();
+    const img = new FakeImage(() => Promise.reject(new Error("EncodingError")));
+    const result = await decodeImage("/assets/bg/broken.webp", undefined, {
+      cache,
+      inflight,
+      createImage: () => img,
+      timeoutMs: 20,
+    });
+    expect(result).toBeNull();
+    expect(stats.sets).toBe(0);
+    expect(entries.size).toBe(0);
+    expect(stats.hits).toBe(0);
+    expect(inflight.size).toBe(0);
+  });
+
+  it("abort d'un appelant ne casse pas le décodage partagé de l'autre", async () => {
+    const { cache, stats } = trackingCache();
+    const inflight: InflightDecodes = new Map();
+    const img = new FakeImage(() => new Promise<void>(() => {}));
+    const controller = new AbortController();
+    const aborted = decodeImage("/assets/bg/shared.webp", controller.signal, {
+      cache,
+      inflight,
+      createImage: () => img,
+    });
+    const other = decodeImage("/assets/bg/shared.webp", undefined, { cache, inflight, createImage: () => img });
+    controller.abort();
+    expect(await aborted).toBeNull();
+    img.onload?.();
+    expect(await other).toBe(img);
+    expect(stats.sets).toBe(1);
   });
 });

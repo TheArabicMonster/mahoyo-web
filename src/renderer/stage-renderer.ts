@@ -27,7 +27,7 @@ import { sampleTrack } from "./easing-track.js";
 import { PARTBG_INNER_ORIGIN, partbgInnerTransform, partbgWrapperTransform, spriteTransform } from "./transform-helpers.js";
 import { partbgClipRect, resolvePlacement, spriteAnchorSize, type ImageSize, type Rect } from "./sprite-placement.js";
 import { storageKey } from "@/core/storage-key.js";
-import { ensureDecoded } from "./image-decode.js";
+import { DecodableImage, decodeImage, ensureDecoded, type InflightDecodes } from "./image-decode.js";
 import { DecodedImageCache, decodedCacheLimitBytes } from "./image-cache.js";
 import {
   applyAppearance,
@@ -224,6 +224,8 @@ export class DomStageRenderer implements StageRenderer {
   /** Tailles des images de fond déjà chargées (pivot du zoom/rotation), par URL. */
   private bgSizes = new Map<string, { w: number; h: number }>();
   /** Références des images préchargées/décodées (plafonnées), pour ne pas perdre le décodage. */
+  /** Décodages en cours partagés : une seule Image par URL, cache alimenté au succès (#386). */
+  private readonly decodeInflight: InflightDecodes = new Map();
   /** Cache décodé LRU borné en octets (PERF-05 / #368) ; conserve les décodages entre scènes. */
   private readonly decodedImages = new DecodedImageCache({
     limitBytes: decodedCacheLimitBytes(),
@@ -807,28 +809,36 @@ export class DomStageRenderer implements StageRenderer {
     if (signal.aborted) return;
   }
 
+  /**
+   * Prépare une image (lookahead, #386) : le décodage est mutualisé avec les transitions et le
+   * cache n'est alimenté qu'après succès. `decode: false` ne fait que charger/référencer.
+   */
+  async prepare(url: string, opts: { decode?: boolean } = {}): Promise<void> {
+    if (!url) return;
+    await ensureDecoded(url, undefined, {
+      cache: this.decodedImages,
+      inflight: this.decodeInflight,
+      fetchPriority: "low",
+      timeoutMs: 5000,
+    });
+    if (opts.decode === false) return;
+  }
+
   async preload(assets: readonly AssetRef[], signal?: AbortSignal): Promise<void> {
     const urls = assets.map((a) => this.resolveAsset(a));
     await Promise.all(
-      urls.map(
-        (url, i) =>
-          new Promise<void>((resolve) => {
-            const img = new Image();
-            img.decoding = "async";
-            img.fetchPriority = "low";
-            const size = this.imageSizeOf(assets[i]!);
-            if (size) this.decodedImages.noteDimensions(url, size.width, size.height);
-            this.decodedImages.set(url, img);
-            img.onload = () => resolve();
-            img.onerror = () => {
-              this.resolver.reportMissing("image", assets[i]!);
-              resolve();
-            };
-            if (signal?.aborted) return resolve();
-            img.src = url;
-            signal?.addEventListener("abort", () => resolve(), { once: true });
-          }),
-      ),
+      urls.map(async (url, i) => {
+        const size = this.imageSizeOf(assets[i]!);
+        if (size) this.decodedImages.noteDimensions(url, size.width, size.height);
+        // #386 : cache alimenté uniquement après décodage réussi ; un échec/timeout n'est pas un hit.
+        const image = await decodeImage(url, signal, {
+          cache: this.decodedImages,
+          inflight: this.decodeInflight,
+          fetchPriority: "low",
+          timeoutMs: 5000,
+        });
+        if (!image) this.resolver.reportMissing("image", assets[i]!);
+      }),
     );
   }
 
@@ -1342,15 +1352,17 @@ export class DomStageRenderer implements StageRenderer {
       this.decodedImages.get(url); // hit + réordonne la LRU
       return;
     }
+    // #386 : ne jamais insérer dans le cache avant décodage. L'image affichée (ou une référence
+    // Image pour un fond CSS) est décodée en tâche de fond ; le cache n'est alimenté qu'au succès.
     const img = element ?? (typeof Image === "function" ? new Image() : null);
     if (!img) return;
-    if (!element) {
-      img.decoding = "async";
-      img.src = url;
-    }
-    this.decodedImages.set(url, img);
-    // Référence conservée : `decode()` garantit que le décodage est fait sans bloquer le rendu.
-    if (typeof img.decode === "function") void img.decode().catch(() => {});
+    void ensureDecoded(url, undefined, {
+      cache: this.decodedImages,
+      inflight: this.decodeInflight,
+      createImage: () => img as unknown as DecodableImage,
+      fetchPriority: element ? "low" : "high",
+      timeoutMs: 5000,
+    });
   }
 
   private async waitForBackgroundDecoded(storage: string, signal: AbortSignal): Promise<void> {
@@ -1364,7 +1376,11 @@ export class DomStageRenderer implements StageRenderer {
     const forwardAbort = () => controller.abort();
     signal.addEventListener("abort", forwardAbort, { once: true });
     try {
-      await ensureDecoded(url, controller.signal, { cache: this.decodedImages, timeoutMs: 1000 });
+      await ensureDecoded(url, controller.signal, {
+        cache: this.decodedImages,
+        inflight: this.decodeInflight,
+        timeoutMs: 1000,
+      });
     } finally {
       signal.removeEventListener("abort", forwardAbort);
       if (this.pendingDecodeAbort === controller) this.pendingDecodeAbort = null;

@@ -53,7 +53,8 @@ describe("DomStageRenderer — décodage avant transition (#362)", () => {
   it("en instantané (skip/restauration), n'attend pas le décodage", async () => {
     ensureDecoded.mockImplementation(() => new Promise<void>(() => {}));
     await renderer.apply([sceneEvent("bg03", 500)], { instant: true, signal: new AbortController().signal });
-    expect(ensureDecoded).not.toHaveBeenCalled();
+    // Le cache d'affichage peut préparer en tâche de fond, mais la scène instantanée n'attend pas :
+    // l'image de fond est posée immédiatement.
     expect(activeLayer()?.getAttribute("src")).toContain("bg03");
   });
 });
