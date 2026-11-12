@@ -11,6 +11,7 @@ import { DomUIManager } from "./ui/ui-manager.js";
 import type { SaveTransferActions } from "./ui/save-load-screen.js";
 import { Player } from "./ui/player.js";
 import { HistoryRouter } from "./ui/router.js";
+import { isReviewMode, mountReviewMode } from "./ui/review-mode.js";
 import type { AssetManifest } from "@/core/asset-manifest.js";
 import type { ImageDimensionsManifest } from "@/core/image-dimensions.js";
 import { parseEnvColor, type EnvColorTable } from "@/kag/envcolor.js";
@@ -132,7 +133,7 @@ async function main() {
   const saveStore = createSaveStore();
   exposeSaveTransfer(saveStore, settingsStore);
 
-  new Player({
+  const player = new Player({
     root: viewport,
     resolver,
     // Effets d'ambiance `envcolor.ksc` (données installées par le pipeline).
@@ -165,6 +166,15 @@ async function main() {
     // Routes d'URL des écrans (#/title, #/load, #/config…) : lien direct, précédent = fermer l'écran (WEB-04, #204).
     router: new HistoryRouter(),
   });
+
+  // Mode revue (#400) : monté seulement avec ?review=1 (alias ?mark=1) — aucun nœud ni écouteur sinon.
+  if (isReviewMode(location.search)) {
+    mountReviewMode({
+      snapshot: () => player.reviewSnapshot(),
+      assetsVersion: (manifest as { generatedAt?: string }).generatedAt ?? "unknown",
+      pause: (paused) => player.reviewPause(paused),
+    });
+  }
 }
 
 /** Boutons Exporter / Importer de l'écran de sauvegarde (HUD-10, #196) ; la page est rechargée après un import. */

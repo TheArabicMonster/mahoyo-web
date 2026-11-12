@@ -2,6 +2,7 @@ import { lex } from "@/kag/lexer.js";
 import { parse } from "@/kag/parser.js";
 import { Runtime, type RuntimeSaveData } from "@/kag/runtime.js";
 import { applyStageSnapshot, reduceAudio } from "@/kag/stage-state.js";
+import type { ReviewSnapshot } from "./review-mode.js";
 import { audioPreloadPolicy, WebAudioPlayer } from "@/renderer/audio-manager.js";
 import { createAssetResolver, type AssetResolver } from "@/core/asset-resolver.js";
 import { applyViewportLayout, computeViewportLayout } from "@/core/display.js";
@@ -276,6 +277,8 @@ export class Player implements PlayerCommands {
   private choicePath: readonly TakenChoice[] = [];
 
   private state: PlayerState = "title";
+  /** État d'avant la pause du panneau de revue (#400), null hors pause revue. */
+  private reviewPausedFrom: PlayerState | null = null;
   private mode: PlayMode = "normal";
   /** Menu rapide verrouillé par le script (@lockquickmenu). */
   private quickMenuLocked = false;
@@ -605,6 +608,84 @@ export class Player implements PlayerCommands {
       return true;
     }
     return this.quickMenuRefused();
+  }
+
+  /**
+   * Mode revue (#400) : instantané **en lecture seule** de l'état utile au flag (script/position,
+   * texte source, scène, calques de timeline, transition, audio, réglages). Aucun effet de bord.
+   */
+  reviewSnapshot(): ReviewSnapshot {
+    const save = this.runtime?.getSaveData() ?? null;
+    const stageReview = this.stage.reviewState?.() ?? { transition: null, timelineLayers: [] };
+    const scene = this.stageSnap.scene;
+    const overlays = this.overlays;
+    return {
+      screen: overlays.length > 0 ? overlays[overlays.length - 1]! : this.state === "title" ? "title" : "game",
+      state: this.state,
+      mode: this.mode,
+      script: {
+        scriptName: save?.scriptName ?? (this.scriptFile || null),
+        page: save?.pc ?? null,
+        instruction: save?.instructionIndex ?? null,
+        segment: save?.segmentIndex ?? null,
+      },
+      text: previewOf(this.stageSnap),
+      scene: {
+        bg: scene.bg,
+        bgLeft: scene.bgLeft,
+        bgTop: scene.bgTop,
+        bgZoomX: scene.bgZoomX,
+        bgZoomY: scene.bgZoomY,
+        bgRotate: scene.bgRotate,
+        bgEffect: scene.bgEffect,
+        bgType: scene.bgType,
+        sprites: scene.sprites.map((sprite) => ({
+          id: sprite.id,
+          storage: sprite.storage,
+          x: sprite.x,
+          y: sprite.y,
+          z: sprite.z,
+          opacity: sprite.opacity,
+          ...(sprite.visible === undefined ? {} : { visible: sprite.visible }),
+        })),
+        effect: scene.effect,
+        textbox: {
+          visible: this.stageSnap.textbox.visible,
+          frame: this.stageSnap.textbox.frame,
+          ...(this.stageSnap.textbox.frameImage === undefined ? {} : { frameImage: this.stageSnap.textbox.frameImage }),
+          ...(this.stageSnap.textbox.action === undefined ? {} : { action: this.stageSnap.textbox.action }),
+        },
+      },
+      timelineLayers: stageReview.timelineLayers,
+      transition: stageReview.transition,
+      audio: {
+        loops: this.audioSnap.loops.map((loop) => ({ channel: loop.channel, storage: loop.storage, volume: loop.volume })),
+      },
+      settings: {
+        language: this.settings.language,
+        audio: {
+          master: this.settings.audio.master,
+          bgm: this.settings.audio.bgm,
+          se: this.settings.audio.se,
+          voice: this.settings.audio.voice,
+          muted: this.settings.audio.muted,
+        },
+      },
+      historyPreview: this.history.slice(-3).map((entry) => entry.text),
+    };
+  }
+
+  /** Pause courte du panneau de revue (#400) : fige l'état de jeu, restaure à la fermeture. */
+  reviewPause(paused: boolean): void {
+    if (paused) {
+      if (this.state === "title" || this.state === "loading" || this.state === "paused") return;
+      this.reviewPausedFrom = this.state;
+      this.setState("paused");
+    } else if (this.reviewPausedFrom) {
+      const previous = this.reviewPausedFrom;
+      this.reviewPausedFrom = null;
+      this.setState(previous);
+    }
   }
 
   toggleUserHide(): void {

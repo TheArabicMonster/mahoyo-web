@@ -48,7 +48,8 @@
     "assets:optimize": "tsx tools/optimize-assets.ts",
     "validate:visual": "tsx tools/validate-visual.ts",
     "diag:opening": "tsx tools/diag-opening.ts",
-    "perf:scenes": "tsx tools/perf-scenes.ts"
+    "perf:scenes": "tsx tools/perf-scenes.ts",
+    "review": "tsx tools/review.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
