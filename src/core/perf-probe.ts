@@ -111,9 +111,28 @@ export type PerfGlobal = {
   summary(): PerfSummary;
 };
 
+/** Clé `sessionStorage` qui mémorise l'activation de la sonde (#391). */
+export const PERF_STORAGE_KEY = "mh:perf";
+
+/** Accès minimal au stockage de session (testable sans `window`). */
+export type PerfStorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+export type PerfRequestEnv = {
+  /** `location.search` (défaut : URL réelle). */
+  readonly search?: string;
+  /** `location.hash` (défaut : URL réelle) : le flag peut être après le `#` (#391). */
+  readonly hash?: string;
+  /** `sessionStorage` (défaut : `window.sessionStorage`) ; `null` = pas de persistance. */
+  readonly storage?: PerfStorageLike | null;
+};
+
 export type PerfProbeEnv = {
   /** `location.search` à la place de l'URL réelle (tests). */
   readonly search?: string;
+  /** `location.hash` à la place de l'URL réelle (tests). */
+  readonly hash?: string;
+  /** Stockage de session injectable (tests). */
+  readonly storage?: PerfStorageLike | null;
   /** Horloge (ms), défaut `performance.now`. */
   readonly now?: () => number;
   /** Deux rAF (tests : synchrone). */
@@ -199,7 +218,87 @@ export function getPerfProbe(): PerfProbe {
   return sharedProbe;
 }
 
-/** Vrai si l'URL demande la sonde (`?perf=1`), sinon false. */
+/** Paramètre `perf` d'une chaîne de requête `a=b&perf=1` (null si absent ou invalide). */
+function perfParam(query: string): "1" | "0" | null {
+  try {
+    const value = new URLSearchParams(query.startsWith("?") ? query : `?${query}`).get("perf");
+    return value === "1" ? "1" : value === "0" ? "0" : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Partie requête d'un hash de route : `#/title?perf=1` → `perf=1` (null si aucune). */
+export function hashQuery(hash: string): string | null {
+  const index = hash.indexOf("?");
+  return index >= 0 ? hash.slice(index + 1) : null;
+}
+
+function defaultHash(): string {
+  return typeof window !== "undefined" && typeof window.location?.hash === "string" ? window.location.hash : "";
+}
+
+function defaultSessionStorage(): PerfStorageLike | null {
+  try {
+    return typeof window !== "undefined" && window.sessionStorage ? window.sessionStorage : null;
+  } catch {
+    return null; // navigation privée / stockage refusé : pas de persistance, pas d'erreur.
+  }
+}
+
+/**
+ * Vrai si la sonde est demandée (#391), de façon robuste aux redirections :
+ * - `?perf=1` dans `location.search` (URL recommandée `/?perf=1#/title`) ;
+ * - `?perf=1` dans la partie requête **après le `#`** (`#/title?perf=1`) ;
+ * - persistance `sessionStorage` `mh:perf=1` : une fois activée, la sonde survit à un
+ *   redirect/reload même si l'URL perd le paramètre ;
+ * - `?perf=0` (ou `mh:perf=0` en storage) désactive et nettoie la persistance.
+ *
+ * Sans aucun flag : aucun marqueur, aucun observer, aucun `window.__mhPerf`, aucun bouton.
+ */
+export function isPerfRequested(env: PerfRequestEnv = {}): boolean {
+  const search = env.search ?? defaultSearch();
+  const hash = env.hash ?? defaultHash();
+  const storage = env.storage === undefined ? defaultSessionStorage() : env.storage;
+  const read = (key: string): string | null => {
+    try {
+      return storage?.getItem(key) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const write = (key: string, value: string): void => {
+    try {
+      storage?.setItem(key, value);
+    } catch {
+      /* stockage indisponible : simple absence de persistance */
+    }
+  };
+  const clear = (): void => {
+    try {
+      storage?.removeItem(PERF_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const hashFlag = hashQuery(hash);
+  const explicit = perfParam(search) ?? (hashFlag ? perfParam(hashFlag) : null);
+  if (explicit === "0") {
+    clear();
+    return false;
+  }
+  if (explicit === "1") {
+    write(PERF_STORAGE_KEY, "1");
+    return true;
+  }
+  const stored = read(PERF_STORAGE_KEY);
+  if (stored === "1") return true;
+  if (stored === "0") clear(); // ancienne valeur désactivée : nettoyage
+  return false;
+}
+
+/** Vrai si l'URL (search seulement) demande la sonde (`?perf=1`) — conservé pour les tests. */
 export function perfEnabled(search: string): boolean {
   try {
     return new URLSearchParams(search).get("perf") === "1";
@@ -251,7 +350,7 @@ export function summarizeTransitionWaits(waits: readonly PerfTransitionWait[]): 
  */
 export function createPerfProbe(env: PerfProbeEnv = {}): PerfProbe {
   const search = env.search ?? defaultSearch();
-  if (!perfEnabled(search)) return NOOP_PROBE;
+  if (!isPerfRequested({ search, hash: env.hash, storage: env.storage })) return NOOP_PROBE;
 
   const now = env.now ?? (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const nextFrame = env.nextFrame ?? defaultNextFrame;

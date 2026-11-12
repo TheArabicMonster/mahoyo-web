@@ -9,6 +9,10 @@
  *   workerStart), comme dans le protocole de mesure du plan v2.
  */
 import type { PerfProbe } from "@/core/perf-probe.js";
+import { ToastStack } from "@/ui/toast.js";
+
+/** Message de confirmation affiché à l'activation de la sonde (#391). */
+export const PERF_ACTIVE_MESSAGE = "Mode perf activé — bouton « Copier le rapport perf »";
 
 export type PerfResourceRow = {
   u: string;
@@ -68,6 +72,8 @@ export type PerfReportButtonOptions = {
   writeText?: (text: string) => Promise<void>;
   /** Rapport injectable (tests). */
   buildReport?: (probe: PerfProbe) => PerfReport;
+  /** Masquer le toast de confirmation (tests) ; défaut : affiché. */
+  showHint?: boolean;
 };
 
 async function defaultWriteText(text: string): Promise<void> {
@@ -129,5 +135,16 @@ export function mountPerfReportButton(
     );
   });
   document.body.appendChild(button);
+  // Indice discret (#391) : toast bas-droite au-dessus du bouton, uniquement en mode perf.
+  if (options.showHint !== false) {
+    const host = document.createElement("div");
+    host.id = "mh-perf-toast-host";
+    host.className = "mh-toast-host";
+    host.style.cssText =
+      "position:fixed;right:calc(12px + env(safe-area-inset-right, 0px));bottom:calc(64px + env(safe-area-inset-bottom, 0px));left:auto;top:auto;pointer-events:none;z-index:10000;align-items:flex-end;";
+    document.body.appendChild(host);
+    const stack = new ToastStack(host);
+    stack.show(PERF_ACTIVE_MESSAGE, 4000);
+  }
   return button;
 }

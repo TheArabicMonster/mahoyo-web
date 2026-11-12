@@ -19,6 +19,7 @@ function clock(start = 1000): { now: () => number; advance: (ms: number) => void
 
 afterEach(() => {
   delete (window as unknown as { __mhPerf?: PerfGlobal }).__mhPerf;
+  window.sessionStorage?.clear(); // le flag ?perf=1 est persisté (#391) : ne pas fuiter entre tests
   vi.restoreAllMocks();
 });
 
@@ -35,8 +36,8 @@ describe("perfEnabled", () => {
 describe("sonde inactive (sans ?perf=1)", () => {
   it("ne pose aucun marqueur, aucun window.__mhPerf et retourne un no-op partagé", () => {
     const before = performance.getEntriesByName("mh:img:request").length;
-    const a = createPerfProbe({ search: "" });
-    const b = createPerfProbe({ search: "?perf=0" });
+    const a = createPerfProbe({ search: "", storage: null });
+    const b = createPerfProbe({ search: "?perf=0", storage: null });
     expect(a.enabled).toBe(false);
     expect(b.enabled).toBe(false);
     expect(a).toBe(b); // objet no-op partagé : coût nul
@@ -163,6 +164,21 @@ describe("sonde active (?perf=1)", () => {
     const stats = { entries: 2, bytes: 4096, limitBytes: 192 * 1024 * 1024, hits: 3, misses: 1, evictions: 0 };
     probe.setImageCacheStats(() => stats);
     expect(globals()!.summary().imageCache).toEqual(stats);
+  });
+
+  it("activation robuste : flag après le hash (#391)", () => {
+    const probe = createPerfProbe({ search: "", hash: "#/title?perf=1", nextFrame: (fn) => fn() });
+    expect(probe.enabled).toBe(true);
+    probe.markBoot("load-start");
+    expect(globals()!.summary().boot["load-start"]).toBeGreaterThan(0);
+  });
+
+  it("perf=0 désactive et nettoie la persistance (#391)", () => {
+    window.sessionStorage.setItem("mh:perf", "1");
+    const probe = createPerfProbe({ search: "?perf=0", storage: window.sessionStorage });
+    expect(probe.enabled).toBe(false);
+    expect(window.sessionStorage.getItem("mh:perf")).toBeNull();
+    expect(globals()).toBeUndefined();
   });
 
   it("marqueurs boot (#385) : summary.boot alimenté, idempotent", () => {

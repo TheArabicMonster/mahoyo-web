@@ -8,14 +8,17 @@ import { buildPerfReport, mountPerfReportButton } from "@/ui/perf-report-button.
 
 afterEach(() => {
   document.querySelector("#mh-perf-report")?.remove();
+  document.querySelector("#mh-perf-toast-host")?.remove();
+  window.sessionStorage?.clear();
   delete (window as unknown as { __mhPerf?: unknown }).__mhPerf;
 });
 
 describe("mountPerfReportButton (#385)", () => {
   it("ne monte rien sans ?perf=1", () => {
-    const probe = createPerfProbe({ search: "" });
+    const probe = createPerfProbe({ search: "", storage: null });
     expect(mountPerfReportButton(probe)).toBeNull();
     expect(document.querySelector("#mh-perf-report")).toBeNull();
+    expect(document.querySelector("#mh-perf-toast-host")).toBeNull();
   });
 
   it("monte un bouton et copie le rapport JSON quand ?perf=1", async () => {
@@ -31,6 +34,9 @@ describe("mountPerfReportButton (#385)", () => {
       },
     });
     expect(button).not.toBeNull();
+    // Indice discret (#391) : toast d'activation uniquement en mode perf.
+    expect(document.querySelector(".mh-toast")?.textContent).toContain("Mode perf activé");
+    // Le toast ne doit pas gêner les clics du bouton (host pointer-events:none).
     button!.click();
     await vi.waitFor(() => expect(copied).not.toBe(""));
     const payload = JSON.parse(copied) as {
