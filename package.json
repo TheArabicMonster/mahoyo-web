@@ -45,6 +45,7 @@
     "text:overflow": "tsx tools/text-overflow.ts",
     "oracle:state": "tsx tools/state-oracle.ts",
     "assets:dimensions": "tsx tools/image-dimensions.ts",
+    "assets:optimize": "tsx tools/optimize-assets.ts",
     "validate:visual": "tsx tools/validate-visual.ts",
     "diag:opening": "tsx tools/diag-opening.ts",
     "perf:scenes": "tsx tools/perf-scenes.ts"

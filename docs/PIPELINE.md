@@ -127,6 +127,49 @@ npm run convert-audio -- <inputDir> <outputDir> [encoderPath]
 npm run normalize-ks -- <input.ks>
 ```
 
+## Optimiser une installation existante (`npm run assets:optimize`)
+
+Si `public/assets/` est déjà installé (pipeline déjà lancé) et que les transferts sont lourds
+(images PNG de plusieurs Mo, SE WAV, `asset-manifest.json`/`image-dimensions.json` non compressés),
+inutile de ré-extraire : `npm run assets:optimize` optimise **en place**, sans relancer le pipeline
+(#393, plan v2 §B3).
+
+```bash
+npm run assets:optimize -- --assets public/assets
+```
+
+| Action | Détail |
+|---|---|
+| **Audio** | `public/assets/se/*.wav` → **Opus/Ogg** via ffmpeg (libopus 96 kbps stéréo / 64 kbps mono, durée vérifiée ±20 ms, écriture atomique). Les `.wav` sont supprimés (sauf `--keep-originals`). Les **BGM `.ogg` ne sont pas réencodées.** |
+| **Images** | PNG de `bg/` et `image/` → **WebP sans perte** (suppression des PNG, sauf `--keep-originals`). `--webp-lossy` : q90 + garde-fou **SSIM ≥ 0,99** pour `bg/` et `image/ev*` seulement. **`rule/`, `lang/`, `scenario/` jamais touchés.** |
+| **Manifeste** | URLs = extensions **réelles** (`.ogg`/`.webp`), `assetsVersion` recalculée, `image-dimensions.json` régénéré à partir des fichiers convertis. |
+| **Rapport** | poids **avant/après par catégorie** (SE, bg, image, rule, JSON) et total, affiché en console. |
+
+Options :
+
+| Option | Effet |
+|---|---|
+| `--assets <dir>` | Dossier des assets installés (défaut : `public/assets`). |
+| `--keep-originals` | Conserve les `.wav`/`.png` d'origine (utile pour comparer). |
+| `--no-audio` / `--no-webp` | Désactive une des deux optimisations. |
+| `--webp-lossy` | WebP avec perte q90 + SSIM ≥ 0,99 (bg/ et image/ev* uniquement). |
+| `--force` | Autorise un dossier sans `asset-manifest.json` ou non ignoré par git. |
+| `--dry-run` | Simule sans écrire. |
+
+Garde-fous : le dossier doit être une installation d'assets (`asset-manifest.json`) et **ignoré par
+git** (`public/assets/` l'est), sinon il faut `--force` — rien n'est jamais commité. Le script ne
+touche ni aux scripts `.ks`, ni à `lang/`, ni aux tables (`story-chain.json`, etc.).
+
+**Gains de référence** (mesurés sur l'installation réelle, 806 SE WAV + échantillon d'images) :
+SE **591,8 Mo → 35,9 Mo (−94 %)** ; `se13010` 2,93 Mo → 181 Ko ; WebP sans perte des PNG de
+`bg/`+`image/` réduit fortement leur poids (les PNG 1-4 Mo passent à quelques centaines de Ko) ;
+`image-dimensions.json` est régénéré. Relancer le pipeline complet ensuite (`npm run build`) suffit
+pour que le player et le service worker prennent la nouvelle `assetsVersion` (cache `mahoyo-assets-<version>`).
+
+> Safari et Ogg/Opus : `assets:optimize` produit de l'Opus. Pour un build destiné aux anciens Safari,
+> relancer l'installation avec `--audio-format aac` (voir section audio) plutôt que d'utiliser
+> `assets:optimize` pour l'audio.
+
 ## Étapes du pipeline
 
 ### 1. extract-xp3
