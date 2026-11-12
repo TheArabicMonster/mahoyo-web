@@ -63,6 +63,14 @@ export type PerfImageCacheStats = {
   evictions: number;
 };
 
+export type PerfBootName = "load-start" | "manifest-fetched" | "title-painted" | "first-text" | "load-end";
+export type PerfTransitionWaitOutcome = "ready" | "waiting" | "timeout";
+export type PerfTransitionWait = { duration: number; outcome: PerfTransitionWaitOutcome; at: number };
+export type PerfAudioKind = "bgm" | "se";
+export type PerfAudioPhase = "request" | "fetched" | "played" | "rejected";
+export type PerfAudioCounters = { request: number; fetched: number; played: number; rejected: number };
+export type PerfAudioSummary = { bgm: PerfAudioCounters; se: PerfAudioCounters };
+
 export type PerfSummary = {
   enabled: boolean;
   images: number;
@@ -73,6 +81,20 @@ export type PerfSummary = {
   inp: number | null;
   /** Stats du cache décodé (#368) quand le renderer l'a branché, sinon null. */
   imageCache: PerfImageCacheStats | null;
+  /** Marqueurs `mh:boot:*` (temps depuis le chargement, ms) — PERF-V2-01 / #385. */
+  boot: Partial<Record<PerfBootName, number>>;
+  /** Attentes de décodage avant transition (#362) : durée et issue. */
+  transitionWait: {
+    count: number;
+    ready: number;
+    waiting: number;
+    timeout: number;
+    p50: number | null;
+    max: number | null;
+    last: PerfTransitionWait | null;
+  };
+  /** Demandes/lectures audio (BGM/SE) — PERF-V2-01 / #385. */
+  audio: PerfAudioSummary;
 };
 
 /** Contenu public exposé sur `window.__mhPerf` (lu par Playwright). */
@@ -83,6 +105,9 @@ export type PerfGlobal = {
   readonly longFrames: PerfLongFrame[];
   readonly events: PerfEventEntry[];
   memory: { bytes: number | null; supported: boolean } | null;
+  readonly boot: Partial<Record<PerfBootName, number>>;
+  readonly transitionWaits: readonly PerfTransitionWait[];
+  readonly audio: PerfAudioSummary;
   summary(): PerfSummary;
 };
 
@@ -117,6 +142,12 @@ export interface PerfProbe {
   trackImage(url: string, img?: HTMLImageElement): void;
   /** Branche les stats du cache décodé (no-op sans `?perf=1`, aucun coût). */
   setImageCacheStats(getter: () => PerfImageCacheStats | null): void;
+  /** Marqueur `mh:boot:*` (idempotent) : manifest, titre peint, premier texte, chargement. */
+  markBoot(name: PerfBootName): void;
+  /** Attente de décodage avant transition (#362) : durée + issue (prête/attente/délai dépassé). */
+  markTransitionWait(durationMs: number, outcome: PerfTransitionWaitOutcome): void;
+  /** Marqueur `mh:audio:*` : demande/arrivée/lecture/rejet d'un BGM ou SE. */
+  markAudio(kind: PerfAudioKind, phase: PerfAudioPhase, detail?: { url?: string }): void;
   /** Résumé calculé (même objet que `window.__mhPerf.summary()`). */
   summary(): PerfSummary;
 }
@@ -132,6 +163,9 @@ const NOOP: PerfProbe = Object.freeze({
   noteDimensions: () => {},
   trackImage: () => {},
   setImageCacheStats: () => {},
+  markBoot: () => {},
+  markTransitionWait: () => {},
+  markAudio: () => {},
   summary: () => EMPTY_SUMMARY,
 });
 
@@ -144,9 +178,26 @@ const EMPTY_SUMMARY: PerfSummary = {
   events: 0,
   inp: null,
   imageCache: null,
+  boot: {},
+  transitionWait: { count: 0, ready: 0, waiting: 0, timeout: 0, p50: null, max: null, last: null },
+  audio: {
+    bgm: { request: 0, fetched: 0, played: 0, rejected: 0 },
+    se: { request: 0, fetched: 0, played: 0, rejected: 0 },
+  },
 };
 
 const NOOP_PROBE = NOOP;
+
+let sharedProbe: PerfProbe | null = null;
+
+/**
+ * Sonde partagée de production (main/player/renderer/audio/UI) : une seule instance pour éviter
+ * plusieurs observers. Retourne le no-op si `?perf=1` est absent (aucun coût, aucun nœud DOM).
+ */
+export function getPerfProbe(): PerfProbe {
+  if (!sharedProbe) sharedProbe = createPerfProbe();
+  return sharedProbe;
+}
 
 /** Vrai si l'URL demande la sonde (`?perf=1`), sinon false. */
 export function perfEnabled(search: string): boolean {
@@ -179,6 +230,21 @@ function pushCircular<T>(buffer: T[], value: T, limit: number): void {
   if (buffer.length > limit) buffer.splice(0, buffer.length - limit);
 }
 
+/** Agrège les attentes de décodage (durée et issue) pour le résumé. */
+export function summarizeTransitionWaits(waits: readonly PerfTransitionWait[]): PerfSummary["transitionWait"] {
+  const durations = waits.map((w) => w.duration);
+  const count = (outcome: PerfTransitionWaitOutcome): number => waits.filter((w) => w.outcome === outcome).length;
+  return {
+    count: waits.length,
+    ready: count("ready"),
+    waiting: count("waiting"),
+    timeout: count("timeout"),
+    p50: percentile(durations, 50),
+    max: durations.length ? Math.round(Math.max(...durations) * 100) / 100 : null,
+    last: waits[waits.length - 1] ?? null,
+  };
+}
+
 /**
  * Crée la sonde. Retourne le no-op partagé si `?perf=1` est absent.
  * Aucun observer n'est installé dans ce cas (exigence #360).
@@ -206,6 +272,12 @@ export function createPerfProbe(env: PerfProbeEnv = {}): PerfProbe {
   const preloaded = new Set<string>();
   let memory: { bytes: number | null; supported: boolean } | null = null;
   let imageCacheStats: (() => PerfImageCacheStats | null) | null = null;
+  const boot: Partial<Record<PerfBootName, number>> = {};
+  const transitionWaits: PerfTransitionWait[] = [];
+  const audio: PerfAudioSummary = {
+    bgm: { request: 0, fetched: 0, played: 0, rejected: 0 },
+    se: { request: 0, fetched: 0, played: 0, rejected: 0 },
+  };
 
   const mark = (name: string, url: string): number => {
     const time = now();
@@ -271,6 +343,9 @@ export function createPerfProbe(env: PerfProbeEnv = {}): PerfProbe {
       events: events.length,
       inp: events.length ? Math.round(inp * 100) / 100 : null,
       imageCache: imageCacheStats ? imageCacheStats() : null,
+      boot: { ...boot },
+      transitionWait: summarizeTransitionWaits(transitionWaits),
+      audio: { bgm: { ...audio.bgm }, se: { ...audio.se } },
     };
   };
 
@@ -281,6 +356,9 @@ export function createPerfProbe(env: PerfProbeEnv = {}): PerfProbe {
     longFrames,
     events,
     memory,
+    boot,
+    transitionWaits,
+    audio,
     summary,
   };
 
@@ -386,6 +464,39 @@ export function createPerfProbe(env: PerfProbeEnv = {}): PerfProbe {
     },
     setImageCacheStats(getter) {
       imageCacheStats = getter;
+      touchGlobal();
+    },
+    markBoot(name) {
+      if (boot[name] !== undefined) return; // idempotent : premier événement gagnant
+      boot[name] = Math.round(now() * 100) / 100;
+      try {
+        performance.mark(`mh:boot:${name}`);
+      } catch {
+        /* tampon = source de vérité */
+      }
+      touchGlobal();
+    },
+    markTransitionWait(durationMs, outcome) {
+      const entry: PerfTransitionWait = {
+        duration: Math.round(Math.max(0, durationMs) * 100) / 100,
+        outcome,
+        at: Math.round(now() * 100) / 100,
+      };
+      pushCircular(transitionWaits, entry, limit);
+      try {
+        performance.mark("mh:transition:wait", { detail: { duration: entry.duration, outcome } });
+      } catch {
+        /* ignore */
+      }
+      touchGlobal();
+    },
+    markAudio(kind, phase, detail) {
+      audio[kind][phase] += 1;
+      try {
+        performance.mark(`mh:audio:${phase}`, { detail: { kind, ...detail } });
+      } catch {
+        /* ignore */
+      }
       touchGlobal();
     },
     trackImage(url, elem) {

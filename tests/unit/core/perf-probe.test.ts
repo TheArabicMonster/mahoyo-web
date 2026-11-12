@@ -47,6 +47,13 @@ describe("sonde inactive (sans ?perf=1)", () => {
     expect(a.summary().enabled).toBe(false);
     a.setImageCacheStats(() => ({ entries: 1, bytes: 1, limitBytes: 1, hits: 0, misses: 0, evictions: 0 }));
     expect(a.summary().imageCache).toBeNull(); // no-op sans ?perf=1
+    a.markBoot("load-start");
+    a.markTransitionWait(1000, "timeout");
+    a.markAudio("se", "request");
+    expect(a.summary().boot).toEqual({});
+    expect(a.summary().transitionWait.count).toBe(0);
+    expect(a.summary().audio).toEqual({ bgm: { request: 0, fetched: 0, played: 0, rejected: 0 }, se: { request: 0, fetched: 0, played: 0, rejected: 0 } });
+    expect(performance.getEntriesByName("mh:boot:load-start").length).toBe(0);
   });
 });
 
@@ -156,6 +163,50 @@ describe("sonde active (?perf=1)", () => {
     const stats = { entries: 2, bytes: 4096, limitBytes: 192 * 1024 * 1024, hits: 3, misses: 1, evictions: 0 };
     probe.setImageCacheStats(() => stats);
     expect(globals()!.summary().imageCache).toEqual(stats);
+  });
+
+  it("marqueurs boot (#385) : summary.boot alimenté, idempotent", () => {
+    const c = clock(500);
+    const probe = createPerfProbe({ search: "?perf=1", now: c.now, nextFrame: (fn) => fn() });
+    probe.markBoot("load-start");
+    c.advance(10);
+    probe.markBoot("manifest-fetched");
+    c.advance(20);
+    probe.markBoot("title-painted");
+    probe.markBoot("title-painted"); // idempotent
+    expect(globals()!.summary().boot).toEqual({
+      "load-start": 500,
+      "manifest-fetched": 510,
+      "title-painted": 530,
+    });
+    expect(performance.getEntriesByName("mh:boot:title-painted").length).toBeGreaterThan(0);
+  });
+
+  it("attentes de transition (#385) : durée, issue et résumé", () => {
+    const probe = createPerfProbe({ search: "?perf=1", nextFrame: (fn) => fn() });
+    probe.markTransitionWait(12, "ready");
+    probe.markTransitionWait(340, "waiting");
+    probe.markTransitionWait(1000, "timeout");
+    const summary = globals()!.summary().transitionWait;
+    expect(summary).toMatchObject({ count: 3, ready: 1, waiting: 1, timeout: 1, max: 1000, last: { duration: 1000, outcome: "timeout" } });
+    expect(globals()!.transitionWaits).toHaveLength(3);
+    expect(performance.getEntriesByName("mh:transition:wait").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("audio (#385) : compteurs par type et phase", () => {
+    const probe = createPerfProbe({ search: "?perf=1", nextFrame: (fn) => fn() });
+    probe.markAudio("bgm", "request", { url: "/a.ogg" });
+    probe.markAudio("bgm", "fetched");
+    probe.markAudio("bgm", "played");
+    probe.markAudio("se", "request");
+    probe.markAudio("se", "rejected");
+    expect(globals()!.summary().audio).toEqual({
+      bgm: { request: 1, fetched: 1, played: 1, rejected: 0 },
+      se: { request: 1, fetched: 0, played: 0, rejected: 1 },
+    });
+    for (const phase of ["request", "fetched", "played", "rejected"]) {
+      expect(performance.getEntriesByName(`mh:audio:${phase}`).length).toBeGreaterThan(0);
+    }
   });
 
   it("le seuil des blocages vaut 50 ms (plan §1)", () => {
