@@ -61,6 +61,7 @@ describe("Pipeline integration", () => {
       dryRun: false,
       strict: false,
       force: true,
+      noWebp: true,
     });
 
     // Vérifier que le manifest existe.
@@ -104,6 +105,7 @@ describe("Pipeline integration", () => {
       dryRun: false,
       strict: false,
       force: true,
+      noWebp: true,
     });
 
     // Lire le manifest.
@@ -134,6 +136,7 @@ describe("Pipeline integration", () => {
       dryRun: true,
       strict: false,
       force: true,
+      noWebp: true,
     });
 
     // Aucun fichier ne doit exister dans outputDir.
@@ -152,6 +155,7 @@ describe("Pipeline integration", () => {
       dryRun: false,
       strict: false,
       force: true,
+      noWebp: true,
     });
 
     // Le rapport de vérification doit exister.
@@ -201,6 +205,7 @@ describe("Pipeline integration — E1 (extraction, erreurs, sorties)", () => {
       dryRun: false,
       strict: false,
       force: true,
+      noWebp: true,
       xp3Command: `"${process.execPath}" "${extractor}" {in} {out}`,
     });
 
@@ -228,6 +233,7 @@ describe("Pipeline integration — E1 (extraction, erreurs, sorties)", () => {
       dryRun: false,
       strict: false,
       force: true,
+      noWebp: true,
     });
 
     expect(report.results.failed).toBe(1);
@@ -252,6 +258,7 @@ describe("Pipeline integration — E1 (extraction, erreurs, sorties)", () => {
           dryRun: false,
           strict: false,
           force: true,
+      noWebp: true,
         }),
       ).rejects.toThrow(/ignoré par git/);
       expect(existsSync(unsafeOutput)).toBe(false);
