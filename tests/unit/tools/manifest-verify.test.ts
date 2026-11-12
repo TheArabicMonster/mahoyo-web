@@ -136,3 +136,36 @@ describe("verifyReferences — références hors assets", () => {
     expect(report.missingStorages).toEqual([]);
   });
 });
+
+describe("Manifest — extension WebP réelle (#374)", () => {
+  it("porte l'URL .webp produite par le pipeline et le resolver la sert", async () => {
+    const { buildManifestFromResults } = await import("../../../tools/manifest.js");
+    const { createAssetResolver } = await import("@/core/asset-resolver.js");
+    const manifest = buildManifestFromResults(
+      [
+        {
+          task: {
+            entry: {
+              source: "/in/bg/night.tlg",
+              relPath: "bg/night.tlg",
+              kind: "bg",
+              ext: ".tlg",
+              key: "night",
+              webPath: "bg/night.png",
+              webExt: ".png",
+            },
+            action: "convert-image",
+            outputPath: "/out/bg/night.webp",
+            outputExt: ".webp",
+            internal: true,
+          },
+          status: "ok",
+          actualOutputPath: "/out/bg/night.webp",
+        },
+      ] as never,
+      "/out",
+    );
+    expect(manifest.images.night?.url).toBe("bg/night.webp");
+    expect(createAssetResolver({ manifest }).background("night")).toBe("/assets/bg/night.webp");
+  });
+});

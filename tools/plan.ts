@@ -23,6 +23,8 @@ export type Task = {
   commandTemplate?: string;
   /** true si la tâche ne nécessite pas d'outil externe (copie, transcodage, décodeur TLG intégré). */
   internal: boolean;
+  /** Conversion WebP (#374) : options d'encodage quand `outputExt === ".webp"` et interne. */
+  webp?: { lossless: boolean; quality: number; encoder?: "sharp" | "cwebp" };
 };
 
 export type TaskResult = {
@@ -43,6 +45,15 @@ export type PlanContext = {
   audioCommand?: string;
   /** true pour copier les .wav sans encodeur (au lieu d'échouer). */
   copyWavIfNoEncoder: boolean;
+  /**
+   * Encodeur WebP détecté (#374) ; absent/null = repli PNG. `lossyCategories` active la
+   * conversion avec perte (qualité ≥ 90, SSIM ≥ 0,99) pour ces catégories seulement.
+   */
+  webp?: {
+    encoder: "sharp" | "cwebp";
+    lossyCategories: readonly string[];
+    quality: number;
+  } | null;
 };
 
 /**
@@ -69,6 +80,17 @@ export function planTasks(entries: InventoryEntry[], ctx: PlanContext): Task[] {
   return tasks;
 }
 
+/** Catégorie PERF-08 pour l'option avec perte : `bg`, `ev` (images d'événement), sinon `image`. */
+function webpCategory(entry: InventoryEntry): string {
+  if (entry.kind === "bg") return "bg";
+  if (entry.kind === "image" && /^ev/i.test(entry.key)) return "ev";
+  return entry.kind;
+}
+
+function webpLosslessFor(entry: InventoryEntry, ctx: PlanContext): boolean {
+  return !ctx.webp || !ctx.webp.lossyCategories.includes(webpCategory(entry));
+}
+
 function planEntry(entry: InventoryEntry, ctx: PlanContext): Task | null {
   const { kind, ext } = entry;
 
@@ -79,11 +101,26 @@ function planEntry(entry: InventoryEntry, ctx: PlanContext): Task | null {
         const outputExt = kind === "rule" ? ".png" : ".webp";
         return makeTask(entry, ctx, "convert-image", outputExt, ctx.tlgCommand, false);
       }
-      // Pas de convertisseur externe : décodeur intégré, sortie PNG (sans perte).
+      // Pas de convertisseur externe : décodeur intégré, puis WebP sans perte par défaut (#374),
+      // repli PNG si aucun encodeur WebP (ou règle : les rules restent en PNG).
+      if (ctx.webp && kind !== "rule") {
+        return makeTask(entry, ctx, "convert-image", ".webp", undefined, true, {
+          lossless: webpLosslessFor(entry, ctx),
+          quality: ctx.webp.quality,
+          encoder: ctx.webp.encoder,
+        });
+      }
       return makeTask(entry, ctx, "convert-image", ".png", undefined, true);
     }
-    // PNG/JPG/BMP → copie
+    // PNG/JPG/BMP → WebP sans perte si encodeur dispo, sinon copie telle quelle.
     if (ext === ".png" || ext === ".jpg" || ext === ".jpeg" || ext === ".bmp") {
+      if (ctx.webp && kind !== "rule" && ext === ".png") {
+        return makeTask(entry, ctx, "convert-image", ".webp", undefined, true, {
+          lossless: webpLosslessFor(entry, ctx),
+          quality: ctx.webp.quality,
+          encoder: ctx.webp.encoder,
+        });
+      }
       return makeTask(entry, ctx, "copy", ext, undefined, true);
     }
     return null;
@@ -121,10 +158,11 @@ function makeTask(
   outputExt: string,
   commandTemplate: string | undefined,
   internal: boolean,
+  webp?: { lossless: boolean; quality: number; encoder?: "sharp" | "cwebp" },
 ): Task {
   const fileName = `${entry.key}${outputExt}`;
   const outputPath = `${ctx.outputDir}/${entry.kind}/${fileName}`;
-  return { entry, action, outputPath, outputExt, commandTemplate, internal };
+  return { entry, action, outputPath, outputExt, commandTemplate, internal, ...(webp ? { webp } : {}) };
 }
 
 /**
