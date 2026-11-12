@@ -509,6 +509,25 @@ describe("Runtime", () => {
     }
   });
 
+  it("[l] coupe la ligne avant l'icône et n'affiche pas la suite avant le clic (#407)", () => {
+    const SRC = `
+*page0|
+Quelques minutes plus tard, [l]ils trouvèrent un être vivant.[l]
+@pg
+`;
+    const runtime = new Runtime(parse(lex(SRC)));
+    const step = runtime.step();
+    expectClick(step.stop, "line");
+    expect(step.events.some((e) => e.kind === "lineBreak")).toBe(true);
+    const text = step.events
+      .filter((e): e is Extract<RenderEvent, { kind: "text" }> => e.kind === "text")
+      .flatMap((e) => e.segments)
+      .filter((s) => "text" in s)
+      .map((s) => (s as { text: string }).text)
+      .join("");
+    expect(text).toBe("Quelques minutes plus tard, ");
+  });
+
   it("stops on [l] pause markers", () => {
     const PAUSE_SAMPLE = `
 *page0|

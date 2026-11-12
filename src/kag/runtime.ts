@@ -791,7 +791,9 @@ export class Runtime {
           break;
         }
         case "tag": {
-          if (token.name === "l" || token.name === "p") {
+          if (token.name === "l") {
+            instructions.push({ kind: "text", segments: [{ lineBreak: true }, { pause: true }] });
+          } else if (token.name === "p") {
             instructions.push({ kind: "text", segments: [{ pause: true }] });
           } else if (token.name === "r") {
             instructions.push({ kind: "break" });
@@ -972,33 +974,33 @@ export class Runtime {
   ): { events: RenderEvent[]; stop?: StopReason } {
     const events: RenderEvent[] = [];
     const segments = this.expandEmojiSegments(instruction.segments);
-    const startIdx = frame.segmentIndex;
-
-    let pauseIndex = -1;
-    for (let i = startIdx; i < segments.length; i++) {
-      const seg = segments[i];
-      if (seg && "pause" in seg && (seg as { pause: boolean }).pause) {
-        pauseIndex = i;
-        break;
+    let index = frame.segmentIndex;
+    let pending: TextSegment[] = [];
+    const flush = (): void => {
+      if (pending.length > 0) {
+        events.push({ kind: "text", segments: this.withTextStyle(pending) });
+        pending = [];
       }
-    }
-
-    if (pauseIndex === -1) {
-      const remaining = this.withTextStyle(segments.slice(startIdx));
-      if (remaining.length > 0) {
-        events.push({ kind: "text", segments: remaining });
+    };
+    while (index < segments.length) {
+      const seg = segments[index++]!;
+      if ("pause" in seg && seg.pause) {
+        flush();
+        frame.segmentIndex = index;
+        return { events, stop: { kind: "click", style: "line" } };
       }
-      frame.segmentIndex = 0;
-      frame.index += 1;
-      return { events };
+      if ("lineBreak" in seg && seg.lineBreak) {
+        // `[l]` : `<br>` immédiat, sans attente (#407).
+        flush();
+        events.push({ kind: "lineBreak" });
+        continue;
+      }
+      pending.push(seg);
     }
-
-    const before = this.withTextStyle(segments.slice(startIdx, pauseIndex));
-    if (before.length > 0) {
-      events.push({ kind: "text", segments: before });
-    }
-    frame.segmentIndex = pauseIndex + 1;
-    return { events, stop: { kind: "click", style: "line" } };
+    flush();
+    frame.segmentIndex = 0;
+    frame.index += 1;
+    return { events };
   }
 
   /**
@@ -3350,37 +3352,33 @@ export class Runtime {
   private processText(instruction: Extract<Instruction, { kind: "text" }>): { events: RenderEvent[]; stop?: StopReason } {
     const events: RenderEvent[] = [];
     const segments = this.expandEmojiSegments(instruction.segments);
-    const startIdx = this.context.segmentIndex;
-    this.revealTextboxForText(segments.slice(startIdx), events);
-
-    // Find the next pause after our current position.
-    let pauseIndex = -1;
-    for (let i = startIdx; i < segments.length; i++) {
-      const seg = segments[i];
-      if (seg && "pause" in seg && (seg as { pause: boolean }).pause) {
-        pauseIndex = i;
-        break;
+    this.revealTextboxForText(segments.slice(this.context.segmentIndex), events);
+    let index = this.context.segmentIndex;
+    let pending: TextSegment[] = [];
+    const flush = (): void => {
+      if (pending.length > 0) {
+        events.push({ kind: "text", segments: this.withTextStyle(pending) });
+        pending = [];
       }
-    }
-
-    if (pauseIndex === -1) {
-      // No pause: consume all remaining text and move to next instruction.
-      const remaining = this.withTextStyle(segments.slice(startIdx));
-      if (remaining.length > 0) {
-        events.push({ kind: "text", segments: remaining });
+    };
+    while (index < segments.length) {
+      const seg = segments[index++]!;
+      if ("pause" in seg && seg.pause) {
+        flush();
+        this.context.segmentIndex = index;
+        return { events, stop: { kind: "click", style: "line" } };
       }
-      this.context.instructionIndex += 1;
-      this.context.segmentIndex = 0;
-      return { events };
+      if ("lineBreak" in seg && seg.lineBreak) {
+        flush();
+        events.push({ kind: "lineBreak" });
+        continue;
+      }
+      pending.push(seg);
     }
-
-    // Emit text up to the pause [l], save position for next step.
-    const before = this.withTextStyle(segments.slice(startIdx, pauseIndex));
-    if (before.length > 0) {
-      events.push({ kind: "text", segments: before });
-    }
-    this.context.segmentIndex = pauseIndex + 1;
-    return { events, stop: { kind: "click", style: "line" } };
+    flush();
+    this.context.instructionIndex += 1;
+    this.context.segmentIndex = 0;
+    return { events };
   }
 
   /**

@@ -352,6 +352,15 @@ Les noms de fichiers peuvent contenir des parenthèses :
   le dernier `@return` d'un chapitre disparaît.
 - Les scripts qui s'enchaînent sont décrits dans [`ENCHAINEMENT_SCRIPTS.md`](ENCHAINEMENT_SCRIPTS.md).
 
+### `[l]`, `[r]`, `[p]` (sauts et attentes de texte)
+
+- **`[l]`** : **retour à la ligne puis attente de clic**. Le saut de ligne est rendu **avant**
+  l'indicateur (`showLineBreak` du moteur), ce qui évite l'icône collée au milieu d'une phrase
+  (#407). La suite du texte attend le clic.
+- **`[r]`** : retour à la ligne simple.
+- **`[p]`** : attente de **fin de page** (icône de page) et changement de page.
+- `@l` en commande : même sémantique que `[l]` ; `@r` saut de ligne ; `@p` attente de page.
+
 ### `@playtimeline`, `@seloop`
 
 - `@playtimeline scene=N next=ms` joue une timeline d'animation embarquée dans le script

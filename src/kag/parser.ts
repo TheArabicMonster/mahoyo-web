@@ -886,8 +886,8 @@ export function parseCommand(token: Extract<Token, { type: "command" }>): Instru
     case "return":
       return { kind: "return" };
     case "l":
-      // @l en commande = pause texte (équivalent au tag [l]).
-      return { kind: "text", segments: [{ pause: true }] };
+      // @l en commande : retour à la ligne **puis** attente de clic (showLineBreak du moteur).
+      return { kind: "text", segments: [{ lineBreak: true }, { pause: true }] };
     case "p":
       // @p en commande = pause + page break (comme @pg avec [p]).
       return { kind: "text", segments: [{ pause: true }] };
@@ -1340,10 +1340,11 @@ export function parse(tokens: Token[]): ParsedScript {
         }
         case "tag": {
           if (token.name === "r") {
+            // [r] = attente de clic (le retour à la ligne est porté par [l], #407).
             flushBlockText();
-            instructions.push({ kind: "break" });
+            instructions.push({ kind: "text", segments: [{ pause: true }] });
           } else if (token.name === "l") {
-            blockPending.push({ pause: true });
+            blockPending.push({ lineBreak: true });
           } else if (token.name === "ruby") {
             const rubyArgs = parseRubyArgs(token.args);
             if (rubyArgs.baseText !== undefined) {
@@ -1517,11 +1518,12 @@ export function parse(tokens: Token[]): ParsedScript {
         if (token.name === "p") {
           pushPage();
         } else if (token.name === "r") {
+          // [r] = retour à la ligne (moteur).
           flushText();
           current.instructions.push({ kind: "break" });
         } else if (token.name === "l") {
-          // [l] is a click-wait marker — insert a pause segment
-          pendingSegments.push({ pause: true });
+          // [l] : retour à la ligne puis attente de clic (#407, icône en fin de ligne).
+          pendingSegments.push({ lineBreak: true }, { pause: true });
         } else if (token.name === "ruby") {
           // Set pending ruby for next text — DON'T flush here.
           // `char` numérique = nombre de caractères suivants ; `char` chaîne = texte de base

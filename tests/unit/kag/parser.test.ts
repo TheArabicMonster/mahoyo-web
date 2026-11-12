@@ -726,3 +726,18 @@ describe("parse — commandes visuelles secondaires (#85)", () => {
     });
   });
 });
+
+
+describe("sémantique [l]/[r] (#407)", () => {
+  it("[l] produit un retour à la ligne avant la pause ; [r] reste un saut de ligne", () => {
+    const page = parse(lex("Bonjour[l]le monde.[r]\n")).pages[0]!;
+    const text = page.instructions.find((i) => i.kind === "text");
+    expect(text?.kind).toBe("text");
+    if (text?.kind === "text") {
+      expect(text.segments[0]).toEqual({ text: "Bonjour" });
+      expect(text.segments).toContainEqual({ lineBreak: true });
+      expect(text.segments).toContainEqual({ pause: true });
+    }
+    expect(page.instructions.some((i) => i.kind === "break")).toBe(true);
+  });
+});
