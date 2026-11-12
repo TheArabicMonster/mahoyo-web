@@ -197,3 +197,34 @@ Si sa mesure montre que l'attente se situe surtout au démarrage, passer V2-09 j
 6. S'il a `ffmpeg` et `cwebp`/`sharp` sur la machine qui lance le pipeline.
 
 Si tu autorises l'écriture, j'enregistre ce plan dans `docs/PERF_PLAN_V2_OPUS.md`. Je peux aussi créer les issues V2-01 à V2-13 sur le Kanban.
+
+## Mise à jour (#397, 2026-11-12) — diagnostic corrigé, double tampon conservé
+
+Le diagnostic `diag:opening` lisait `background-position` du conteneur `.mh-stage-bg` ; depuis
+le double tampon `<img>` (#373), le fond est peint par `.mh-stage-bg-layer` en
+**`object-position`**. Les chiffres « panoramique figé / Sync fonds 0/16 » étaient donc des
+**artefacts de mesure**, pas une régression du rendu.
+
+Le diagnostic lit désormais le **calque moteur actif** (`src` + `object-position`) et
+l'**overlay de transition** séparément, avec une ancre de temps au début de la scène (premier
+échantillon « en jeu ») ; il affiche un verdict explicite « Mouvement du fond observé : N px —
+animé/figé ». Re-mesure sur assets réels (build `v1.1` courant, #373 inclus) :
+
+- Mouvement du fond observé : **571,3 px** (top -720,3 → -149) — **animé** (aucun figement) ;
+- **Sync fonds : 16/16** changements appariés (offsets ≤ 130 ms) ; audio 2/3 (le 3e est un
+  événement sans lecture observée, inchangé) ;
+- Panoramique final Δ : **29,7 / 18,7 / -2,4 / -101 px** aux instants clés. Les deux Δ de début
+  de panoramique reproduisent la mesure pré-#373 (Δ≈+30 px max) : décalage modèle/ordonnancement
+  préexistant, pas une régression du rendu ; le Δ de 187 000 ms correspond au basculement de
+  scène pendant le fondu (l'image moteur est déjà appariée 16/16, la couche visible est l'ancien
+  fond pendant le fondu) ; **logo Δ 0,7 px** (≤ 2 px) ; calque L8 Δ 3,7 px.
+
+`npm run validate:visual` (assets réels) : capture et transitions mesurées, **10/11 durées
+`time=` exactes** (une session 1200 ms sans appariement), 1 « cut » à la limite du seuil
+(Δ=0,309 vs seuil 0,3) — résultats du rendu **inchangé** par ce lot (aucune modification
+renderer) ; le diagnostic ne plantait plus quand la frame de référence sprite est absente.
+
+Le double tampon #373 est **conservé** ; un test de non-régression vérifie qu'un `track` bg
+déplace bien la position effective du fond (calque `object-position` ou conteneur
+`background-position`). Le seul point restant est le décalage de ~20-30 px en début de
+panoramique, préexistant à #373 et à surveiller avec `diag:opening`.
