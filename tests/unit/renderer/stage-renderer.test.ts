@@ -730,6 +730,38 @@ describe("DomStageRenderer", () => {
     });
   });
 
+  describe("transitions : apparence et calques de l'ancienne scène (#409)", () => {
+    const sig = () => new AbortController().signal;
+    const scene = (over: Partial<SceneState> & { bg: string | null }, transition: { method: "none" | "crossfade"; time?: number } = { method: "none" }): RenderEvent =>
+      ({ kind: "scene", scene: { sprites: [], effect: null, ...over } as SceneState, transition: { method: transition.method, time: transition.time ?? 0 } } as RenderEvent);
+
+    it("l'overlay reprend l'apparence de l'ancienne scène, pas le filtre du nouveau fond", async () => {
+      await renderer.apply([scene({ bg: "un", bgLeft: 0, bgTop: 0 })], { instant: true, signal: sig() });
+      await renderer.apply(
+        [scene({ bg: "deux", bgEffect: "monocro" }, { method: "crossfade", time: 500 })],
+        { instant: false, signal: sig() },
+      );
+      const overlay = root.querySelector<HTMLElement>(".mh-stage-bg-overlay")!;
+      const bg = root.querySelector<HTMLElement>("#stage-bg")!;
+      // L'ancien fond garde son apparence (aucun filtre) ; le nouveau est monochrome.
+      expect(overlay.style.filter === "" || overlay.style.filter === "none").toBe(true);
+      expect(bg.style.filter).toContain("grayscale");
+      renderer.hurry();
+    });
+
+    it("les calques de l'ancienne scène passent dans l'overlay puis disparaissent avec lui", async () => {
+      const sprite = { id: "s1", storage: "ancien-calque", x: 100, y: 120, z: 100, opacity: 1 };
+      await renderer.apply([scene({ bg: "un", sprites: [sprite] as never })], { instant: true, signal: sig() });
+      await renderer.apply([scene({ bg: "deux" }, { method: "crossfade", time: 500 })], { instant: false, signal: sig() });
+      const overlay = root.querySelector<HTMLElement>(".mh-stage-bg-overlay")!;
+      const snapshot = overlay.querySelector<HTMLImageElement>(".mh-stage-sprite");
+      expect(snapshot).not.toBeNull();
+      expect(snapshot!.getAttribute("src")).toContain("ancien-calque");
+      renderer.hurry();
+      expect(root.querySelector(".mh-stage-bg-overlay")).toBeNull();
+    });
+  });
+
   describe("calques de timeline (#125)", () => {
     const sig = () => new AbortController().signal;
     const layer = (over: Partial<TimelineLayerState> = {}): TimelineLayerState => ({ id: "L1", storage: "carton", x: 224, y: 217, opacity: 0, z: 3400, ...over });
