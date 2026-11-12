@@ -1,4 +1,4 @@
-import { createPerfProbe } from "@/core/perf-probe.js";
+import { getPerfProbe } from "@/core/perf-probe.js";
 import type { AssetResolver } from "@/core/asset-resolver.js";
 import type {
   AssetRef,
@@ -150,7 +150,7 @@ export class DomStageRenderer implements StageRenderer {
   private dockEl: HTMLElement | null = null;
   private portraitLayout = false;
   /** Sonde scene-ready (#360) : no-op sauf `?perf=1`. */
-  private readonly perf = createPerfProbe();
+  private readonly perf = getPerfProbe();
   private perfBgUrl: string | null = null;
   /** Échelle courante de la scène (1.25 en paysage, largeur réelle/1024 en portrait). */
   private sceneScale = STAGE_SCALE;
@@ -196,6 +196,8 @@ export class DomStageRenderer implements StageRenderer {
   /** Nombre d'unités de texte déjà révélées (anti re-type après [l]). */
   private typedUnits = 0;
 
+  /** Le marqueur `mh:boot:first-text` n'est posé qu'une fois (#385). */
+  private firstTextMarked = false;
   /** Dernier id de transition de scène appliqué (#317) : même id = mise à jour sans cut. */
   private lastTransitionId: number | undefined = undefined;
   /** Propriétaires de pistes : un couple (cible, propriété) = une seule animation (#317). */
@@ -1354,6 +1356,7 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   private async waitForBackgroundDecoded(storage: string, signal: AbortSignal): Promise<void> {
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     const url = this.resolver.background(storage);
     if (signal.aborted) return;
     const size = this.imageSizeOf(storage);
@@ -1368,6 +1371,10 @@ export class DomStageRenderer implements StageRenderer {
     } finally {
       signal.removeEventListener("abort", forwardAbort);
       if (this.pendingDecodeAbort === controller) this.pendingDecodeAbort = null;
+      const elapsed = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+      // #385 : durée et issue de l'attente de décodage avant transition (#362).
+      const outcome = signal.aborted ? "waiting" : elapsed >= 1000 ? "timeout" : "ready";
+      this.perf.markTransitionWait(elapsed, outcome);
     }
   }
 
@@ -3266,6 +3273,10 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   private renderText(instant: boolean): void {
+    if (!this.firstTextMarked && this.text.length > 0) {
+      this.firstTextMarked = true;
+      this.perf.markBoot("first-text");
+    }
     if (!this.textEl) return;
     const units = this.buildTextUnits();
     if (instant) {
@@ -3277,6 +3288,10 @@ export class DomStageRenderer implements StageRenderer {
   }
 
   private runTypewriter(opts: RunOptions): Promise<void> {
+    if (!this.firstTextMarked && this.text.length > 0) {
+      this.firstTextMarked = true;
+      this.perf.markBoot("first-text");
+    }
     return new Promise((resolve) => {
       const units = this.buildTextUnits();
       // Anti re-type : on continue depuis typedUnits (déjà révélées).

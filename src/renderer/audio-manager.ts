@@ -1,5 +1,6 @@
 import type { AudioChannel, AudioEvent, AudioSnapshot, Ms } from "@/kag/events.js";
 import type { AssetResolver } from "@/core/asset-resolver.js";
+import { getPerfProbe } from "@/core/perf-probe.js";
 import { DEFAULT_AUDIO_SETTINGS, type AudioPlayer, type AudioPlayerDeps, type AudioSettings } from "./types.js";
 
 /** Sous-ensemble de HTMLAudioElement utilisé ici (permet de le simuler en test). */
@@ -469,8 +470,16 @@ export class WebAudioPlayer implements AudioPlayer {
       this.stop(channel, channel === "bgm" ? fadeIn : 0);
     }
 
-    const audio = this.createAudio(this.resolveUrl(channel, storage));
+    const url = this.resolveUrl(channel, storage);
+    // #385 : marqueurs mh:audio:* (demande, arrivée, lecture, rejet) — no-op sans ?perf=1.
+    const audioKind = channel === "bgm" ? ("bgm" as const) : ("se" as const);
+    const perf = getPerfProbe();
+    perf.markAudio(audioKind, "request", { url });
+    const audio = this.createAudio(url);
     audio.loop = loop;
+    (audio as unknown as { addEventListener(type: string, cb: () => void): void }).addEventListener("loadeddata", () => {
+      perf.markAudio(audioKind, "fetched", { url });
+    });
     const voice: Voice = {
       audio,
       storage,
@@ -485,6 +494,7 @@ export class WebAudioPlayer implements AudioPlayer {
       onEnded: () => this.finish(channel, voice),
       onError: () => {
         // Dédoublonné par le résolveur : un seul avertissement par asset (#143).
+        perf.markAudio(audioKind, "rejected", { url });
         this.resolver.reportMissing("audio", storage);
         this.finish(channel, voice);
       },
@@ -499,16 +509,22 @@ export class WebAudioPlayer implements AudioPlayer {
 
   private startPlayback(channel: AudioChannel, voice: Voice): void {
     voice.blocked = false;
+    const audioKind = channel === "bgm" ? ("bgm" as const) : ("se" as const);
+    const perf = getPerfProbe();
     let result: Promise<void> | undefined;
     try {
       result = voice.audio.play();
     } catch {
       result = undefined;
     }
-    result?.catch(() => {
-      // Autoplay refusé : sera retenté par unlock() ou resume().
-      if (this.voices.get(channel) === voice) voice.blocked = true;
-    });
+    result?.then(
+      () => perf.markAudio(audioKind, "played", { url: voice.audio.src }),
+      () => {
+        // Autoplay refusé : sera retenté par unlock() ou resume().
+        perf.markAudio(audioKind, "rejected", { url: voice.audio.src });
+        if (this.voices.get(channel) === voice) voice.blocked = true;
+      },
+    );
   }
 
   /** Fin naturelle ou erreur : libère le canal et réveille les waitFor. */
