@@ -24,6 +24,12 @@ export type ReviewLauncherOptions = {
    * l'URL à ouvrir dans le navigateur du propriétaire (F3 exporte le JSON), jusqu'à Ctrl+C.
    */
   manual: boolean;
+  /**
+   * Capture Playwright de secours (#415) en mode automatique : `review-shots/playwright-<id>.png`
+   * à chaque nouveau flag (rendu navigateur complet, cadre compris) ; `--no-playwright-shots`
+   * désactive.
+   */
+  playwrightShots: boolean;
   /** Dossier des rapports (défaut : `reports/`). */
   outDir: string;
 };
@@ -41,6 +47,7 @@ export function parseReviewArgs(
     noBuild: false,
     consoleLog: true,
     manual: false,
+    playwrightShots: true,
     outDir: resolve(root, "reports"),
   };
   for (let i = 0; i < argv.length; i++) {
@@ -52,10 +59,12 @@ export function parseReviewArgs(
     else if (arg === "--no-build") options.noBuild = true;
     else if (arg === "--no-console-log") options.consoleLog = false;
     else if (arg === "--manual" || arg === "--no-open") options.manual = true;
+    else if (arg === "--playwright-shots") options.playwrightShots = true;
+    else if (arg === "--no-playwright-shots") options.playwrightShots = false;
     else if (arg === "--out") options.outDir = resolve(argv[++i] ?? options.outDir);
     else if (arg === "--help") {
       console.log(
-        "Usage : npm run review -- [--manual|--no-open] [--url <url>] [--port N] [--browser chromium|firefox] [--assets <public>] [--no-build] [--no-console-log] [--out <dir>]",
+        "Usage : npm run review -- [--manual|--no-open] [--url <url>] [--port N] [--browser chromium|firefox] [--assets <public>] [--no-build] [--no-console-log] [--no-playwright-shots] [--out <dir>]",
       );
       process.exit(0);
     } else console.warn(`[review] argument ignoré : ${arg}`);
@@ -68,6 +77,11 @@ export function buildReviewUrl(baseUrl: string): string {
   const url = new URL(baseUrl);
   url.searchParams.set("review", "1");
   return url.toString();
+}
+
+/** Nom de la capture Playwright de secours d'un flag (#415). */
+export function playwrightShotName(id: string): string {
+  return `playwright-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}.png`;
 }
 
 /** Nom de fichier de capture d'un flag (sans chemin). */

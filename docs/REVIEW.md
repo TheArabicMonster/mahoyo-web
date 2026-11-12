@@ -85,6 +85,26 @@ Chaque flag contient :
 - capture JPEG (IndexedDB), derniers warnings/erreurs console et requêtes en échec
   (`responseStatus ≥ 400`).
 
+## Captures d'écran (html2canvas) et repli Playwright
+
+Chaque flag embarque une capture JPEG (qualité 0,8) de la **scène logique** :
+
+- la cible est `.mh-stage` (1024×576 logique), pas le viewport 1280×720 : html2canvas
+  n'applique pas le `transform: scale(1.25)` du stage, ce qui produisait des **bandes noires**
+  à droite/en bas (#415). La capture est donc rendue en **16:9 plein cadre, 960×540** ;
+- `onclone` déplie le transform du stage (et neutralise un éventuel fit du viewport) ;
+- le **cadre de texte** (`txtwindow02`, image de fond CSS) est attendu (décodage) avant la capture
+  pour ne pas manquer quand la scène vient de changer ;
+- **limites connues de html2canvas** : pseudo-éléments `::before/::after`, filtres CSS avancés,
+  animations et certaines images de fond non chargées peuvent manquer ; les captures restent
+  utiles pour juger la scène, les sprites et la position du texte, moins pour les effets.
+
+**Repli automatique** : en mode automatique (Playwright), une **capture navigateur complète** est
+aussi écrite à chaque nouveau flag dans `reports/review-shots/playwright-<id>.png` (rendu réel,
+cadre compris). `--no-playwright-shots` la désactive. En mode manuel, il n'y a pas de repli
+Playwright : si la capture html2canvas est insuffisante, relancer en mode automatique pour obtenir
+ces fichiers. Les deux formats sont ignorés par git (`reports/`).
+
 ## Récupérer la session
 
 - **F3 / F4** dans le jeu : JSON complet avec captures (bouton « Exporter (F3) » équivalent) —

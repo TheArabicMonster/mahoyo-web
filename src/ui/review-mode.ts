@@ -385,12 +385,71 @@ function newId(): string {
   return `flag-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+/** Scène logique du moteur (16:9) ; le stage est agrandi dans le viewport par `transform: scale(1.25)`. */
+export const STAGE_LOGICAL_WIDTH = 1024;
+export const STAGE_LOGICAL_HEIGHT = 576;
+const CAPTURE_MAX_WIDTH = 960;
+
+/** Géométrie de capture : image 16:9 plein cadre, largeur max 960 (helper pur, testé). */
+export function captureGeometry(maxWidth = CAPTURE_MAX_WIDTH): { width: number; height: number; scale: number } {
+  const width = Math.min(maxWidth, STAGE_LOGICAL_WIDTH);
+  return { width, height: Math.round((width * STAGE_LOGICAL_HEIGHT) / STAGE_LOGICAL_WIDTH), scale: width / STAGE_LOGICAL_WIDTH };
+}
+
+/** Décode l'image de fond du cadre de texte avant la capture (html2canvas n'attend pas les fonds). */
+async function waitForFrameImage(): Promise<void> {
+  const frame = document.querySelector<HTMLElement>("#textbox-frame");
+  if (!frame) return;
+  const background = getComputedStyle(frame).backgroundImage;
+  const url = background.match(/url\("?([^")]+)"?\)/)?.[1];
+  if (!url) return;
+  await new Promise<void>((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve();
+    image.onerror = () => resolve();
+    image.src = url;
+    setTimeout(resolve, 1500);
+  });
+}
+
+/**
+ * Capture fiable de la scène (#415) : on capture `.mh-stage` (1024×576 logique) et non le
+ * viewport 1280×720, car html2canvas n'applique pas `transform: scale(1.25)` → bandes noires.
+ * `onclone` déplie le transform, fixe la taille logique et neutralise le layout du viewport ;
+ * le cadre de texte (fond CSS `txtwindow02`) est attendu (décodage) puis rendu comme le reste.
+ */
 async function captureScreenshot(): Promise<string | null> {
-  const target = document.getElementById("viewport") ?? document.body;
+  const stage = document.querySelector<HTMLElement>(".mh-stage");
+  const target = stage ?? document.getElementById("viewport") ?? document.body;
   try {
+    await waitForFrameImage();
     const { default: html2canvas } = await import("html2canvas");
-    const scale = Math.min(1, 960 / Math.max(1, target.clientWidth));
-    const canvas = await html2canvas(target, { scale, backgroundColor: "#000", logging: false, useCORS: true });
+    const geometry = captureGeometry();
+    const canvas = await html2canvas(target, {
+      width: STAGE_LOGICAL_WIDTH,
+      height: STAGE_LOGICAL_HEIGHT,
+      scale: geometry.scale,
+      backgroundColor: "#000",
+      useCORS: true,
+      logging: false,
+      imageTimeout: 5000,
+      onclone: (clonedDocument: Document) => {
+        // Déplie le transform du stage (sinon letterbox : contenu 1024×576 dans 1280×720).
+        for (const element of clonedDocument.querySelectorAll<HTMLElement>(".mh-stage")) {
+          element.style.transform = "none";
+          element.style.transformOrigin = "0 0";
+          element.style.width = `${STAGE_LOGICAL_WIDTH}px`;
+          element.style.height = `${STAGE_LOGICAL_HEIGHT}px`;
+          element.style.left = "0px";
+          element.style.top = "0px";
+        }
+        // Neutralise un éventuel fit/transform du viewport ou du stage parent.
+        for (const element of clonedDocument.querySelectorAll<HTMLElement>("#viewport, .mh-stage-parent")) {
+          element.style.transform = "none";
+          element.style.transformOrigin = "0 0";
+        }
+      },
+    });
     return canvas.toDataURL("image/jpeg", 0.8);
   } catch (error) {
     console.warn("[review] capture html2canvas impossible :", error);
