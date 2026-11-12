@@ -243,6 +243,12 @@ export interface StageRenderer {
   /** Précharge et décode des images. Ne rejette pas : un asset manquant est loggé. */
   preload(assets: readonly AssetRef[], signal?: AbortSignal): Promise<void>;
 
+  /**
+   * Prépare une image (lookahead) : décodage mutualisé, cache LRU alimenté seulement au succès
+   * (#386). `decode:false` se contente de charger/référencer.
+   */
+  prepare?(url: string, opts?: { decode?: boolean }): Promise<void>;
+
   /** Capture de l'écran courant pour les vignettes de sauvegarde. */
   captureThumbnail(maxWidth: number): Promise<Blob | null>;
 
