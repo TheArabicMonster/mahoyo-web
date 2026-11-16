@@ -66,6 +66,7 @@ export function backupAssets(publicDir: string, files: readonly string[]): Asset
 }
 
 export function writeBackupMarker(publicDir: string, backup: AssetsBackup): void {
+  mkdirSync(publicDir, { recursive: true });
   const marker: AssetsBackupMarker = {
     kind: "mahoyo-e2e-assets-backup",
     version: 1,
