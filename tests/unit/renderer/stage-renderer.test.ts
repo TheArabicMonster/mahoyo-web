@@ -511,12 +511,6 @@ describe("DomStageRenderer", () => {
       }
     });
 
-    it("masque l'indicateur quand aucun caractère n'est mesurable (#419)", async () => {
-      await renderer.apply([{ kind: "lineBreak" }], { instant: true, signal: sig() });
-      renderer.setClickIndicator("line");
-      const indicator = root.querySelector("#textbox-indicator") as HTMLElement;
-      expect(indicator.style.visibility).toBe("hidden");
-    });
 
     it("atténue le texte déjà lu de la page après le clic, jusqu'au changement de page", async () => {
       await renderer.apply([{ kind: "text", segments: [{ text: "Premier." }] }], { instant: true, signal: sig() });

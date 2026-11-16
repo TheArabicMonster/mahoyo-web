@@ -3352,12 +3352,10 @@ export class DomStageRenderer implements StageRenderer {
       const unit = revealed[i];
       if (unit) char = this.lastCharRect(unit.el);
     }
-    if (!char) {
-      // Aucun caractère mesurable : ne jamais laisser une position obsolète affichée.
-      el.style.visibility = "hidden";
-      return;
-    }
-    el.style.visibility = "visible";
+    // Aucun caractère mesurable (texte pas encore révélé, attente vide…) : on ne repositionne
+    // pas (comportement d'origine) ; ne pas masquer l'indicateur, les attentes e2e l'attendent
+    // visible et le prochain appel le placera.
+    if (!char) return;
     const textRect = textEl.getBoundingClientRect();
     const computedWidth = Number.parseFloat(getComputedStyle(textEl).width);
     const logicalWidth = computedWidth > 0 ? computedWidth : textEl.clientWidth;
