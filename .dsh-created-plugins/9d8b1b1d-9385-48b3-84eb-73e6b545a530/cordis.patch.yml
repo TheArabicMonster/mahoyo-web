@@ -1,0 +1,6 @@
+# Bundle patch for the DSH credits panel. One row: the package root runs the
+# Host half (Fetch routes + last-known-value store) while the `dsh.client`
+# manifest field loads the browser half (sidebar entry + main-area page).
+- insert:
+    - id: '@dsh-local/view-9d8b1b1d-9385-48b3-84eb-73e6b545a530:credits'
+      name: '@dsh-local/view-9d8b1b1d-9385-48b3-84eb-73e6b545a530'

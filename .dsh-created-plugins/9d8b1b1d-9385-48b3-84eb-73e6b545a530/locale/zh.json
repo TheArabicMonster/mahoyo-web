@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "剩余额度",
+    "description": "显示 DSH 使用账户的 DeepSeek 计费剩余额度、上次刷新的时间，并支持按需刷新。"
+  }
+}

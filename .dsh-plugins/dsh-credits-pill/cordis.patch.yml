@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-credits-pill
+      name: '@local/dsh-credits-pill'
