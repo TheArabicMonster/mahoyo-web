@@ -21,6 +21,7 @@ import { closeSync, openSync, readFileSync, readSync, statSync, writeFileSync } 
 import { join } from "path";
 import {
   findAssetViolations,
+  findPlaceholderIntegrityIssues,
   findHashMismatches,
   findLargeBinaries,
   findTrackedAssetSymlinks,
@@ -105,6 +106,16 @@ function main(): void {
     ...findHashMismatches(files, entries, sha256),
     ...findLargeBinaries(files, entries, inspect),
   ];
+
+  // Cohérence des assets locaux : un manifeste de placeholders dans un dossier rempli de vrais
+  // fichiers signale l'incident #417 (assets du propriétaire écrasés).
+  const placeholderIssues = findPlaceholderIntegrityIssues(join(REPO_ROOT, "public", "assets"));
+  if (placeholderIssues.length > 0) {
+    console.error("public/assets : manifeste de placeholders incohérent —");
+    for (const issue of placeholderIssues) console.error(`  - ${issue.detail}`);
+    console.error("Restaurez le manifeste et les fichiers réels (copie de dist/assets) avant de relancer les e2e.");
+    process.exit(1);
+  }
 
   if (violations.length > 0) {
     console.error(formatViolations(violations));

@@ -6,6 +6,9 @@
  * être explicitement autorisés.
  */
 
+import { existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { join } from "path";
+
 export const ASSET_EXTENSIONS = [
   // Images/textures moteur KiriKiri
   ".tlg",
@@ -256,4 +259,60 @@ export function formatViolations(violations: readonly Violation[]): string {
   }
 
   return lines.join("\n");
+}
+
+// ── Cohérence d'un manifeste de placeholders (#417) ─────────────────────────
+
+export type PlaceholderIntegrityIssue = {
+  reason: "placeholder-mismatch" | "unreadable-manifest";
+  detail: string;
+};
+
+/** Nombre maximal de fichiers d'assets toléré pour un dossier de placeholders. */
+const PLACEHOLDER_MAX_DISK_FILES = 64;
+
+function countAssetFiles(dir: string): number {
+  let count = 0;
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name);
+    const stats = statSync(path);
+    if (stats.isDirectory()) {
+      count += countAssetFiles(path);
+      continue;
+    }
+    if (name.endsWith(".json")) continue;
+    count++;
+  }
+  return count;
+}
+
+/**
+ * Détecte un dossier incohérent : `asset-manifest.json` de placeholders (`placeholders-v1` ou
+ * ≤ 32 entrées) mais un grand nombre de fichiers d'assets sur disque — signe que de vrais assets
+ * ont été écrasés ou cohabitent avec les placeholders (#417). À appeler sur `public/assets` ;
+ * retourne aussi une erreur si le manifeste est illisible.
+ */
+export function findPlaceholderIntegrityIssues(assetsDir: string): PlaceholderIntegrityIssue[] {
+  const manifestPath = join(assetsDir, "asset-manifest.json");
+  if (!existsSync(manifestPath)) return [];
+  let manifest: { assetsVersion?: unknown; images?: unknown; audio?: unknown; scenarios?: unknown };
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as typeof manifest;
+  } catch {
+    return [{ reason: "unreadable-manifest", detail: "asset-manifest.json illisible" }];
+  }
+  const count = (value: unknown): number => (value && typeof value === "object" ? Object.keys(value as object).length : 0);
+  const entries = count(manifest.images) + count(manifest.audio) + count(manifest.scenarios);
+  const placeholder = manifest.assetsVersion === "placeholders-v1" || entries <= 32;
+  if (!placeholder) return [];
+  const onDisk = countAssetFiles(assetsDir);
+  if (onDisk <= PLACEHOLDER_MAX_DISK_FILES) return [];
+  return [
+    {
+      reason: "placeholder-mismatch",
+      detail:
+        `manifeste de placeholders (${entries} entrées) mais ${onDisk} fichiers d'assets sur disque — ` +
+        "vos assets réels ont peut-être été écrasés : restaurez-les depuis dist/assets (#417)",
+    },
+  ];
 }
