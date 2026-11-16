@@ -18,6 +18,8 @@ export default defineConfig({
   // `playwright.pwa.config.ts` (`npm run test:e2e:pwa`), pas sur le serveur de dev.
   testIgnore: "**/pwa.spec.ts",
   globalSetup: "./tests/e2e/global-setup.ts",
+  // Restauration des assets si des placeholders ont été installés dans un dossier sauvegardé (#417).
+  globalTeardown: "./tests/e2e/global-teardown.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
