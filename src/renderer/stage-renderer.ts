@@ -3342,11 +3342,22 @@ export class DomStageRenderer implements StageRenderer {
     if (el.parentNode !== textEl || el !== textEl.lastChild) textEl.appendChild(el);
 
     // L'indicateur est hors du flux : on le centre sur la boîte du dernier caractère révélé (#175).
+    // Depuis #407, `[l]` pousse un segment `lineBreak` (unité "\n") juste avant la pause : cette
+    // unité n'a aucun caractère mesurable. On remonte donc jusqu'au dernier caractère réellement
+    // visible, sinon l'indicateur conservait sa position précédente (ou aucune) → icône au milieu
+    // du texte (#419).
     const revealed = this.textUnitEls.filter((unit) => unit.revealAt < this.typedUnits);
-    const lastUnit = revealed[revealed.length - 1];
-    if (!lastUnit) return;
-    const char = this.lastCharRect(lastUnit.el);
-    if (!char) return;
+    let char: DOMRect | null = null;
+    for (let i = revealed.length - 1; i >= 0 && !char; i--) {
+      const unit = revealed[i];
+      if (unit) char = this.lastCharRect(unit.el);
+    }
+    if (!char) {
+      // Aucun caractère mesurable : ne jamais laisser une position obsolète affichée.
+      el.style.visibility = "hidden";
+      return;
+    }
+    el.style.visibility = "visible";
     const textRect = textEl.getBoundingClientRect();
     const computedWidth = Number.parseFloat(getComputedStyle(textEl).width);
     const logicalWidth = computedWidth > 0 ? computedWidth : textEl.clientWidth;

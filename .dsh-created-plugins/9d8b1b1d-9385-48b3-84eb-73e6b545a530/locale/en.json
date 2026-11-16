@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Remaining credits",
+    "description": "Shows the remaining DeepSeek billing credits of the account DSH uses, when the balance was last refreshed, and refreshes it on request."
+  }
+}

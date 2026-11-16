@@ -478,6 +478,46 @@ describe("DomStageRenderer", () => {
       }
     });
 
+    it("place l'indicateur sur le dernier caractère avant un saut de ligne (#419)", async () => {
+      const rect = (left: number, top: number, width: number, height: number) =>
+        ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() { return this; } }) as DOMRect;
+      const widthSpy = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+        return this.id === "text" ? 100 : 0;
+      });
+      const boxSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+        return this.id === "text" ? rect(10, 20, 100, 40) : rect(0, 0, 0, 0);
+      });
+      const rangeProto = Range.prototype as unknown as { getClientRects?: () => DOMRectList };
+      const originalGetClientRects = rangeProto.getClientRects;
+      rangeProto.getClientRects = () => [rect(90, 30, 10, 20)] as unknown as DOMRectList;
+      try {
+        await renderer.apply(
+          [
+            { kind: "text", segments: [{ text: "Texte." }] },
+            { kind: "lineBreak" },
+          ],
+          { instant: true, signal: sig() },
+        );
+        renderer.setClickIndicator("line");
+        const indicator = root.querySelector("#textbox-indicator") as HTMLElement;
+        expect(indicator.style.visibility).toBe("visible");
+        expect(indicator.style.left).toBe("92px");
+        expect(indicator.style.top).toBe("8px");
+      } finally {
+        if (originalGetClientRects) rangeProto.getClientRects = originalGetClientRects;
+        else delete rangeProto.getClientRects;
+        boxSpy.mockRestore();
+        widthSpy.mockRestore();
+      }
+    });
+
+    it("masque l'indicateur quand aucun caractère n'est mesurable (#419)", async () => {
+      await renderer.apply([{ kind: "lineBreak" }], { instant: true, signal: sig() });
+      renderer.setClickIndicator("line");
+      const indicator = root.querySelector("#textbox-indicator") as HTMLElement;
+      expect(indicator.style.visibility).toBe("hidden");
+    });
+
     it("atténue le texte déjà lu de la page après le clic, jusqu'au changement de page", async () => {
       await renderer.apply([{ kind: "text", segments: [{ text: "Premier." }] }], { instant: true, signal: sig() });
       expect(text().querySelectorAll('[data-read="1"]')).toHaveLength(0);
