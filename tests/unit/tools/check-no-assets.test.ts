@@ -3,13 +3,17 @@
  *
  * @vitest-environment node
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
   ASSET_EXTENSIONS,
   MAX_BINARY_BYTES,
   findAssetViolations,
   findHashMismatches,
   findLargeBinaries,
+  findPlaceholderIntegrityIssues,
   formatViolations,
   getAssetExtension,
   looksBinary,
@@ -226,5 +230,53 @@ describe("formatViolations — motifs", () => {
     expect(msg).toContain("b.png (contenu modifié : contenu différent)");
     expect(msg).toContain("c.dat (gros binaire hors liste, 400 Kio)");
     expect(msg).toContain("--update");
+  });
+});
+
+describe("findPlaceholderIntegrityIssues (#417)", () => {
+  const dirs: string[] = [];
+  function tmpAssets(): string {
+    const dir = mkdtempSync(join(tmpdir(), "mahoyo-placeholder-check-"));
+    dirs.push(dir);
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function writeManifest(dir: string, manifest: unknown): void {
+    writeFileSync(join(dir, "asset-manifest.json"), JSON.stringify(manifest), "utf-8");
+  }
+
+  it("signale un manifeste placeholder dans un dossier rempli de fichiers", () => {
+    const dir = tmpAssets();
+    writeManifest(dir, { version: 1, assetsVersion: "placeholders-v1", images: { black: {} }, audio: {}, scenarios: {} });
+    for (let i = 0; i < 80; i++) mkdirSync(join(dir, "bg"), { recursive: true });
+    for (let i = 0; i < 80; i++) writeFileSync(join(dir, "bg", `img${i}.webp`), "x");
+    const issues = findPlaceholderIntegrityIssues(dir);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.reason).toBe("placeholder-mismatch");
+    expect(issues[0]!.detail).toContain("80 fichiers");
+    expect(issues[0]!.detail).toContain("dist/assets");
+  });
+
+  it("accepte un dossier de placeholders cohérent et un dossier réel", () => {
+    const placeholder = tmpAssets();
+    writeManifest(placeholder, { version: 1, assetsVersion: "placeholders-v1", images: { black: {} }, audio: {}, scenarios: {} });
+    writeFileSync(join(placeholder, "bg.png"), "x");
+    expect(findPlaceholderIntegrityIssues(placeholder)).toEqual([]);
+
+    const real = tmpAssets();
+    writeManifest(real, { version: 1, assetsVersion: "owner-real-v1", images: Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`i${i}`, {}])), audio: {}, scenarios: {} });
+    for (let i = 0; i < 80; i++) writeFileSync(join(real, `img${i}.webp`), "x");
+    expect(findPlaceholderIntegrityIssues(real)).toEqual([]);
+  });
+
+  it("signale un manifeste illisible et ignore un dossier sans manifeste", () => {
+    const broken = tmpAssets();
+    writeFileSync(join(broken, "asset-manifest.json"), "{pas du json", "utf-8");
+    expect(findPlaceholderIntegrityIssues(broken)[0]!.reason).toBe("unreadable-manifest");
+    expect(findPlaceholderIntegrityIssues(tmpAssets())).toEqual([]);
   });
 });

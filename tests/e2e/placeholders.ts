@@ -21,7 +21,7 @@
  *   directement en pointant `MAHOYO_E2E_ASSETS` vers un dossier qui contient `assets/`.
  */
 import { deflateSync } from "zlib";
-import { writeFileSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -254,6 +254,96 @@ function placeholderScripts(): Record<string, string> {
   };
 }
 
+/**
+ * Version du manifeste de placeholders (#372/#417). Toute autre version signifie que le dossier
+ * contient des assets réels (ou d'un autre outil) : on refuse alors de l'écraser.
+ */
+export const PLACEHOLDER_ASSETS_VERSION = "placeholders-v1";
+
+/**
+ * Nombre maximal d'entrées (images+audio+scénarios) toléré pour considérer un manifeste comme
+ * celui des placeholders. Les placeholders en ont 12 ; un manifeste réel en a des milliers.
+ */
+const PLACEHOLDER_MAX_ENTRIES = 32;
+
+/** Fichiers écrits par les placeholders (relatifs à `publicDir`), pour la sauvegarde/restauration. */
+export const PLACEHOLDER_ASSET_FILES = [
+  "assets/asset-manifest.json",
+  "assets/story-chain.json",
+  "assets/image-dimensions.json",
+  "assets/bg/black.png",
+  "assets/bg/white.png",
+  "assets/image/placeholder.png",
+  "assets/image/partbg.png",
+  "assets/image/txtwindow02.png",
+  "assets/image/heart26.png",
+  "assets/image/linebreak_a.png",
+  "assets/image/pagebreak_a.png",
+  "assets/rule/rule.png",
+  "assets/scenario/1-0.ks",
+  "assets/scenario/1-1a.ks",
+  "assets/scenario/1-1b.ks",
+  "assets/scenario/2-0.ks",
+  "assets/placeholder-corpus.json",
+] as const;
+
+export type PlaceholderInstallOptions = {
+  /** Écriture explicite dans un dossier qui contient des assets réels (`--force`). */
+  force?: boolean;
+};
+
+function countManifestEntries(manifest: Record<string, unknown>): number {
+  const count = (value: unknown): number => (value && typeof value === "object" ? Object.keys(value as object).length : 0);
+  return count(manifest.images) + count(manifest.audio) + count(manifest.scenarios);
+}
+
+/**
+ * Refuse d'écraser un dossier d'assets qui n'est pas un dossier de placeholders (#417).
+ *
+ * Garde-fou P0 : un `MAHOYO_E2E_ASSETS` mal réglé (ou un ancien script) ne doit **jamais**
+ * remplacer `public/assets/asset-manifest.json` du propriétaire. Sortie : exception explicite,
+ * sauf `force` / `MAHOYO_E2E_FORCE_PLACEHOLDERS=1` (choix conscient, avec sauvegarde).
+ */
+export function assertPlaceholdersAllowed(publicDir: string, options: PlaceholderInstallOptions = {}): void {
+  const force = options.force ?? process.env.MAHOYO_E2E_FORCE_PLACEHOLDERS === "1";
+  if (force) return;
+  const manifestPath = join(publicDir, "assets", "asset-manifest.json");
+  if (!existsSync(manifestPath)) return;
+  let manifest: Record<string, unknown>;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as Record<string, unknown>;
+  } catch {
+    throw new Error(
+      `[e2e] Refus d'écrire des placeholders dans ${join(publicDir, "assets")} : ` +
+        "asset-manifest.json est illisible (dossier d'assets réel ?). " +
+        "Utilisez un dossier isolé (MAHOYO_E2E_ASSETS=/tmp/...), MAHOYO_E2E_REAL_ASSETS=1 pour servir les vrais assets, " +
+        "ou --force / MAHOYO_E2E_FORCE_PLACEHOLDERS=1 explicitement.",
+    );
+  }
+  const entries = countManifestEntries(manifest);
+  const isPlaceholder = manifest.assetsVersion === PLACEHOLDER_ASSETS_VERSION || entries <= PLACEHOLDER_MAX_ENTRIES;
+  if (isPlaceholder) return;
+  throw new Error(
+    `[e2e] Refus d'écrire des placeholders dans ${join(publicDir, "assets")} : ` +
+      `asset-manifest.json contient des assets RÉELS (assetsVersion=${String(manifest.assetsVersion ?? "?")}, ${entries} entrées).\n` +
+      "Ce dossier est probablement votre installation : utilisez un dossier isolé (défaut : <tmp>/mahoyo-e2e-assets), " +
+      "MAHOYO_E2E_REAL_ASSETS=1 pour servir les vrais assets, ou --force / MAHOYO_E2E_FORCE_PLACEHOLDERS=1 explicitement " +
+      "(une sauvegarde est faite avant écriture).",
+  );
+}
+
+/** Le dossier contient-il déjà le manifeste des placeholders (#417 : idempotence) ? */
+export function isPlaceholderAssetDir(publicDir: string): boolean {
+  const manifestPath = join(publicDir, "assets", "asset-manifest.json");
+  if (!existsSync(manifestPath)) return false;
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as { assetsVersion?: unknown };
+    return manifest.assetsVersion === PLACEHOLDER_ASSETS_VERSION;
+  } catch {
+    return false;
+  }
+}
+
 /** Manifest minimal : résout les clés logiques vers les PNG générés (jamais de vrai asset). */
 function placeholderManifest(): string {
   const image = (url: string) => ({ url, source: url, kind: "image" as const });
@@ -262,7 +352,7 @@ function placeholderManifest(): string {
     {
       version: 1,
       // Version fixe des placeholders (#372) : le SW e2e doit obtenir un cache versionné.
-      assetsVersion: "placeholders-v1",
+      assetsVersion: PLACEHOLDER_ASSETS_VERSION,
       generatedAt: new Date(0).toISOString(),
       images: {
         black: image("bg/black.png"),
@@ -292,7 +382,8 @@ function placeholderManifest(): string {
  * demande) et renvoie le nombre de fichiers écrits. Idempotent : réécrit les mêmes fichiers,
  * ne supprime rien d'autre.
  */
-export function generatePlaceholderAssets(publicDir: string): number {
+export function generatePlaceholderAssets(publicDir: string, options: PlaceholderInstallOptions = {}): number {
+  assertPlaceholdersAllowed(publicDir, options);
   const assets = join(publicDir, "assets");
 
   // Fond et sprites : PNG uni (les placeholders ne sont pas jugés sur leur contenu).
@@ -405,11 +496,15 @@ Corpus e2e ${n} — transition et attente.[p]
  * manifeste, images, scripts du parcours complet, puis `size - 4` scripts `corpus-NNN.ks` et le
  * marqueur `placeholder-corpus.json`. Renvoie le marqueur écrit (taille attendue par full-read).
  */
-export function generateFullReadCorpus(publicDir: string, size = FULL_READ_CORPUS_SIZE): PlaceholderCorpusMarker {
+export function generateFullReadCorpus(
+  publicDir: string,
+  size = FULL_READ_CORPUS_SIZE,
+  options: PlaceholderInstallOptions = {},
+): PlaceholderCorpusMarker {
   if (!Number.isInteger(size) || size < 1) {
     throw new Error(`Taille de corpus invalide : ${size}`);
   }
-  generatePlaceholderAssets(publicDir);
+  generatePlaceholderAssets(publicDir, options);
   const assets = join(publicDir, "assets");
   const scenarioDir = join(assets, "scenario");
   // Les scripts du parcours complet (1-0, 1-1a, 1-1b, 2-0) sont tous narratifs et audités.

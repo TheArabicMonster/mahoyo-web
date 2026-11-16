@@ -48,6 +48,30 @@ Conséquences :
 | Push `v1.1` | `changes` + `build-and-test` + **e2e shardé obligatoire** + `pwa` si chemins PWA |
 | Push `main` | `changes` + `build-and-test` seul (+ `pwa` si chemins PWA) — **e2e non bloquant** |
 
+## E2E local sans risque pour les assets du propriétaire (#417)
+
+Les placeholders e2e sont générés dans un **dossier isolé** `<tmp>/mahoyo-e2e-assets` (surchargeable
+par `MAHOYO_E2E_ASSETS`) et **jamais** dans `public/assets` : la config Playwright y pointe le
+`publicDir` de Vite, et `prepare-assets.ts` refuse d'écrire dans le `public/` du dépôt ou dans un
+dossier dont `asset-manifest.json` contient de vrais assets (garde-fou + `--force` explicite
+uniquement, avec sauvegarde/restauration automatique).
+
+```bash
+# Sûr par défaut : placeholders isolés, aucun risque pour public/assets
+npm run test:e2e
+
+# Servir VOS assets réels (lecture seule, rien n'est écrit chez vous)
+MAHOYO_E2E_REAL_ASSETS=1 MAHOYO_E2E_ASSETS=/chemin/vers/mahoyo-web/public npm run test:e2e
+
+# Ne JAMAIS faire (refusé désormais) : pointer MAHOYO_E2E_ASSETS sur public/ sans le mode réel
+# MAHOYO_E2E_ASSETS=/chemin/vers/mahoyo-web/public npm run test:e2e   → erreur « Isolation des assets »
+```
+
+En cas de sauvegarde (dossier personnalisé forcé), un marqueur `.e2e-assets-backup.json` est écrit :
+le `globalTeardown` Playwright restaure les fichiers d'origine **même si des tests échouent** (et les
+signaux SIGINT/SIGTERM restaurent pendant la génération). `npm run check:assets` signale en plus un
+manifeste de placeholders incohérent avec un dossier rempli de fichiers (symptôme de l'incident).
+
 ## Shards e2e
 
 La matrice `e2e` est `browser × shard` (`chromium 1/2`, `chromium 2/2`, `firefox 1/2`,

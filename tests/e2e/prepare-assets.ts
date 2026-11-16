@@ -15,10 +15,16 @@
  *
  * Le même module est appelé par `tests/e2e/global-setup.ts` (journalisation + contrôle).
  */
-import { copyFileSync, existsSync } from "fs";
+import { copyFileSync, existsSync, rmSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
-import { generatePlaceholderAssets } from "./placeholders.js";
+import { join, resolve, sep } from "path";
+import {
+  PLACEHOLDER_ASSET_FILES,
+  generatePlaceholderAssets,
+  isPlaceholderAssetDir,
+  type PlaceholderInstallOptions,
+} from "./placeholders.js";
+import { backupAssets, readBackupMarker, writeBackupMarker } from "./assets-backup.js";
 import { generateImageDimensions } from "../../tools/image-dimensions.js";
 
 /** Fichiers de la coquille PWA (public/) nécessaires au build e2e hors ligne (#96). */
@@ -50,9 +56,10 @@ export function e2ePublicDir(): string {
 }
 
 /** Prépare les assets du mode courant et renvoie le dossier publicDir. */
-export function prepareE2eAssets(): { publicDir: string; mode: E2eAssetsMode } {
+export function prepareE2eAssets(options: PlaceholderInstallOptions = {}): { publicDir: string; mode: E2eAssetsMode } {
   const publicDir = e2ePublicDir();
   const real = Boolean(process.env.MAHOYO_E2E_REAL_ASSETS);
+  const force = options.force ?? process.env.MAHOYO_E2E_FORCE_PLACEHOLDERS === "1";
 
   if (real) {
     const assets = join(publicDir, "assets");
@@ -67,7 +74,46 @@ export function prepareE2eAssets(): { publicDir: string; mode: E2eAssetsMode } {
     return { publicDir, mode: "real" };
   }
 
-  generatePlaceholderAssets(publicDir);
+  // Isolation P0 (#417) : jamais dans le `public/` du dépôt sans choix explicite.
+  const resolvedPublic = resolve(publicDir);
+  const repoPublic = resolve(REPO_PUBLIC_DIR);
+  if (!force && (resolvedPublic === repoPublic || resolvedPublic.startsWith(`${repoPublic}${sep}`))) {
+    throw new Error(
+      `[e2e] Isolation des assets (#417) : refus d'écrire des placeholders dans le public/ du dépôt (${publicDir}).\n` +
+        "Le dossier par défaut est <tmp>/mahoyo-e2e-assets. Pour servir vos vrais assets : MAHOYO_E2E_REAL_ASSETS=1. " +
+        "Pour forcer malgré tout (sauvegarde automatique) : --force ou MAHOYO_E2E_FORCE_PLACEHOLDERS=1.",
+    );
+  }
+  // Idempotence (#417) : `webServer` puis `globalSetup` appellent tous deux cette fonction.
+  // Si les placeholders sont déjà en place, on ne refait ni génération ni sauvegarde : le marqueur
+  // créé par le premier appel doit rester celui de l'état d'origine pour la restauration finale.
+  const alreadyPlaceholder = isPlaceholderAssetDir(publicDir);
+  if (!alreadyPlaceholder) {
+    // Sauvegarde des fichiers qui vont être écrasés (restaurée par le globalTeardown après les tests).
+    const existingMarker = readBackupMarker(publicDir);
+    const backup = existingMarker ? null : backupAssets(publicDir, PLACEHOLDER_ASSET_FILES);
+    if (backup) writeBackupMarker(publicDir, backup);
+    const restoreNow = (): void => {
+      backup?.restore();
+      backup?.dispose();
+      rmSync(join(publicDir, ".e2e-assets-backup.json"), { force: true });
+    };
+    const restoreOnSignal = (): void => {
+      restoreNow();
+      process.exit(130);
+    };
+    process.once("SIGINT", restoreOnSignal);
+    process.once("SIGTERM", restoreOnSignal);
+    try {
+      generatePlaceholderAssets(publicDir, { force });
+    } catch (error) {
+      restoreNow();
+      throw error;
+    } finally {
+      process.removeListener("SIGINT", restoreOnSignal);
+      process.removeListener("SIGTERM", restoreOnSignal);
+    }
+  }
   copyPwaShellFiles(publicDir);
   // Manifeste des dimensions (#315) : placements sprites en pixels absolus dès la première frame.
   generateImageDimensions(join(publicDir, "assets"));
@@ -77,6 +123,7 @@ export function prepareE2eAssets(): { publicDir: string; mode: E2eAssetsMode } {
 // Exécution directe : `node --import tsx tests/e2e/prepare-assets.ts` (commande webServer).
 const invokedDirectly = /prepare-assets\.(ts|js)$/.test(process.argv[1] ?? "");
 if (invokedDirectly) {
-  const { publicDir, mode } = prepareE2eAssets();
-  console.log(`[e2e] assets ${mode === "real" ? "réels servis" : "placeholders générés"} depuis ${publicDir}`);
+  const force = process.argv.includes("--force");
+  const { publicDir, mode } = prepareE2eAssets({ force });
+  console.log(`[e2e] assets ${mode === "real" ? "réels servis" : "placeholders générés (dossier isolé)"} depuis ${publicDir}`);
 }
