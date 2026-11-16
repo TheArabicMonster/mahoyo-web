@@ -11,6 +11,9 @@ encore à la ligne 2`) et, si possible, une capture vidéo courte hors dépôt.
 ## 0. Préparation
 
 - [ ] `git pull`, `npm ci`, assets réels en place, `npm run dev` (ou build de production).
+- [ ] **Assets protégés** : ne lancez jamais les e2e en pointant `MAHOYO_E2E_ASSETS` sur
+      `public/` sans `MAHOYO_E2E_REAL_ASSETS=1` (garde-fou #417 : erreur explicite, pas d'écriture) ;
+      événement d'incident le 2026-11-16 et procédure sûre : voir [`CI.md`](CI.md#e2e-local-sans-risque-pour-les-assets-du-propriétaire-417).
 - [ ] Résolution **1280×720**, puis **1920×1080** (deux passes si possible).
 - [ ] Navigateur **Chromium** puis **Firefox** (les deux sont supportés).
 - [ ] Console ouverte (F12) : aucune erreur rouge pendant la session.
